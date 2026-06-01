@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+    name: build-test (node ${{ matrix.node-version }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build is reproducible (committed bundle up to date)
+        run: npm run check:build # tsup && git diff --exit-code -- scripts/analyze.mjs
+
+      - name: Test
+        run: npm test
+
+      - name: Smoke-run the committed bundle
+        run: npm run demo # node scripts/analyze.mjs on tests/fixtures/sample-app -> /tmp/reconstruct-demo
+
+      - name: Assert reconstruction output was produced
+        run: test -f /tmp/reconstruct-demo/inventory.json && test -f /tmp/reconstruct-demo/REBUILD.md

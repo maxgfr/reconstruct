@@ -1,5 +1,7 @@
 # reconstruct
 
+[![CI](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml/badge.svg)](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml)
+
 > Analyze any repository and generate **reconstruction PRDs** that let an AI agent
 > rebuild the project from scratch — faithfully (logic, routes, translations, schema,
 > config) and, optionally, with improvements.
@@ -7,6 +9,9 @@
 `reconstruct` is an [Agent Skill](https://www.skills.sh/) (the open agent-skills
 ecosystem by Vercel). A bundled, dependency-free Node script does the **deterministic**
 extraction; the AI agent that runs the skill then **enriches** the generated PRDs.
+
+> 📖 **Full documentation:** [`DOCUMENTATION.md`](./DOCUMENTATION.md) — concept, CLI
+> reference, the analyzer pipeline, how to extend it, and FAQ.
 
 ## Install
 
