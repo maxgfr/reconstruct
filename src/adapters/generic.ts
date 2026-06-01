@@ -96,6 +96,70 @@ export function extractDependencies(repo: string, files: FileInfo[]): Dependency
     }
   }
 
+  // bundler / Gemfile
+  if (present.has("Gemfile")) {
+    const raw = read(repo, "Gemfile") ?? "";
+    const runtime: Record<string, string> = {};
+    const dev: Record<string, string> = {};
+    let inDev = false;
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      const g = t.match(/^group\s+(.+?)\s+do\b/);
+      if (g) {
+        inDev = /:(?:development|test)\b/.test(g[1] as string);
+        continue;
+      }
+      if (/^end\b/.test(t)) {
+        inDev = false;
+        continue;
+      }
+      const m = t.match(/^gem\s+["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?/);
+      if (m) (inDev ? dev : runtime)[m[1] as string] = (m[2] ?? "").trim();
+    }
+    result.push({ manager: "bundler", manifest: "Gemfile", runtime, dev });
+  }
+
+  // maven / pom.xml
+  if (present.has("pom.xml")) {
+    const raw = read(repo, "pom.xml") ?? "";
+    const runtime: Record<string, string> = {};
+    const dev: Record<string, string> = {};
+    const field = (block: string, tag: string): string | undefined =>
+      block.match(new RegExp(`<${tag}>\\s*([^<]+?)\\s*</${tag}>`))?.[1];
+    for (const m of raw.matchAll(/<dependency>([\s\S]*?)<\/dependency>/g)) {
+      const block = m[1] as string;
+      const gid = field(block, "groupId");
+      const aid = field(block, "artifactId");
+      if (!gid || !aid) continue;
+      const scope = field(block, "scope") ?? "";
+      const target = scope === "test" || scope === "provided" ? dev : runtime;
+      target[`${gid}:${aid}`] = field(block, "version") ?? "";
+    }
+    result.push({ manager: "maven", manifest: "pom.xml", runtime, dev });
+  }
+
+  // gradle / build.gradle(.kts)
+  const GRADLE_CONFIG =
+    /^(?:test|android|functional)?(?:implementation|api|compileOnly|runtimeOnly|annotationProcessor|kapt|ksp|developmentOnly|providedRuntime|classpath)$/i;
+  for (const manifest of ["build.gradle", "build.gradle.kts"]) {
+    if (!present.has(manifest)) continue;
+    const raw = read(repo, manifest) ?? "";
+    const runtime: Record<string, string> = {};
+    const dev: Record<string, string> = {};
+    for (const m of raw.matchAll(/(\w+)\s*[(\s]\s*["']([^"'\s]+:[^"'\s]+)["']/g)) {
+      const config = m[1] as string;
+      const coord = m[2] as string;
+      if (!GRADLE_CONFIG.test(config) || coord.includes("/")) continue;
+      const parts = coord.split(":");
+      const key = parts.length >= 2 ? `${parts[0]}:${parts[1]}` : coord;
+      const ver = parts.length >= 3 ? (parts[2] as string) : "";
+      const isDev = /^(?:test|android|functional)/i.test(config);
+      (isDev ? dev : runtime)[key] = ver;
+    }
+    result.push({ manager: "gradle", manifest, runtime, dev });
+    break;
+  }
+
   return result;
 }
 

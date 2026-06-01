@@ -32,7 +32,8 @@ function stripRoot(path: string): string[] {
 function isSkippableSegment(seg: string): boolean {
   return (
     (seg.startsWith("(") && seg.endsWith(")")) ||
-    (seg.startsWith("[") && seg.endsWith("]"))
+    (seg.startsWith("[") && seg.endsWith("]")) ||
+    seg.startsWith("@") // Next.js parallel-route slots (@modal) are not features
   );
 }
 
@@ -139,10 +140,14 @@ const FOUNDATION_ORDER = [
 
 const SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
 
+// Data-layer dir names that are foundations but aren't literal in FOUNDATION_ORDER;
+// they slot with the schema/data tier rather than falling to the end.
+const DATA_LAYER_KEYS = new Set(["prisma", "drizzle", "migrations"]);
+
 function foundationRank(key: string, hasSchema: boolean): number {
   const i = FOUNDATION_ORDER.indexOf(key);
   if (i !== -1) return i;
-  if (hasSchema) return SCHEMA_RANK; // a schema-bearing group slots with the data layer
+  if (DATA_LAYER_KEYS.has(key) || hasSchema) return SCHEMA_RANK;
   return Number.POSITIVE_INFINITY;
 }
 

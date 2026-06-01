@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import type { FileInfo, StackInfo, Workspace } from "../types.js";
 
@@ -242,6 +243,30 @@ function addWorkspace(repo: string, relDir: string, found: Map<string, Workspace
   found.set(norm, { name, path: norm });
 }
 
+const WS_SKIP_DIRS = new Set([".git", "node_modules", ".turbo", "dist", "build", ".next"]);
+
+/** Recursively collect package-bearing dirs under a `/**` glob base (depth-bounded). */
+function collectWorkspacesRecursive(
+  repo: string,
+  relBase: string,
+  found: Map<string, Workspace>,
+  depth: number,
+): void {
+  if (depth > 5) return;
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(join(repo, relBase), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
+    const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
+    addWorkspace(repo, sub, found);
+    collectWorkspacesRecursive(repo, sub, found, depth + 1);
+  }
+}
+
 /**
  * Detect monorepo workspaces from package.json `workspaces`, pnpm-workspace.yaml.
  * A trailing `/*` glob is expanded one directory level. Returns [] for a
@@ -262,18 +287,29 @@ export function detectWorkspaces(repo: string): Workspace[] {
     }
   }
 
+  // pnpm-workspace.yaml: collect list items only under the top-level `packages:` key,
+  // tolerating inline `# comments`.
   const pnpm = safeRead(join(repo, "pnpm-workspace.yaml"));
+  let inPackages = false;
   for (const line of pnpm.split(/\r?\n/)) {
-    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*$/);
+    if (/^\S/.test(line)) {
+      inPackages = /^packages\s*:/.test(line);
+      continue;
+    }
+    if (!inPackages) continue;
+    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/);
     if (m) patterns.push((m[1] as string).trim());
   }
 
   if (patterns.length === 0) return [];
 
   const found = new Map<string, Workspace>();
-  for (const pat of patterns) {
-    if (pat.endsWith("/*") || pat.endsWith("/**")) {
-      const base = pat.replace(/\/\*+$/, "");
+  for (const raw of patterns) {
+    const pat = raw.replace(/\/+$/, ""); // normalize a trailing slash
+    if (pat.endsWith("/**")) {
+      collectWorkspacesRecursive(repo, pat.slice(0, -3), found, 0);
+    } else if (pat.endsWith("/*")) {
+      const base = pat.slice(0, -2);
       try {
         for (const ent of readdirSync(join(repo, base), { withFileTypes: true })) {
           if (ent.isDirectory()) addWorkspace(repo, join(base, ent.name), found);

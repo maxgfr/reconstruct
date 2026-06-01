@@ -234,20 +234,22 @@ export interface WalkResult {
   excludedCount: number;
 }
 
-function compileGlobs(patterns: string[] | undefined): RegExp[] {
+function compileGlobs(patterns: string[] | undefined): CompiledPattern[] {
   if (!patterns) return [];
-  const out: RegExp[] = [];
+  const out: CompiledPattern[] = [];
   for (const raw of patterns) {
     const c = compilePattern(raw);
-    if (c) out.push(c.re);
+    // A stray gitignore-style '!' re-include is meaningless for a flat scope
+    // filter — ignore it rather than silently inverting the user's intent.
+    if (c && !c.negate) out.push(c);
   }
   return out;
 }
 
 export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
   const ignore = loadIgnore(repo);
-  const includeRes = compileGlobs(opts.include);
-  const excludeRes = compileGlobs(opts.exclude);
+  const includePats = compileGlobs(opts.include);
+  const excludePats = compileGlobs(opts.exclude);
   const files: FileInfo[] = [];
   let excludedCount = 0;
 
@@ -271,6 +273,10 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
       }
 
       if (isDir) {
+        // Prune directories matching an exclude glob so we never descend into a
+        // large excluded tree. Their contents are not counted (like other pruned
+        // dirs). Includes are file-level only — a dir is never pruned by include.
+        if (excludePats.some((p) => p.re.test(rel))) continue;
         recurse(abs);
         continue;
       }
@@ -280,11 +286,12 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
         excludedCount++;
         continue;
       }
-      if (excludeRes.some((re) => re.test(rel))) {
+      // A dir-only pattern (trailing slash) must not exclude a file of that name.
+      if (excludePats.some((p) => !p.dirOnly && p.re.test(rel))) {
         excludedCount++;
         continue;
       }
-      if (includeRes.length > 0 && !includeRes.some((re) => re.test(rel))) {
+      if (includePats.length > 0 && !includePats.some((p) => p.re.test(rel))) {
         excludedCount++;
         continue;
       }

@@ -30,5 +30,6 @@ _No RPC/GraphQL/OpenAPI candidates detected._
 
 | Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |
 | --- | --- | --- | --- | --- | --- |
+
 > 🧠 **For the AI agent:** Keep these columns; add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects.
 

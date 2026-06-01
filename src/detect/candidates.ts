@@ -23,14 +23,23 @@ const SCHEMA_DIRS = ["models", "entities", "migrations"];
 // intentionally excluded — it is just as often a module entry point.
 const ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
 
+// `r` is kept as a router name because it is the idiomatic gin/chi router variable
+// (`r.GET(...)`). Candidates are "to verify" hints, so a few false positives are
+// acceptable; missing a real framework's routes is not.
 const ROUTE_CONTENT_RE =
   /\b(?:app|router|route|api|blueprint|fastify|server|mux|r)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(|@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b|@(?:app|router|blueprint|api)\.(?:route|get|post|put|delete|patch)\b|Route::(?:get|post|put|patch|delete|resource|apiResource|group)\b/i;
 
 const API_CONTENT_RE =
   /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
 
+// Note: the `^[ \t]*model[ \t]+...` alternative uses bounded *horizontal* whitespace
+// (not `\s`) so it cannot backtrack across newlines on whitespace-heavy files.
 const SCHEMA_CONTENT_RE =
-  /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^\s*model\s+\w+\s*\{/im;
+  /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
+
+// Files larger than this are not content-scanned (path heuristics still apply) —
+// a hard guard against pathological inputs and wasted I/O on huge generated files.
+const MAX_CONTENT_SCAN_BYTES = 2_000_000;
 
 function segmentsOf(path: string): string[] {
   return path.toLowerCase().split("/");
@@ -78,8 +87,8 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
     if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
     if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
 
-    // --- content-based signals (bounded to scannable source) ---
-    if (CONTENT_SCAN_EXTS.has(ext)) {
+    // --- content-based signals (bounded to scannable source under a size cap) ---
+    if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
       const src = safeRead(repo, p);
       if (!src) continue;
       if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);

@@ -18,6 +18,7 @@
 
 | Entity / Table | Field | Type | Constraints | Relation |
 | --- | --- | --- | --- | --- |
+
 > 🧠 **For the AI agent:** Keep these columns; for each entity capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`.
 
 

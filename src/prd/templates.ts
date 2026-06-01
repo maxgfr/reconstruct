@@ -191,6 +191,7 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
     "",
     "| Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |",
     "| --- | --- | --- | --- | --- | --- |",
+    "",
     opts.level === "light"
       ? "_Keep these columns; add one row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._"
       : agentNote(
@@ -221,6 +222,7 @@ export function dataModelDoc(inv: Inventory, opts: Options): string {
     "",
     "| Entity / Table | Field | Type | Constraints | Relation |",
     "| --- | --- | --- | --- | --- |",
+    "",
     opts.level === "light"
       ? "_Keep these columns; one block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._"
       : agentNote(

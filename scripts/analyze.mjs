@@ -231,14 +231,14 @@ function compileGlobs(patterns) {
   const out = [];
   for (const raw of patterns) {
     const c = compilePattern(raw);
-    if (c) out.push(c.re);
+    if (c && !c.negate) out.push(c);
   }
   return out;
 }
 function walk(repo, opts = {}) {
   const ignore = loadIgnore(repo);
-  const includeRes = compileGlobs(opts.include);
-  const excludeRes = compileGlobs(opts.exclude);
+  const includePats = compileGlobs(opts.include);
+  const excludePats = compileGlobs(opts.exclude);
   const files = [];
   let excludedCount = 0;
   const recurse = (dir) => {
@@ -258,6 +258,7 @@ function walk(repo, opts = {}) {
         continue;
       }
       if (isDir) {
+        if (excludePats.some((p) => p.re.test(rel))) continue;
         recurse(abs);
         continue;
       }
@@ -266,11 +267,11 @@ function walk(repo, opts = {}) {
         excludedCount++;
         continue;
       }
-      if (excludeRes.some((re) => re.test(rel))) {
+      if (excludePats.some((p) => !p.dirOnly && p.re.test(rel))) {
         excludedCount++;
         continue;
       }
-      if (includeRes.length > 0 && !includeRes.some((re) => re.test(rel))) {
+      if (includePats.length > 0 && !includePats.some((p) => p.re.test(rel))) {
         excludedCount++;
         continue;
       }
@@ -517,6 +518,22 @@ function addWorkspace(repo, relDir, found) {
   const name = typeof pkg.name === "string" && pkg.name ? pkg.name : norm;
   found.set(norm, { name, path: norm });
 }
+var WS_SKIP_DIRS = /* @__PURE__ */ new Set([".git", "node_modules", ".turbo", "dist", "build", ".next"]);
+function collectWorkspacesRecursive(repo, relBase, found, depth) {
+  if (depth > 5) return;
+  let entries;
+  try {
+    entries = readdirSync2(join2(repo, relBase), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
+    const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
+    addWorkspace(repo, sub, found);
+    collectWorkspacesRecursive(repo, sub, found, depth + 1);
+  }
+}
 function detectWorkspaces(repo) {
   const patterns = [];
   const pkg = readJson(join2(repo, "package.json"));
@@ -531,15 +548,24 @@ function detectWorkspaces(repo) {
     }
   }
   const pnpm = safeRead(join2(repo, "pnpm-workspace.yaml"));
+  let inPackages = false;
   for (const line of pnpm.split(/\r?\n/)) {
-    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*$/);
+    if (/^\S/.test(line)) {
+      inPackages = /^packages\s*:/.test(line);
+      continue;
+    }
+    if (!inPackages) continue;
+    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/);
     if (m) patterns.push(m[1].trim());
   }
   if (patterns.length === 0) return [];
   const found = /* @__PURE__ */ new Map();
-  for (const pat of patterns) {
-    if (pat.endsWith("/*") || pat.endsWith("/**")) {
-      const base = pat.replace(/\/\*+$/, "");
+  for (const raw of patterns) {
+    const pat = raw.replace(/\/+$/, "");
+    if (pat.endsWith("/**")) {
+      collectWorkspacesRecursive(repo, pat.slice(0, -3), found, 0);
+    } else if (pat.endsWith("/*")) {
+      const base = pat.slice(0, -2);
       try {
         for (const ent of readdirSync2(join2(repo, base), { withFileTypes: true })) {
           if (ent.isDirectory()) addWorkspace(repo, join2(base, ent.name), found);
@@ -600,7 +626,8 @@ var SCHEMA_DIRS = ["models", "entities", "migrations"];
 var ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
 var ROUTE_CONTENT_RE = /\b(?:app|router|route|api|blueprint|fastify|server|mux|r)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(|@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b|@(?:app|router|blueprint|api)\.(?:route|get|post|put|delete|patch)\b|Route::(?:get|post|put|patch|delete|resource|apiResource|group)\b/i;
 var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
-var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^\s*model\s+\w+\s*\{/im;
+var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
+var MAX_CONTENT_SCAN_BYTES = 2e6;
 function segmentsOf(path) {
   return path.toLowerCase().split("/");
 }
@@ -637,7 +664,7 @@ function detectCandidates(repo, files, stack) {
     if (inDir(lower, API_DIRS)) apiCandidates.add(p);
     if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
     if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
-    if (CONTENT_SCAN_EXTS.has(ext)) {
+    if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
       const src = safeRead2(repo, p);
       if (!src) continue;
       if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
@@ -790,6 +817,62 @@ function extractDependencies(repo, files) {
       } catch {
       }
     }
+  }
+  if (present.has("Gemfile")) {
+    const raw = read(repo, "Gemfile") ?? "";
+    const runtime = {};
+    const dev = {};
+    let inDev = false;
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      const g = t.match(/^group\s+(.+?)\s+do\b/);
+      if (g) {
+        inDev = /:(?:development|test)\b/.test(g[1]);
+        continue;
+      }
+      if (/^end\b/.test(t)) {
+        inDev = false;
+        continue;
+      }
+      const m = t.match(/^gem\s+["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?/);
+      if (m) (inDev ? dev : runtime)[m[1]] = (m[2] ?? "").trim();
+    }
+    result.push({ manager: "bundler", manifest: "Gemfile", runtime, dev });
+  }
+  if (present.has("pom.xml")) {
+    const raw = read(repo, "pom.xml") ?? "";
+    const runtime = {};
+    const dev = {};
+    const field = (block, tag) => block.match(new RegExp(`<${tag}>\\s*([^<]+?)\\s*</${tag}>`))?.[1];
+    for (const m of raw.matchAll(/<dependency>([\s\S]*?)<\/dependency>/g)) {
+      const block = m[1];
+      const gid = field(block, "groupId");
+      const aid = field(block, "artifactId");
+      if (!gid || !aid) continue;
+      const scope = field(block, "scope") ?? "";
+      const target = scope === "test" || scope === "provided" ? dev : runtime;
+      target[`${gid}:${aid}`] = field(block, "version") ?? "";
+    }
+    result.push({ manager: "maven", manifest: "pom.xml", runtime, dev });
+  }
+  const GRADLE_CONFIG = /^(?:test|android|functional)?(?:implementation|api|compileOnly|runtimeOnly|annotationProcessor|kapt|ksp|developmentOnly|providedRuntime|classpath)$/i;
+  for (const manifest of ["build.gradle", "build.gradle.kts"]) {
+    if (!present.has(manifest)) continue;
+    const raw = read(repo, manifest) ?? "";
+    const runtime = {};
+    const dev = {};
+    for (const m of raw.matchAll(/(\w+)\s*[(\s]\s*["']([^"'\s]+:[^"'\s]+)["']/g)) {
+      const config = m[1];
+      const coord = m[2];
+      if (!GRADLE_CONFIG.test(config) || coord.includes("/")) continue;
+      const parts = coord.split(":");
+      const key = parts.length >= 2 ? `${parts[0]}:${parts[1]}` : coord;
+      const ver = parts.length >= 3 ? parts[2] : "";
+      const isDev = /^(?:test|android|functional)/i.test(config);
+      (isDev ? dev : runtime)[key] = ver;
+    }
+    result.push({ manager: "gradle", manifest, runtime, dev });
+    break;
   }
   return result;
 }
@@ -982,7 +1065,7 @@ function stripRoot(path) {
   return p.split("/");
 }
 function isSkippableSegment(seg) {
-  return seg.startsWith("(") && seg.endsWith(")") || seg.startsWith("[") && seg.endsWith("]");
+  return seg.startsWith("(") && seg.endsWith(")") || seg.startsWith("[") && seg.endsWith("]") || seg.startsWith("@");
 }
 function featureKey(path) {
   const segs = stripRoot(path);
@@ -1131,10 +1214,11 @@ var FOUNDATION_ORDER = [
   "locales"
 ];
 var SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
+var DATA_LAYER_KEYS = /* @__PURE__ */ new Set(["prisma", "drizzle", "migrations"]);
 function foundationRank(key, hasSchema) {
   const i = FOUNDATION_ORDER.indexOf(key);
   if (i !== -1) return i;
-  if (hasSchema) return SCHEMA_RANK;
+  if (DATA_LAYER_KEYS.has(key) || hasSchema) return SCHEMA_RANK;
   return Number.POSITIVE_INFINITY;
 }
 function buildFeatures(files, routes, i18n, granularity = "coarse") {
@@ -1505,6 +1589,7 @@ function interfacesDoc(inv, opts) {
     "",
     "| Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |",
     "| --- | --- | --- | --- | --- | --- |",
+    "",
     opts.level === "light" ? "_Keep these columns; add one row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._" : agentNote(
       "Keep these columns; add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects."
     ),
@@ -1529,6 +1614,7 @@ function dataModelDoc(inv, opts) {
     "",
     "| Entity / Table | Field | Type | Constraints | Relation |",
     "| --- | --- | --- | --- | --- |",
+    "",
     opts.level === "light" ? "_Keep these columns; one block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._" : agentNote(
       "Keep these columns; for each entity capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`."
     ),
