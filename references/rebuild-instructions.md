@@ -5,8 +5,11 @@ How to actually rebuild the project once the `reconstruction/` folder is ready.
 ## Order
 1. `00-overview/PRD.md` — understand the product and the stack.
 2. `architecture/ARCHITECTURE.md` — scaffold the project shape first.
-3. `REBUILD.md` — follow the build order; it lists features as a checklist.
-4. `features/<slug>/PRD.md` — implement units one at a time.
+3. `architecture/INTERFACES.md` — the full interface surface (routes, endpoints, RPC/GraphQL,
+   CLI, jobs) and `architecture/DATA-MODEL.md` — entities, fields, relations.
+4. `REBUILD.md` — follow the build order; it is dependency-tiered (foundations → feature pages
+   → tests/docs) and lists features as a checklist.
+5. `features/<slug>/PRD.md` — implement units one at a time.
 
 ## Per-feature loop
 For each feature, in order:
@@ -25,9 +28,9 @@ For each feature, in order:
 - Reproduce config and env-var names from `data/config/` and the overview.
 
 ## Final validation (from REBUILD.md)
-- All routes respond as before.
+- Every interface in `architecture/INTERFACES.md` is implemented and responds as before.
+- Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.
 - All locales present; keys match `data/translations/`.
-- Schema matches `data/schema/`.
 - Required env vars configured.
 - The project's own scripts (build/test/lint) pass.
 

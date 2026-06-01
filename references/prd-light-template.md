@@ -14,12 +14,13 @@ One or two sentences: what this unit is responsible for.
 - [ ] Behavior 2
 - [ ] Validation / error states
 
-## Routes (if any)
-| Route | Kind | Notes |
+## Interfaces (if any)
+| Route / Operation | Kind | Notes |
 | --- | --- | --- |
+(The routes/endpoints/RPC/GraphQL ops this unit owns — a subset of `architecture/INTERFACES.md`.)
 
 ## Data & contracts
-- Inputs, outputs, types, events this unit exposes.
+- Inputs, outputs, types, events this unit exposes (reference entities in `architecture/DATA-MODEL.md`).
 
 ## Source material
 (Generated automatically — keep references to `source/` or embedded code.)

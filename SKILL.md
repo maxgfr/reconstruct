@@ -1,9 +1,9 @@
 ---
 name: reconstruct
-description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec.
+description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec.
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -11,8 +11,9 @@ metadata:
 Turn any repository into a folder of PRDs an AI agent can follow to **rebuild**,
 **recreate**, **clone**, or **scaffold** the project from scratch — faithfully and
 optionally with improvements. A dependency-free Node script does the **deterministic**
-extraction; you (the agent) then **enrich** the PRDs, keeping facts accurate and reasoning
-useful.
+scaffold (facts + candidate *hints*); you (the agent) supply the **framework-aware
+understanding** — the interface surface, the data model, and the real features — for
+**any** stack. The deterministic scaffold is universal; **the markdown is the program.**
 
 ## When to use
 
@@ -24,16 +25,10 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 
 ## Inputs to confirm
 
-1. **Target repo** — path to analyze (default: current directory). **Output dir** —
-   default `<repo>/reconstruction`.
-2. **Mode** — `preserve` (keep current architecture) or `redesign` (same features, fresh
-   architecture). Default `preserve`.
-3. **Level** — `light` (faithful, minimal editorializing) or `complex` (also suggest
-   improvements). Default `light`.
-4. **Fidelity** — how real code is carried over: `mirror` (copy files), `embed` (inline
-   key code), `describe` (text only). If unset, derived from mode+level:
-   preserve+light→mirror, preserve+complex→embed, redesign+light→embed,
-   redesign+complex→describe.
+1. **Target repo** (default: current dir) and **output dir** (default `<repo>/reconstruction`).
+2. **Mode** — `preserve` (keep architecture) or `redesign` (same features, fresh architecture). Default `preserve`.
+3. **Level** — `light` (faithful) or `complex` (also suggest improvements). Default `light`.
+4. **Fidelity** — `mirror` / `embed` / `describe`. If unset, derived from mode+level.
 
 ## Procedure
 
@@ -41,51 +36,59 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    `scripts/analyze.mjs` inside the installed skill folder:
 
    ```bash
-   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>]
+   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>] [--granularity coarse|fine]
    ```
 
-   Add `--json` to inspect the raw inventory without writing files; `--help` for all flags.
+   Add `--json` to inspect the raw inventory first; `--help` for all flags
+   (`--include`/`--exclude` globs scope large repos).
 
-2. **Read the output:** `<OUT>/inventory.json`, `<OUT>/00-overview/PRD.md`,
-   `<OUT>/architecture/ARCHITECTURE.md`, and each `<OUT>/features/<slug>/PRD.md`. Each PRD
-   flags what to fill in: `_italic placeholders_` (e.g. `_Describe what this unit must
-   do…_`) in **light** level, and `> 🧠 **For the AI agent:**` callouts in
-   **complex**/**redesign**. Resolve them all.
+2. **Read the scaffold:** `inventory.json` (facts **+ `hints` + `unknowns`**),
+   `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, the **`architecture/INTERFACES.md`**
+   and **`architecture/DATA-MODEL.md`** skeletons, and each `features/<slug>/PRD.md`.
+   Treat `routes`/`i18n` and everything under `hints` as **candidates to verify**, not truth.
 
-3. **Enrich the PRDs** by editing the generated Markdown:
-   - Always: write the product summary in `00-overview/PRD.md`; turn each feature's source
-     material into concrete, testable functional requirements.
-   - If **level=complex**: add "Improvements & refactors" (tag items `[keep-behavior]`
-     unless the user opts into behavior changes).
-   - If **mode=redesign**: design the new architecture in `architecture/ARCHITECTURE.md`
-     and fill each feature's "Redesign notes".
+3. **Identify the stack & load its guide.** Read `inventory.stack`. If a
+   `references/stack-guides/<stack>.md` matches, read it; otherwise use the generic method
+   in `references/analysis-playbook.md`. For monorepos (`inventory.workspaces`), analyze
+   per workspace.
 
-4. **Finalize `REBUILD.md`:** confirm the build order and validation checklist, then tell
-   the user how to drive the rebuild — feed feature PRDs to an agent one by one, using
-   `data/` and `source/` as ground truth.
+4. **Map the interface surface** → fill **`architecture/INTERFACES.md`**. Enumerate *every*
+   HTTP route, endpoint, tRPC/gRPC procedure, GraphQL operation, CLI command, and job —
+   method · path/operation · handler file. Start from `hints.routeCandidates`/`apiCandidates`,
+   then **read the source** to confirm. Cover the stack's real paradigm, not just file-based
+   routing. See `references/analysis-playbook.md` (§Interface surface).
 
-See `references/` for the reasoning checklists (`architecture-analysis.md`,
-`rebuild-instructions.md`) and the target shape of an enriched PRD
-(`prd-light-template.md`, `prd-complex-template.md`).
+5. **Extract the data model** → fill **`architecture/DATA-MODEL.md`**. List entities/tables,
+   key fields + types, relations, and indexes from the ORM/schema in `hints.schemaCandidates`
+   (raw copies in `data/schema/`). See the playbook (§Data model).
+
+6. **Group features semantically.** Turn the path-based feature skeleton into real product
+   features: rename, merge trivial ones, and link each feature to its interfaces, data, and
+   components. See the playbook (§Features).
+
+7. **Enrich each `features/<slug>/PRD.md`** (as today): write the product summary in
+   `00-overview/PRD.md`, turn source material into concrete, testable requirements, and
+   reference `INTERFACES.md`/`DATA-MODEL.md`. Resolve every `_italic placeholder_` (light)
+   and `> 🧠` callout (complex/redesign). Add "Improvements & refactors" if `level=complex`;
+   design the new architecture if `mode=redesign`.
+
+8. **Finalize `REBUILD.md`:** confirm the dependency-tiered build order and validation
+   checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
+   by one, using `data/` and `source/` as ground truth).
+
+See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
+for per-stack cheat-sheets, and `references/architecture-analysis.md` /
+`references/rebuild-instructions.md` / the PRD templates for the reasoning checklists.
 
 ## How to know you're done
 
-- `inventory.json` lists files, routes, i18n, and features.
-- Every `features/<slug>/PRD.md` has its fill-in markers resolved (italic placeholders in
-  light; `🧠` callouts in complex/redesign).
-- `REBUILD.md` has a concrete build order and validation checklist.
-- Translations, schema, and config sit under `data/` (verbatim).
-
-## Failure modes
-
-| Symptom | What to do |
-| --- | --- |
-| No features detected | Repo is likely flat — group by top-level folders manually, note it in the overview. |
-| Wrong framework/routes | Adapters cover JS/TS/Next.js deeply, other stacks generically — fill gaps from the file list in `inventory.json`. |
-| Huge repo | Run `--json` first to scope, then prefer `--level light` + `--fidelity mirror` to reference files instead of embedding them. |
+- `INTERFACES.md` lists the **whole** interface surface; `DATA-MODEL.md` lists every entity.
+- Every `features/<slug>/PRD.md` has its fill-in markers resolved; features are semantic.
+- Every item in `inventory.json.unknowns` is resolved.
+- `REBUILD.md` has a dependency-ordered build order + validation checklist; `data/` holds
+  translations, schema, and config verbatim.
 
 ## Safety
 
-The analyzer only **reads** the target repo's filesystem and **copies** files into the
-output. It never executes the analyzed project's code. Review `scripts/` before running on
-untrusted repositories.
+The analyzer only **reads** the target repo and **copies** files into the output. It never
+executes the analyzed project's code. Review `scripts/` before running on untrusted repos.

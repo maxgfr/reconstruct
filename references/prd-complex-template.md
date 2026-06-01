@@ -15,11 +15,12 @@ What this unit does and why it exists.
 - [ ] Error states and recovery
 
 ## Routes / interfaces
-| Route/Export | Kind | Contract |
+| Route / Operation / Export | Kind | Contract |
 | --- | --- | --- |
+(This unit's slice of `architecture/INTERFACES.md` — routes, endpoints, RPC/GraphQL ops, jobs.)
 
 ## Data & contracts
-- Types, schemas, events, side effects.
+- Types, schemas, events, side effects (reference the entities in `architecture/DATA-MODEL.md`).
 
 ## Source material
 (Generated — embedded code or `source/` references.)
