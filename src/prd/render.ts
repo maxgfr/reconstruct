@@ -1,0 +1,44 @@
+import { join } from "node:path";
+import type { Artifact, CopyOp, Inventory, Options, RenderResult } from "../types.js";
+import {
+  overviewPrd,
+  architectureDoc,
+  diagramDoc,
+  featurePrd,
+  rebuildDoc,
+} from "./templates.js";
+import { renderSourceMaterial } from "./fidelity.js";
+
+/** Turn an inventory into the full set of files/copies for the reconstruction tree. */
+export function render(inv: Inventory, opts: Options): RenderResult {
+  const artifacts: Artifact[] = [];
+  const copies: CopyOp[] = [];
+
+  artifacts.push({ relPath: "REBUILD.md", content: rebuildDoc(inv, opts) });
+  artifacts.push({ relPath: "00-overview/PRD.md", content: overviewPrd(inv, opts) });
+  artifacts.push({ relPath: "architecture/ARCHITECTURE.md", content: architectureDoc(inv, opts) });
+  artifacts.push({ relPath: "architecture/diagram.md", content: diagramDoc(inv) });
+  artifacts.push({ relPath: "inventory.json", content: JSON.stringify(inv, null, 2) + "\n" });
+
+  for (const feature of inv.features) {
+    const src = renderSourceMaterial(feature, opts);
+    copies.push(...src.copies);
+    artifacts.push({
+      relPath: `features/${feature.slug}/PRD.md`,
+      content: featurePrd(inv, feature, opts, src.markdown),
+    });
+  }
+
+  // Ground-truth data is always mirrored regardless of code fidelity:
+  // translations, schema, and config are data you cannot faithfully "rewrite".
+  const dataCopy = (paths: string[], sub: string) => {
+    for (const rel of paths) {
+      copies.push({ from: join(opts.repo, rel), to: join(opts.out, "data", sub, rel) });
+    }
+  };
+  if (inv.i18n) dataCopy(inv.i18n.files, "translations");
+  dataCopy(inv.schemas, "schema");
+  dataCopy(inv.configs, "config");
+
+  return { artifacts, copies };
+}

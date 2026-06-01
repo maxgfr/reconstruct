@@ -1,0 +1,278 @@
+{
+  "generatedWith": "reconstruct@0.1.0",
+  "repoName": "sample-app",
+  "stack": {
+    "languages": [
+      "TypeScript",
+      "JavaScript"
+    ],
+    "primaryLanguage": "TypeScript",
+    "frameworks": [
+      "Next.js",
+      "React"
+    ],
+    "packageManagers": [
+      "npm"
+    ],
+    "hasTypeScript": true
+  },
+  "fileCount": 12,
+  "totalLines": 110,
+  "files": [
+    {
+      "path": ".env.example",
+      "ext": ".example",
+      "size": 73,
+      "lines": 3,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "app/api/users/route.ts",
+      "ext": ".ts",
+      "size": 192,
+      "lines": 7,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "app/dashboard/page.tsx",
+      "ext": ".tsx",
+      "size": 141,
+      "lines": 9,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "app/page.tsx",
+      "ext": ".tsx",
+      "size": 186,
+      "lines": 11,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "components/Button.tsx",
+      "ext": ".tsx",
+      "size": 106,
+      "lines": 4,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "lib/auth.ts",
+      "ext": ".ts",
+      "size": 175,
+      "lines": 8,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "messages/en.json",
+      "ext": ".json",
+      "size": 116,
+      "lines": 10,
+      "category": "i18n",
+      "binary": false
+    },
+    {
+      "path": "messages/fr.json",
+      "ext": ".json",
+      "size": 122,
+      "lines": 10,
+      "category": "i18n",
+      "binary": false
+    },
+    {
+      "path": "next.config.js",
+      "ext": ".js",
+      "size": 187,
+      "lines": 11,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "package.json",
+      "ext": ".json",
+      "size": 374,
+      "lines": 21,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "ext": ".prisma",
+      "size": 168,
+      "lines": 11,
+      "category": "schema",
+      "binary": false
+    },
+    {
+      "path": "README.md",
+      "ext": ".md",
+      "size": 174,
+      "lines": 5,
+      "category": "doc",
+      "binary": false
+    }
+  ],
+  "dependencies": [
+    {
+      "manager": "npm",
+      "manifest": "package.json",
+      "runtime": {
+        "next": "^14.2.0",
+        "react": "^18.3.0",
+        "react-dom": "^18.3.0"
+      },
+      "dev": {
+        "typescript": "^5.5.0",
+        "@types/react": "^18.3.0"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "route": "/",
+      "file": "app/page.tsx",
+      "kind": "page"
+    },
+    {
+      "route": "/api/users",
+      "file": "app/api/users/route.ts",
+      "kind": "api"
+    },
+    {
+      "route": "/dashboard",
+      "file": "app/dashboard/page.tsx",
+      "kind": "page"
+    }
+  ],
+  "i18n": {
+    "locales": [
+      "en",
+      "fr"
+    ],
+    "files": [
+      "messages/en.json",
+      "messages/fr.json"
+    ],
+    "keyCount": 3
+  },
+  "schemas": [
+    "prisma/schema.prisma"
+  ],
+  "configs": [
+    ".env.example",
+    "next.config.js",
+    "package.json"
+  ],
+  "docs": [
+    "README.md"
+  ],
+  "envVars": [
+    "DATABASE_URL",
+    "NEXTAUTH_SECRET"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "features": [
+    {
+      "slug": "01-core",
+      "name": "Core",
+      "description": "Groups 3 file(s); routes: /.",
+      "kind": "feature",
+      "files": [
+        "app/page.tsx",
+        "components/Button.tsx",
+        "lib/auth.ts"
+      ],
+      "routes": [
+        {
+          "route": "/",
+          "file": "app/page.tsx",
+          "kind": "page"
+        }
+      ]
+    },
+    {
+      "slug": "02-api",
+      "name": "Api",
+      "description": "Groups 1 file(s); routes: /api/users.",
+      "kind": "feature",
+      "files": [
+        "app/api/users/route.ts"
+      ],
+      "routes": [
+        {
+          "route": "/api/users",
+          "file": "app/api/users/route.ts",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "slug": "03-dashboard",
+      "name": "Dashboard",
+      "description": "Groups 1 file(s); routes: /dashboard.",
+      "kind": "feature",
+      "files": [
+        "app/dashboard/page.tsx"
+      ],
+      "routes": [
+        {
+          "route": "/dashboard",
+          "file": "app/dashboard/page.tsx",
+          "kind": "page"
+        }
+      ]
+    },
+    {
+      "slug": "04-prisma",
+      "name": "Prisma",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "prisma/schema.prisma"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "05-internationalization",
+      "name": "Internationalization",
+      "description": "2 locale(s) (en, fr), up to 3 keys per locale.",
+      "kind": "internationalization",
+      "files": [
+        "messages/en.json",
+        "messages/fr.json"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "06-project-setup",
+      "name": "Project Setup & Tooling",
+      "description": "3 configuration/tooling file(s): build, lint, env, CI.",
+      "kind": "project-setup",
+      "files": [
+        ".env.example",
+        "next.config.js",
+        "package.json"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "07-documentation",
+      "name": "Documentation",
+      "description": "1 documentation file(s).",
+      "kind": "documentation",
+      "files": [
+        "README.md"
+      ],
+      "routes": []
+    }
+  ]
+}
