@@ -4,7 +4,7 @@ import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
 import { writeOutput } from "./output.js";
 import { VERSION } from "./types.js";
-import type { Fidelity, Level, Mode, Options } from "./types.js";
+import type { Fidelity, Granularity, Level, Mode, Options } from "./types.js";
 
 const HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -18,6 +18,9 @@ Options:
   --mode <mode>        preserve | redesign              (default: preserve)
   --level <level>      light | complex                  (default: light)
   --fidelity <mode>    mirror | embed | describe        (default: derived from mode+level)
+  --granularity <g>    coarse | fine (feature grouping) (default: coarse)
+  --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
+  --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
@@ -45,8 +48,17 @@ function defaultFidelity(mode: Mode, level: Level): Fidelity {
   return level === "light" ? "embed" : "describe";
 }
 
+function splitGlobs(value: string): string[] {
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function parseArgs(argv: string[]): Options {
   const raw: Record<string, string> = {};
+  const includeGlobs: string[] = [];
+  const excludeGlobs: string[] = [];
   let json = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -64,17 +76,24 @@ export function parseArgs(argv: string[]): Options {
       continue;
     }
     if (arg.startsWith("--")) {
+      let key: string;
+      let value: string;
       const eq = arg.indexOf("=");
       if (eq !== -1) {
-        raw[arg.slice(2, eq)] = arg.slice(eq + 1);
+        key = arg.slice(2, eq);
+        value = arg.slice(eq + 1);
       } else {
+        key = arg.slice(2);
         const next = argv[i + 1];
         if (next === undefined || next.startsWith("--")) {
           fail(`missing value for ${arg}`);
         }
-        raw[arg.slice(2)] = next;
+        value = next as string;
         i++;
       }
+      if (key === "include") includeGlobs.push(...splitGlobs(value));
+      else if (key === "exclude") excludeGlobs.push(...splitGlobs(value));
+      else raw[key] = value;
     }
   }
 
@@ -89,13 +108,28 @@ export function parseArgs(argv: string[]): Options {
     raw.fidelity ?? defaultFidelity(mode, level),
     ["mirror", "embed", "describe"],
   );
+  const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", [
+    "coarse",
+    "fine",
+  ]);
   const out = resolve(raw.out ?? join(repo, "reconstruction"));
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
   }
 
-  return { repo, out, mode, level, fidelity, json, maxEmbedBytes };
+  return {
+    repo,
+    out,
+    mode,
+    level,
+    fidelity,
+    granularity,
+    include: includeGlobs,
+    exclude: excludeGlobs,
+    json,
+    maxEmbedBytes,
+  };
 }
 
 function main(): void {
@@ -110,12 +144,20 @@ function main(): void {
   const result = render(inv, opts);
   writeOutput(result, opts);
 
+  const hintTotal =
+    inv.hints.routeCandidates.length +
+    inv.hints.apiCandidates.length +
+    inv.hints.schemaCandidates.length;
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
     `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " · " + inv.stack.frameworks.join(", ") : ""}`,
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "—"}`,
     `  features: ${inv.features.length} · routes: ${inv.routes.length} · locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
-    `  mode/level/fidelity: ${opts.mode}/${opts.level}/${opts.fidelity}`,
+    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema) · ${inv.hints.entryPoints.length} entry point(s)`,
+    ...(inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s)`] : []),
+    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
+    ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
+    `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     `  output:   ${opts.out}`,
     `  next:     open ${join(opts.out, "REBUILD.md")}`,
   ];

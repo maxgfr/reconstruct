@@ -57,7 +57,7 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
     "",
     "## How to use this output",
     "",
-    "1. Read `architecture/ARCHITECTURE.md` for the overall shape.",
+    "1. Read `architecture/ARCHITECTURE.md` for the overall shape, then `architecture/INTERFACES.md` (the full interface surface) and `architecture/DATA-MODEL.md` (entities & relations).",
     "2. Rebuild feature by feature using each `features/<slug>/PRD.md`, in the order listed in `REBUILD.md`.",
     "3. Use `data/` (translations, schema, config) and — when present — `source/` as ground truth.",
     "",
@@ -145,6 +145,93 @@ export function architectureDoc(inv: Inventory, opts: Options): string {
   }
 
   return common.join("\n");
+}
+
+function listOrNone(items: string[], empty: string): string {
+  return items.length ? items.map((s) => `- \`${s}\``).join("\n") : empty;
+}
+
+export function interfacesDoc(inv: Inventory, opts: Options): string {
+  const routesTable = inv.routes.length
+    ? [
+        "| Kind | Route | Handler file |",
+        "| --- | --- | --- |",
+        ...inv.routes.map((r) => `| ${r.kind} | \`${r.route}\` | \`${r.file}\` |`),
+      ].join("\n")
+    : "_None resolved deterministically (the engine only resolves Next.js file-based routes)._";
+
+  const routeCandidates = new Set([...inv.hints.routeCandidates]);
+  for (const r of inv.routes) routeCandidates.delete(r.file); // don't repeat resolved handlers
+
+  return [
+    "# Interface surface",
+    "",
+    metaBlock(inv, opts),
+    agentNote(
+      "Enumerate **every** interface this project exposes — HTTP routes, REST/JSON endpoints, " +
+        "tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. " +
+        "The deterministic engine only resolves Next.js file-based routes; for everything else, **read the " +
+        "candidate files below** and follow `references/analysis-playbook.md` (§Interface surface) plus the " +
+        "matching guide in `references/stack-guides/`. Fill the target table with one row per operation.",
+    ),
+    "",
+    "## Resolved routes (deterministic — verify against source)",
+    "",
+    routesTable,
+    "",
+    "## Route candidates (verify — may include false positives)",
+    "",
+    listOrNone([...routeCandidates].sort(), "_No additional route candidates._"),
+    "",
+    "## API surface candidates (tRPC / GraphQL / gRPC / OpenAPI)",
+    "",
+    listOrNone(inv.hints.apiCandidates, "_No RPC/GraphQL/OpenAPI candidates detected._"),
+    "",
+    "## Interface table (fill this in)",
+    "",
+    "| Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |",
+    "| --- | --- | --- | --- | --- | --- |",
+    opts.level === "light"
+      ? "_One row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._"
+      : agentNote(
+          "Add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects.",
+        ),
+    "",
+  ].join("\n");
+}
+
+export function dataModelDoc(inv: Inventory, opts: Options): string {
+  const schemaFiles = [...new Set([...inv.schemas, ...inv.hints.schemaCandidates])].sort();
+
+  return [
+    "# Data model",
+    "",
+    metaBlock(inv, opts),
+    agentNote(
+      "Reconstruct the data model from the schema/ORM files below (raw copies live in `data/schema/`). " +
+        "List **every** entity/table with its key fields + types, relations (1-1 / 1-N / N-N), and indexes/constraints. " +
+        "Follow `references/analysis-playbook.md` (§Data model) and the ORM conventions in the matching `references/stack-guides/`.",
+    ),
+    "",
+    "## Schema / model source files",
+    "",
+    listOrNone(schemaFiles, "_No schema/model files detected — the data layer may be code-defined; investigate `hints`._"),
+    "",
+    "## Entities (fill this in)",
+    "",
+    "| Entity / Table | Field | Type | Constraints | Relation |",
+    "| --- | --- | --- | --- | --- |",
+    opts.level === "light"
+      ? "_One block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._"
+      : agentNote(
+          "For each entity, capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`.",
+        ),
+    "",
+    "## Relations & integrity",
+    "",
+    "_Summarize relationships, cascade rules, and any derived/computed data._",
+    "",
+  ].join("\n");
 }
 
 export function diagramDoc(inv: Inventory): string {
@@ -255,11 +342,13 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
     "",
     "## Build order",
     "",
+    "Ordered by dependency tier — foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last.",
+    "",
     order || "_No features._",
     "",
     "## Procedure",
     "",
-    "1. Start with `00-overview/PRD.md` and `architecture/ARCHITECTURE.md`.",
+    "1. Start with `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`, and `architecture/DATA-MODEL.md`.",
     "2. For each unit in order, open its PRD and implement it.",
     "3. Wire shared data from `data/` (translations, schema, config).",
     opts.fidelity === "mirror"
@@ -273,9 +362,10 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
     "",
     "## Validation checklist",
     "",
+    "- [ ] Every interface in `architecture/INTERFACES.md` is implemented (routes, endpoints, RPC/GraphQL, jobs).",
+    "- [ ] Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.",
     "- [ ] All routes respond as before.",
     "- [ ] All locales present and keys match `data/translations/`.",
-    "- [ ] Data schema matches `data/schema/`.",
     "- [ ] Required env vars configured: " +
       (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") +
       ".",

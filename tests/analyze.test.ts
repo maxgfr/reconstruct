@@ -20,6 +20,9 @@ function makeOpts(over: Partial<Options> = {}): Options {
     mode,
     level,
     fidelity,
+    granularity: "coarse",
+    include: [],
+    exclude: [],
     json: false,
     maxEmbedBytes: 16000,
     ...over,
@@ -103,6 +106,31 @@ describe("render", () => {
     const { artifacts } = render(analyze(opts), opts);
     const arch = artifacts.find((a) => a.relPath === "architecture/ARCHITECTURE.md");
     expect(arch?.content).toContain("Proposed architecture (redesign)");
+  });
+});
+
+describe("interface & data-model skeletons", () => {
+  const opts = makeOpts();
+  const inv = analyze(opts);
+  const artifacts = render(inv, opts).artifacts;
+  const byPath = (p: string) => artifacts.find((a) => a.relPath === p);
+
+  it("emits INTERFACES.md and DATA-MODEL.md skeletons for the agent to fill", () => {
+    const paths = artifacts.map((a) => a.relPath);
+    expect(paths).toContain("architecture/INTERFACES.md");
+    expect(paths).toContain("architecture/DATA-MODEL.md");
+  });
+
+  it("seeds INTERFACES.md with an agent callout and the discovered interface files", () => {
+    const c = byPath("architecture/INTERFACES.md")?.content ?? "";
+    expect(c).toMatch(/🧠/);
+    expect(c).toContain("app/api/users/route.ts");
+  });
+
+  it("seeds DATA-MODEL.md with an agent callout and the schema candidates", () => {
+    const c = byPath("architecture/DATA-MODEL.md")?.content ?? "";
+    expect(c).toMatch(/🧠/);
+    expect(c).toContain("prisma/schema.prisma");
   });
 });
 

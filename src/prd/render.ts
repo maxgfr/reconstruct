@@ -3,6 +3,8 @@ import type { Artifact, CopyOp, Inventory, Options, RenderResult } from "../type
 import {
   overviewPrd,
   architectureDoc,
+  interfacesDoc,
+  dataModelDoc,
   diagramDoc,
   featurePrd,
   rebuildDoc,
@@ -17,6 +19,8 @@ export function render(inv: Inventory, opts: Options): RenderResult {
   artifacts.push({ relPath: "REBUILD.md", content: rebuildDoc(inv, opts) });
   artifacts.push({ relPath: "00-overview/PRD.md", content: overviewPrd(inv, opts) });
   artifacts.push({ relPath: "architecture/ARCHITECTURE.md", content: architectureDoc(inv, opts) });
+  artifacts.push({ relPath: "architecture/INTERFACES.md", content: interfacesDoc(inv, opts) });
+  artifacts.push({ relPath: "architecture/DATA-MODEL.md", content: dataModelDoc(inv, opts) });
   artifacts.push({ relPath: "architecture/diagram.md", content: diagramDoc(inv) });
   artifacts.push({ relPath: "inventory.json", content: JSON.stringify(inv, null, 2) + "\n" });
 

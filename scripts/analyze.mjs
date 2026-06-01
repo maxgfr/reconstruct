@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve, join as join8 } from "path";
+import { resolve, join as join9 } from "path";
 import { existsSync as existsSync3, statSync as statSync2 } from "fs";
 
 // src/analyze.ts
@@ -193,14 +193,14 @@ function categorize(relPath, ext) {
   const lower = relPath.toLowerCase();
   const base = basename(lower);
   const segments = lower.split("/");
-  const inDir = (...names) => names.some((n) => segments.includes(n));
-  if (inDir("locales", "locale", "i18n", "lang", "langs", "translations", "messages") && (ext === ".json" || ext === ".yaml" || ext === ".yml" || ext === ".po" || ext === ".properties")) {
+  const inDir2 = (...names) => names.some((n) => segments.includes(n));
+  if (inDir2("locales", "locale", "i18n", "lang", "langs", "translations", "messages") && (ext === ".json" || ext === ".yaml" || ext === ".yml" || ext === ".po" || ext === ".properties")) {
     return "i18n";
   }
-  if (ext === ".prisma" || ext === ".sql" || ext === ".graphql" || ext === ".gql" || base.startsWith("schema.") || base === "models.py" || inDir("migrations", "entities", "models")) {
+  if (ext === ".prisma" || ext === ".sql" || ext === ".graphql" || ext === ".gql" || base.startsWith("schema.") || base === "models.py" || inDir2("migrations", "entities", "models")) {
     return "schema";
   }
-  if (lower.includes(".test.") || lower.includes(".spec.") || inDir("__tests__", "test", "tests", "spec", "e2e", "__mocks__")) {
+  if (lower.includes(".test.") || lower.includes(".spec.") || inDir2("__tests__", "test", "tests", "spec", "e2e", "__mocks__")) {
     return "test";
   }
   if (base === "package.json" || base === "tsconfig.json" || base.endsWith(".config.js") || base.endsWith(".config.ts") || base.endsWith(".config.mjs") || base.startsWith(".eslintrc") || base.startsWith(".prettierrc") || base.startsWith(".env") || base === "dockerfile" || base.startsWith("docker-compose") || base === "vite.config.ts" || base === "next.config.js" || base === "next.config.mjs" || base === "tailwind.config.js" || base === "tailwind.config.ts" || base === "pyproject.toml" || base === "cargo.toml" || base === "go.mod" || base === "requirements.txt" || base === "gemfile" || base === "composer.json" || base === "makefile") {
@@ -226,9 +226,21 @@ function countLines(abs) {
     return 0;
   }
 }
-function walk(repo) {
+function compileGlobs(patterns) {
+  if (!patterns) return [];
+  const out = [];
+  for (const raw of patterns) {
+    const c = compilePattern(raw);
+    if (c) out.push(c.re);
+  }
+  return out;
+}
+function walk(repo, opts = {}) {
   const ignore = loadIgnore(repo);
+  const includeRes = compileGlobs(opts.include);
+  const excludeRes = compileGlobs(opts.exclude);
   const files = [];
+  let excludedCount = 0;
   const recurse = (dir) => {
     let entries;
     try {
@@ -241,13 +253,27 @@ function walk(repo) {
       const rel = relative(repo, abs).split("\\").join("/");
       const isDir = entry.isDirectory();
       if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
-      if (!isDir && DEFAULT_IGNORE_FILES.has(entry.name)) continue;
-      if (ignore(rel, isDir)) continue;
+      if (ignore(rel, isDir)) {
+        if (!isDir) excludedCount++;
+        continue;
+      }
       if (isDir) {
         recurse(abs);
         continue;
       }
       if (!entry.isFile()) continue;
+      if (DEFAULT_IGNORE_FILES.has(entry.name)) {
+        excludedCount++;
+        continue;
+      }
+      if (excludeRes.some((re) => re.test(rel))) {
+        excludedCount++;
+        continue;
+      }
+      if (includeRes.length > 0 && !includeRes.some((re) => re.test(rel))) {
+        excludedCount++;
+        continue;
+      }
       const ext = extname(entry.name).toLowerCase();
       let size = 0;
       try {
@@ -268,11 +294,11 @@ function walk(repo) {
   };
   recurse(repo);
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return files;
+  return { files, excludedCount };
 }
 
 // src/detect/stack.ts
-import { readFileSync as readFileSync2, existsSync } from "fs";
+import { readFileSync as readFileSync2, existsSync, readdirSync as readdirSync2 } from "fs";
 import { join as join2 } from "path";
 var EXT_LANGUAGE = {
   ".ts": "TypeScript",
@@ -306,6 +332,7 @@ var NPM_FRAMEWORKS = [
   ["next", "Next.js"],
   ["nuxt", "Nuxt"],
   ["@remix-run/react", "Remix"],
+  ["react-router-dom", "React Router"],
   ["@sveltejs/kit", "SvelteKit"],
   ["astro", "Astro"],
   ["@angular/core", "Angular"],
@@ -315,10 +342,19 @@ var NPM_FRAMEWORKS = [
   ["koa", "Koa"],
   ["@hono/node-server", "Hono"],
   ["hono", "Hono"],
+  ["@solidjs/start", "SolidStart"],
+  ["solid-start", "SolidStart"],
   ["react", "React"],
   ["vue", "Vue"],
   ["svelte", "Svelte"],
-  ["solid-js", "SolidJS"]
+  ["solid-js", "SolidJS"],
+  // Build tooling / runtimes / shells
+  ["vite", "Vite"],
+  ["expo", "Expo"],
+  ["react-native", "React Native"],
+  ["electron", "Electron"],
+  ["@tauri-apps/api", "Tauri"],
+  ["@tauri-apps/cli", "Tauri"]
 ];
 var NPM_LIBRARIES = [
   // ORM / database
@@ -439,8 +475,24 @@ function detectStack(repo, files) {
   if (existsSync(join2(repo, "Gemfile"))) {
     packageManagers.add("bundler");
     if (/\brails\b/i.test(safeRead(join2(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
+    if (/\bsinatra\b/i.test(safeRead(join2(repo, "Gemfile")))) frameworks.add("Sinatra");
   }
-  if (existsSync(join2(repo, "composer.json"))) packageManagers.add("composer");
+  if (existsSync(join2(repo, "composer.json"))) {
+    packageManagers.add("composer");
+    const composer = safeRead(join2(repo, "composer.json"));
+    if (/laravel\/framework/.test(composer)) frameworks.add("Laravel");
+    if (/symfony\/framework-bundle/.test(composer)) frameworks.add("Symfony");
+  }
+  if (existsSync(join2(repo, "pom.xml"))) {
+    packageManagers.add("maven");
+    if (/spring-boot/.test(safeRead(join2(repo, "pom.xml")))) frameworks.add("Spring Boot");
+  }
+  for (const gradle of ["build.gradle", "build.gradle.kts"]) {
+    if (existsSync(join2(repo, gradle))) {
+      packageManagers.add("gradle");
+      if (/spring-boot/.test(safeRead(join2(repo, gradle)))) frameworks.add("Spring Boot");
+    }
+  }
   return {
     languages,
     primaryLanguage: languages[0] ?? "Unknown",
@@ -457,13 +509,212 @@ function safeRead(path) {
     return "";
   }
 }
+function addWorkspace(repo, relDir, found) {
+  const norm = relDir.split("\\").join("/").replace(/\/+$/, "");
+  if (found.has(norm)) return;
+  const pkg = readJson(join2(repo, norm, "package.json"));
+  if (!pkg) return;
+  const name = typeof pkg.name === "string" && pkg.name ? pkg.name : norm;
+  found.set(norm, { name, path: norm });
+}
+function detectWorkspaces(repo) {
+  const patterns = [];
+  const pkg = readJson(join2(repo, "package.json"));
+  if (pkg) {
+    const ws = pkg.workspaces;
+    if (Array.isArray(ws)) {
+      patterns.push(...ws.filter((x) => typeof x === "string"));
+    } else if (ws && typeof ws === "object" && Array.isArray(ws.packages)) {
+      patterns.push(
+        ...ws.packages.filter((x) => typeof x === "string")
+      );
+    }
+  }
+  const pnpm = safeRead(join2(repo, "pnpm-workspace.yaml"));
+  for (const line of pnpm.split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*$/);
+    if (m) patterns.push(m[1].trim());
+  }
+  if (patterns.length === 0) return [];
+  const found = /* @__PURE__ */ new Map();
+  for (const pat of patterns) {
+    if (pat.endsWith("/*") || pat.endsWith("/**")) {
+      const base = pat.replace(/\/\*+$/, "");
+      try {
+        for (const ent of readdirSync2(join2(repo, base), { withFileTypes: true })) {
+          if (ent.isDirectory()) addWorkspace(repo, join2(base, ent.name), found);
+        }
+      } catch {
+      }
+    } else {
+      addWorkspace(repo, pat, found);
+    }
+  }
+  return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+function detectNodeVersion(repo) {
+  const pkg = readJson(join2(repo, "package.json"));
+  const engines = pkg?.engines;
+  if (engines && typeof engines === "object") {
+    const node = engines.node;
+    if (typeof node === "string") return node;
+  }
+  return void 0;
+}
 
-// src/adapters/generic.ts
+// src/detect/candidates.ts
 import { readFileSync as readFileSync3 } from "fs";
 import { join as join3 } from "path";
-function read(repo, rel) {
+var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".rb",
+  ".go",
+  ".java",
+  ".kt",
+  ".php",
+  ".rs",
+  ".cs",
+  ".ex",
+  ".exs",
+  ".graphql",
+  ".gql",
+  ".proto"
+]);
+var ROUTE_DIRS = [
+  "routes",
+  "controllers",
+  "handlers",
+  "endpoints",
+  "views",
+  "pages",
+  "api"
+];
+var API_DIRS = ["routers", "trpc", "resolvers", "graphql"];
+var SCHEMA_DIRS = ["models", "entities", "migrations"];
+var ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
+var ROUTE_CONTENT_RE = /\b(?:app|router|route|api|blueprint|fastify|server|mux|r)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(|@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b|@(?:app|router|blueprint|api)\.(?:route|get|post|put|delete|patch)\b|Route::(?:get|post|put|patch|delete|resource|apiResource|group)\b/i;
+var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
+var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^\s*model\s+\w+\s*\{/im;
+function segmentsOf(path) {
+  return path.toLowerCase().split("/");
+}
+function inDir(path, names) {
+  const segs = segmentsOf(path);
+  return names.some((n) => segs.includes(n));
+}
+function baseName(path) {
+  return path.split("/").pop() ?? "";
+}
+function safeRead2(repo, rel) {
   try {
     return readFileSync3(join3(repo, rel), "utf8");
+  } catch {
+    return "";
+  }
+}
+function detectCandidates(repo, files, stack) {
+  void stack;
+  const routeCandidates = /* @__PURE__ */ new Set();
+  const apiCandidates = /* @__PURE__ */ new Set();
+  const schemaCandidates = /* @__PURE__ */ new Set();
+  for (const f of files) {
+    if (f.binary) continue;
+    const p = f.path;
+    const lower = p.toLowerCase();
+    const base = baseName(lower);
+    const ext = f.ext;
+    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base)) routeCandidates.add(p);
+    if (ext === ".graphql" || ext === ".gql" || ext === ".proto") apiCandidates.add(p);
+    if ((ext === ".json" || ext === ".yaml" || ext === ".yml") && /openapi|swagger/.test(base)) {
+      apiCandidates.add(p);
+    }
+    if (inDir(lower, API_DIRS)) apiCandidates.add(p);
+    if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
+    if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
+    if (CONTENT_SCAN_EXTS.has(ext)) {
+      const src = safeRead2(repo, p);
+      if (!src) continue;
+      if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
+      if (API_CONTENT_RE.test(src)) apiCandidates.add(p);
+      if (SCHEMA_CONTENT_RE.test(src)) schemaCandidates.add(p);
+    }
+  }
+  return {
+    routeCandidates: [...routeCandidates].sort(),
+    apiCandidates: [...apiCandidates].sort(),
+    schemaCandidates: [...schemaCandidates].sort(),
+    entryPoints: detectEntryPoints(repo, files)
+  };
+}
+var CONVENTIONAL_ENTRIES = [
+  // JS/TS
+  "src/index.ts",
+  "src/index.js",
+  "src/index.tsx",
+  "src/main.ts",
+  "src/main.tsx",
+  "src/main.js",
+  "index.ts",
+  "index.js",
+  "src/server.ts",
+  "src/server.js",
+  "server.ts",
+  "server.js",
+  "app/layout.tsx",
+  "src/app/layout.tsx",
+  // Python
+  "manage.py",
+  "main.py",
+  "app.py",
+  "wsgi.py",
+  "asgi.py",
+  "src/main.py",
+  "__main__.py",
+  // Go
+  "main.go",
+  "cmd/main.go",
+  // Ruby
+  "config.ru",
+  "bin/rails",
+  // Rust
+  "src/main.rs"
+];
+function detectEntryPoints(repo, files) {
+  const entries = /* @__PURE__ */ new Set();
+  try {
+    const pkg = JSON.parse(readFileSync3(join3(repo, "package.json"), "utf8"));
+    for (const key of ["main", "module"]) {
+      const v = pkg[key];
+      if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
+    }
+    if (pkg.bin && typeof pkg.bin === "object") {
+      for (const v of Object.values(pkg.bin)) {
+        if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
+      }
+    } else if (typeof pkg.bin === "string") {
+      entries.add(pkg.bin.replace(/^\.\//, ""));
+    }
+  } catch {
+  }
+  const present = new Set(files.map((f) => f.path));
+  for (const c of CONVENTIONAL_ENTRIES) {
+    if (present.has(c)) entries.add(c);
+  }
+  return [...entries].sort();
+}
+
+// src/adapters/generic.ts
+import { readFileSync as readFileSync4 } from "fs";
+import { join as join4 } from "path";
+function read(repo, rel) {
+  try {
+    return readFileSync4(join4(repo, rel), "utf8");
   } catch {
     return null;
   }
@@ -580,10 +831,8 @@ function extractEnvVars(repo, files) {
     /import\.meta\.env\.([A-Z][A-Z0-9_]*)/g,
     /os\.environ(?:\.get)?\[?["']([A-Z][A-Z0-9_]*)["']/g
   ];
-  let scanned = 0;
   for (const f of files) {
     if (f.binary || f.category !== "code" && f.category !== "config") continue;
-    if (scanned++ > 2e3) break;
     const raw = read(repo, f.path);
     if (!raw) continue;
     for (const re of patterns) {
@@ -656,8 +905,8 @@ function detectRoutes(files, stack) {
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync4 } from "fs";
-import { join as join4, basename as basename2, extname as extname2 } from "path";
+import { readFileSync as readFileSync5 } from "fs";
+import { join as join5, basename as basename2, extname as extname2 } from "path";
 var LOCALE_RE = /^[a-z]{2}(-[A-Za-z]{2,4})?$/;
 function countJsonLeaves(value) {
   if (value === null || typeof value !== "object") return 1;
@@ -686,13 +935,13 @@ function detectI18n(repo, files) {
     locales.add(localeOf(f.path));
     if (f.ext === ".json") {
       try {
-        const data = JSON.parse(readFileSync4(join4(repo, f.path), "utf8"));
+        const data = JSON.parse(readFileSync5(join5(repo, f.path), "utf8"));
         keyCount = Math.max(keyCount, countJsonLeaves(data));
       } catch {
       }
     } else {
       try {
-        const raw = readFileSync4(join4(repo, f.path), "utf8");
+        const raw = readFileSync5(join5(repo, f.path), "utf8");
         const approx = raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
         keyCount = Math.max(keyCount, approx);
       } catch {
@@ -777,11 +1026,123 @@ function humanize(key) {
 function slugify(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
-function buildFeatures(files, routes, i18n) {
+var FOUNDATION_KEYS = /* @__PURE__ */ new Set([
+  "core",
+  "types",
+  "type",
+  "config",
+  "env",
+  "db",
+  "database",
+  "schema",
+  "schemas",
+  "model",
+  "models",
+  "entities",
+  "prisma",
+  "drizzle",
+  "migrations",
+  "style",
+  "styles",
+  "css",
+  "theme",
+  "ui",
+  "components",
+  "component",
+  "lib",
+  "libs",
+  "util",
+  "utils",
+  "helpers",
+  "hooks",
+  "store",
+  "stores",
+  "state",
+  "context",
+  "providers",
+  "server",
+  "services",
+  "service",
+  "client",
+  "api",
+  "rpc",
+  "trpc",
+  "graphql",
+  "gql",
+  "auth",
+  "middleware",
+  "i18n",
+  "locales"
+]);
+var TEST_KEYS = /* @__PURE__ */ new Set([
+  "test",
+  "tests",
+  "__tests__",
+  "spec",
+  "specs",
+  "e2e",
+  "cypress",
+  "playwright"
+]);
+var FOUNDATION_ORDER = [
+  "core",
+  "types",
+  "type",
+  "config",
+  "env",
+  "db",
+  "database",
+  "schema",
+  "schemas",
+  "model",
+  "models",
+  "entities",
+  "style",
+  "styles",
+  "css",
+  "theme",
+  "ui",
+  "components",
+  "component",
+  "lib",
+  "libs",
+  "util",
+  "utils",
+  "helpers",
+  "hooks",
+  "store",
+  "stores",
+  "state",
+  "context",
+  "providers",
+  "server",
+  "services",
+  "service",
+  "client",
+  "api",
+  "rpc",
+  "trpc",
+  "graphql",
+  "gql",
+  "auth",
+  "middleware",
+  "i18n",
+  "locales"
+];
+var SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
+function foundationRank(key, hasSchema) {
+  const i = FOUNDATION_ORDER.indexOf(key);
+  if (i !== -1) return i;
+  if (hasSchema) return SCHEMA_RANK;
+  return Number.POSITIVE_INFINITY;
+}
+function buildFeatures(files, routes, i18n, granularity = "coarse") {
   const codeGroups = /* @__PURE__ */ new Map();
+  const schemaPaths = /* @__PURE__ */ new Set();
   const configFiles = [];
   const docFiles = [];
   for (const f of files) {
+    if (f.category === "schema") schemaPaths.add(f.path);
     if (f.category === "config") {
       configFiles.push(f.path);
     } else if (f.category === "doc") {
@@ -800,58 +1161,105 @@ function buildFeatures(files, routes, i18n) {
     list.push(r);
     routesByKey.set(k, list);
   }
-  const features = [];
-  const sortedKeys = [...codeGroups.entries()].sort(
-    (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])
-  );
-  for (const [key, groupFiles] of sortedKeys) {
+  const groupHasSchema = (groupFiles) => groupFiles.some((p) => schemaPaths.has(p));
+  const isFoundationGroup = (key, groupFiles) => FOUNDATION_KEYS.has(key) || groupHasSchema(groupFiles);
+  if (granularity === "coarse") {
+    const core = codeGroups.get("core") ?? [];
+    let mergedAny = false;
+    for (const [key, groupFiles] of [...codeGroups.entries()]) {
+      if (key === "core") continue;
+      const routeCount = routesByKey.get(key)?.length ?? 0;
+      const trivial = groupFiles.length === 1 && routeCount === 0 && !isFoundationGroup(key, groupFiles) && !TEST_KEYS.has(key);
+      if (trivial) {
+        core.push(...groupFiles);
+        codeGroups.delete(key);
+        mergedAny = true;
+      }
+    }
+    if (mergedAny || codeGroups.has("core")) codeGroups.set("core", core);
+  }
+  const records = [];
+  for (const [key, groupFiles] of codeGroups.entries()) {
     const featureRoutes = routesByKey.get(key) ?? [];
     const name = humanize(key);
     const routeList = featureRoutes.map((r) => r.route);
     const uniqueRoutes = [...new Set(routeList)];
     const desc = `Groups ${groupFiles.length} file(s)` + (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") + ".";
-    features.push({
-      slug: slugify(name),
-      name,
-      description: desc,
-      kind: "feature",
-      files: groupFiles.sort(),
-      routes: featureRoutes
+    const hasSchema = groupHasSchema(groupFiles);
+    const tier = TEST_KEYS.has(key) ? 2 : isFoundationGroup(key, groupFiles) ? 0 : 1;
+    records.push({
+      feature: {
+        slug: slugify(name),
+        name,
+        description: desc,
+        kind: "feature",
+        files: groupFiles.sort(),
+        routes: featureRoutes
+      },
+      key,
+      tier,
+      rank: tier === 0 ? foundationRank(key, hasSchema) : 0,
+      size: groupFiles.length
     });
   }
   if (i18n) {
-    features.push({
-      slug: "internationalization",
-      name: "Internationalization",
-      description: `${i18n.locales.length} locale(s) (${i18n.locales.join(", ")}), up to ${i18n.keyCount} keys per locale.`,
-      kind: "internationalization",
-      files: i18n.files,
-      routes: []
+    records.push({
+      feature: {
+        slug: "internationalization",
+        name: "Internationalization",
+        description: `${i18n.locales.length} locale(s) (${i18n.locales.join(", ")}), up to ${i18n.keyCount} keys per locale.`,
+        kind: "internationalization",
+        files: i18n.files,
+        routes: []
+      },
+      key: "i18n",
+      tier: 0,
+      rank: foundationRank("i18n", false),
+      size: i18n.files.length
     });
   }
   if (configFiles.length) {
-    features.push({
-      slug: "project-setup",
-      name: "Project Setup & Tooling",
-      description: `${configFiles.length} configuration/tooling file(s): build, lint, env, CI.`,
-      kind: "project-setup",
-      files: configFiles.sort(),
-      routes: []
+    records.push({
+      feature: {
+        slug: "project-setup",
+        name: "Project Setup & Tooling",
+        description: `${configFiles.length} configuration/tooling file(s): build, lint, env, CI.`,
+        kind: "project-setup",
+        files: configFiles.sort(),
+        routes: []
+      },
+      key: "config",
+      tier: 0,
+      rank: foundationRank("config", false),
+      size: configFiles.length
     });
   }
   if (docFiles.length) {
-    features.push({
-      slug: "documentation",
-      name: "Documentation",
-      description: `${docFiles.length} documentation file(s).`,
-      kind: "documentation",
-      files: docFiles.sort(),
-      routes: []
+    records.push({
+      feature: {
+        slug: "documentation",
+        name: "Documentation",
+        description: `${docFiles.length} documentation file(s).`,
+        kind: "documentation",
+        files: docFiles.sort(),
+        routes: []
+      },
+      key: "documentation",
+      tier: 2,
+      rank: 1,
+      // docs sort after dedicated test buckets in the tail tier
+      size: docFiles.length
     });
   }
-  return features.map((f, i) => ({
-    ...f,
-    slug: `${String(i + 1).padStart(2, "0")}-${f.slug}`
+  records.sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.size !== b.size) return b.size - a.size;
+    return a.feature.name.localeCompare(b.feature.name);
+  });
+  return records.map((r, i) => ({
+    ...r.feature,
+    slug: `${String(i + 1).padStart(2, "0")}-${r.feature.slug}`
   }));
 }
 
@@ -859,8 +1267,35 @@ function buildFeatures(files, routes, i18n) {
 var VERSION = "0.1.0";
 
 // src/analyze.ts
+function computeUnknowns(stack, routes, hints) {
+  const u = [];
+  if (stack.frameworks.length === 0) {
+    u.push(
+      "No web framework was detected from manifests \u2014 identify the stack and entry points from `hints.entryPoints`, then map the interface surface manually."
+    );
+  }
+  if (routes.length === 0 && (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0)) {
+    u.push(
+      "Routes were not resolved deterministically (non-Next.js routing, or an RPC/GraphQL surface) \u2014 derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`."
+    );
+  }
+  if (hints.apiCandidates.length > 0) {
+    u.push(
+      "API surface candidates (tRPC / GraphQL / gRPC / OpenAPI) were found but not enumerated \u2014 read each and list every procedure/operation in `architecture/INTERFACES.md`."
+    );
+  }
+  if (hints.schemaCandidates.length > 0) {
+    u.push(
+      "The data model is not structured by the engine \u2014 extract entities, fields, types, and relations from `hints.schemaCandidates` into `architecture/DATA-MODEL.md`."
+    );
+  }
+  return u;
+}
 function analyze(opts) {
-  const files = walk(opts.repo);
+  const { files, excludedCount } = walk(opts.repo, {
+    include: opts.include,
+    exclude: opts.exclude
+  });
   const stack = detectStack(opts.repo, files);
   const dependencies = extractDependencies(opts.repo, files);
   const routes = detectRoutes(files, stack);
@@ -870,7 +1305,11 @@ function analyze(opts) {
   const docs = collectByCategory(files, "doc");
   const envVars = extractEnvVars(opts.repo, files);
   const scripts = extractScripts(opts.repo);
-  const features = buildFeatures(files, routes, i18n);
+  const hints = detectCandidates(opts.repo, files, stack);
+  const workspaces = detectWorkspaces(opts.repo);
+  const node = detectNodeVersion(opts.repo);
+  const features = buildFeatures(files, routes, i18n, opts.granularity);
+  const unknowns = computeUnknowns(stack, routes, hints);
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   return {
     generatedWith: `reconstruct@${VERSION}`,
@@ -887,12 +1326,17 @@ function analyze(opts) {
     docs,
     envVars,
     scripts,
-    features
+    features,
+    hints,
+    unknowns,
+    ...workspaces.length ? { workspaces } : {},
+    ...node ? { runtime: { node } } : {},
+    excludedCount
   };
 }
 
 // src/prd/render.ts
-import { join as join6 } from "path";
+import { join as join7 } from "path";
 
 // src/prd/templates.ts
 function agentNote(body) {
@@ -946,7 +1390,7 @@ function overviewPrd(inv, opts) {
     "",
     "## How to use this output",
     "",
-    "1. Read `architecture/ARCHITECTURE.md` for the overall shape.",
+    "1. Read `architecture/ARCHITECTURE.md` for the overall shape, then `architecture/INTERFACES.md` (the full interface surface) and `architecture/DATA-MODEL.md` (entities & relations).",
     "2. Rebuild feature by feature using each `features/<slug>/PRD.md`, in the order listed in `REBUILD.md`.",
     "3. Use `data/` (translations, schema, config) and \u2014 when present \u2014 `source/` as ground truth.",
     ""
@@ -1024,6 +1468,75 @@ function architectureDoc(inv, opts) {
     );
   }
   return common.join("\n");
+}
+function listOrNone(items, empty) {
+  return items.length ? items.map((s) => `- \`${s}\``).join("\n") : empty;
+}
+function interfacesDoc(inv, opts) {
+  const routesTable = inv.routes.length ? [
+    "| Kind | Route | Handler file |",
+    "| --- | --- | --- |",
+    ...inv.routes.map((r) => `| ${r.kind} | \`${r.route}\` | \`${r.file}\` |`)
+  ].join("\n") : "_None resolved deterministically (the engine only resolves Next.js file-based routes)._";
+  const routeCandidates = /* @__PURE__ */ new Set([...inv.hints.routeCandidates]);
+  for (const r of inv.routes) routeCandidates.delete(r.file);
+  return [
+    "# Interface surface",
+    "",
+    metaBlock(inv, opts),
+    agentNote(
+      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine only resolves Next.js file-based routes; for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
+    ),
+    "",
+    "## Resolved routes (deterministic \u2014 verify against source)",
+    "",
+    routesTable,
+    "",
+    "## Route candidates (verify \u2014 may include false positives)",
+    "",
+    listOrNone([...routeCandidates].sort(), "_No additional route candidates._"),
+    "",
+    "## API surface candidates (tRPC / GraphQL / gRPC / OpenAPI)",
+    "",
+    listOrNone(inv.hints.apiCandidates, "_No RPC/GraphQL/OpenAPI candidates detected._"),
+    "",
+    "## Interface table (fill this in)",
+    "",
+    "| Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |",
+    "| --- | --- | --- | --- | --- | --- |",
+    opts.level === "light" ? "_One row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._" : agentNote(
+      "Add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects."
+    ),
+    ""
+  ].join("\n");
+}
+function dataModelDoc(inv, opts) {
+  const schemaFiles = [.../* @__PURE__ */ new Set([...inv.schemas, ...inv.hints.schemaCandidates])].sort();
+  return [
+    "# Data model",
+    "",
+    metaBlock(inv, opts),
+    agentNote(
+      "Reconstruct the data model from the schema/ORM files below (raw copies live in `data/schema/`). List **every** entity/table with its key fields + types, relations (1-1 / 1-N / N-N), and indexes/constraints. Follow `references/analysis-playbook.md` (\xA7Data model) and the ORM conventions in the matching `references/stack-guides/`."
+    ),
+    "",
+    "## Schema / model source files",
+    "",
+    listOrNone(schemaFiles, "_No schema/model files detected \u2014 the data layer may be code-defined; investigate `hints`._"),
+    "",
+    "## Entities (fill this in)",
+    "",
+    "| Entity / Table | Field | Type | Constraints | Relation |",
+    "| --- | --- | --- | --- | --- |",
+    opts.level === "light" ? "_One block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._" : agentNote(
+      "For each entity, capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`."
+    ),
+    "",
+    "## Relations & integrity",
+    "",
+    "_Summarize relationships, cascade rules, and any derived/computed data._",
+    ""
+  ].join("\n");
 }
 function diagramDoc(inv) {
   const nodes = inv.features.map((f, i) => `  F${i}["${f.name}"]`).join("\n");
@@ -1104,11 +1617,13 @@ function rebuildDoc(inv, opts) {
     "",
     "## Build order",
     "",
+    "Ordered by dependency tier \u2014 foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last.",
+    "",
     order || "_No features._",
     "",
     "## Procedure",
     "",
-    "1. Start with `00-overview/PRD.md` and `architecture/ARCHITECTURE.md`.",
+    "1. Start with `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`, and `architecture/DATA-MODEL.md`.",
     "2. For each unit in order, open its PRD and implement it.",
     "3. Wire shared data from `data/` (translations, schema, config).",
     opts.fidelity === "mirror" ? "4. Use the copied files under `source/<slug>/` as ground truth." : "4. Validate behavior against the requirements in each PRD.",
@@ -1116,17 +1631,18 @@ function rebuildDoc(inv, opts) {
     "",
     "## Validation checklist",
     "",
+    "- [ ] Every interface in `architecture/INTERFACES.md` is implemented (routes, endpoints, RPC/GraphQL, jobs).",
+    "- [ ] Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.",
     "- [ ] All routes respond as before.",
     "- [ ] All locales present and keys match `data/translations/`.",
-    "- [ ] Data schema matches `data/schema/`.",
     "- [ ] Required env vars configured: " + (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") + ".",
     ""
   ].join("\n");
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync5 } from "fs";
-import { join as join5 } from "path";
+import { readFileSync as readFileSync6 } from "fs";
+import { join as join6 } from "path";
 var FENCE_LANG = {
   ".ts": "ts",
   ".tsx": "tsx",
@@ -1174,7 +1690,7 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body;
     try {
-      body = readFileSync5(join5(opts.repo, rel), "utf8");
+      body = readFileSync6(join6(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
@@ -1201,8 +1717,8 @@ function mirrorSection(feature, opts) {
   ];
   for (const rel of feature.files) {
     copies.push({
-      from: join5(opts.repo, rel),
-      to: join5(opts.out, "source", feature.slug, rel)
+      from: join6(opts.repo, rel),
+      to: join6(opts.out, "source", feature.slug, rel)
     });
     lines.push(`- [\`${rel}\`](../../source/${feature.slug}/${rel})`);
   }
@@ -1228,6 +1744,8 @@ function render(inv, opts) {
   artifacts.push({ relPath: "REBUILD.md", content: rebuildDoc(inv, opts) });
   artifacts.push({ relPath: "00-overview/PRD.md", content: overviewPrd(inv, opts) });
   artifacts.push({ relPath: "architecture/ARCHITECTURE.md", content: architectureDoc(inv, opts) });
+  artifacts.push({ relPath: "architecture/INTERFACES.md", content: interfacesDoc(inv, opts) });
+  artifacts.push({ relPath: "architecture/DATA-MODEL.md", content: dataModelDoc(inv, opts) });
   artifacts.push({ relPath: "architecture/diagram.md", content: diagramDoc(inv) });
   artifacts.push({ relPath: "inventory.json", content: JSON.stringify(inv, null, 2) + "\n" });
   for (const feature of inv.features) {
@@ -1240,7 +1758,7 @@ function render(inv, opts) {
   }
   const dataCopy = (paths, sub) => {
     for (const rel of paths) {
-      copies.push({ from: join6(opts.repo, rel), to: join6(opts.out, "data", sub, rel) });
+      copies.push({ from: join7(opts.repo, rel), to: join7(opts.out, "data", sub, rel) });
     }
   };
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
@@ -1251,10 +1769,10 @@ function render(inv, opts) {
 
 // src/output.ts
 import { mkdirSync, writeFileSync, copyFileSync, existsSync as existsSync2 } from "fs";
-import { dirname, join as join7 } from "path";
+import { dirname, join as join8 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
-    const dest = join7(opts.out, a.relPath);
+    const dest = join8(opts.out, a.relPath);
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
   }
@@ -1281,6 +1799,9 @@ Options:
   --mode <mode>        preserve | redesign              (default: preserve)
   --level <level>      light | complex                  (default: light)
   --fidelity <mode>    mirror | embed | describe        (default: derived from mode+level)
+  --granularity <g>    coarse | fine (feature grouping) (default: coarse)
+  --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
+  --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
@@ -1305,8 +1826,13 @@ function defaultFidelity(mode, level) {
   if (mode === "preserve") return level === "light" ? "mirror" : "embed";
   return level === "light" ? "embed" : "describe";
 }
+function splitGlobs(value) {
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
 function parseArgs(argv) {
   const raw = {};
+  const includeGlobs = [];
+  const excludeGlobs = [];
   let json = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -1323,17 +1849,24 @@ function parseArgs(argv) {
       continue;
     }
     if (arg.startsWith("--")) {
+      let key;
+      let value;
       const eq = arg.indexOf("=");
       if (eq !== -1) {
-        raw[arg.slice(2, eq)] = arg.slice(eq + 1);
+        key = arg.slice(2, eq);
+        value = arg.slice(eq + 1);
       } else {
+        key = arg.slice(2);
         const next = argv[i + 1];
         if (next === void 0 || next.startsWith("--")) {
           fail(`missing value for ${arg}`);
         }
-        raw[arg.slice(2)] = next;
+        value = next;
         i++;
       }
+      if (key === "include") includeGlobs.push(...splitGlobs(value));
+      else if (key === "exclude") excludeGlobs.push(...splitGlobs(value));
+      else raw[key] = value;
     }
   }
   const repo = resolve(raw.repo ?? process.cwd());
@@ -1347,12 +1880,27 @@ function parseArgs(argv) {
     raw.fidelity ?? defaultFidelity(mode, level),
     ["mirror", "embed", "describe"]
   );
-  const out = resolve(raw.out ?? join8(repo, "reconstruction"));
+  const granularity = oneOf("granularity", raw.granularity ?? "coarse", [
+    "coarse",
+    "fine"
+  ]);
+  const out = resolve(raw.out ?? join9(repo, "reconstruction"));
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
   }
-  return { repo, out, mode, level, fidelity, json, maxEmbedBytes };
+  return {
+    repo,
+    out,
+    mode,
+    level,
+    fidelity,
+    granularity,
+    include: includeGlobs,
+    exclude: excludeGlobs,
+    json,
+    maxEmbedBytes
+  };
 }
 function main() {
   const opts = parseArgs(process.argv.slice(2));
@@ -1363,14 +1911,19 @@ function main() {
   }
   const result = render(inv, opts);
   writeOutput(result, opts);
+  const hintTotal = inv.hints.routeCandidates.length + inv.hints.apiCandidates.length + inv.hints.schemaCandidates.length;
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
     `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " \xB7 " + inv.stack.frameworks.join(", ") : ""}`,
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`,
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
-    `  mode/level/fidelity: ${opts.mode}/${opts.level}/${opts.fidelity}`,
+    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
+    ...inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s)`] : [],
+    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
+    ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
+    `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     `  output:   ${opts.out}`,
-    `  next:     open ${join8(opts.out, "REBUILD.md")}`
+    `  next:     open ${join9(opts.out, "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

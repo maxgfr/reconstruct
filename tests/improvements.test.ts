@@ -17,6 +17,9 @@ function opts(): Options {
     mode: "preserve",
     level: "light",
     fidelity: "mirror",
+    granularity: "coarse",
+    include: [],
+    exclude: [],
     json: false,
     maxEmbedBytes: 16000,
   };

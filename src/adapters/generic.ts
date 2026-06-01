@@ -138,15 +138,15 @@ export function extractEnvVars(repo: string, files: FileInfo[]): string[] {
   }
 
   // From source: process.env.X, import.meta.env.X, os.environ["X"].
+  // All code/config files are scanned — the file set is already bounded by the
+  // walk's ignore rules, so there is no silent truncation cap here.
   const patterns = [
     /process\.env\.([A-Z][A-Z0-9_]*)/g,
     /import\.meta\.env\.([A-Z][A-Z0-9_]*)/g,
     /os\.environ(?:\.get)?\[?["']([A-Z][A-Z0-9_]*)["']/g,
   ];
-  let scanned = 0;
   for (const f of files) {
     if (f.binary || (f.category !== "code" && f.category !== "config")) continue;
-    if (scanned++ > 2000) break;
     const raw = read(repo, f.path);
     if (!raw) continue;
     for (const re of patterns) {

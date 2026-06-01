@@ -1,6 +1,6 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { FileInfo, StackInfo } from "../types.js";
+import type { FileInfo, StackInfo, Workspace } from "../types.js";
 
 const EXT_LANGUAGE: Record<string, string> = {
   ".ts": "TypeScript",
@@ -35,6 +35,7 @@ const NPM_FRAMEWORKS: Array<[string, string]> = [
   ["next", "Next.js"],
   ["nuxt", "Nuxt"],
   ["@remix-run/react", "Remix"],
+  ["react-router-dom", "React Router"],
   ["@sveltejs/kit", "SvelteKit"],
   ["astro", "Astro"],
   ["@angular/core", "Angular"],
@@ -44,10 +45,19 @@ const NPM_FRAMEWORKS: Array<[string, string]> = [
   ["koa", "Koa"],
   ["@hono/node-server", "Hono"],
   ["hono", "Hono"],
+  ["@solidjs/start", "SolidStart"],
+  ["solid-start", "SolidStart"],
   ["react", "React"],
   ["vue", "Vue"],
   ["svelte", "Svelte"],
   ["solid-js", "SolidJS"],
+  // Build tooling / runtimes / shells
+  ["vite", "Vite"],
+  ["expo", "Expo"],
+  ["react-native", "React Native"],
+  ["electron", "Electron"],
+  ["@tauri-apps/api", "Tauri"],
+  ["@tauri-apps/cli", "Tauri"],
 ];
 
 // Notable libraries keyed by dependency. A key ending in "/" matches a scope prefix
@@ -185,8 +195,25 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
   if (existsSync(join(repo, "Gemfile"))) {
     packageManagers.add("bundler");
     if (/\brails\b/i.test(safeRead(join(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
+    if (/\bsinatra\b/i.test(safeRead(join(repo, "Gemfile")))) frameworks.add("Sinatra");
   }
-  if (existsSync(join(repo, "composer.json"))) packageManagers.add("composer");
+  if (existsSync(join(repo, "composer.json"))) {
+    packageManagers.add("composer");
+    const composer = safeRead(join(repo, "composer.json"));
+    if (/laravel\/framework/.test(composer)) frameworks.add("Laravel");
+    if (/symfony\/framework-bundle/.test(composer)) frameworks.add("Symfony");
+  }
+  // JVM: Maven / Gradle, with Spring Boot detection from the build file.
+  if (existsSync(join(repo, "pom.xml"))) {
+    packageManagers.add("maven");
+    if (/spring-boot/.test(safeRead(join(repo, "pom.xml")))) frameworks.add("Spring Boot");
+  }
+  for (const gradle of ["build.gradle", "build.gradle.kts"]) {
+    if (existsSync(join(repo, gradle))) {
+      packageManagers.add("gradle");
+      if (/spring-boot/.test(safeRead(join(repo, gradle)))) frameworks.add("Spring Boot");
+    }
+  }
 
   return {
     languages,
@@ -204,4 +231,71 @@ function safeRead(path: string): string {
   } catch {
     return "";
   }
+}
+
+function addWorkspace(repo: string, relDir: string, found: Map<string, Workspace>): void {
+  const norm = relDir.split("\\").join("/").replace(/\/+$/, "");
+  if (found.has(norm)) return;
+  const pkg = readJson(join(repo, norm, "package.json"));
+  if (!pkg) return;
+  const name = typeof pkg.name === "string" && pkg.name ? pkg.name : norm;
+  found.set(norm, { name, path: norm });
+}
+
+/**
+ * Detect monorepo workspaces from package.json `workspaces`, pnpm-workspace.yaml.
+ * A trailing `/*` glob is expanded one directory level. Returns [] for a
+ * single-package repo.
+ */
+export function detectWorkspaces(repo: string): Workspace[] {
+  const patterns: string[] = [];
+
+  const pkg = readJson(join(repo, "package.json"));
+  if (pkg) {
+    const ws = pkg.workspaces;
+    if (Array.isArray(ws)) {
+      patterns.push(...ws.filter((x): x is string => typeof x === "string"));
+    } else if (ws && typeof ws === "object" && Array.isArray((ws as { packages?: unknown }).packages)) {
+      patterns.push(
+        ...((ws as { packages: unknown[] }).packages.filter((x): x is string => typeof x === "string")),
+      );
+    }
+  }
+
+  const pnpm = safeRead(join(repo, "pnpm-workspace.yaml"));
+  for (const line of pnpm.split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*$/);
+    if (m) patterns.push((m[1] as string).trim());
+  }
+
+  if (patterns.length === 0) return [];
+
+  const found = new Map<string, Workspace>();
+  for (const pat of patterns) {
+    if (pat.endsWith("/*") || pat.endsWith("/**")) {
+      const base = pat.replace(/\/\*+$/, "");
+      try {
+        for (const ent of readdirSync(join(repo, base), { withFileTypes: true })) {
+          if (ent.isDirectory()) addWorkspace(repo, join(base, ent.name), found);
+        }
+      } catch {
+        /* glob base missing */
+      }
+    } else {
+      addWorkspace(repo, pat, found);
+    }
+  }
+
+  return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Required Node version from package.json `engines.node`, if declared. */
+export function detectNodeVersion(repo: string): string | undefined {
+  const pkg = readJson(join(repo, "package.json"));
+  const engines = pkg?.engines;
+  if (engines && typeof engines === "object") {
+    const node = (engines as Record<string, unknown>).node;
+    if (typeof node === "string") return node;
+  }
+  return undefined;
 }

@@ -221,9 +221,35 @@ function countLines(abs: string): number {
   }
 }
 
-export function walk(repo: string): FileInfo[] {
+export interface WalkOptions {
+  /** Keep only files matching at least one of these gitignore-style globs. */
+  include?: string[];
+  /** Drop files matching any of these gitignore-style globs. */
+  exclude?: string[];
+}
+
+export interface WalkResult {
+  files: FileInfo[];
+  /** Number of files skipped by ignore rules / include-exclude scoping. */
+  excludedCount: number;
+}
+
+function compileGlobs(patterns: string[] | undefined): RegExp[] {
+  if (!patterns) return [];
+  const out: RegExp[] = [];
+  for (const raw of patterns) {
+    const c = compilePattern(raw);
+    if (c) out.push(c.re);
+  }
+  return out;
+}
+
+export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
   const ignore = loadIgnore(repo);
+  const includeRes = compileGlobs(opts.include);
+  const excludeRes = compileGlobs(opts.exclude);
   const files: FileInfo[] = [];
+  let excludedCount = 0;
 
   const recurse = (dir: string): void => {
     let entries: Dirent<string>[];
@@ -237,15 +263,31 @@ export function walk(repo: string): FileInfo[] {
       const rel = relative(repo, abs).split("\\").join("/");
       const isDir = entry.isDirectory();
 
+      // Pruned directories are not counted (their contents are never enumerated).
       if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
-      if (!isDir && DEFAULT_IGNORE_FILES.has(entry.name)) continue;
-      if (ignore(rel, isDir)) continue;
+      if (ignore(rel, isDir)) {
+        if (!isDir) excludedCount++;
+        continue;
+      }
 
       if (isDir) {
         recurse(abs);
         continue;
       }
       if (!entry.isFile()) continue;
+
+      if (DEFAULT_IGNORE_FILES.has(entry.name)) {
+        excludedCount++;
+        continue;
+      }
+      if (excludeRes.some((re) => re.test(rel))) {
+        excludedCount++;
+        continue;
+      }
+      if (includeRes.length > 0 && !includeRes.some((re) => re.test(rel))) {
+        excludedCount++;
+        continue;
+      }
 
       const ext = extname(entry.name).toLowerCase();
       let size = 0;
@@ -268,5 +310,5 @@ export function walk(repo: string): FileInfo[] {
 
   recurse(repo);
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return files;
+  return { files, excludedCount };
 }
