@@ -39,6 +39,7 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
     `- **Primary language:** ${s.primaryLanguage}`,
     `- **Languages:** ${s.languages.join(", ") || "n/a"}`,
     `- **Frameworks:** ${s.frameworks.join(", ") || "none detected"}`,
+    `- **Libraries:** ${s.libraries.join(", ") || "none detected"}`,
     `- **Package managers:** ${s.packageManagers.join(", ") || "n/a"}`,
     `- **TypeScript:** ${s.hasTypeScript ? "yes" : "no"}`,
     "",
@@ -93,6 +94,7 @@ export function architectureDoc(inv: Inventory, opts: Options): string {
     "",
     `${inv.stack.frameworks.join(", ") || "No framework detected"} · ${inv.stack.primaryLanguage}`,
     "",
+    ...(inv.stack.libraries.length ? [`**Libraries:** ${inv.stack.libraries.join(", ")}`, ""] : []),
     "## Top-level layout",
     "",
     (topDirs.map((d) => `- \`${d}/\``).join("\n") || "_Flat layout (no subdirectories)._") +

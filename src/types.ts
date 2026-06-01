@@ -63,6 +63,8 @@ export interface StackInfo {
   languages: string[];
   primaryLanguage: string;
   frameworks: string[];
+  /** Notable libraries detected from dependencies: ORM, auth, API layer, styling, testing, etc. */
+  libraries: string[];
   packageManagers: string[];
   hasTypeScript: boolean;
 }

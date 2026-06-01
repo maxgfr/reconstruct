@@ -26,10 +26,20 @@ function stripRoot(path: string): string[] {
   return p.split("/");
 }
 
+// Route groups `(group)` and dynamic segments `[id]` / `[...slug]` are layout/URL
+// machinery, not features. Skip leading ones so `app/[locale]/(dashboard)/admin/...`
+// keys on `admin` instead of collapsing the whole i18n app under `[locale]`.
+function isSkippableSegment(seg: string): boolean {
+  return (
+    (seg.startsWith("(") && seg.endsWith(")")) ||
+    (seg.startsWith("[") && seg.endsWith("]"))
+  );
+}
+
 function featureKey(path: string): string {
   const segs = stripRoot(path);
   let i = 0;
-  while (i < segs.length - 1 && (segs[i] as string).startsWith("(") && (segs[i] as string).endsWith(")")) {
+  while (i < segs.length - 1 && isSkippableSegment(segs[i] as string)) {
     i++;
   }
   if (segs.length - i <= 1) return "core";
@@ -38,19 +48,41 @@ function featureKey(path: string): string {
 
 function routeKey(route: string): string {
   const segs = route.split("/").filter(Boolean);
-  if (segs.length === 0) return "core";
   let i = 0;
-  while (i < segs.length && (segs[i] as string).startsWith("(") && (segs[i] as string).endsWith(")")) {
+  while (i < segs.length && isSkippableSegment(segs[i] as string)) {
     i++;
   }
   return (segs[i] as string) ?? "core";
 }
 
+// Technical tokens that should render with fixed casing rather than naive title-case
+// (so a folder named `ui`/`api`/`trpc` becomes "UI"/"API"/"tRPC", not "Ui"/"Api"/"Trpc").
+const NAME_OVERRIDES: Record<string, string> = {
+  ui: "UI",
+  api: "API",
+  db: "DB",
+  seo: "SEO",
+  e2e: "E2E",
+  trpc: "tRPC",
+  i18n: "i18n",
+  cms: "CMS",
+  sdk: "SDK",
+  cli: "CLI",
+  url: "URL",
+  ssr: "SSR",
+  ssg: "SSG",
+  graphql: "GraphQL",
+};
+
 export function humanize(key: string): string {
   if (key === "core") return "Core";
-  return key
-    .replace(/^\[?\.{0,3}/, "")
-    .replace(/\]$/, "")
+  const cleaned = key
+    .replace(/^\[+\.{0,3}/, "")
+    .replace(/\]+$/, "")
+    .replace(/^\(+|\)+$/g, "");
+  const override = NAME_OVERRIDES[cleaned.toLowerCase()];
+  if (override) return override;
+  return cleaned
     .replace(/[-_]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")

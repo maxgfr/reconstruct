@@ -320,6 +320,79 @@ var NPM_FRAMEWORKS = [
   ["svelte", "Svelte"],
   ["solid-js", "SolidJS"]
 ];
+var NPM_LIBRARIES = [
+  // ORM / database
+  ["drizzle-orm", "Drizzle ORM"],
+  ["@prisma/client", "Prisma"],
+  ["prisma", "Prisma"],
+  ["typeorm", "TypeORM"],
+  ["sequelize", "Sequelize"],
+  ["mongoose", "Mongoose"],
+  ["kysely", "Kysely"],
+  ["@supabase/supabase-js", "Supabase"],
+  // Auth
+  ["next-auth", "NextAuth.js"],
+  ["@auth/core", "Auth.js"],
+  ["@clerk/nextjs", "Clerk"],
+  ["lucia", "Lucia"],
+  ["passport", "Passport"],
+  // API / data fetching layer
+  ["@trpc/", "tRPC"],
+  ["@tanstack/react-query", "TanStack Query"],
+  ["react-query", "TanStack Query"],
+  ["@apollo/client", "Apollo GraphQL"],
+  ["graphql", "GraphQL"],
+  ["swr", "SWR"],
+  // Styling / UI
+  ["tailwindcss", "Tailwind CSS"],
+  ["styled-components", "styled-components"],
+  ["@emotion/react", "Emotion"],
+  ["@mui/material", "MUI"],
+  ["@chakra-ui/react", "Chakra UI"],
+  ["@radix-ui/", "Radix UI"],
+  ["@mantine/core", "Mantine"],
+  ["bootstrap", "Bootstrap"],
+  // State management
+  ["@reduxjs/toolkit", "Redux Toolkit"],
+  ["redux", "Redux"],
+  ["zustand", "Zustand"],
+  ["jotai", "Jotai"],
+  ["recoil", "Recoil"],
+  ["mobx", "MobX"],
+  // Validation / forms
+  ["zod", "Zod"],
+  ["yup", "Yup"],
+  ["valibot", "Valibot"],
+  ["react-hook-form", "React Hook Form"],
+  ["formik", "Formik"],
+  // Testing
+  ["vitest", "Vitest"],
+  ["jest", "Jest"],
+  ["@playwright/test", "Playwright"],
+  ["playwright", "Playwright"],
+  ["cypress", "Cypress"],
+  ["@testing-library/react", "Testing Library"],
+  // i18n
+  ["next-intl", "next-intl"],
+  ["i18next", "i18next"],
+  ["react-i18next", "react-i18next"],
+  // Services / analytics / email
+  ["posthog-js", "PostHog"],
+  ["@sentry/", "Sentry"],
+  ["resend", "Resend"],
+  ["nodemailer", "Nodemailer"],
+  ["stripe", "Stripe"],
+  ["@aws-sdk/", "AWS SDK"]
+];
+function detectLibraries(deps) {
+  const names = Object.keys(deps);
+  const found = /* @__PURE__ */ new Set();
+  for (const [pattern, label] of NPM_LIBRARIES) {
+    const hit = pattern.endsWith("/") ? names.some((n) => n.startsWith(pattern)) : pattern in deps;
+    if (hit) found.add(label);
+  }
+  return [...found];
+}
 function readJson(path) {
   try {
     return JSON.parse(readFileSync2(path, "utf8"));
@@ -336,6 +409,7 @@ function detectStack(repo, files) {
   const languages = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([lang]) => lang);
   const frameworks = /* @__PURE__ */ new Set();
   const packageManagers = /* @__PURE__ */ new Set();
+  let libraries = [];
   let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
   const pkg = readJson(join2(repo, "package.json"));
   if (pkg) {
@@ -346,6 +420,7 @@ function detectStack(repo, files) {
     for (const [dep, label] of NPM_FRAMEWORKS) {
       if (dep in allDeps) frameworks.add(label);
     }
+    libraries = detectLibraries(allDeps);
     if ("typescript" in allDeps) hasTypeScript = true;
     if (existsSync(join2(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
     else if (existsSync(join2(repo, "yarn.lock"))) packageManagers.add("yarn");
@@ -370,6 +445,7 @@ function detectStack(repo, files) {
     languages,
     primaryLanguage: languages[0] ?? "Unknown",
     frameworks: [...frameworks],
+    libraries,
     packageManagers: [...packageManagers],
     hasTypeScript
   };
@@ -655,10 +731,13 @@ function stripRoot(path) {
   }
   return p.split("/");
 }
+function isSkippableSegment(seg) {
+  return seg.startsWith("(") && seg.endsWith(")") || seg.startsWith("[") && seg.endsWith("]");
+}
 function featureKey(path) {
   const segs = stripRoot(path);
   let i = 0;
-  while (i < segs.length - 1 && segs[i].startsWith("(") && segs[i].endsWith(")")) {
+  while (i < segs.length - 1 && isSkippableSegment(segs[i])) {
     i++;
   }
   if (segs.length - i <= 1) return "core";
@@ -666,16 +745,34 @@ function featureKey(path) {
 }
 function routeKey(route) {
   const segs = route.split("/").filter(Boolean);
-  if (segs.length === 0) return "core";
   let i = 0;
-  while (i < segs.length && segs[i].startsWith("(") && segs[i].endsWith(")")) {
+  while (i < segs.length && isSkippableSegment(segs[i])) {
     i++;
   }
   return segs[i] ?? "core";
 }
+var NAME_OVERRIDES = {
+  ui: "UI",
+  api: "API",
+  db: "DB",
+  seo: "SEO",
+  e2e: "E2E",
+  trpc: "tRPC",
+  i18n: "i18n",
+  cms: "CMS",
+  sdk: "SDK",
+  cli: "CLI",
+  url: "URL",
+  ssr: "SSR",
+  ssg: "SSG",
+  graphql: "GraphQL"
+};
 function humanize(key) {
   if (key === "core") return "Core";
-  return key.replace(/^\[?\.{0,3}/, "").replace(/\]$/, "").replace(/[-_]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+  const cleaned = key.replace(/^\[+\.{0,3}/, "").replace(/\]+$/, "").replace(/^\(+|\)+$/g, "");
+  const override = NAME_OVERRIDES[cleaned.toLowerCase()];
+  if (override) return override;
+  return cleaned.replace(/[-_]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 function slugify(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
@@ -831,6 +928,7 @@ function overviewPrd(inv, opts) {
     `- **Primary language:** ${s.primaryLanguage}`,
     `- **Languages:** ${s.languages.join(", ") || "n/a"}`,
     `- **Frameworks:** ${s.frameworks.join(", ") || "none detected"}`,
+    `- **Libraries:** ${s.libraries.join(", ") || "none detected"}`,
     `- **Package managers:** ${s.packageManagers.join(", ") || "n/a"}`,
     `- **TypeScript:** ${s.hasTypeScript ? "yes" : "no"}`,
     "",
@@ -879,6 +977,7 @@ function architectureDoc(inv, opts) {
     "",
     `${inv.stack.frameworks.join(", ") || "No framework detected"} \xB7 ${inv.stack.primaryLanguage}`,
     "",
+    ...inv.stack.libraries.length ? [`**Libraries:** ${inv.stack.libraries.join(", ")}`, ""] : [],
     "## Top-level layout",
     "",
     (topDirs.map((d) => `- \`${d}/\``).join("\n") || "_Flat layout (no subdirectories)._") + (rootFiles.length ? `
@@ -1267,6 +1366,7 @@ function main() {
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
     `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " \xB7 " + inv.stack.frameworks.join(", ") : ""}`,
+    `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`,
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
     `  mode/level/fidelity: ${opts.mode}/${opts.level}/${opts.fidelity}`,
     `  output:   ${opts.out}`,

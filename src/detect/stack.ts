@@ -50,6 +50,86 @@ const NPM_FRAMEWORKS: Array<[string, string]> = [
   ["solid-js", "SolidJS"],
 ];
 
+// Notable libraries keyed by dependency. A key ending in "/" matches a scope prefix
+// (so all `@trpc/*` packages collapse to one "tRPC"); otherwise it's an exact dep name.
+const NPM_LIBRARIES: Array<[string, string]> = [
+  // ORM / database
+  ["drizzle-orm", "Drizzle ORM"],
+  ["@prisma/client", "Prisma"],
+  ["prisma", "Prisma"],
+  ["typeorm", "TypeORM"],
+  ["sequelize", "Sequelize"],
+  ["mongoose", "Mongoose"],
+  ["kysely", "Kysely"],
+  ["@supabase/supabase-js", "Supabase"],
+  // Auth
+  ["next-auth", "NextAuth.js"],
+  ["@auth/core", "Auth.js"],
+  ["@clerk/nextjs", "Clerk"],
+  ["lucia", "Lucia"],
+  ["passport", "Passport"],
+  // API / data fetching layer
+  ["@trpc/", "tRPC"],
+  ["@tanstack/react-query", "TanStack Query"],
+  ["react-query", "TanStack Query"],
+  ["@apollo/client", "Apollo GraphQL"],
+  ["graphql", "GraphQL"],
+  ["swr", "SWR"],
+  // Styling / UI
+  ["tailwindcss", "Tailwind CSS"],
+  ["styled-components", "styled-components"],
+  ["@emotion/react", "Emotion"],
+  ["@mui/material", "MUI"],
+  ["@chakra-ui/react", "Chakra UI"],
+  ["@radix-ui/", "Radix UI"],
+  ["@mantine/core", "Mantine"],
+  ["bootstrap", "Bootstrap"],
+  // State management
+  ["@reduxjs/toolkit", "Redux Toolkit"],
+  ["redux", "Redux"],
+  ["zustand", "Zustand"],
+  ["jotai", "Jotai"],
+  ["recoil", "Recoil"],
+  ["mobx", "MobX"],
+  // Validation / forms
+  ["zod", "Zod"],
+  ["yup", "Yup"],
+  ["valibot", "Valibot"],
+  ["react-hook-form", "React Hook Form"],
+  ["formik", "Formik"],
+  // Testing
+  ["vitest", "Vitest"],
+  ["jest", "Jest"],
+  ["@playwright/test", "Playwright"],
+  ["playwright", "Playwright"],
+  ["cypress", "Cypress"],
+  ["@testing-library/react", "Testing Library"],
+  // i18n
+  ["next-intl", "next-intl"],
+  ["i18next", "i18next"],
+  ["react-i18next", "react-i18next"],
+  // Services / analytics / email
+  ["posthog-js", "PostHog"],
+  ["@sentry/", "Sentry"],
+  ["resend", "Resend"],
+  ["nodemailer", "Nodemailer"],
+  ["stripe", "Stripe"],
+  ["@aws-sdk/", "AWS SDK"],
+];
+
+/** Detect notable libraries from a merged dependency map (runtime + dev). */
+export function detectLibraries(deps: Record<string, string>): string[] {
+  const names = Object.keys(deps);
+  const found = new Set<string>();
+  for (const [pattern, label] of NPM_LIBRARIES) {
+    const hit = pattern.endsWith("/")
+      ? names.some((n) => n.startsWith(pattern))
+      : pattern in deps;
+    if (hit) found.add(label);
+  }
+  return [...found];
+}
+
 function readJson(path: string): Record<string, unknown> | null {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
@@ -71,6 +151,7 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
 
   const frameworks = new Set<string>();
   const packageManagers = new Set<string>();
+  let libraries: string[] = [];
   let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
 
   // JS/TS ecosystem.
@@ -83,6 +164,7 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
     for (const [dep, label] of NPM_FRAMEWORKS) {
       if (dep in allDeps) frameworks.add(label);
     }
+    libraries = detectLibraries(allDeps);
     if ("typescript" in allDeps) hasTypeScript = true;
     if (existsSync(join(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
     else if (existsSync(join(repo, "yarn.lock"))) packageManagers.add("yarn");
@@ -110,6 +192,7 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
     languages,
     primaryLanguage: languages[0] ?? "Unknown",
     frameworks: [...frameworks],
+    libraries,
     packageManagers: [...packageManagers],
     hasTypeScript,
   };

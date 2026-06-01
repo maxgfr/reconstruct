@@ -147,9 +147,10 @@ reconstruction/
 ```
 
 `inventory.json` is the structured backbone every PRD is rendered from: it includes
-`repoName`, `fileCount`, `totalLines`, `stack` (primary language + frameworks),
-`features`, `routes`, `i18n`, `schemas`, and `configs`. The artifacts and the per-feature
-copies are produced by [`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
+`repoName`, `fileCount`, `totalLines`, `stack` (primary language, frameworks, and
+detected `libraries`), `features`, `routes`, `i18n`, `schemas`, and `configs`. The
+artifacts and the per-feature copies are produced by
+[`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
 [`src/output.ts`](./src/output.ts).
 
 ---
@@ -166,9 +167,9 @@ walk → detect → adapters → features → prd → output
 | Stage | File(s) | Responsibility |
 | --- | --- | --- |
 | **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore`, categorize each file (code, config, schema, i18n, …). |
-| **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts) | Rank languages, identify frameworks and the package manager, flag TypeScript. |
+| **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts) | Rank languages, identify frameworks, **detect notable libraries** (ORM, auth, API layer, styling, testing, i18n, services), find the package manager, flag TypeScript. |
 | **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, routes, and i18n (see below). |
-| **features** | [`src/features.ts`](./src/features.ts) | Group files into features by directory structure; assign numbered slugs. |
+| **features** | [`src/features.ts`](./src/features.ts) | Group files into features by route/directory segment — skipping route groups `(...)` and dynamic segments `[...]` so i18n apps (`app/[locale]/...`) split into real features; assign numbered slugs. |
 | **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts and decide which real files to copy/embed/describe. |
 | **output** | [`src/output.ts`](./src/output.ts) | Write artifacts and copy ground-truth files to `--out`. |
 
