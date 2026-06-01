@@ -1,10 +1,10 @@
-# Prisma
+# Project Setup & Tooling
 
-> Unit `04-prisma` · kind: feature
+> Unit `02-project-setup` · kind: project-setup
 
 ## Summary
 
-Groups 1 file(s).
+3 configuration/tooling file(s): build, lint, env, CI.
 
 ## Functional requirements
 
@@ -15,7 +15,9 @@ Groups 1 file(s).
 
 Files that implement this unit (rewrite them from the requirements above):
 
-- `prisma/schema.prisma`
+- `.env.example`
+- `next.config.js`
+- `package.json`
 
 
 ## Improvements & refactors

@@ -1,0 +1,20 @@
+# Keep dev dependencies and CI actions up to date.
+# (reconstruct ships a zero-dependency committed bundle; updates here only touch
+# the build/test toolchain and GitHub Actions.)
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      dev-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["ci"]

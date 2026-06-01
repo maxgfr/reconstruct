@@ -7,22 +7,25 @@ start and [`SKILL.md`](./SKILL.md) is the agent-facing playbook.
 
 ---
 
-## Concept: a hybrid engine
+## Concept: thin deterministic scaffold + thick AI playbook
 
-reconstruct splits the work into two halves with different strengths:
+reconstruct splits the work into two layers with a sharp boundary:
 
-1. **Deterministic extraction** — a bundled, dependency-free Node script
+1. **Deterministic scaffold** — a bundled, dependency-free Node script
    ([`scripts/analyze.mjs`](./scripts/analyze.mjs)) walks the repo and produces a precise,
-   reproducible inventory: stack, routes, i18n, schema, config, dependencies, and a
-   feature breakdown. No API key, no model, no guessing — just facts read off the
-   filesystem.
-2. **Agent enrichment** — the agent that runs the skill turns that raw material into
-   concrete, testable PRDs: product summary, functional requirements, acceptance
-   criteria, and (optionally) improvements or a redesigned architecture.
+   reproducible inventory of **universal facts** (tree, languages, lines, dependencies, env
+   vars, scripts, i18n, stack/library detection) plus framework-agnostic **candidate hints**
+   — files that likely declare routes, an API surface, the data model, or entry points,
+   clearly labelled *to verify*. It also emits `unknowns`: explicit notes about what it could
+   not resolve. No API key, no model, no guessing.
+2. **AI playbook** — the markdown (`SKILL.md` + `references/`) is the program the agent
+   follows to supply framework-aware understanding for **any** stack: it maps the real
+   interface surface (`INTERFACES.md`), extracts the data model (`DATA-MODEL.md`), groups
+   features semantically, and turns source into concrete, testable PRDs.
 
-Keeping facts and reasoning apart is the whole point: the script never hallucinates a
-route or a translation key, and the agent never has to re-derive what the code already
-states. You get accurate ground truth *and* useful judgement.
+The engine guarantees correct facts and good starting points; the agent supplies the
+understanding. A per-framework adapter does not scale — a markdown playbook that teaches the
+agent *where to look* in any stack does.
 
 ---
 
@@ -87,14 +90,18 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--mode <mode>` | `preserve` \| `redesign` | `preserve` | Keep the current architecture, or design a fresh one for the same features. |
 | `--level <level>` | `light` \| `complex` | `light` | Faithful & concise, or also surface improvements the agent folds in. |
 | `--fidelity <mode>` | `mirror` \| `embed` \| `describe` | derived from mode+level | How real code is carried into the PRDs (see below). |
+| `--granularity <g>` | `coarse` \| `fine` | `coarse` | Feature grouping. `coarse` folds trivial, route-less single-file groups into Core; `fine` keeps them split. |
+| `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
+| `--exclude <glob>` | gitignore-style glob | — | Skip files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--max-embed-bytes N` | integer > 0 | `16000` | Max bytes embedded per file when `fidelity=embed`. |
 | `--json` | flag | off | Print the inventory JSON to stdout and write nothing to disk. |
 | `-h, --help` | flag | — | Show help and exit. |
 | `-v, --version` | flag | — | Print the version and exit. |
 
 Both `--flag value` and `--flag=value` forms are accepted. After a successful run the CLI
-prints a short summary to stderr (file count, stack, feature/route/locale counts, and the
-path to `REBUILD.md`).
+prints a short summary to stderr (file count, stack, feature/route/locale counts, candidate
+hints, monorepo workspaces, excluded-file count, unresolved `unknowns`, and the path to
+`REBUILD.md`).
 
 ---
 
@@ -135,9 +142,11 @@ reconstruction/
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
 │   ├── ARCHITECTURE.md        # current (preserve) or proposed (redesign) architecture
+│   ├── INTERFACES.md          # interface surface skeleton (routes/endpoints/RPC/GraphQL/CLI/jobs)
+│   ├── DATA-MODEL.md          # data-model skeleton (entities, fields, relations)
 │   └── diagram.md             # mermaid module diagram
 ├── features/
-│   └── NN-<slug>/PRD.md       # one PRD per feature/module (numbered, slugified)
+│   └── NN-<slug>/PRD.md       # one PRD per feature/module (numbered in dependency-tier order)
 ├── data/                      # ground truth, copied verbatim
 │   ├── translations/          # i18n files
 │   ├── schema/                # DB schema / models (.prisma, .sql, .graphql, …)
@@ -147,10 +156,12 @@ reconstruction/
 ```
 
 `inventory.json` is the structured backbone every PRD is rendered from: it includes
-`repoName`, `fileCount`, `totalLines`, `stack` (primary language, frameworks, and
-detected `libraries`), `features`, `routes`, `i18n`, `schemas`, and `configs`. The
-artifacts and the per-feature copies are produced by
-[`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
+`repoName`, `fileCount`, `totalLines`, `stack` (primary language, frameworks, and detected
+`libraries`), `features`, `routes`, `i18n`, `schemas`, `configs`, and the v0.2 additions:
+`hints` (`routeCandidates` / `apiCandidates` / `schemaCandidates` / `entryPoints`),
+`unknowns` (explicit pointers for the agent), `workspaces` (monorepo packages), `runtime`
+(e.g. required Node version), and `excludedCount`. The artifacts and the per-feature copies
+are produced by [`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
 [`src/output.ts`](./src/output.ts).
 
 ---
@@ -161,16 +172,17 @@ The pipeline is a straight line, orchestrated by [`src/analyze.ts`](./src/analyz
 analysis) and [`src/cli.ts`](./src/cli.ts) (CLI + render + write):
 
 ```
-walk → detect → adapters → features → prd → output
+walk → detect → candidates → adapters → features → prd → output
 ```
 
 | Stage | File(s) | Responsibility |
 | --- | --- | --- |
-| **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore`, categorize each file (code, config, schema, i18n, …). |
-| **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts) | Rank languages, identify frameworks, **detect notable libraries** (ORM, auth, API layer, styling, testing, i18n, services), find the package manager, flag TypeScript. |
-| **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, routes, and i18n (see below). |
-| **features** | [`src/features.ts`](./src/features.ts) | Group files into features by route/directory segment — skipping route groups `(...)` and dynamic segments `[...]` so i18n apps (`app/[locale]/...`) split into real features; assign numbered slugs. |
-| **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts and decide which real files to copy/embed/describe. |
+| **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore` + `--include`/`--exclude`, categorize each file, and report `excludedCount`. |
+| **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts) | Rank languages; identify frameworks (JS/TS + Python/Ruby/PHP/JVM via manifests); **detect notable libraries**; find package managers; detect **monorepo workspaces** and the required **Node version**. |
+| **candidates** | [`src/detect/candidates.ts`](./src/detect/candidates.ts) | Framework-agnostic **hints**: candidate files for routes, API surface (tRPC/GraphQL/gRPC/OpenAPI), data model (ORM schemas/models), and entry points — from path + bounded content heuristics. |
+| **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, env vars, Next.js routes, and i18n (see below). |
+| **features** | [`src/features.ts`](./src/features.ts) | Group files into features (skipping route groups `(...)` / dynamic `[...]` segments), order them by **dependency tier** (foundations → feature pages → tests/docs), and apply `--granularity`. |
+| **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts — including the `INTERFACES.md` / `DATA-MODEL.md` skeletons — and decide which real files to copy/embed/describe. |
 | **output** | [`src/output.ts`](./src/output.ts) | Write artifacts and copy ground-truth files to `--out`. |
 
 Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
@@ -180,29 +192,34 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 | Adapter | File | What it does |
 | --- | --- | --- |
 | Generic | [`src/adapters/generic.ts`](./src/adapters/generic.ts) | Dependencies (npm, pip, Cargo, Go modules, Composer), npm scripts, env vars, file categories. |
-| Next.js | [`src/adapters/nextjs.ts`](./src/adapters/nextjs.ts) | Deep route detection for the app router and pages router (route groups, parallel slots, API routes). |
+| Next.js | [`src/adapters/nextjs.ts`](./src/adapters/nextjs.ts) | Deterministic route detection for the app + pages routers (route groups, parallel slots, API routes). |
 | i18n | [`src/adapters/i18n.ts`](./src/adapters/i18n.ts) | Locale detection and per-file translation-key counting. |
-| JS/TS | [`src/adapters/js-ts.ts`](./src/adapters/js-ts.ts) | Entry-point and component-count utilities. |
 
-The **deepest** analysis (routes, i18n, components) targets **JS/TS/Next.js**. Every other
-stack is detected and inventoried generically (tree, files, dependencies, scripts).
+Next.js routes are the one paradigm resolved deterministically; every other stack's interface
+surface and data model are mapped by the **AI playbook** from the candidate hints — see
+[`references/analysis-playbook.md`](./references/analysis-playbook.md) and the per-stack
+cheat-sheets in [`references/stack-guides/`](./references/stack-guides). The engine stays
+universal; framework depth lives in markdown.
 
 ---
 
-## Extending: add an adapter
+## Extending: add a stack guide (markdown, not code)
 
-To deepen support for another stack (e.g. Vite, Remix, a Python framework):
+Support for a new stack is almost always **markdown**, not an adapter:
 
-1. Add a module under [`src/adapters/`](./src/adapters) that exports an extractor — follow
-   the shape of `nextjs.ts` (it returns `RouteInfo[]`) or `i18n.ts` (returns `I18nInfo | null`).
-2. Gate it on the detected stack, e.g. `if (stack.frameworks.includes("Remix")) …`, so it
-   stays inert for unrelated repos.
-3. Call it from [`src/analyze.ts`](./src/analyze.ts) and fold the result into the returned
-   `Inventory`. Add the new field to the relevant type in [`src/types.ts`](./src/types.ts).
-4. If the new data should surface in the PRDs, render it from
-   [`src/prd/templates.ts`](./src/prd/templates.ts).
-5. Add a fixture under `tests/fixtures/` and a case in `tests/analyze.test.ts`, then
-   `npm run build` to refresh the committed bundle.
+1. Add `references/stack-guides/<stack>.md` following the existing 5-section shape
+   (`Where the interface surface lives`, `Data model`, `Entry points & boot`, `Config & env`,
+   `Gotchas`, + a closing `> tip:`). Keep it a dense cheat-sheet with real file paths and
+   function/decorator names. The agent loads it on demand and uses it to fill `INTERFACES.md`
+   and `DATA-MODEL.md`.
+2. *Optional:* if a cheap, framework-agnostic signal would help the agent find the right
+   files, add a candidate heuristic to [`src/detect/candidates.ts`](./src/detect/candidates.ts)
+   (a *candidate*, never asserted truth), cover it with a test, and `npm run build` to refresh
+   the committed bundle.
+
+This is the whole point of the v0.2 architecture: a per-framework adapter does not scale, so
+framework knowledge lives in markdown the agent follows. See
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
 
 ---
 
@@ -210,9 +227,10 @@ To deepen support for another stack (e.g. Vite, Remix, a Python framework):
 
 Once the `reconstruction/` folder exists, rebuild feature-by-feature:
 
-1. Read `00-overview/PRD.md` and `architecture/ARCHITECTURE.md` for the big picture.
-2. Follow the build order in `REBUILD.md`, implementing one `features/<slug>/PRD.md` at a
-   time.
+1. Read `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`,
+   and `architecture/DATA-MODEL.md` for the big picture.
+2. Follow the dependency-tiered build order in `REBUILD.md`, implementing one
+   `features/<slug>/PRD.md` at a time.
 3. Use `data/` (translations, schema, config) and `source/` (when `fidelity=mirror`) as
    ground truth.
 
@@ -237,7 +255,7 @@ and makes no network calls. Review `scripts/` before running on untrusted reposi
 ```bash
 npm install
 npm run build       # tsup bundles src/ -> scripts/analyze.mjs (committed, zero-dep)
-npm test            # vitest unit + integration on tests/fixtures/sample-app
+npm test            # vitest unit + integration over multi-stack fixtures
 npm run typecheck   # tsc --noEmit (strict)
 npm run check:build # rebuild and assert scripts/analyze.mjs is up to date (git diff)
 npm run demo        # run the bundle on the sample fixture into /tmp/reconstruct-demo
@@ -255,10 +273,13 @@ committed bundle matches the source via `npm run check:build`.
 
 ## Limits & FAQ
 
-**Which stacks get deep analysis?** Routes, i18n, components, and schema detection are
-tuned for **JS/TS/Next.js**. Other stacks (Python, Go, Rust, PHP, Ruby, …) are detected
-and inventoried generically — tree, files, dependencies, scripts — which is still enough
-to drive a faithful rebuild, just with fewer framework-specific niceties.
+**Which stacks are supported?** All of them. The deterministic scaffold is universal and
+emits candidate hints for routes/API/schema/entry points on any stack; the framework-aware
+depth (the interface surface and data model) comes from the AI playbook plus the per-stack
+guides in [`references/stack-guides/`](./references/stack-guides) — Next.js, Remix, Nuxt,
+SvelteKit, Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go,
+Spring Boot, tRPC/gRPC, GraphQL, and mobile. Next.js routes are additionally resolved
+deterministically. Missing a guide? Adding one is just markdown.
 
 **No features detected?** The repo is probably flat. Group by top-level folders manually
 and note it in `00-overview/PRD.md`.

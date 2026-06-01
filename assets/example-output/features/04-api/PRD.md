@@ -1,23 +1,27 @@
-# Project Setup & Tooling
+# API
 
-> Unit `06-project-setup` · kind: project-setup
+> Unit `04-api` · kind: feature
 
 ## Summary
 
-3 configuration/tooling file(s): build, lint, env, CI.
+Groups 1 file(s); routes: /api/users.
 
 ## Functional requirements
 
 > 🧠 **For the AI agent:** Derive precise, testable functional requirements for this unit from the source material below. Cover happy paths, edge cases, validation, and error states.
 
 
+## Routes
+
+| Route | Kind | File |
+| --- | --- | --- |
+| `/api/users` | api | `app/api/users/route.ts` |
+
 ## Source material
 
 Files that implement this unit (rewrite them from the requirements above):
 
-- `.env.example`
-- `next.config.js`
-- `package.json`
+- `app/api/users/route.ts`
 
 
 ## Improvements & refactors

@@ -1,0 +1,13 @@
+{
+  "name": "i18n-app",
+  "version": "1.0.0",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "next-intl": "^3.0.0",
+    "drizzle-orm": "^0.36.0"
+  },
+  "devDependencies": { "typescript": "^5.5.0", "drizzle-kit": "^0.28.0" }
+}

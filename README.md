@@ -7,8 +7,10 @@
 > config) and, optionally, with improvements.
 
 `reconstruct` is an [Agent Skill](https://www.skills.sh/) (the open agent-skills
-ecosystem by Vercel). A bundled, dependency-free Node script does the **deterministic**
-extraction; the AI agent that runs the skill then **enriches** the generated PRDs.
+ecosystem by Vercel). It pairs a **thin deterministic scaffold** with a **thick AI
+playbook**: a bundled, dependency-free Node script extracts universal facts and *candidate
+hints*, and the AI agent that runs the skill supplies the framework-aware understanding —
+the interface surface, the data model, and the real features — for **any** stack.
 
 > 📖 **Full documentation:** [`DOCUMENTATION.md`](./DOCUMENTATION.md) — concept, CLI
 > reference, the analyzer pipeline, how to extend it, and FAQ.
@@ -35,9 +37,11 @@ reconstruction/
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
 │   ├── ARCHITECTURE.md        # current (preserve) or proposed (redesign) architecture
+│   ├── INTERFACES.md          # the full interface surface (routes, endpoints, RPC/GraphQL, CLI, jobs)
+│   ├── DATA-MODEL.md          # entities, fields, relations
 │   └── diagram.md             # mermaid module diagram
 ├── features/
-│   └── NN-<slug>/PRD.md       # one PRD per feature/module
+│   └── NN-<slug>/PRD.md       # one PRD per feature/module (build-order tiered)
 ├── data/                      # ground truth, copied verbatim
 │   ├── translations/          # i18n files
 │   ├── schema/                # DB schema / models
@@ -82,20 +86,26 @@ Run `node scripts/analyze.mjs --help` for all flags.
 
 ## How the rebuild works
 
-1. Read `00-overview/PRD.md` and `architecture/ARCHITECTURE.md`.
-2. Follow the build order in `REBUILD.md`, implementing one `features/<slug>/PRD.md`
-   at a time.
+1. Read `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`,
+   and `architecture/DATA-MODEL.md`.
+2. Follow the dependency-tiered build order in `REBUILD.md`, implementing one
+   `features/<slug>/PRD.md` at a time.
 3. Use `data/` (and `source/` when present) as ground truth.
 
-The deepest analysis (routes, i18n, components, schema) targets **JS/TS/Next.js**;
-every other stack is covered by generic extraction (tree, files, dependencies).
+**Any stack.** The deterministic scaffold is universal (tree, deps, env, i18n, stack/library
+detection, plus *candidate hints* for routes/API/schema/entry points). The framework-aware
+depth — mapping the real interface surface and data model — comes from the AI playbook in
+[`SKILL.md`](./SKILL.md) + [`references/`](./references), with per-stack cheat-sheets in
+[`references/stack-guides/`](./references/stack-guides) (Next.js, Remix, Nuxt, SvelteKit,
+Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go, Spring Boot,
+tRPC/gRPC, GraphQL, mobile). Adding a stack is adding markdown, not code.
 
 ## Development
 
 ```bash
 npm install
 npm run build      # bundles src/ -> scripts/analyze.mjs (committed, zero-dep)
-npm test           # vitest unit + integration on tests/fixtures/sample-app
+npm test           # vitest unit + integration over multi-stack fixtures
 npm run typecheck
 ```
 

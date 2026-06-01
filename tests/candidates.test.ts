@@ -42,6 +42,7 @@ beforeAll(() => {
   w("api/orders.proto", `syntax = "proto3";\nservice Orders { rpc List (Empty) returns (OrderList); }`);
   w("manage.py", "#!/usr/bin/env python\nimport sys");
   w("src/index.ts", "console.log('hi')");
+  w("routes/__init__.py", ""); // empty package marker — must not be a candidate
 
   files.push(
     fi("package.json", "config", ".json"),
@@ -52,6 +53,7 @@ beforeAll(() => {
     fi("api/orders.proto", "other", ".proto"),
     fi("manage.py", "code", ".py"),
     fi("src/index.ts"),
+    { path: "routes/__init__.py", ext: ".py", size: 0, lines: 0, category: "other", binary: false },
   );
 });
 
@@ -82,6 +84,11 @@ describe("detectCandidates", () => {
   it("does not invent candidates from unrelated files", () => {
     const h = detectCandidates(repo, files, STACK);
     expect(h.routeCandidates).not.toContain("src/index.ts");
+  });
+
+  it("ignores empty files even inside a routing dir", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.routeCandidates).not.toContain("routes/__init__.py");
   });
 });
 

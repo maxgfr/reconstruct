@@ -21,6 +21,7 @@ Env via `os.environ`, `python-decouple`, `django-environ`, `pydantic-settings Ba
 - Django CBV path = which HTTP methods the class implements (`get`/`post`/`put`), not the URL line.
 - Multiple `include()` levels + DRF `NestedRouter` mean the real path is a concatenation; resolve every prefix hop.
 - Flask blueprint prefix can be set at `register_blueprint` AND in `Blueprint(...)` — both apply; don't double-count or miss either.
+- Flask `@bp.route("/")` under prefix `/api/users` resolves to `/api/users/` **with** the trailing slash (Flask `strict_slashes` default 308-redirects `/api/users` → `/api/users/`); record the slash form.
 - FastAPI dependencies in `dependencies=[...]` on `APIRouter`/`include_router` apply auth to ALL child routes (easy to miss per-route).
 - Same `path/route` string with different `methods` = separate INTERFACES.md rows. Trailing-slash behavior differs (Django `APPEND_SLASH`, DRF `trailing_slash`).
 

@@ -62,7 +62,7 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
   const schemaCandidates = new Set<string>();
 
   for (const f of files) {
-    if (f.binary) continue;
+    if (f.binary || f.size === 0) continue; // empty files (e.g. package markers) declare nothing
     const p = f.path;
     const lower = p.toLowerCase();
     const base = baseName(lower);

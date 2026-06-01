@@ -1,6 +1,6 @@
 # Dashboard
 
-> Unit `03-dashboard` · kind: feature
+> Unit `06-dashboard` · kind: feature
 
 ## Summary
 

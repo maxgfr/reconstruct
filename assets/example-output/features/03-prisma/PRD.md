@@ -1,27 +1,21 @@
-# Api
+# Prisma
 
-> Unit `02-api` · kind: feature
+> Unit `03-prisma` · kind: feature
 
 ## Summary
 
-Groups 1 file(s); routes: /api/users.
+Groups 1 file(s).
 
 ## Functional requirements
 
 > 🧠 **For the AI agent:** Derive precise, testable functional requirements for this unit from the source material below. Cover happy paths, edge cases, validation, and error states.
 
 
-## Routes
-
-| Route | Kind | File |
-| --- | --- | --- |
-| `/api/users` | api | `app/api/users/route.ts` |
-
 ## Source material
 
 Files that implement this unit (rewrite them from the requirements above):
 
-- `app/api/users/route.ts`
+- `prisma/schema.prisma`
 
 
 ## Improvements & refactors

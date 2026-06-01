@@ -624,7 +624,7 @@ function detectCandidates(repo, files, stack) {
   const apiCandidates = /* @__PURE__ */ new Set();
   const schemaCandidates = /* @__PURE__ */ new Set();
   for (const f of files) {
-    if (f.binary) continue;
+    if (f.binary || f.size === 0) continue;
     const p = f.path;
     const lower = p.toLowerCase();
     const base = baseName(lower);
@@ -829,7 +829,8 @@ function extractEnvVars(repo, files) {
   const patterns = [
     /process\.env\.([A-Z][A-Z0-9_]*)/g,
     /import\.meta\.env\.([A-Z][A-Z0-9_]*)/g,
-    /os\.environ(?:\.get)?\[?["']([A-Z][A-Z0-9_]*)["']/g
+    // Python: os.environ["X"], os.environ.get("X"), os.getenv("X").
+    /os\.(?:environ(?:\.get)?|getenv)\s*[[(]\s*["']([A-Z][A-Z0-9_]*)["']/g
   ];
   for (const f of files) {
     if (f.binary || f.category !== "code" && f.category !== "config") continue;
@@ -1264,7 +1265,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 }
 
 // src/types.ts
-var VERSION = "0.1.0";
+var VERSION = "0.2.0";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints) {
@@ -1504,8 +1505,8 @@ function interfacesDoc(inv, opts) {
     "",
     "| Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |",
     "| --- | --- | --- | --- | --- | --- |",
-    opts.level === "light" ? "_One row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._" : agentNote(
-      "Add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects."
+    opts.level === "light" ? "_Keep these columns; add one row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._" : agentNote(
+      "Keep these columns; add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects."
     ),
     ""
   ].join("\n");
@@ -1528,8 +1529,8 @@ function dataModelDoc(inv, opts) {
     "",
     "| Entity / Table | Field | Type | Constraints | Relation |",
     "| --- | --- | --- | --- | --- |",
-    opts.level === "light" ? "_One block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._" : agentNote(
-      "For each entity, capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`."
+    opts.level === "light" ? "_Keep these columns; one block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._" : agentNote(
+      "Keep these columns; for each entity capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`."
     ),
     "",
     "## Relations & integrity",

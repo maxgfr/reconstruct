@@ -143,7 +143,8 @@ export function extractEnvVars(repo: string, files: FileInfo[]): string[] {
   const patterns = [
     /process\.env\.([A-Z][A-Z0-9_]*)/g,
     /import\.meta\.env\.([A-Z][A-Z0-9_]*)/g,
-    /os\.environ(?:\.get)?\[?["']([A-Z][A-Z0-9_]*)["']/g,
+    // Python: os.environ["X"], os.environ.get("X"), os.getenv("X").
+    /os\.(?:environ(?:\.get)?|getenv)\s*[[(]\s*["']([A-Z][A-Z0-9_]*)["']/g,
   ];
   for (const f of files) {
     if (f.binary || (f.category !== "code" && f.category !== "config")) continue;

@@ -192,9 +192,9 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
     "| Method / Trigger | Path / Operation | Kind | Handler file | Auth | Notes |",
     "| --- | --- | --- | --- | --- | --- |",
     opts.level === "light"
-      ? "_One row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._"
+      ? "_Keep these columns; add one row per route / endpoint / procedure / command / job. Cover the whole surface, not just the candidates above._"
       : agentNote(
-          "Add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects.",
+          "Keep these columns; add a row per operation. Note auth/permission requirements, input/output shapes (link to `DATA-MODEL.md`), and side effects.",
         ),
     "",
   ].join("\n");
@@ -222,9 +222,9 @@ export function dataModelDoc(inv: Inventory, opts: Options): string {
     "| Entity / Table | Field | Type | Constraints | Relation |",
     "| --- | --- | --- | --- | --- |",
     opts.level === "light"
-      ? "_One block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._"
+      ? "_Keep these columns; one block of rows per entity. Capture primary keys, foreign keys, enums, defaults, and indexes._"
       : agentNote(
-          "For each entity, capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`.",
+          "Keep these columns; for each entity capture fields + types, PK/FK, enums, defaults, indexes, and how it maps to the interfaces in `INTERFACES.md`.",
         ),
     "",
     "## Relations & integrity",

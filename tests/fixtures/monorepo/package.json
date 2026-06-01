@@ -1,0 +1,6 @@
+{
+  "name": "acme-monorepo",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=20" }
+}

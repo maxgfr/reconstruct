@@ -3,11 +3,11 @@
 ```mermaid
 graph TD
   F0["Core"]
-  F1["Api"]
-  F2["Dashboard"]
-  F3["Prisma"]
+  F1["Project Setup & Tooling"]
+  F2["Prisma"]
+  F3["API"]
   F4["Internationalization"]
-  F5["Project Setup & Tooling"]
+  F5["Dashboard"]
   F6["Documentation"]
   DATA[("Data / i18n / schema")]
   F0 --> DATA

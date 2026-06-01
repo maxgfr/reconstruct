@@ -1,5 +1,5 @@
 {
-  "generatedWith": "reconstruct@0.1.0",
+  "generatedWith": "reconstruct@0.2.0",
   "repoName": "sample-app",
   "stack": {
     "languages": [
@@ -11,13 +11,18 @@
       "Next.js",
       "React"
     ],
+    "libraries": [
+      "Tailwind CSS",
+      "Zod",
+      "Playwright"
+    ],
     "packageManagers": [
       "npm"
     ],
     "hasTypeScript": true
   },
   "fileCount": 12,
-  "totalLines": 110,
+  "totalLines": 113,
   "files": [
     {
       "path": ".env.example",
@@ -94,8 +99,8 @@
     {
       "path": "package.json",
       "ext": ".json",
-      "size": 374,
-      "lines": 21,
+      "size": 460,
+      "lines": 24,
       "category": "config",
       "binary": false
     },
@@ -123,11 +128,14 @@
       "runtime": {
         "next": "^14.2.0",
         "react": "^18.3.0",
-        "react-dom": "^18.3.0"
+        "react-dom": "^18.3.0",
+        "zod": "^3.23.0",
+        "tailwindcss": "^3.4.0"
       },
       "dev": {
         "typescript": "^5.5.0",
-        "@types/react": "^18.3.0"
+        "@types/react": "^18.3.0",
+        "@playwright/test": "^1.48.0"
       }
     }
   ],
@@ -200,8 +208,30 @@
       ]
     },
     {
-      "slug": "02-api",
-      "name": "Api",
+      "slug": "02-project-setup",
+      "name": "Project Setup & Tooling",
+      "description": "3 configuration/tooling file(s): build, lint, env, CI.",
+      "kind": "project-setup",
+      "files": [
+        ".env.example",
+        "next.config.js",
+        "package.json"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "03-prisma",
+      "name": "Prisma",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "prisma/schema.prisma"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "04-api",
+      "name": "API",
       "description": "Groups 1 file(s); routes: /api/users.",
       "kind": "feature",
       "files": [
@@ -216,7 +246,18 @@
       ]
     },
     {
-      "slug": "03-dashboard",
+      "slug": "05-internationalization",
+      "name": "Internationalization",
+      "description": "2 locale(s) (en, fr), up to 3 keys per locale.",
+      "kind": "internationalization",
+      "files": [
+        "messages/en.json",
+        "messages/fr.json"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "06-dashboard",
       "name": "Dashboard",
       "description": "Groups 1 file(s); routes: /dashboard.",
       "kind": "feature",
@@ -232,39 +273,6 @@
       ]
     },
     {
-      "slug": "04-prisma",
-      "name": "Prisma",
-      "description": "Groups 1 file(s).",
-      "kind": "feature",
-      "files": [
-        "prisma/schema.prisma"
-      ],
-      "routes": []
-    },
-    {
-      "slug": "05-internationalization",
-      "name": "Internationalization",
-      "description": "2 locale(s) (en, fr), up to 3 keys per locale.",
-      "kind": "internationalization",
-      "files": [
-        "messages/en.json",
-        "messages/fr.json"
-      ],
-      "routes": []
-    },
-    {
-      "slug": "06-project-setup",
-      "name": "Project Setup & Tooling",
-      "description": "3 configuration/tooling file(s): build, lint, env, CI.",
-      "kind": "project-setup",
-      "files": [
-        ".env.example",
-        "next.config.js",
-        "package.json"
-      ],
-      "routes": []
-    },
-    {
       "slug": "07-documentation",
       "name": "Documentation",
       "description": "1 documentation file(s).",
@@ -274,5 +282,21 @@
       ],
       "routes": []
     }
-  ]
+  ],
+  "hints": {
+    "routeCandidates": [
+      "app/api/users/route.ts",
+      "app/dashboard/page.tsx",
+      "app/page.tsx"
+    ],
+    "apiCandidates": [],
+    "schemaCandidates": [
+      "prisma/schema.prisma"
+    ],
+    "entryPoints": []
+  },
+  "unknowns": [
+    "The data model is not structured by the engine — extract entities, fields, types, and relations from `hints.schemaCandidates` into `architecture/DATA-MODEL.md`."
+  ],
+  "excludedCount": 0
 }

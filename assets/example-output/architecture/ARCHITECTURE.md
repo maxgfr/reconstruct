@@ -5,11 +5,13 @@
 | Mode | `redesign` |
 | Level | `complex` |
 | Fidelity | `describe` |
-| Generated with | `reconstruct@0.1.0` |
+| Generated with | `reconstruct@0.2.0` |
 
 ## Detected stack
 
 Next.js, React · TypeScript
+
+**Libraries:** Tailwind CSS, Zod, Playwright
 
 ## Top-level layout
 
@@ -22,7 +24,7 @@ Next.js, React · TypeScript
 
 ## Dependencies
 
-- **npm** (`package.json`): 3 runtime, 2 dev
+- **npm** (`package.json`): 5 runtime, 3 dev
 
 ## Data & schema
 

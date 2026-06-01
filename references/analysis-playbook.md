@@ -16,7 +16,8 @@ every entry in `inventory.json.unknowns`.
 
 1. Read `inventory.stack` (languages, frameworks, libraries, package managers) and
    `inventory.dependencies`. Pick the primary framework; note ORM, auth, API-layer, and
-   i18n libraries — they tell you *where* to look next.
+   i18n libraries — they tell you *where* to look next. (`stack.libraries` is npm-aware; for
+   Python/Ruby/PHP/JVM/Go, read the real deps from `inventory.dependencies` directly.)
 2. Read `inventory.hints.entryPoints` to find how the app boots (server, CLI, framework
    entry, mobile root).
 3. If `inventory.workspaces` is non-empty, it's a **monorepo** — see §Monorepo.
