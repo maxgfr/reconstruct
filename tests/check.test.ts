@@ -95,6 +95,43 @@ describe("checkOutput — unresolved scaffolding", () => {
     const { errors } = checkOutput(dir);
     expect(errors).toEqual([]);
   });
+
+  // Regressions: a *correctly enriched* tree must pass even though the 🧠 marker
+  // or the words "fill this in" appear in code spans / quoted examples — i.e. as
+  // documentation of the gate, not as unresolved scaffolding.
+  it("does not flag the 🧠 inside the rendered Definition-of-done code span", () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      `# Auth\n${SPINE}\n- [ ] \`node scripts/analyze.mjs --check\` passes — no unresolved \`🧠\` callouts or placeholders.\n`,
+    );
+    const { errors } = checkOutput(dir);
+    expect(errors).toEqual([]);
+  });
+
+  it('does not flag a quoted "fill this in" example in a docs/buildability PRD', () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/02-posts/PRD.md",
+      `# Posts\n${SPINE}\n- The gate fails when a placeholder phrase ("fill this in", "TODO", "TBD") remains. (FR1)\n`,
+    );
+    const { errors } = checkOutput(dir);
+    expect(errors).toEqual([]);
+  });
+
+  it("still flags a real `> 🧠` callout and a bare (fill this in) placeholder", () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      `# Auth\n${SPINE}\n> 🧠 **For the AI agent:** describe the flow.\n\n## Notes (fill this in)\n`,
+    );
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/🧠|callout/i);
+    expect(errors.join("\n")).toMatch(/fill this in/i);
+  });
 });
 
 describe("checkOutput — reference integrity", () => {

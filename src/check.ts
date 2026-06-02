@@ -121,13 +121,20 @@ export function checkOutput(outDir: string): CheckResult {
   // 2. Unresolved scaffolding — the #1 cause of an unbuildable PRD is an
   //    architecture doc or feature spec left as a 🧠 skeleton.
   for (const d of docs) {
-    const callouts = d.content.split("🧠").length - 1;
+    // Scan PROSE only. Code spans/blocks and quoted examples legitimately
+    // contain a 🧠 or the words "fill this in" — e.g. the Definition-of-done
+    // line that names the callout marker inside backticks, embedded source under
+    // "## Source material", or a PRD that documents the gate and quotes the
+    // placeholder phrase. Those are not unresolved scaffolding; a real callout
+    // is always the bare `> 🧠 ...` blockquote, never code or a quote.
+    const prose = stripCode(d.content);
+    const callouts = prose.split("🧠").length - 1;
     if (callouts > 0) {
       errors.push(
         `${d.rel}: ${callouts} unresolved \`🧠\` agent callout(s) — resolve them exhaustively and delete the callout`,
       );
     }
-    if (/fill this in/i.test(d.content)) {
+    if (/fill this in/i.test(stripQuotes(prose))) {
       errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
     }
   }
@@ -225,6 +232,19 @@ export function checkOutput(outDir: string): CheckResult {
 /** Whether a doc documents a token — as a word, not an incidental substring. */
 function documents(doc: string, token: string): boolean {
   return doc.includes(token);
+}
+
+/** Markdown with fenced code blocks and inline code spans removed. */
+function stripCode(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/~~~[\s\S]*?~~~/g, "")
+    .replace(/`[^`\n]*`/g, "");
+}
+
+/** Drop double-quoted spans so a *quoted* placeholder example doesn't false-fail. */
+function stripQuotes(s: string): string {
+  return s.replace(/"[^"\n]*"/g, "");
 }
 
 /** Count markdown table rows that carry data (excluding the `| --- |` separator). */
