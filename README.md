@@ -131,6 +131,21 @@ policies, the i18n message catalog, and shared/owned UI components — are in
 greenfield mode the engine also **validates the plan's consistency** before rendering, so
 dangling references and anonymous-write-to-owner-FK contradictions are caught up front.
 
+### Two validation layers: deterministic gate + AI review
+
+`--check` is **deterministic** — it proves *structure* (no leftover callouts, the docs
+declare entities/operations, every PRD keeps its spine). It can't judge *substance*: a PRD
+can pass the gate and still be unbuildable (vague requirements, happy-path-only criteria, an
+unsatisfiable write contract, an enum value that contradicts the data model). That second
+judgement is the **AI review** — performed **via the skill**, not the script: there is no
+`--ai` flag and no API key, because the agent running the skill *is* the reviewer. After
+`--check` passes, the agent re-reads the tree and applies
+[`references/ai-review-rubric.md`](./references/ai-review-rubric.md) (story completeness,
+testable requirements, real Given/When/Then incl. failure paths, satisfiable write contracts,
+enum fidelity, cross-doc consistency, faithfulness, i18n, and the rebuild self-test), fixing
+every **blocker** in place. Layer 1 is fast and CI-friendly; layer 2 is where a smart model
+earns its keep.
+
 ## From scratch (greenfield)
 
 No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your agent:

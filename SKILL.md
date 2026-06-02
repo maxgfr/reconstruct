@@ -3,7 +3,7 @@ name: reconstruct
 description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec, from scratch, greenfield, build plan, new project, idea to PRD.
 license: MIT
 metadata:
-  version: 0.5.1
+  version: 0.6.0
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -92,22 +92,34 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
    by one, using `data/` and `source/` as ground truth).
 
-9. **Validate buildability — the gate must pass.** Run the consistency self-review (every
-   feature's entities/operations/enums/locales resolve against the architecture docs; every
-   write is satisfiable; anonymous writes target anonymous-capable entities), then run:
+9. **Validate buildability — two layers, both must pass.**
 
-   ```bash
-   node scripts/analyze.mjs --check --out <OUT>
-   ```
+   - **Layer 1 — the deterministic gate (structure).** Run the consistency self-review (every
+     feature's entities/operations/enums/locales resolve against the architecture docs; every
+     write is satisfiable; anonymous writes target anonymous-capable entities), then run:
 
-   It exits non-zero on unresolved `🧠` callouts or placeholders, a feature that references
-   an undocumented entity/operation, a feature PRD missing its spine, or an uncovered locale.
-   Fix every error and resolve the warnings. See `references/buildability-checklist.md`.
+     ```bash
+     node scripts/analyze.mjs --check --out <OUT>
+     ```
+
+     It exits non-zero on unresolved `🧠` callouts or placeholders, a feature that references
+     an undocumented entity/operation, a feature PRD missing its spine, or an uncovered locale.
+     Fix every error and resolve the warnings. See `references/buildability-checklist.md`.
+
+   - **Layer 2 — the AI review (substance).** The gate proves structure but cannot judge
+     whether the prose is *actually buildable*. Once `--check` passes, **you (the agent) run a
+     semantic self-review** against `references/ai-review-rubric.md` — story completeness,
+     testable requirements, real Given/When/Then (incl. failure paths), satisfiable write
+     contracts, enum fidelity, cross-doc consistency, faithfulness, i18n, and the decisive
+     rebuild self-test. This runs *via the skill* (no API key, no `--ai` flag — the model is
+     the reviewer); for a large tree, fan it out one reviewer per feature. A unit is done when
+     it has **zero blockers**. Fix blockers in place, re-run `--check`, repeat until clean.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, `references/buildability-checklist.md` for the eight contract
-categories + the `--check` gate, and `references/architecture-analysis.md` /
-`references/rebuild-instructions.md` / the PRD templates for the reasoning checklists.
+categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
+review, and `references/architecture-analysis.md` / `references/rebuild-instructions.md` / the
+PRD templates for the reasoning checklists.
 
 ## Everything is a PRD — dig until done
 
@@ -208,8 +220,10 @@ They work two ways:
 - Every item in `inventory.json.unknowns` is resolved.
 - `REBUILD.md` has a dependency-ordered build order + validation checklist; `data/` holds
   translations, schema, and config verbatim (code mode).
-- **The gate passes:** `node scripts/analyze.mjs --check --out <OUT>` reports no errors, and
-  the consistency self-review is clean.
+- **Layer 1 — the gate passes:** `node scripts/analyze.mjs --check --out <OUT>` reports no
+  errors, and the consistency self-review is clean.
+- **Layer 2 — the AI review passes:** every unit has **zero blockers** against
+  `references/ai-review-rubric.md` (the agent's semantic pass — substance, not just structure).
 - **The self-check passes:** a fresh agent could rebuild each unit *correctly* — getting the
   contracts right, not just the gist — from its PRD + the architecture docs alone.
 
