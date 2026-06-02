@@ -34,6 +34,7 @@ function opts(overrides: Partial<Options> = {}): Options {
     scratch: true,
     plan: "plan.json",
     tdd: false,
+    check: false,
     ...overrides,
   };
 }

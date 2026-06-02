@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve, join as join10 } from "path";
+import { resolve, join as join11 } from "path";
 import { pathToFileURL } from "url";
-import { existsSync as existsSync4, statSync as statSync2 } from "fs";
+import { existsSync as existsSync5, statSync as statSync3 } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -1353,7 +1353,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 }
 
 // src/types.ts
-var VERSION = "0.4.0";
+var VERSION = "0.5.0";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints) {
@@ -1484,8 +1484,102 @@ function filledEntityTables(entities) {
       for (const r of e.relations) parts.push(`- ${r}`);
       parts.push("");
     }
+    if (e.indexes?.length) {
+      parts.push("Indexes:", "");
+      for (const ix of e.indexes) parts.push(`- ${ix}`);
+      parts.push("");
+    }
+    if (e.uniques?.length) {
+      parts.push("Unique constraints:", "");
+      for (const u of e.uniques) parts.push(`- ${u}`);
+      parts.push("");
+    }
   }
   return parts.join("\n").trimEnd();
+}
+function enumsBlock(enums) {
+  const lines = ["## Enums & domain types", ""];
+  if (!enums || !enums.length) {
+    lines.push(
+      "_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._"
+    );
+    return lines.join("\n");
+  }
+  for (const e of enums) {
+    lines.push(`### ${e.name}`, "");
+    if (e.description) lines.push(e.description, "");
+    lines.push(`- Members: ${e.members.map((m) => `\`${m}\``).join(", ") || "_none \u2014 fill in_"}`, "");
+  }
+  return lines.join("\n").trimEnd();
+}
+function servicesBlock(services) {
+  const lines = ["## External services & integrations", ""];
+  for (const s of services) {
+    lines.push(`### ${s.name}${s.provider ? ` (${s.provider})` : ""}`, "", s.purpose, "");
+    if (s.operations?.length) {
+      lines.push("Operations:", "");
+      for (const op of s.operations) {
+        lines.push(
+          `- \`${op.name}\`${op.input ? ` \u2014 in: ${op.input}` : ""}${op.output ? ` \u2192 out: ${op.output}` : ""}`
+        );
+      }
+      lines.push("");
+    }
+    if (s.request) lines.push(`- **Request:** ${s.request}`);
+    if (s.response) lines.push(`- **Response:** ${s.response}`);
+    if (s.timeout) lines.push(`- **Timeout:** ${s.timeout}`);
+    if (s.onFailure) lines.push(`- **On failure:** ${s.onFailure}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+function policiesBlock(policies) {
+  const lines = ["## Cross-cutting policies", "", "| Policy | Kind | Rule | Applies to |", "| --- | --- | --- | --- |"];
+  for (const p of policies) {
+    lines.push(
+      `| ${cell(p.name)} | ${cell(p.kind ?? "")} | ${cell(p.rule)} | ${cell((p.appliesTo ?? []).join(", "))} |`
+    );
+  }
+  return lines.join("\n");
+}
+function messageCatalogBlock(i18n) {
+  const m = i18n.messages;
+  const lines = ["## Internationalization \u2014 message catalog", ""];
+  lines.push(`Locales: ${i18n.locales.join(", ")}.`, "");
+  if (!m) {
+    lines.push(
+      agentNote(
+        "Author the message catalog: list every namespace and every user-facing key with its source string, then translate into all locales above. A key without a source string is not buildable."
+      )
+    );
+    return lines.join("\n").trimEnd();
+  }
+  if (m.sourceLocale) lines.push(`Source locale: \`${m.sourceLocale}\`.`, "");
+  if (m.namespaces?.length) lines.push(`Namespaces: ${m.namespaces.map((n) => `\`${n}\``).join(", ")}.`, "");
+  if (m.entries?.length) {
+    lines.push("| Key | Source string |", "| --- | --- |");
+    for (const e of m.entries) lines.push(`| \`${cell(e.key)}\` | ${cell(e.source ?? "")} |`);
+    lines.push("");
+  }
+  lines.push(
+    agentNote(
+      `Complete the catalog: every user-facing key must have a source string and resolve in all ${i18n.locales.length} locales (${i18n.locales.join(", ")}). The keys above are the contract \u2014 extend, don't trim.`
+    )
+  );
+  return lines.join("\n").trimEnd();
+}
+function operationContracts(rows) {
+  const detailed = rows.filter((r) => r.input || r.output || r.sideEffects && r.sideEffects.length);
+  if (!detailed.length) return "";
+  const lines = ["## Operation contracts", ""];
+  for (const r of detailed) {
+    lines.push(`### \`${r.path}\`${r.auth ? ` \xB7 auth: ${r.auth}` : ""}`, "");
+    if (r.input) lines.push(`- **Input:** ${r.input}`);
+    if (r.output) lines.push(`- **Output:** ${r.output}`);
+    if (r.sideEffects?.length) lines.push(`- **Side effects:** ${r.sideEffects.join("; ")}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
 }
 function overviewPrd(inv, opts) {
   const isScratch = opts.mode === "scratch";
@@ -1587,8 +1681,28 @@ function architectureDoc(inv, opts) {
     "",
     "## Internationalization",
     "",
-    inv.i18n ? isScratch ? `Locales: ${inv.i18n.locales.join(", ")} \u2014 provide a messages file per locale (see the Internationalization feature).` : `Locales: ${inv.i18n.locales.join(", ")} \u2014 files copied to \`data/translations/\`.` : "_No i18n detected._",
-    ""
+    inv.i18n ? isScratch ? `Locales: ${inv.i18n.locales.join(", ")} \u2014 provide a messages file per locale (see the message catalog below).` : `Locales: ${inv.i18n.locales.join(", ")} \u2014 files copied to \`data/translations/\`.` : "_No i18n detected._",
+    "",
+    // External services & cross-cutting policies — rendered from the plan in
+    // scratch mode, demanded via callouts otherwise. Both are buildability gaps
+    // when left implicit (a named "geocoding" with no contract isn't rebuildable).
+    ...isScratch && inv.services?.length ? [servicesBlock(inv.services), ""] : [
+      "## External services & integrations",
+      "",
+      agentNote(
+        "List **every** external service the project calls (payment, email, geocoding, storage, analytics, queues, third-party APIs). For each: provider, the exact request/response shape, timeout, and what happens on failure (best-effort? hard error?). Naming the service is not enough \u2014 capture the contract."
+      ),
+      ""
+    ],
+    ...isScratch && inv.policies?.length ? [policiesBlock(inv.policies), ""] : [
+      "## Cross-cutting policies",
+      "",
+      agentNote(
+        "Capture every cross-cutting rule that is otherwise left vague: rate limits (exact thresholds, window, key, store), format validations (e.g. national registry numbers \u2014 give the regex/checksum/length), and security policies. Each rule must be concrete enough to write a test against."
+      ),
+      ""
+    ],
+    ...isScratch && inv.i18n ? [messageCatalogBlock(inv.i18n), ""] : []
   ];
   if (isScratch) {
     common.push(
@@ -1653,12 +1767,11 @@ function interfacesDoc(inv, opts) {
       "",
       filledInterfaceTable(inv.interfaces ?? []),
       "",
-      ...opts.level === "complex" ? [
-        agentNote(
-          "For each operation, note input/output shapes (link to `DATA-MODEL.md`), auth/permission requirements, and side effects."
-        ),
-        ""
-      ] : []
+      ...operationContracts(inv.interfaces ?? []) ? [operationContracts(inv.interfaces ?? []), ""] : [],
+      agentNote(
+        "Every operation needs an exact contract before it is buildable: the input shape (fields + types + validation), the output shape, the auth/permission rule, and the side effects (which entities it writes \u2014 and whether the write is transactional). Spell these out per operation; link shapes to `DATA-MODEL.md`."
+      ),
+      ""
     ].join("\n");
   }
   const routesTable = inv.routes.length ? [
@@ -1716,6 +1829,8 @@ function dataModelDoc(inv, opts) {
       "## Relations & integrity",
       "",
       "_Summarize relationships, cascade rules, and any derived/computed data._",
+      "",
+      enumsBlock(inv.enums),
       ""
     ].join("\n");
   }
@@ -1744,6 +1859,12 @@ function dataModelDoc(inv, opts) {
     "## Relations & integrity",
     "",
     "_Summarize relationships, cascade rules, and any derived/computed data._",
+    "",
+    "## Enums & domain types",
+    "",
+    agentNote(
+      "Enumerate **every** domain enum / fixed value set this schema uses \u2014 each with its **complete** member list (e.g. roles, statuses, categories). A field typed `enum`/`status`/`type` whose members are not listed here is not buildable: a fresh agent cannot validate it or write the test."
+    ),
     ""
   ].join("\n");
 }
@@ -1808,10 +1929,13 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
   if (feature.entities?.length) {
     out.push(`- **Entities:** ${feature.entities.map((e) => `\`${e}\``).join(", ")}`);
   }
-  if (feature.interfaces?.length || feature.entities?.length) out.push("");
+  if (feature.writes?.length) {
+    out.push(`- **Writes:** ${feature.writes.map((e) => `\`${e}\``).join(", ")}`);
+  }
+  if (feature.interfaces?.length || feature.entities?.length || feature.writes?.length) out.push("");
   out.push(
     agentNote(
-      "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the data contract \u2014 required fields, types, and which writes are transactional."
+      "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and \u2014 for every required (NOT NULL, no-default) column and foreign key \u2014 where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`."
     ),
     "",
     "## Acceptance criteria",
@@ -1878,8 +2002,13 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
     "- [ ] Every acceptance-criteria scenario passes (including the failure paths).",
     "- [ ] Every operation this unit owns in `architecture/INTERFACES.md` responds correctly.",
     "- [ ] Every entity it writes matches `architecture/DATA-MODEL.md` (fields, types, constraints).",
+    "- [ ] Every write is satisfiable against the schema: no required (NOT NULL, no-default) column or foreign key is left unfilled; anonymous/public operations write only to anonymous-capable entities (no owner FK).",
+    "- [ ] Every enum/domain value this unit uses is one of the members fully enumerated in `architecture/DATA-MODEL.md`.",
     "- [ ] Every edge case & failure mode above is handled.",
-    ...inv.i18n ? ["- [ ] All user-facing strings are localized for every locale."] : [],
+    ...inv.i18n ? [
+      "- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy)."
+    ] : [],
+    "- [ ] `node scripts/analyze.mjs --check --out <out>` passes \u2014 no unresolved `\u{1F9E0}` callouts or placeholders, and every reference resolves.",
     ""
   );
   return out.join("\n");
@@ -2338,8 +2467,27 @@ function planDependencies(plan) {
 function planDataModel(plan) {
   return (plan.dataModel ?? []).map((e) => ({
     entity: e.entity,
-    fields: e.fields ?? [],
-    ...e.relations && e.relations.length ? { relations: e.relations } : {}
+    fields: (e.fields ?? []).map((f) => ({
+      name: f.name,
+      type: f.type,
+      ...f.constraints ? { constraints: f.constraints } : {},
+      ...f.enumRef ? { enumRef: f.enumRef } : {}
+    })),
+    ...e.relations && e.relations.length ? { relations: e.relations } : {},
+    ...e.indexes && e.indexes.length ? { indexes: e.indexes } : {},
+    ...e.uniques && e.uniques.length ? { uniques: e.uniques } : {}
+  }));
+}
+function planInterfaces(plan) {
+  return (plan.interfaces ?? []).map((r) => ({
+    method: r.method,
+    path: r.path,
+    ...r.kind ? { kind: r.kind } : {},
+    ...r.auth ? { auth: r.auth } : {},
+    ...r.notes ? { notes: r.notes } : {},
+    ...r.input ? { input: r.input } : {},
+    ...r.output ? { output: r.output } : {},
+    ...r.sideEffects && r.sideEffects.length ? { sideEffects: r.sideEffects } : {}
   }));
 }
 function planFeatures(features) {
@@ -2355,7 +2503,8 @@ function planFeatures(features) {
         files: [],
         routes: [],
         ...f.interfaces && f.interfaces.length ? { interfaces: f.interfaces } : {},
-        ...f.entities && f.entities.length ? { entities: f.entities } : {}
+        ...f.entities && f.entities.length ? { entities: f.entities } : {},
+        ...f.writes && f.writes.length ? { writes: f.writes } : {}
       },
       tier,
       // Preserve the plan's declared order within a tier — the author controls it.
@@ -2366,8 +2515,13 @@ function planFeatures(features) {
   return orderFeatures(records);
 }
 function planToInventory(plan, opts) {
-  const i18n = plan.i18n ? { locales: plan.i18n.locales, files: [], keyCount: 0 } : null;
-  const interfaces = plan.interfaces ?? [];
+  const i18n = plan.i18n ? {
+    locales: plan.i18n.locales,
+    files: [],
+    keyCount: plan.i18n.messages?.entries?.length ?? 0,
+    ...plan.i18n.messages ? { messages: plan.i18n.messages } : {}
+  } : null;
+  const interfaces = planInterfaces(plan);
   return {
     generatedWith: `reconstruct@${VERSION}`,
     generation: {
@@ -2399,8 +2553,111 @@ function planToInventory(plan, opts) {
       ...plan.project.value ? { value: plan.project.value } : {}
     },
     interfaces,
-    dataModel: planDataModel(plan)
+    dataModel: planDataModel(plan),
+    ...plan.enums && plan.enums.length ? { enums: plan.enums } : {},
+    ...plan.services && plan.services.length ? { services: plan.services } : {},
+    ...plan.policies && plan.policies.length ? { policies: plan.policies } : {}
   };
+}
+var IDENTITY_ENTITY = /^users?$/i;
+var OWNER_FK_COLUMN = /(^user_?id$|owner|author|sender|creator|created_?by)/i;
+function fkTarget(f) {
+  const m = (f.constraints ?? "").match(/->\s*([a-z0-9_]+)/i);
+  return m ? m[1] : null;
+}
+function isOwnerCallerFk(f) {
+  const target = fkTarget(f);
+  if (!target || !IDENTITY_ENTITY.test(target)) return false;
+  if (isNullable(f) || hasDefault(f)) return false;
+  return OWNER_FK_COLUMN.test(f.name);
+}
+function isNullable(f) {
+  const c = (f.constraints ?? "").toLowerCase();
+  if (/\bnullable\b/.test(c)) return true;
+  if (/\bnot null\b/.test(c)) return false;
+  return false;
+}
+function hasDefault(f) {
+  return /\bdefault\b/i.test(f.constraints ?? "");
+}
+function isEnumTyped(f) {
+  return /\benum\b/i.test(f.type);
+}
+function enumMembersInline(f) {
+  return /\|/.test(f.constraints ?? "");
+}
+function isWriteOp(r) {
+  if (/mutation/i.test(r.kind ?? "")) return true;
+  return ["POST", "PUT", "PATCH", "DELETE"].includes((r.method ?? "").toUpperCase());
+}
+function isAnonymousAuth(auth) {
+  return /\b(public|anon(?:ymous)?|none)\b/i.test(auth ?? "");
+}
+function validatePlanConsistency(plan) {
+  const errors = [];
+  const warnings = [];
+  const entities = new Map((plan.dataModel ?? []).map((e) => [e.entity, e]));
+  const interfacePaths = new Set((plan.interfaces ?? []).map((i) => i.path));
+  const enumNames = new Set((plan.enums ?? []).map((e) => e.name));
+  for (const f of plan.features) {
+    for (const e of f.entities ?? []) {
+      if (!entities.has(e)) {
+        errors.push(`feature "${f.name}" references entity \`${e}\` not defined in dataModel`);
+      }
+    }
+    for (const i of f.interfaces ?? []) {
+      if (!interfacePaths.has(i)) {
+        errors.push(`feature "${f.name}" references interface/operation \`${i}\` not defined in interfaces`);
+      }
+    }
+    for (const w of f.writes ?? []) {
+      if (!entities.has(w)) {
+        errors.push(`feature "${f.name}" writes entity \`${w}\` not defined in dataModel`);
+      }
+    }
+  }
+  for (const e of plan.enums ?? []) {
+    if (!e.members || e.members.length === 0) {
+      errors.push(`enum \`${e.name}\` has no members`);
+    }
+  }
+  for (const ent of plan.dataModel ?? []) {
+    for (const f of ent.fields ?? []) {
+      if (f.enumRef && !enumNames.has(f.enumRef)) {
+        errors.push(`field \`${ent.entity}.${f.name}\` references undefined enum \`${f.enumRef}\``);
+      }
+      if (isEnumTyped(f) && !f.enumRef && !enumMembersInline(f)) {
+        warnings.push(
+          `enum field \`${ent.entity}.${f.name}\` has no enumerated members \u2014 list them inline (\`A | B\`) or via enumRef so values are testable`
+        );
+      }
+    }
+  }
+  const featureByInterface = /* @__PURE__ */ new Map();
+  for (const f of plan.features) {
+    for (const i of f.interfaces ?? []) {
+      const list = featureByInterface.get(i) ?? [];
+      list.push(f);
+      featureByInterface.set(i, list);
+    }
+  }
+  for (const r of plan.interfaces ?? []) {
+    if (!isWriteOp(r) || !isAnonymousAuth(r.auth)) continue;
+    for (const f of featureByInterface.get(r.path) ?? []) {
+      for (const w of f.writes ?? []) {
+        const ent = entities.get(w);
+        if (!ent) continue;
+        for (const field of ent.fields ?? []) {
+          if (isOwnerCallerFk(field)) {
+            warnings.push(
+              `anonymous/public operation \`${r.path}\` writes \`${w}\`, which requires the caller's own non-null owner FK \`${w}.${field.name} -> ${fkTarget(field)}\` \u2014 an anonymous caller cannot supply it; use an anonymous-capable entity (e.g. a contactRequests table)`
+            );
+          }
+        }
+      }
+    }
+  }
+  return { errors, warnings };
 }
 function renderScratchDocs(plan) {
   return [{ relPath: "CONTEXT.md", content: contextDoc(plan) }, ...adrDocs(plan)];
@@ -2442,6 +2699,173 @@ ${body}
   });
 }
 
+// src/check.ts
+import { existsSync as existsSync4, readFileSync as readFileSync9, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
+import { join as join10, relative as relative3 } from "path";
+var REQUIRED_DOCS = [
+  "REBUILD.md",
+  "00-overview/PRD.md",
+  "architecture/ARCHITECTURE.md",
+  "architecture/INTERFACES.md",
+  "architecture/DATA-MODEL.md"
+];
+var FEATURE_SPINE = [
+  "## Functional requirements",
+  "## Acceptance criteria",
+  "## Definition of done"
+];
+var SKIP_DIRS = /* @__PURE__ */ new Set(["data", "source", "node_modules", ".git"]);
+function collectMarkdown(dir, base = dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = readdirSync4(dir);
+  } catch {
+    return out;
+  }
+  for (const name of entries) {
+    const full = join10(dir, name);
+    let st;
+    try {
+      st = statSync2(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) {
+      if (SKIP_DIRS.has(name)) continue;
+      out.push(...collectMarkdown(full, base));
+    } else if (name.endsWith(".md")) {
+      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync9(full, "utf8") });
+    }
+  }
+  return out;
+}
+function fileNames(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = readdirSync4(dir);
+  } catch {
+    return out;
+  }
+  for (const name of entries) {
+    const full = join10(dir, name);
+    let st;
+    try {
+      st = statSync2(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) out.push(...fileNames(full));
+    else out.push(name);
+  }
+  return out;
+}
+function checkOutput(outDir) {
+  const errors = [];
+  const warnings = [];
+  const invPath = join10(outDir, "inventory.json");
+  if (!existsSync4(invPath)) {
+    errors.push(
+      `no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`
+    );
+    return { errors, warnings };
+  }
+  let inv;
+  try {
+    inv = JSON.parse(readFileSync9(invPath, "utf8"));
+  } catch (e) {
+    errors.push(`inventory.json is not valid JSON: ${e.message}`);
+    return { errors, warnings };
+  }
+  const docs = collectMarkdown(outDir);
+  const byRel = new Map(docs.map((d) => [d.rel, d]));
+  const findDoc = (rel) => byRel.get(rel) ?? docs.find((d) => d.rel.endsWith("/" + rel));
+  for (const req of REQUIRED_DOCS) {
+    if (!findDoc(req)) errors.push(`missing required document: ${req}`);
+  }
+  for (const d of docs) {
+    const callouts = d.content.split("\u{1F9E0}").length - 1;
+    if (callouts > 0) {
+      errors.push(
+        `${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`
+      );
+    }
+    if (/fill this in/i.test(d.content)) {
+      errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
+    }
+  }
+  const dataModelDoc2 = findDoc("architecture/DATA-MODEL.md")?.content ?? "";
+  const interfacesDoc2 = findDoc("architecture/INTERFACES.md")?.content ?? "";
+  const referencedEntities = /* @__PURE__ */ new Set();
+  for (const e of inv.dataModel ?? []) referencedEntities.add(e.entity);
+  for (const f of inv.features ?? []) for (const e of f.entities ?? []) referencedEntities.add(e);
+  if (dataModelDoc2) {
+    for (const e of referencedEntities) {
+      if (!documents(dataModelDoc2, e)) {
+        errors.push(
+          `architecture/DATA-MODEL.md does not document entity \`${e}\` referenced by the plan/features`
+        );
+      }
+    }
+  }
+  const referencedOps = /* @__PURE__ */ new Set();
+  for (const i of inv.interfaces ?? []) referencedOps.add(i.path);
+  for (const f of inv.features ?? []) for (const i of f.interfaces ?? []) referencedOps.add(i);
+  if (interfacesDoc2) {
+    for (const op of referencedOps) {
+      if (!documents(interfacesDoc2, op)) {
+        errors.push(
+          `architecture/INTERFACES.md does not document operation \`${op}\` referenced by the plan/features`
+        );
+      }
+    }
+  }
+  for (const d of docs) {
+    if (!d.rel.includes("features/") || !d.rel.endsWith("PRD.md")) continue;
+    for (const h of FEATURE_SPINE) {
+      if (!d.content.includes(h)) errors.push(`${d.rel}: missing required section "${h}"`);
+    }
+  }
+  if (inv.i18n && inv.i18n.locales?.length) {
+    const transDir = join10(outDir, "data", "translations");
+    const names = existsSync4(transDir) ? fileNames(transDir) : [];
+    const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
+    for (const loc of inv.i18n.locales) {
+      const inFiles = names.some((n) => n.includes(loc));
+      const inCatalog = catalog.includes(`${loc}`);
+      if (!inFiles && !inCatalog) {
+        warnings.push(
+          `locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`
+        );
+      }
+    }
+  }
+  return { errors, warnings };
+}
+function documents(doc, token) {
+  return doc.includes(token);
+}
+function formatCheckReport(r, outDir) {
+  const lines = [];
+  if (r.errors.length) {
+    lines.push(`reconstruct --check: ${r.errors.length} error(s) in ${outDir}:`);
+    for (const e of r.errors) lines.push(`  \u2717 ${e}`);
+  }
+  if (r.warnings.length) {
+    lines.push(`reconstruct --check: ${r.warnings.length} warning(s):`);
+    for (const w of r.warnings) lines.push(`  \u26A0 ${w}`);
+  }
+  if (!r.errors.length) {
+    lines.push(
+      r.warnings.length ? `reconstruct --check: PASS (with warnings) \u2014 ${outDir} has no blocking gaps.` : `reconstruct --check: PASS \u2014 ${outDir} is buildable (no unresolved callouts; references resolve).`
+    );
+  } else {
+    lines.push(`reconstruct --check: FAIL \u2014 resolve the errors above, then re-run.`);
+  }
+  return lines.join("\n");
+}
+
 // src/cli.ts
 var HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -2460,6 +2884,7 @@ Options:
   --scratch            Build from a plan.json (greenfield), not a repo
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
+  --check              Validate an existing --out tree for buildability, then exit
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -2484,6 +2909,13 @@ Bundling:
   --merge / --summary during a normal run append the file(s) to the output tree.
   Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
     reconstruct --merge --summary --out <reconstruction-dir>
+
+Validation:
+  --check runs on an already-enriched output tree and exits non-zero if it is
+  not buildable: unresolved \u{1F9E0} callouts or "fill this in" placeholders, a feature
+  that references an undocumented entity/operation, a feature PRD missing its
+  spine, or an uncovered locale. Run it before calling a reconstruction done:
+    reconstruct --check --out <reconstruction-dir>
 `;
 function fail(message) {
   process.stderr.write(`reconstruct: ${message}
@@ -2512,6 +2944,7 @@ function parseArgs(argv) {
   let summary = false;
   let scratch = false;
   let tdd = false;
+  let check = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
@@ -2542,6 +2975,10 @@ function parseArgs(argv) {
       tdd = true;
       continue;
     }
+    if (arg === "--check") {
+      check = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       let key;
       let value;
@@ -2569,7 +3006,7 @@ function parseArgs(argv) {
   const plan = raw.plan ? resolve(raw.plan) : "";
   const standalone = (merge || summary) && !json && !scratch && raw.repo === void 0;
   const repo = resolve(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && (!existsSync4(repo) || !statSync2(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && (!existsSync5(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
@@ -2584,7 +3021,7 @@ function parseArgs(argv) {
     "fine"
   ]);
   const out = resolve(
-    raw.out ?? (standalone ? process.cwd() : scratch ? join10(process.cwd(), "reconstruction") : join10(repo, "reconstruction"))
+    raw.out ?? (standalone || check ? process.cwd() : scratch ? join11(process.cwd(), "reconstruction") : join11(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -2606,17 +3043,31 @@ function parseArgs(argv) {
     standalone,
     scratch,
     plan,
-    tdd
+    tdd,
+    check
   };
 }
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.check) {
+    const result2 = checkOutput(opts.out);
+    process.stdout.write(formatCheckReport(result2, opts.out) + "\n");
+    if (result2.errors.length) process.exit(1);
+    return;
+  }
   if (opts.scratch) {
     let plan;
     try {
       plan = loadPlan(opts.plan);
     } catch (e) {
       fail(e.message);
+    }
+    const consistency = validatePlanConsistency(plan);
+    if (consistency.errors.length) {
+      fail(
+        `plan.json is internally inconsistent (fix these before rendering):
+  - ` + consistency.errors.join("\n  - ")
+      );
     }
     const effOpts = { ...opts, tdd: opts.tdd || !!plan.tdd };
     const inv2 = planToInventory(plan, effOpts);
@@ -2633,11 +3084,15 @@ function main() {
       `  stack:    ${inv2.stack.primaryLanguage}${inv2.stack.frameworks.length ? " \xB7 " + inv2.stack.frameworks.join(", ") : ""}`,
       `  surface:  ${inv2.features.length} feature(s) \xB7 ${inv2.interfaces?.length ?? 0} interface(s) \xB7 ${inv2.dataModel?.length ?? 0} entit(y/ies) \xB7 ${inv2.i18n ? inv2.i18n.locales.length : 0} locale(s)`,
       `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
+      ...consistency.warnings.length ? [
+        `  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`,
+        ...consistency.warnings.map((w) => `    \u26A0 ${w}`)
+      ] : [],
       ...effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : [],
       ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join10(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join11(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -2679,7 +3134,7 @@ function main() {
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join10(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join11(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

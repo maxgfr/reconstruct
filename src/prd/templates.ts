@@ -1,4 +1,14 @@
-import type { Entity, Feature, InterfaceRow, Inventory, Options } from "../types.js";
+import type {
+  EnumDef,
+  Entity,
+  Feature,
+  I18nInfo,
+  InterfaceRow,
+  Inventory,
+  Options,
+  Policy,
+  ServiceContract,
+} from "../types.js";
 
 function agentNote(body: string): string {
   return `> 🧠 **For the AI agent:** ${body}\n`;
@@ -57,8 +67,112 @@ function filledEntityTables(entities: Entity[]): string {
       for (const r of e.relations) parts.push(`- ${r}`);
       parts.push("");
     }
+    if (e.indexes?.length) {
+      parts.push("Indexes:", "");
+      for (const ix of e.indexes) parts.push(`- ${ix}`);
+      parts.push("");
+    }
+    if (e.uniques?.length) {
+      parts.push("Unique constraints:", "");
+      for (const u of e.uniques) parts.push(`- ${u}`);
+      parts.push("");
+    }
   }
   return parts.join("\n").trimEnd();
+}
+
+/** Render the named domain enums with their full member lists (buildability). */
+function enumsBlock(enums: EnumDef[] | undefined): string {
+  const lines = ["## Enums & domain types", ""];
+  if (!enums || !enums.length) {
+    lines.push(
+      "_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._",
+    );
+    return lines.join("\n");
+  }
+  for (const e of enums) {
+    lines.push(`### ${e.name}`, "");
+    if (e.description) lines.push(e.description, "");
+    lines.push(`- Members: ${e.members.map((m) => `\`${m}\``).join(", ") || "_none — fill in_"}`, "");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+/** Render external-service contracts (scratch pre-fill) for ARCHITECTURE.md. */
+function servicesBlock(services: ServiceContract[]): string {
+  const lines = ["## External services & integrations", ""];
+  for (const s of services) {
+    lines.push(`### ${s.name}${s.provider ? ` (${s.provider})` : ""}`, "", s.purpose, "");
+    if (s.operations?.length) {
+      lines.push("Operations:", "");
+      for (const op of s.operations) {
+        lines.push(
+          `- \`${op.name}\`${op.input ? ` — in: ${op.input}` : ""}${op.output ? ` → out: ${op.output}` : ""}`,
+        );
+      }
+      lines.push("");
+    }
+    if (s.request) lines.push(`- **Request:** ${s.request}`);
+    if (s.response) lines.push(`- **Response:** ${s.response}`);
+    if (s.timeout) lines.push(`- **Timeout:** ${s.timeout}`);
+    if (s.onFailure) lines.push(`- **On failure:** ${s.onFailure}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+/** Render cross-cutting policies (rate limits, validations) for ARCHITECTURE.md. */
+function policiesBlock(policies: Policy[]): string {
+  const lines = ["## Cross-cutting policies", "", "| Policy | Kind | Rule | Applies to |", "| --- | --- | --- | --- |"];
+  for (const p of policies) {
+    lines.push(
+      `| ${cell(p.name)} | ${cell(p.kind ?? "")} | ${cell(p.rule)} | ${cell((p.appliesTo ?? []).join(", "))} |`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** Render the i18n message catalog (namespaces + keys with source strings). */
+function messageCatalogBlock(i18n: I18nInfo): string {
+  const m = i18n.messages;
+  const lines = ["## Internationalization — message catalog", ""];
+  lines.push(`Locales: ${i18n.locales.join(", ")}.`, "");
+  if (!m) {
+    lines.push(
+      agentNote(
+        "Author the message catalog: list every namespace and every user-facing key with its source string, then translate into all locales above. A key without a source string is not buildable.",
+      ),
+    );
+    return lines.join("\n").trimEnd();
+  }
+  if (m.sourceLocale) lines.push(`Source locale: \`${m.sourceLocale}\`.`, "");
+  if (m.namespaces?.length) lines.push(`Namespaces: ${m.namespaces.map((n) => `\`${n}\``).join(", ")}.`, "");
+  if (m.entries?.length) {
+    lines.push("| Key | Source string |", "| --- | --- |");
+    for (const e of m.entries) lines.push(`| \`${cell(e.key)}\` | ${cell(e.source ?? "")} |`);
+    lines.push("");
+  }
+  lines.push(
+    agentNote(
+      `Complete the catalog: every user-facing key must have a source string and resolve in all ${i18n.locales.length} locales (${i18n.locales.join(", ")}). The keys above are the contract — extend, don't trim.`,
+    ),
+  );
+  return lines.join("\n").trimEnd();
+}
+
+/** Render per-operation contracts (input/output/side-effects) when pre-filled. */
+function operationContracts(rows: InterfaceRow[]): string {
+  const detailed = rows.filter((r) => r.input || r.output || (r.sideEffects && r.sideEffects.length));
+  if (!detailed.length) return "";
+  const lines = ["## Operation contracts", ""];
+  for (const r of detailed) {
+    lines.push(`### \`${r.path}\`${r.auth ? ` · auth: ${r.auth}` : ""}`, "");
+    if (r.input) lines.push(`- **Input:** ${r.input}`);
+    if (r.output) lines.push(`- **Output:** ${r.output}`);
+    if (r.sideEffects?.length) lines.push(`- **Side effects:** ${r.sideEffects.join("; ")}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
 }
 
 export function overviewPrd(inv: Inventory, opts: Options): string {
@@ -181,10 +295,34 @@ export function architectureDoc(inv: Inventory, opts: Options): string {
     "",
     inv.i18n
       ? isScratch
-        ? `Locales: ${inv.i18n.locales.join(", ")} — provide a messages file per locale (see the Internationalization feature).`
+        ? `Locales: ${inv.i18n.locales.join(", ")} — provide a messages file per locale (see the message catalog below).`
         : `Locales: ${inv.i18n.locales.join(", ")} — files copied to \`data/translations/\`.`
       : "_No i18n detected._",
     "",
+    // External services & cross-cutting policies — rendered from the plan in
+    // scratch mode, demanded via callouts otherwise. Both are buildability gaps
+    // when left implicit (a named "geocoding" with no contract isn't rebuildable).
+    ...(isScratch && inv.services?.length
+      ? [servicesBlock(inv.services), ""]
+      : [
+          "## External services & integrations",
+          "",
+          agentNote(
+            "List **every** external service the project calls (payment, email, geocoding, storage, analytics, queues, third-party APIs). For each: provider, the exact request/response shape, timeout, and what happens on failure (best-effort? hard error?). Naming the service is not enough — capture the contract.",
+          ),
+          "",
+        ]),
+    ...(isScratch && inv.policies?.length
+      ? [policiesBlock(inv.policies), ""]
+      : [
+          "## Cross-cutting policies",
+          "",
+          agentNote(
+            "Capture every cross-cutting rule that is otherwise left vague: rate limits (exact thresholds, window, key, store), format validations (e.g. national registry numbers — give the regex/checksum/length), and security policies. Each rule must be concrete enough to write a test against.",
+          ),
+          "",
+        ]),
+    ...(isScratch && inv.i18n ? [messageCatalogBlock(inv.i18n), ""] : []),
   ];
 
   if (isScratch) {
@@ -253,14 +391,13 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
       "",
       filledInterfaceTable(inv.interfaces ?? []),
       "",
-      ...(opts.level === "complex"
-        ? [
-            agentNote(
-              "For each operation, note input/output shapes (link to `DATA-MODEL.md`), auth/permission requirements, and side effects.",
-            ),
-            "",
-          ]
+      ...(operationContracts(inv.interfaces ?? [])
+        ? [operationContracts(inv.interfaces ?? []), ""]
         : []),
+      agentNote(
+        "Every operation needs an exact contract before it is buildable: the input shape (fields + types + validation), the output shape, the auth/permission rule, and the side effects (which entities it writes — and whether the write is transactional). Spell these out per operation; link shapes to `DATA-MODEL.md`.",
+      ),
+      "",
     ].join("\n");
   }
 
@@ -331,6 +468,8 @@ export function dataModelDoc(inv: Inventory, opts: Options): string {
       "",
       "_Summarize relationships, cascade rules, and any derived/computed data._",
       "",
+      enumsBlock(inv.enums),
+      "",
     ].join("\n");
   }
 
@@ -364,6 +503,12 @@ export function dataModelDoc(inv: Inventory, opts: Options): string {
     "## Relations & integrity",
     "",
     "_Summarize relationships, cascade rules, and any derived/computed data._",
+    "",
+    "## Enums & domain types",
+    "",
+    agentNote(
+      "Enumerate **every** domain enum / fixed value set this schema uses — each with its **complete** member list (e.g. roles, statuses, categories). A field typed `enum`/`status`/`type` whose members are not listed here is not buildable: a fresh agent cannot validate it or write the test.",
+    ),
     "",
   ].join("\n");
 }
@@ -449,10 +594,13 @@ export function featurePrd(
   if (feature.entities?.length) {
     out.push(`- **Entities:** ${feature.entities.map((e) => `\`${e}\``).join(", ")}`);
   }
-  if (feature.interfaces?.length || feature.entities?.length) out.push("");
+  if (feature.writes?.length) {
+    out.push(`- **Writes:** ${feature.writes.map((e) => `\`${e}\``).join(", ")}`);
+  }
+  if (feature.interfaces?.length || feature.entities?.length || feature.writes?.length) out.push("");
   out.push(
     agentNote(
-      "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the data contract — required fields, types, and which writes are transactional.",
+      "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and — for every required (NOT NULL, no-default) column and foreign key — where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`.",
     ),
     "",
     "## Acceptance criteria",
@@ -525,8 +673,15 @@ export function featurePrd(
     "- [ ] Every acceptance-criteria scenario passes (including the failure paths).",
     "- [ ] Every operation this unit owns in `architecture/INTERFACES.md` responds correctly.",
     "- [ ] Every entity it writes matches `architecture/DATA-MODEL.md` (fields, types, constraints).",
+    "- [ ] Every write is satisfiable against the schema: no required (NOT NULL, no-default) column or foreign key is left unfilled; anonymous/public operations write only to anonymous-capable entities (no owner FK).",
+    "- [ ] Every enum/domain value this unit uses is one of the members fully enumerated in `architecture/DATA-MODEL.md`.",
     "- [ ] Every edge case & failure mode above is handled.",
-    ...(inv.i18n ? ["- [ ] All user-facing strings are localized for every locale."] : []),
+    ...(inv.i18n
+      ? [
+          "- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy).",
+        ]
+      : []),
+    "- [ ] `node scripts/analyze.mjs --check --out <out>` passes — no unresolved `🧠` callouts or placeholders, and every reference resolves.",
     "",
   );
 

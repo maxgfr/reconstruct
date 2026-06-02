@@ -21,6 +21,11 @@ What this unit does and why it exists.
 
 ## Data & contracts
 - Types, schemas, events, side effects (reference the entities in `architecture/DATA-MODEL.md`).
+- **Write contract:** which entities each mutation writes, transactional or not, and the
+  source of every required column and foreign key. A public/anonymous write must target an
+  anonymous-capable entity. Enum values must be members listed in `DATA-MODEL.md`; external
+  calls and localized copy follow the contracts in `architecture/` (see
+  [buildability-checklist.md](buildability-checklist.md)).
 
 ## Source material
 (Generated — embedded code or `source/` references.)
@@ -35,6 +40,8 @@ Each item tagged so the rebuild stays safe by default:
 ## Acceptance criteria
 - [ ] Behaviors reproduced; `[keep-behavior]` items applied.
 - [ ] `[behavior-change]` items only if the user approved them.
+- [ ] Writes satisfy the schema; enums enumerated; localized copy has source strings.
+- [ ] `node scripts/analyze.mjs --check --out <OUT>` passes.
 ```
 
 Rule: **never** silently change behavior. Mark anything that alters output as

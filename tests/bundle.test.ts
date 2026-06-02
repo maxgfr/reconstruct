@@ -60,6 +60,7 @@ function makeOpts(over: Partial<Options> = {}): Options {
     scratch: false,
     plan: "",
     tdd: false,
+    check: false,
     ...over,
   };
 }

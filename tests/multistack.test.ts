@@ -23,6 +23,7 @@ function opts(fixture: string): Options {
     scratch: false,
     plan: "",
     tdd: false,
+    check: false,
   };
 }
 

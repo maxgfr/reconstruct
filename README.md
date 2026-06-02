@@ -105,6 +105,21 @@ node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge -
 node scripts/analyze.mjs --merge --summary --out ./my-app/reconstruction
 ```
 
+## Validation: is it actually buildable?
+
+A reconstruction is only useful if a fresh agent can rebuild from it. Once the
+PRDs are enriched, run the buildability gate — it exits non-zero on unresolved
+`🧠` callouts or placeholders, a feature that references an undocumented
+entity/operation, a feature PRD missing its spine, or an uncovered locale:
+
+```bash
+node scripts/analyze.mjs --check --out ./my-app/reconstruction
+```
+
+The full contract a PRD must carry — operation/write contracts, enums, format
+validations, external services, quantified policies, the i18n message catalog —
+is in [`references/buildability-checklist.md`](./references/buildability-checklist.md).
+
 The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,
 and errors clearly if the directory holds no `inventory.json`.
 

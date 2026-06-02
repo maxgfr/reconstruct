@@ -5,7 +5,8 @@ import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
-import { loadPlan, planToInventory, renderScratchDocs } from "./scratch.js";
+import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
+import { checkOutput, formatCheckReport } from "./check.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -26,6 +27,7 @@ Options:
   --scratch            Build from a plan.json (greenfield), not a repo
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
+  --check              Validate an existing --out tree for buildability, then exit
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -50,6 +52,13 @@ Bundling:
   --merge / --summary during a normal run append the file(s) to the output tree.
   Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
     reconstruct --merge --summary --out <reconstruction-dir>
+
+Validation:
+  --check runs on an already-enriched output tree and exits non-zero if it is
+  not buildable: unresolved 🧠 callouts or "fill this in" placeholders, a feature
+  that references an undocumented entity/operation, a feature PRD missing its
+  spine, or an uncovered locale. Run it before calling a reconstruction done:
+    reconstruct --check --out <reconstruction-dir>
 `;
 
 function fail(message: string): never {
@@ -85,6 +94,7 @@ export function parseArgs(argv: string[]): Options {
   let summary = false;
   let scratch = false;
   let tdd = false;
+  let check = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -114,6 +124,10 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--tdd") {
       tdd = true;
+      continue;
+    }
+    if (arg === "--check") {
+      check = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -150,9 +164,9 @@ export function parseArgs(argv: string[]): Options {
   const standalone = (merge || summary) && !json && !scratch && raw.repo === undefined;
 
   const repo = resolve(raw.repo ?? process.cwd());
-  // Scratch reads no repo; standalone reads an existing output dir — both skip
-  // the repo-exists check.
-  if (!standalone && !scratch && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  // Scratch reads no repo; standalone and --check read an existing output dir —
+  // all three skip the repo-exists check.
+  if (!standalone && !scratch && !check && (!existsSync(repo) || !statSync(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
@@ -173,7 +187,7 @@ export function parseArgs(argv: string[]): Options {
   ]);
   const out = resolve(
     raw.out ??
-      (standalone
+      (standalone || check
         ? process.cwd()
         : scratch
           ? join(process.cwd(), "reconstruction")
@@ -201,11 +215,20 @@ export function parseArgs(argv: string[]): Options {
     scratch,
     plan,
     tdd,
+    check,
   };
 }
 
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
+
+  // Validation mode: statically check an already-generated tree for buildability.
+  if (opts.check) {
+    const result = checkOutput(opts.out);
+    process.stdout.write(formatCheckReport(result, opts.out) + "\n");
+    if (result.errors.length) process.exit(1);
+    return;
+  }
 
   if (opts.scratch) {
     let plan;
@@ -213,6 +236,15 @@ function main(): void {
       plan = loadPlan(opts.plan);
     } catch (e) {
       fail((e as Error).message);
+    }
+    // Fail fast on an internally inconsistent plan — a buildable tree starts
+    // with a plan whose features, entities, interfaces and enums line up.
+    const consistency = validatePlanConsistency(plan);
+    if (consistency.errors.length) {
+      fail(
+        `plan.json is internally inconsistent (fix these before rendering):\n  - ` +
+          consistency.errors.join("\n  - "),
+      );
     }
     // The plan can request TDD too; OR it with the --tdd flag.
     const effOpts: Options = { ...opts, tdd: opts.tdd || !!plan.tdd };
@@ -234,6 +266,12 @@ function main(): void {
       `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " · " + inv.stack.frameworks.join(", ") : ""}`,
       `  surface:  ${inv.features.length} feature(s) · ${inv.interfaces?.length ?? 0} interface(s) · ${inv.dataModel?.length ?? 0} entit(y/ies) · ${inv.i18n ? inv.i18n.locales.length : 0} locale(s)`,
       `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
+      ...(consistency.warnings.length
+        ? [
+            `  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`,
+            ...consistency.warnings.map((w) => `    ⚠ ${w}`),
+          ]
+        : []),
       ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
       ...(effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
       ...(effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),

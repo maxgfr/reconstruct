@@ -88,6 +88,36 @@ Capture: entity name, fields (name · type · constraints), relations (1-1 / 1-N
 indexes, enums, defaults. Note migrations and seed data if present. Never paraphrase types —
 copy them.
 
+Beyond the per-field table, fill the **`## Enums & domain types`** section: every
+`enum`/`status`/`type`/`role`/`category` value set, with its **complete** member list.
+A column typed `enum` whose members aren't listed is not buildable — "unknown value →
+rejected" can't be tested. Capture format validations for coded identifiers here or under
+policies (below): the real length/regex/checksum, not just the registry's name.
+
+---
+
+## §Contracts & buildability  → fill the contract, not just the name
+
+The recurring reason a faithful-looking PRD can't be rebuilt is a contract that was
+*named but not specified*. For every unit, capture all eight categories in
+`references/buildability-checklist.md`. The ones most often missed when reverse-engineering:
+
+- **Operation contracts** (→ `INTERFACES.md` + each feature): read the handler and record
+  the exact **input** shape (validation schema — Zod/DTO/serializer), the **output** shape,
+  the auth rule, and the **side effects** (which entities are written, transactional or not,
+  which emails/jobs fire). For RPC, that's the procedure's input/output; for REST, the
+  request/response bodies.
+- **External services** (→ `ARCHITECTURE.md` `## External services & integrations`): for
+  each third-party call (email, geocoding, payments, storage, queues) record the provider,
+  the **exact function signatures** the app calls (e.g. `sendWelcomeEmail({ email, name,
+  locale })`), the request/response shape, timeout, and failure behavior.
+- **Cross-cutting policies** (→ `ARCHITECTURE.md` `## Cross-cutting policies`): rate limits
+  with concrete thresholds/window/key/store; format validations with the real rule. Read
+  the limiter and the validators — a `SHOULD rate-limit` with no numbers is untestable.
+- **i18n**: the message files are copied to `data/translations/` verbatim (never
+  re-translate) — but still record the namespaces and how the request/user locale is
+  resolved, so a feature's localized copy is reproducible.
+
 ---
 
 ## §Semantic feature grouping
@@ -140,3 +170,31 @@ Always account for these — they rarely live in a single feature:
 - **light** vs **complex**: light = faithful, minimal editorializing; complex = also propose
   `[keep-behavior]` improvements (never silently change behavior). **redesign** = same
   behavior, fresh architecture documented in `ARCHITECTURE.md`.
+
+---
+
+## §Consistency self-review & the `--check` gate
+
+Before you call the reconstruction done, re-read every feature PRD against the architecture
+docs and run the gate. This catches the contradictions a faithful-looking PRD hides — a
+feature that writes a table it can't satisfy, an enum value that isn't a member, a locale the
+data model never declared.
+
+- **Cross-reference both ways:** every entity/operation a feature names exists in
+  `DATA-MODEL.md` / `INTERFACES.md`, with the same field names, types, and constraints — no
+  drift. Two features touching one entity must agree on its shape.
+- **Write satisfiability:** for every mutation, every required (NOT NULL, no-default) column
+  and FK has a stated source; a **public/anonymous** operation writes only to an
+  anonymous-capable entity (no owner FK), never to one that requires a logged-in user.
+- **Enumerate the sets:** every enum value a unit uses is a listed member; coded identifiers
+  have a real format rule.
+- **Run the gate:**
+
+  ```bash
+  node scripts/analyze.mjs --check --out <OUT>
+  ```
+
+  Fix every error (unresolved `🧠`/placeholder, dangling entity/operation reference, missing
+  feature spine, uncovered locale) and resolve the warnings. The full category list is in
+  `references/buildability-checklist.md`. A `🧠` callout left anywhere means the unit is not
+  done.
