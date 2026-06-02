@@ -681,7 +681,7 @@ export function featurePrd(
           "- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy).",
         ]
       : []),
-    "- [ ] `node scripts/analyze.mjs --check --out <out>` passes — no unresolved `🧠` callouts or placeholders, and every reference resolves.",
+    "- [ ] `node scripts/analyze.mjs --check --out <out>` passes — no unresolved agent callouts or placeholders, and every reference resolves.",
     "",
   );
 
