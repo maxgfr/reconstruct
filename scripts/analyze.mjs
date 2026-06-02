@@ -1353,7 +1353,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 }
 
 // src/types.ts
-var VERSION = "0.5.0";
+var VERSION = "0.5.1";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints) {
@@ -2008,7 +2008,7 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
     ...inv.i18n ? [
       "- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy)."
     ] : [],
-    "- [ ] `node scripts/analyze.mjs --check --out <out>` passes \u2014 no unresolved `\u{1F9E0}` callouts or placeholders, and every reference resolves.",
+    "- [ ] `node scripts/analyze.mjs --check --out <out>` passes \u2014 no unresolved agent callouts or placeholders, and every reference resolves.",
     ""
   );
   return out.join("\n");
@@ -2785,13 +2785,14 @@ function checkOutput(outDir) {
     if (!findDoc(req)) errors.push(`missing required document: ${req}`);
   }
   for (const d of docs) {
-    const callouts = d.content.split("\u{1F9E0}").length - 1;
+    const prose = stripCode(d.content);
+    const callouts = prose.split("\u{1F9E0}").length - 1;
     if (callouts > 0) {
       errors.push(
         `${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`
       );
     }
-    if (/fill this in/i.test(d.content)) {
+    if (/fill this in/i.test(stripQuotes(prose))) {
       errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
     }
   }
@@ -2858,6 +2859,12 @@ function checkOutput(outDir) {
 }
 function documents(doc, token) {
   return doc.includes(token);
+}
+function stripCode(s) {
+  return s.replace(/```[\s\S]*?```/g, "").replace(/~~~[\s\S]*?~~~/g, "").replace(/`[^`\n]*`/g, "");
+}
+function stripQuotes(s) {
+  return s.replace(/"[^"\n]*"/g, "");
 }
 function tableDataRowCount(doc) {
   return doc.split(/\r?\n/).filter((l) => {
