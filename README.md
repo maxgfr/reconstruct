@@ -34,6 +34,8 @@ This installs the skill into your agent (Claude Code, Cursor, Codex, …). Then 
 ```
 reconstruction/
 ├── REBUILD.md                 # master plan: build order + validation checklist
+├── RECONSTRUCTION.md          # (--merge) the whole tree bundled into one markdown
+├── SUMMARY.md                 # (--summary) one-page digest of the reconstruction
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
 │   ├── ARCHITECTURE.md        # current (preserve) or proposed (redesign) architecture
@@ -83,6 +85,28 @@ node scripts/analyze.mjs --repo ./my-app --json
 ```
 
 Run `node scripts/analyze.mjs --help` for all flags.
+
+## Bundling: one file or a digest
+
+Two optional, combinable flags collapse the multi-file tree:
+
+- `--merge` → **`RECONSTRUCTION.md`**: the whole tree in one coherent markdown
+  (single H1, linked table of contents, headings demoted one level; ordered
+  overview → architecture → features → build order).
+- `--summary` → **`SUMMARY.md`**: a one-page digest from the inventory (stack,
+  libraries, size, features in build order, interface/data counts, locales,
+  unknowns, next steps).
+
+```bash
+# inline: produce the tree and the bundles in one run
+node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --summary
+
+# standalone post-step: (re)build the bundles from an existing output, no --repo
+node scripts/analyze.mjs --merge --summary --out ./my-app/reconstruction
+```
+
+The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,
+and errors clearly if the directory holds no `inventory.json`.
 
 ## How the rebuild works
 

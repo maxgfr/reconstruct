@@ -68,6 +68,12 @@ export function analyze(opts: Options): Inventory {
 
   return {
     generatedWith: `reconstruct@${VERSION}`,
+    generation: {
+      mode: opts.mode,
+      level: opts.level,
+      fidelity: opts.fidelity,
+      granularity: opts.granularity,
+    },
     repoName: basename(opts.repo) || "project",
     stack,
     fileCount: files.length,

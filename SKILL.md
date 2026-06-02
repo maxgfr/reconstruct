@@ -3,7 +3,7 @@ name: reconstruct
 description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec.
 license: MIT
 metadata:
-  version: 0.2.0
+  version: 0.3.0
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -36,11 +36,12 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    `scripts/analyze.mjs` inside the installed skill folder:
 
    ```bash
-   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>] [--granularity coarse|fine]
+   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>] [--granularity coarse|fine] [--merge] [--summary]
    ```
 
    Add `--json` to inspect the raw inventory first; `--help` for all flags
-   (`--include`/`--exclude` globs scope large repos).
+   (`--include`/`--exclude` globs scope large repos). `--merge`/`--summary` are
+   optional bundles — see **Bundling the output** below.
 
 2. **Read the scaffold:** `inventory.json` (facts **+ `hints` + `unknowns`**),
    `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, the **`architecture/INTERFACES.md`**
@@ -79,6 +80,30 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, and `references/architecture-analysis.md` /
 `references/rebuild-instructions.md` / the PRD templates for the reasoning checklists.
+
+## Bundling the output
+
+Two optional, combinable flags collapse the multi-file tree for sharing or review:
+
+- **`--merge`** → `RECONSTRUCTION.md`: the whole tree in one coherent markdown
+  (single H1, linked table of contents, every document with headings demoted one
+  level, ordered overview → architecture → features → build order).
+- **`--summary`** → `SUMMARY.md`: a one-page digest from the inventory (stack,
+  libraries, size, features in build order, interface/data counts, locales,
+  unknowns, next steps).
+
+They work two ways:
+
+1. **Inline** — add them to a normal run; the file(s) land in `<OUT>` alongside the tree.
+2. **Standalone post-step** — run them **without `--repo`** against an already-generated
+   output to (re)build just the bundles, no re-analysis:
+
+   ```bash
+   node scripts/analyze.mjs --merge --summary --out <OUT>
+   ```
+
+   This reads `<OUT>/inventory.json` + the `.md` files and rewrites the bundle(s);
+   it errors clearly if `<OUT>` holds no `inventory.json`. Re-running is idempotent.
 
 ## How to know you're done
 

@@ -17,6 +17,9 @@ function opts(fixture: string): Options {
     exclude: [],
     json: false,
     maxEmbedBytes: 16000,
+    merge: false,
+    summary: false,
+    standalone: false,
   };
 }
 

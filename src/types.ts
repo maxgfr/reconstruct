@@ -23,6 +23,24 @@ export interface Options {
   json: boolean;
   /** Max bytes of a single file embedded into a PRD (embed fidelity). */
   maxEmbedBytes: number;
+  /** Emit a single bundled markdown (`RECONSTRUCTION.md`) of the whole tree. */
+  merge: boolean;
+  /** Emit a one-page digest (`SUMMARY.md`) derived from the inventory. */
+  summary: boolean;
+  /**
+   * Post-step mode: rebuild the merge/summary from an already-generated output
+   * directory (`out`) without re-analysing a repo. Set when `--merge`/`--summary`
+   * is used without `--repo`.
+   */
+  standalone: boolean;
+}
+
+/** The generation parameters recorded in `inventory.json` for provenance. */
+export interface GenerationInfo {
+  mode: Mode;
+  level: Level;
+  fidelity: Fidelity;
+  granularity: Granularity;
 }
 
 export type FileCategory =
@@ -110,6 +128,8 @@ export interface Workspace {
 
 export interface Inventory {
   generatedWith: string;
+  /** Generation parameters this inventory was produced with (provenance). */
+  generation?: GenerationInfo;
   repoName: string;
   stack: StackInfo;
   fileCount: number;
@@ -153,4 +173,4 @@ export interface RenderResult {
   copies: CopyOp[];
 }
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";

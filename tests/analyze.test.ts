@@ -25,6 +25,9 @@ function makeOpts(over: Partial<Options> = {}): Options {
     exclude: [],
     json: false,
     maxEmbedBytes: 16000,
+    merge: false,
+    summary: false,
+    standalone: false,
     ...over,
   };
 }
@@ -106,6 +109,27 @@ describe("render", () => {
     const { artifacts } = render(analyze(opts), opts);
     const arch = artifacts.find((a) => a.relPath === "architecture/ARCHITECTURE.md");
     expect(arch?.content).toContain("Proposed architecture (redesign)");
+  });
+
+  it("emits no bundle files by default", () => {
+    const opts = makeOpts();
+    const paths = render(analyze(opts), opts).artifacts.map((a) => a.relPath);
+    expect(paths).not.toContain("RECONSTRUCTION.md");
+    expect(paths).not.toContain("SUMMARY.md");
+  });
+
+  it("emits RECONSTRUCTION.md only when --merge is set", () => {
+    const opts = makeOpts({ merge: true });
+    const merged = render(analyze(opts), opts).artifacts.find((a) => a.relPath === "RECONSTRUCTION.md");
+    expect(merged).toBeDefined();
+    expect(merged?.content).toContain("# sample-app — Reconstruction");
+  });
+
+  it("emits SUMMARY.md only when --summary is set", () => {
+    const opts = makeOpts({ summary: true });
+    const summary = render(analyze(opts), opts).artifacts.find((a) => a.relPath === "SUMMARY.md");
+    expect(summary).toBeDefined();
+    expect(summary?.content).toContain("reconstruction summary");
   });
 });
 

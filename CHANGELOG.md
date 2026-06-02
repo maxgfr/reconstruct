@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0]
+
+Add opt-in **bundling**: collapse the whole reconstruction into one file, or emit a
+one-page digest — both available inline during a run or as a standalone post-step.
+
+### Added
+- `--merge` writes `RECONSTRUCTION.md`: the entire tree (overview → architecture →
+  every feature → build order) in a single coherent markdown — one H1 title, a linked
+  table of contents, and each document's headings demoted one level (fence-aware).
+- `--summary` writes `SUMMARY.md`: a one-page digest derived from the inventory
+  (stack, libraries, size, features in build order, interface/data counts, locales,
+  unknowns, next steps).
+- **Standalone post-step:** using `--merge` / `--summary` *without* `--repo` rebuilds
+  the bundle(s) from an existing output dir (reads `inventory.json` + the `.md` tree),
+  e.g. `reconstruct --merge --summary --out <reconstruction-dir>`. Idempotent.
+- `inventory.json` now records a `generation` block (`mode/level/fidelity/granularity`)
+  for provenance, so the standalone step renders an accurate meta line.
+- `src/prd/bundle.ts` (`demoteHeadings`, `mergeArtifacts`, `summarize`) and
+  `src/postprocess.ts` (`bundleExisting`), with `tests/bundle.test.ts`,
+  `tests/postprocess.test.ts`, and `tests/cli.test.ts`.
+
 ## [0.2.0]
 
 Re-architected into a **stack-agnostic scaffold + an AI-first markdown playbook**. The
@@ -45,6 +66,7 @@ teaches the agent to map any stack.
 Initial release: deterministic analyzer + agent-enriched reconstruction PRDs, tuned for
 JS/TS/Next.js with generic extraction for other stacks.
 
-[Unreleased]: https://github.com/maxgfr/reconstruct/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/maxgfr/reconstruct/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/maxgfr/reconstruct/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/maxgfr/reconstruct/releases/tag/v0.2.0
 [0.1.0]: https://github.com/maxgfr/reconstruct/releases/tag/v0.1.0

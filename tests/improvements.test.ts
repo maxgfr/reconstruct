@@ -22,6 +22,9 @@ function opts(): Options {
     exclude: [],
     json: false,
     maxEmbedBytes: 16000,
+    merge: false,
+    summary: false,
+    standalone: false,
   };
 }
 

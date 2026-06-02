@@ -94,7 +94,9 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--exclude <glob>` | gitignore-style glob | — | Skip files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--max-embed-bytes N` | integer > 0 | `16000` | Max bytes embedded per file when `fidelity=embed`. |
-| `--json` | flag | off | Print the inventory JSON to stdout and write nothing to disk. |
+| `--merge` | flag | off | Also write `RECONSTRUCTION.md` — the whole tree bundled into one markdown (single H1, table of contents, headings demoted one level). Without `--repo`, runs standalone on an existing `--out`. |
+| `--summary` | flag | off | Also write `SUMMARY.md` — a one-page digest from the inventory (stack, libraries, size, features in build order, interface/data counts, locales, unknowns). Without `--repo`, runs standalone on an existing `--out`. |
+| `--json` | flag | off | Print the inventory JSON to stdout and write nothing to disk. Takes precedence over `--merge`/`--summary`. |
 | `-h, --help` | flag | — | Show help and exit. |
 | `-v, --version` | flag | — | Print the version and exit. |
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve, join as join9 } from "path";
-import { existsSync as existsSync3, statSync as statSync2 } from "fs";
+import { resolve, join as join10 } from "path";
+import { pathToFileURL } from "url";
+import { existsSync as existsSync4, statSync as statSync2 } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -1349,7 +1350,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 }
 
 // src/types.ts
-var VERSION = "0.2.0";
+var VERSION = "0.3.0";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints) {
@@ -1398,6 +1399,12 @@ function analyze(opts) {
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   return {
     generatedWith: `reconstruct@${VERSION}`,
+    generation: {
+      mode: opts.mode,
+      level: opts.level,
+      fidelity: opts.fidelity,
+      granularity: opts.granularity
+    },
     repoName: basename3(opts.repo) || "project",
     stack,
     fileCount: files.length,
@@ -1824,6 +1831,149 @@ function renderSourceMaterial(feature, opts) {
   }
 }
 
+// src/prd/bundle.ts
+function demoteHeadings(md, by = 1) {
+  const out = [];
+  let fence = null;
+  for (const line of md.split("\n")) {
+    const fenceMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
+    if (fenceMatch?.[2]) {
+      const marker = fenceMatch[2].startsWith("`") ? "`" : "~";
+      if (fence === null) fence = marker;
+      else if (fence === marker) fence = null;
+      out.push(line);
+      continue;
+    }
+    if (fence !== null) {
+      out.push(line);
+      continue;
+    }
+    const h = line.match(/^(\s{0,3})(#{1,6})(\s.*)?$/);
+    if (h?.[2]) {
+      const hashes = "#".repeat(Math.min(6, h[2].length + by));
+      out.push(`${h[1] ?? ""}${hashes}${h[3] ?? ""}`);
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join("\n");
+}
+function generationOf(inv, opts) {
+  return inv.generation ?? {
+    mode: opts.mode,
+    level: opts.level,
+    fidelity: opts.fidelity,
+    granularity: opts.granularity
+  };
+}
+function metaLine(inv, opts) {
+  const g = generationOf(inv, opts);
+  return `> Generated with \`${inv.generatedWith}\` \xB7 mode \`${g.mode}\` \xB7 level \`${g.level}\` \xB7 fidelity \`${g.fidelity}\``;
+}
+function slugify2(value) {
+  return value.toLowerCase().replace(/\.md$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+var BUNDLE_EXCLUDE = /* @__PURE__ */ new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md"]);
+function orderedSections(artifacts, inv) {
+  const have = new Set(artifacts.map((a) => a.relPath));
+  const sections = [];
+  const push = (relPath, title, anchor) => {
+    if (have.has(relPath)) sections.push({ relPath, title, anchor });
+  };
+  push("00-overview/PRD.md", "Overview", "overview");
+  push("architecture/ARCHITECTURE.md", "Architecture", "architecture");
+  push("architecture/INTERFACES.md", "Interfaces", "interfaces");
+  push("architecture/DATA-MODEL.md", "Data model", "data-model");
+  push("architecture/diagram.md", "Diagram", "diagram");
+  for (const f of inv.features) {
+    push(`features/${f.slug}/PRD.md`, f.name, `feature-${f.slug}`);
+  }
+  push("REBUILD.md", "Build order", "build-order");
+  const placed = new Set(sections.map((s) => s.relPath));
+  const extra = artifacts.map((a) => a.relPath).filter((p) => p.endsWith(".md") && !placed.has(p) && !BUNDLE_EXCLUDE.has(p)).sort();
+  for (const relPath of extra) {
+    sections.push({ relPath, title: relPath.replace(/\.md$/, ""), anchor: slugify2(relPath) });
+  }
+  return sections;
+}
+function mergeArtifacts(artifacts, inv, opts) {
+  const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
+  const sections = orderedSections(artifacts, inv);
+  const parts = [];
+  parts.push(`# ${inv.repoName} \u2014 Reconstruction`);
+  parts.push("");
+  parts.push(metaLine(inv, opts));
+  parts.push("");
+  parts.push(
+    "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree."
+  );
+  parts.push("");
+  parts.push("## Contents");
+  parts.push("");
+  for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
+  for (const s of sections) {
+    const content = byPath.get(s.relPath) ?? "";
+    parts.push("");
+    parts.push("---");
+    parts.push("");
+    parts.push(`<a id="${s.anchor}"></a>`);
+    parts.push("");
+    parts.push(demoteHeadings(content).trimEnd());
+  }
+  return parts.join("\n") + "\n";
+}
+function summarize(inv, opts) {
+  const lines = [];
+  lines.push(`# ${inv.repoName} \u2014 reconstruction summary`);
+  lines.push("");
+  lines.push(metaLine(inv, opts));
+  lines.push("");
+  lines.push("## Project");
+  const frameworks = inv.stack.frameworks.length ? `${inv.stack.primaryLanguage} \xB7 ${inv.stack.frameworks.join(", ")}` : inv.stack.primaryLanguage;
+  lines.push(`- **Stack:** ${frameworks}`);
+  lines.push(`- **Notable libraries:** ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`);
+  lines.push(`- **Size:** ${inv.fileCount} files \xB7 ${inv.totalLines} lines`);
+  if (inv.stack.packageManagers.length) {
+    lines.push(`- **Package manager(s):** ${inv.stack.packageManagers.join(", ")}`);
+  }
+  if (inv.runtime?.node) lines.push(`- **Runtime:** Node ${inv.runtime.node}`);
+  if (inv.i18n) {
+    lines.push(`- **Locales:** ${inv.i18n.locales.join(", ")} (${inv.i18n.locales.length})`);
+  }
+  lines.push(`- **Routes:** ${inv.routes.length} \xB7 **Features:** ${inv.features.length}`);
+  if (inv.workspaces?.length) lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s)`);
+  lines.push("");
+  lines.push("## Features (build order)");
+  if (inv.features.length === 0) {
+    lines.push("_No features detected._");
+  } else {
+    inv.features.forEach((f, i) => {
+      const desc = f.description ? ` \u2014 ${f.description}` : "";
+      lines.push(`${i + 1}. **${f.name}**${desc} \u2192 \`features/${f.slug}/PRD.md\` (${f.files.length} file(s))`);
+    });
+  }
+  lines.push("");
+  lines.push("## Interface & data surface");
+  lines.push(`- Routes resolved: ${inv.routes.length}`);
+  lines.push(`- Route candidates to verify: ${inv.hints.routeCandidates.length}`);
+  lines.push(`- API candidates (RPC / GraphQL / gRPC / OpenAPI): ${inv.hints.apiCandidates.length}`);
+  lines.push(`- Schema / data-model candidates: ${inv.hints.schemaCandidates.length}`);
+  lines.push("");
+  lines.push("## Unknowns to resolve");
+  if (inv.unknowns.length === 0) {
+    lines.push("_None \u2014 the engine resolved everything it looks for._");
+  } else {
+    for (const u of inv.unknowns) lines.push(`- ${u}`);
+  }
+  lines.push("");
+  lines.push("## Next steps");
+  lines.push(
+    "Open `REBUILD.md` for the dependency-ordered build order and validation checklist, then feed each `features/<slug>/PRD.md` to an agent, using `data/` and `source/` as ground truth."
+  );
+  lines.push("");
+  return lines.join("\n");
+}
+
 // src/prd/render.ts
 function render(inv, opts) {
   const artifacts = [];
@@ -1851,6 +2001,12 @@ function render(inv, opts) {
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
   dataCopy(inv.schemas, "schema");
   dataCopy(inv.configs, "config");
+  if (opts.summary) {
+    artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
+  }
+  if (opts.merge) {
+    artifacts.push({ relPath: "RECONSTRUCTION.md", content: mergeArtifacts(artifacts, inv, opts) });
+  }
   return { artifacts, copies };
 }
 
@@ -1873,6 +2029,43 @@ function writeOutput(result, opts) {
   }
 }
 
+// src/postprocess.ts
+import { readdirSync as readdirSync3, readFileSync as readFileSync7, existsSync as existsSync3 } from "fs";
+import { join as join9, relative as relative2, sep } from "path";
+var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
+function readMarkdownTree(dir) {
+  const out = [];
+  const walk2 = (abs) => {
+    for (const entry of readdirSync3(abs, { withFileTypes: true })) {
+      const child = join9(abs, entry.name);
+      const rel = relative2(dir, child).split(sep).join("/");
+      if (entry.isDirectory()) {
+        if (GROUND_TRUTH_DIRS.has(rel)) continue;
+        walk2(child);
+      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+        out.push({ relPath: rel, content: readFileSync7(child, "utf8") });
+      }
+    }
+  };
+  walk2(dir);
+  return out;
+}
+function bundleExisting(opts) {
+  const dir = opts.out;
+  const invPath = join9(dir, "inventory.json");
+  if (!existsSync3(invPath)) {
+    throw new Error(
+      `no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`
+    );
+  }
+  const inv = JSON.parse(readFileSync7(invPath, "utf8"));
+  const tree = readMarkdownTree(dir);
+  const artifacts = [];
+  if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
+  if (opts.merge) artifacts.push({ relPath: "RECONSTRUCTION.md", content: mergeArtifacts(tree, inv, opts) });
+  return { artifacts, copies: [] };
+}
+
 // src/cli.ts
 var HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -1890,6 +2083,8 @@ Options:
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
+  --merge              Also write RECONSTRUCTION.md (whole tree in one file)
+  --summary            Also write SUMMARY.md (one-page digest)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
   -v, --version        Show version
@@ -1897,6 +2092,11 @@ Options:
 Fidelity defaults:
   preserve+light  -> mirror     preserve+complex -> embed
   redesign+light  -> embed      redesign+complex -> describe
+
+Bundling:
+  --merge / --summary during a normal run append the file(s) to the output tree.
+  Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
+    reconstruct --merge --summary --out <reconstruction-dir>
 `;
 function fail(message) {
   process.stderr.write(`reconstruct: ${message}
@@ -1921,6 +2121,8 @@ function parseArgs(argv) {
   const includeGlobs = [];
   const excludeGlobs = [];
   let json = false;
+  let merge = false;
+  let summary = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
@@ -1933,6 +2135,14 @@ function parseArgs(argv) {
     }
     if (arg === "--json") {
       json = true;
+      continue;
+    }
+    if (arg === "--merge") {
+      merge = true;
+      continue;
+    }
+    if (arg === "--summary") {
+      summary = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -1956,8 +2166,9 @@ function parseArgs(argv) {
       else raw[key] = value;
     }
   }
+  const standalone = (merge || summary) && !json && raw.repo === void 0;
   const repo = resolve(raw.repo ?? process.cwd());
-  if (!existsSync3(repo) || !statSync2(repo).isDirectory()) {
+  if (!standalone && (!existsSync4(repo) || !statSync2(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const mode = oneOf("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
@@ -1971,7 +2182,7 @@ function parseArgs(argv) {
     "coarse",
     "fine"
   ]);
-  const out = resolve(raw.out ?? join9(repo, "reconstruction"));
+  const out = standalone ? resolve(raw.out ?? process.cwd()) : resolve(raw.out ?? join10(repo, "reconstruction"));
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
@@ -1986,11 +2197,30 @@ function parseArgs(argv) {
     include: includeGlobs,
     exclude: excludeGlobs,
     json,
-    maxEmbedBytes
+    maxEmbedBytes,
+    merge,
+    summary,
+    standalone
   };
 }
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.standalone) {
+    let result2;
+    try {
+      result2 = bundleExisting(opts);
+    } catch (e) {
+      fail(e.message);
+    }
+    writeOutput(result2, opts);
+    const made = [
+      ...opts.summary ? ["SUMMARY.md"] : [],
+      ...opts.merge ? ["RECONSTRUCTION.md"] : []
+    ];
+    process.stderr.write(`reconstruct: bundled ${made.join(" + ")} into ${opts.out}
+`);
+    return;
+  }
   const inv = analyze(opts);
   if (opts.json) {
     process.stdout.write(JSON.stringify(inv, null, 2) + "\n");
@@ -2009,12 +2239,15 @@ function main() {
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
+    ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
+    ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join9(opts.out, "REBUILD.md")}`
+    `  next:     open ${join10(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }
-main();
+var invokedDirectly = process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) main();
 export {
   parseArgs
 };
