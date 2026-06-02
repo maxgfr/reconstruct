@@ -170,13 +170,15 @@ to mirror, so the PRDs must capture requirements precisely enough to rewrite fro
    **pre-filled** from the plan), `inventory.json`, `features/NN-<slug>/PRD.md`, and — written
    **if-absent** so your richer interview versions are never clobbered — `CONTEXT.md` and
    `docs/adr/NNNN-<slug>.md`. `00-overview` links back to `../CONTEXT.md` and `../docs/adr/`.
-3. **Enrich the scaffold.** The engine pre-fills tables and scaffolding; **you fill the
-   `> 🧠` callouts** in each feature PRD — turn the interview into precise, testable
-   functional requirements, edge cases, and acceptance criteria, and write the architecture
-   prose. Use the interview, `CONTEXT.md`, and the ADRs as **ground truth** (the same role
-   `source/` + `data/` play in code mode). At complex level, fill the **Enhancements &
-   alternatives** section (mark extras `[post-MVP]` so the core build stays lean); with
-   `--tdd`, frame each unit's requirements as the tests to write first.
+3. **Enrich the scaffold to full PRD depth.** The engine pre-fills tables and scaffolding;
+   **you fill the `> 🧠` callouts** in each feature PRD and remove them. Complete the whole
+   spine — *Context & goal · User stories · Functional requirements · Interfaces & data ·
+   Acceptance criteria (Given/When/Then) · Edge cases & failure modes · Definition of done* —
+   exhaustively, and write the architecture prose. Use the interview, `CONTEXT.md`, and the
+   ADRs as **ground truth** (the same role `source/` + `data/` play in code mode). At complex
+   level, fill the **Enhancements & alternatives** section (mark extras `[post-MVP]`); with
+   `--tdd`, frame each unit's requirements as the tests to write first. **A 🧠 callout left in
+   place means the unit isn't done.**
 
 You're done when every `> 🧠` callout is resolved, `INTERFACES.md` and `DATA-MODEL.md`
 match the interview, `CONTEXT.md` names every fuzzy term, and `REBUILD.md`'s tiered build

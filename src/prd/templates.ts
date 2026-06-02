@@ -399,6 +399,11 @@ export function featurePrd(
   sourceMarkdown: string,
 ): string {
   const isScratch = opts.mode === "scratch";
+  // Where the agent gets its ground truth, phrased per mode.
+  const truth = isScratch
+    ? "the interview & `../../CONTEXT.md`"
+    : "the source material below";
+
   const out: string[] = [
     `# ${feature.name}`,
     "",
@@ -408,17 +413,23 @@ export function featurePrd(
     "",
     feature.description,
     "",
+    "## Context & goal",
+    "",
+    agentNote(
+      `State this unit's user-facing goal in 1–2 sentences (the outcome a user gets), and name the other units it depends on and that depend on it. Derive it from ${truth}.`,
+    ),
+    "",
+    "## User stories",
+    "",
+    agentNote(
+      "Enumerate **every** actor and what they need, one line each — `As a <role>, I can <action> so that <value>.` Be **exhaustive**: cover every role and every distinct behaviour, not just the happy path. This list is the backbone of the PRD; nothing below should exist without a story above it.",
+    ),
+    "",
     "## Functional requirements",
     "",
-    isScratch
-      ? agentNote(
-          "Specify precise, testable functional requirements for this unit from the interview & `../../CONTEXT.md`. Cover happy paths, edge cases, validation, and error states.",
-        )
-      : opts.level === "complex"
-        ? agentNote(
-            "Derive precise, testable functional requirements for this unit from the source material below. Cover happy paths, edge cases, validation, and error states.",
-          )
-        : "_Describe what this unit must do, as a checklist of behaviors, based on the source below._",
+    agentNote(
+      `Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from ${truth}. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done.`,
+    ),
     "",
   ];
 
@@ -430,12 +441,40 @@ export function featurePrd(
     out.push("");
   }
 
+  // Interfaces & data this unit touches — pre-seeded in scratch mode.
+  out.push("## Interfaces & data", "");
+  if (feature.interfaces?.length) {
+    out.push(`- **Operations:** ${feature.interfaces.map((i) => `\`${i}\``).join(", ")}`);
+  }
+  if (feature.entities?.length) {
+    out.push(`- **Entities:** ${feature.entities.map((e) => `\`${e}\``).join(", ")}`);
+  }
+  if (feature.interfaces?.length || feature.entities?.length) out.push("");
+  out.push(
+    agentNote(
+      "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the data contract — required fields, types, and which writes are transactional.",
+    ),
+    "",
+    "## Acceptance criteria",
+    "",
+    agentNote(
+      "Write **Given / When / Then** scenarios that gate \"done\" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.",
+    ),
+    "",
+    "## Edge cases & failure modes",
+    "",
+    agentNote(
+      "Enumerate what can go wrong and the expected behaviour for each: invalid / empty / oversized input, auth & permission failures, concurrency / race conditions, missing or slow dependencies, partial failures, and idempotency / retries. Each row here should map to an error-path requirement above.",
+    ),
+    "",
+  );
+
   if (opts.tdd) {
     out.push(
       "## Test plan (write these first)",
       "",
       agentNote(
-        "Before writing any implementation, turn the functional requirements above into failing tests (red): one per behavior — happy paths, edge cases, validation, and error states. Implement only enough to make them pass (green), then refactor. List the test cases here as a checklist.",
+        "Before writing any implementation, turn the functional requirements and acceptance criteria above into failing tests (red): one per behaviour — happy paths, edge cases, validation, and error states. Implement only enough to make them pass (green), then refactor. List the test cases here as a checklist.",
       ),
       "",
     );
@@ -446,7 +485,7 @@ export function featurePrd(
       "## Design inputs",
       "",
       agentNote(
-        "Build this unit greenfield. Ground it in `../../CONTEXT.md` (the glossary), the operations it exposes in `../../architecture/INTERFACES.md`, and the entities it touches in `../../architecture/DATA-MODEL.md`.",
+        "Build this unit greenfield. Ground every decision in `../../CONTEXT.md` (the glossary), the operations in `../../architecture/INTERFACES.md`, and the entities in `../../architecture/DATA-MODEL.md`.",
       ),
       "",
     );
@@ -478,6 +517,18 @@ export function featurePrd(
       "",
     );
   }
+
+  out.push(
+    "## Definition of done",
+    "",
+    "- [ ] Every functional requirement is implemented and covered by a test.",
+    "- [ ] Every acceptance-criteria scenario passes (including the failure paths).",
+    "- [ ] Every operation this unit owns in `architecture/INTERFACES.md` responds correctly.",
+    "- [ ] Every entity it writes matches `architecture/DATA-MODEL.md` (fields, types, constraints).",
+    "- [ ] Every edge case & failure mode above is handled.",
+    ...(inv.i18n ? ["- [ ] All user-facing strings are localized for every locale."] : []),
+    "",
+  );
 
   return out.join("\n");
 }

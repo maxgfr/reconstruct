@@ -100,6 +100,8 @@ function planFeatures(features: ScratchFeature[]): Feature[] {
         kind,
         files: [],
         routes: [],
+        ...(f.interfaces && f.interfaces.length ? { interfaces: f.interfaces } : {}),
+        ...(f.entities && f.entities.length ? { entities: f.entities } : {}),
       },
       tier,
       // Preserve the plan's declared order within a tier — the author controls it.

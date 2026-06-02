@@ -224,6 +224,44 @@ describe("templates — scratch (greenfield) mode", () => {
   });
 });
 
+describe("feature PRD is a full, demanding PRD (both modes)", () => {
+  const inv = planToInventory(tinyPlan(), opts());
+  const f = feat(inv, "Todos");
+
+  it("includes the core PRD sections in scratch mode", () => {
+    const md = featurePrd(inv, f, opts(), "SRC");
+    expect(md).toContain("## User stories");
+    expect(md).toContain("## Acceptance criteria");
+    expect(md).toMatch(/## Edge cases/);
+    expect(md).toContain("## Definition of done");
+  });
+
+  it("includes the same core PRD sections in code mode, and keeps Source material", () => {
+    const md = featurePrd(inv, f, opts({ mode: "preserve", fidelity: "embed" }), "SRC-CODE");
+    expect(md).toContain("## User stories");
+    expect(md).toContain("## Acceptance criteria");
+    expect(md).toMatch(/## Edge cases/);
+    expect(md).toContain("## Definition of done");
+    expect(md).toContain("## Source material");
+  });
+
+  it("pushes the AI to enumerate exhaustively, not stop at the happy path", () => {
+    const md = featurePrd(inv, f, opts(), "SRC");
+    expect(md).toMatch(/exhaustiv|every (actor|behaviou?r|operation)|do not stop|leave nothing/i);
+  });
+
+  it("acceptance criteria demand Given/When/Then scenarios", () => {
+    const md = featurePrd(inv, f, opts(), "SRC");
+    expect(md).toMatch(/Given[\s\S]*When[\s\S]*Then/);
+  });
+
+  it("definition of done is a checklist", () => {
+    const md = featurePrd(inv, f, opts(), "SRC");
+    const dod = md.slice(md.indexOf("## Definition of done"));
+    expect(dod).toMatch(/- \[ \]/);
+  });
+});
+
 describe("templates — tdd (test-first) mode", () => {
   const inv = planToInventory(tinyPlan(), opts());
 

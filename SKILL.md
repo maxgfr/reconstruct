@@ -66,15 +66,20 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    key fields + types, relations, and indexes from the ORM/schema in `hints.schemaCandidates`
    (raw copies in `data/schema/`). See the playbook (§Data model).
 
-6. **Group features semantically.** Turn the path-based feature skeleton into real product
-   features: rename, merge trivial ones, and link each feature to its interfaces, data, and
-   components. See the playbook (§Features).
+6. **Group features semantically — and keep them small.** Turn the path-based skeleton into real
+   product features; rename and merge truly trivial ones, but **prefer many focused features over
+   a few broad ones**: if a unit carries more than ~5–7 user stories or touches more than ~3
+   entities, **split it**. Every distinct capability earns its own PRD. Link each feature to its
+   interfaces, data, and components. See the playbook (§Features).
 
-7. **Enrich each `features/<slug>/PRD.md`** (as today): write the product summary in
-   `00-overview/PRD.md`, turn source material into concrete, testable requirements, and
-   reference `INTERFACES.md`/`DATA-MODEL.md`. Resolve every `_italic placeholder_` (light)
-   and `> 🧠` callout (complex/redesign). Add "Improvements & refactors" if `level=complex`;
-   design the new architecture if `mode=redesign`.
+7. **Turn every `features/<slug>/PRD.md` into a complete PRD.** Each one ships with a fixed spine —
+   *Context & goal · User stories · Functional requirements · Interfaces & data · Acceptance
+   criteria · Edge cases & failure modes · Definition of done* (plus *Test plan* under `--tdd`,
+   and *Improvements/Enhancements* at `complex`). **Resolve every `> 🧠` callout exhaustively and
+   delete it:** enumerate every actor and story, number every requirement, write Given/When/Then
+   for each (including the failure paths), and list every edge case. A 🧠 callout left in place
+   means the unit is **not done**. Also write the product summary in `00-overview/PRD.md` and
+   cross-reference `INTERFACES.md`/`DATA-MODEL.md`.
 
 8. **Finalize `REBUILD.md`:** confirm the dependency-tiered build order and validation
    checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
@@ -83,6 +88,20 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, and `references/architecture-analysis.md` /
 `references/rebuild-instructions.md` / the PRD templates for the reasoning checklists.
+
+## Everything is a PRD — dig until done
+
+The output is a **PRD suite**, and the markdown is the program. Optimize for depth, not coverage:
+
+- **Every feature is a full PRD.** Fill the whole spine — user stories, numbered functional
+  requirements, interface & data contracts, Given/When/Then acceptance criteria, edge cases &
+  failure modes, and a definition of done. An unanswered `> 🧠` callout is an unfinished PRD.
+- **Be exhaustive, never illustrative.** No "etc.", no "and so on", no happy-path-only. If a
+  behaviour, role, validation rule, or error state exists, it gets its own line.
+- **Plein de PRD.** Prefer many small, focused feature PRDs over a few broad ones — one per
+  distinct capability. Splitting is cheaper than a vague mega-PRD.
+- **The self-check:** could a fresh agent rebuild this unit from its PRD alone — no access to the
+  original product, no access to this conversation? If not, dig further.
 
 ## From scratch
 
@@ -112,10 +131,14 @@ interview that also proposes alternatives, enhancements, and more ADRs).
    node scripts/analyze.mjs --scratch --plan plan.json --out <OUT> --level <light|complex> [--tdd]
    ```
 
-5. **Enrich/author the prose.** Fill each `features/<slug>/PRD.md` and the architecture docs from
-   the interview + `CONTEXT.md` + ADRs as ground truth — resolve every `> 🧠` callout, turn the
-   pre-filled tables into a complete interface surface and data model, and finalize `REBUILD.md`'s
-   tiered build order. If `--tdd`, each unit is built test-first (red → green → refactor).
+5. **Enrich/author the prose — to full PRD depth.** Fill each `features/<slug>/PRD.md` and the
+   architecture docs from the interview + `CONTEXT.md` + ADRs as ground truth. Complete the whole
+   PRD spine (see [**Everything is a PRD**](#everything-is-a-prd--dig-until-done)): exhaustive user
+   stories, numbered functional requirements, interface & data contracts, Given/When/Then
+   acceptance criteria, edge cases, and a definition of done — **resolve every `> 🧠` callout and
+   delete it**. Turn the pre-filled tables into a complete interface surface and data model, and
+   finalize `REBUILD.md`'s tiered order. If `--tdd`, each unit is built test-first (red → green →
+   refactor).
 
 ## Bundling the output
 
@@ -144,10 +167,14 @@ They work two ways:
 ## How to know you're done
 
 - `INTERFACES.md` lists the **whole** interface surface; `DATA-MODEL.md` lists every entity.
-- Every `features/<slug>/PRD.md` has its fill-in markers resolved; features are semantic.
+- **Every `features/<slug>/PRD.md` is a complete PRD** — the full spine is filled (user stories,
+  numbered requirements, interface & data contracts, Given/When/Then acceptance criteria, edge
+  cases, definition of done), and **no `> 🧠` callout or `_placeholder_` remains** anywhere.
+- Features are semantic and granular — distinct capabilities are separate PRDs, not lumped.
 - Every item in `inventory.json.unknowns` is resolved.
 - `REBUILD.md` has a dependency-ordered build order + validation checklist; `data/` holds
-  translations, schema, and config verbatim.
+  translations, schema, and config verbatim (code mode).
+- **The self-check passes:** a fresh agent could rebuild each unit from its PRD alone.
 
 ## Safety
 

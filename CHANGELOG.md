@@ -25,6 +25,12 @@ and one renderer. Plus an orthogonal **`--tdd`** mode for a test-first build pla
   to them.
 - `architecture/INTERFACES.md` and `architecture/DATA-MODEL.md` render **pre-filled** tables from
   the plan in scratch mode (markdown-pipe-safe) instead of empty skeletons.
+- **Full-PRD feature templates (both modes).** Every `features/<slug>/PRD.md` now ships a complete
+  PRD spine — *Context & goal · User stories · Functional requirements · Interfaces & data ·
+  Acceptance criteria (Given/When/Then) · Edge cases & failure modes · Definition of done* — with
+  demanding agent-notes that push for exhaustive enumeration ("no etc."). Scratch features carry
+  their `interfaces`/`entities` cross-refs through `Feature`. `SKILL.md` gains an "Everything is a
+  PRD — dig until done" section and a granularity push (prefer many focused PRDs).
 - `src/scratch.ts` (`loadPlan`, `planToInventory`, `renderScratchDocs`); `orderFeatures` extracted
   from `src/features.ts` so both front-ends share the dependency-tier build order;
   `writeArtifactsIfAbsent` in `src/output.ts`.

@@ -114,6 +114,10 @@ export interface Feature {
   kind: "feature" | "internationalization" | "project-setup" | "documentation";
   files: string[];
   routes: RouteInfo[];
+  /** Operations this unit exposes (scratch mode cross-ref into INTERFACES.md). */
+  interfaces?: string[];
+  /** Entities this unit reads/writes (scratch mode cross-ref into DATA-MODEL.md). */
+  entities?: string[];
 }
 
 /**
