@@ -45,6 +45,12 @@ export interface Options {
    * the rebuild proceeds red→green→refactor. Set by `--tdd`. Orthogonal to mode.
    */
   tdd: boolean;
+  /**
+   * Validation mode: statically check an existing output tree (`out`) for
+   * buildability — no unresolved callouts, references resolve, locales covered.
+   * Set by `--check`; reads no repo.
+   */
+  check: boolean;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */
@@ -87,6 +93,73 @@ export interface I18nInfo {
   locales: string[];
   files: string[];
   keyCount: number;
+  /**
+   * The message catalog that makes localized copy buildable: the namespaces, a
+   * source locale, and the keys with their source-locale strings. In code mode
+   * the raw files are copied to `data/translations/`; in scratch mode this is
+   * the agent/plan-authored catalog the rebuild localizes from.
+   */
+  messages?: MessageCatalog;
+}
+
+export interface MessageEntry {
+  key: string;
+  /** The source-locale string for this key (what every locale translates). */
+  source?: string;
+}
+
+/**
+ * The i18n message catalog. Buildability requires every user-facing key to have
+ * a source string and to resolve in every locale — naming namespaces is not
+ * enough.
+ */
+export interface MessageCatalog {
+  /** Locale the `source` strings are written in (e.g. "fr" or "en"). */
+  sourceLocale?: string;
+  /** Top-level message namespaces (e.g. "auth", "directory", "calendar"). */
+  namespaces?: string[];
+  /** Representative/required keys with their source strings. */
+  entries?: MessageEntry[];
+}
+
+/** A named domain enum — its full member list must be enumerated to be buildable. */
+export interface EnumDef {
+  name: string;
+  members: string[];
+  description?: string;
+}
+
+/**
+ * An external service the project integrates with (geocoding, email, payments…).
+ * Buildability requires the contract — provider, request/response shape, timeout,
+ * and failure behavior — not just the service's name.
+ */
+export interface ServiceContract {
+  name: string;
+  purpose: string;
+  provider?: string;
+  /** Named operations/functions the app calls, with their exact I/O shapes. */
+  operations?: { name: string; input?: string; output?: string }[];
+  request?: string;
+  response?: string;
+  timeout?: string;
+  /** What the app does when the service is slow / down / errors. */
+  onFailure?: string;
+}
+
+/**
+ * A cross-cutting rule that is otherwise easy to leave vague: rate limits,
+ * format validations (e.g. a national registry number), security policies.
+ * The `rule` must be concrete enough to write a test against.
+ */
+export interface Policy {
+  name: string;
+  /** rate-limit | validation | security | other */
+  kind?: string;
+  /** The concrete, testable rule (thresholds, regex, window, store…). */
+  rule: string;
+  /** Interface paths or field names this policy governs. */
+  appliesTo?: string[];
 }
 
 export interface DependencyInfo {
@@ -118,6 +191,8 @@ export interface Feature {
   interfaces?: string[];
   /** Entities this unit reads/writes (scratch mode cross-ref into DATA-MODEL.md). */
   entities?: string[];
+  /** Entities this unit WRITES (subset of entities); drives consistency checks. */
+  writes?: string[];
 }
 
 /**
@@ -153,12 +228,20 @@ export interface InterfaceRow {
   kind?: string;
   auth?: string;
   notes?: string;
+  /** Exact input/request shape (fields + types + validation). */
+  input?: string;
+  /** Exact output/response shape. */
+  output?: string;
+  /** Observable side effects: writes, emails, jobs, external calls. */
+  sideEffects?: string[];
 }
 
 export interface EntityField {
   name: string;
   type: string;
   constraints?: string;
+  /** Name of an {@link EnumDef} this field's values are drawn from. */
+  enumRef?: string;
 }
 
 /** One entity/table of the data model. */
@@ -167,6 +250,10 @@ export interface Entity {
   fields: EntityField[];
   /** Free-text relation descriptions (e.g. "belongs to User"). */
   relations?: string[];
+  /** Index definitions (e.g. "btree on (doctorProfileId, date)"). */
+  indexes?: string[];
+  /** Unique-constraint definitions (e.g. "unique on (provider, providerAccountId)"). */
+  uniques?: string[];
 }
 
 export interface Inventory {
@@ -212,6 +299,12 @@ export interface Inventory {
    * filled entity tables instead of an empty skeleton.
    */
   dataModel?: Entity[];
+  /** Named domain enums (scratch pre-fill) → `DATA-MODEL.md` Enums section. */
+  enums?: EnumDef[];
+  /** External-service contracts (scratch pre-fill) → `ARCHITECTURE.md`. */
+  services?: ServiceContract[];
+  /** Cross-cutting policies: rate limits, validations (scratch pre-fill). */
+  policies?: Policy[];
 }
 
 // --- Scratch (greenfield) plan -----------------------------------------------
@@ -252,6 +345,12 @@ export interface ScratchFeature {
   interfaces?: string[];
   /** Entity names this feature reads/writes (cross-reference). */
   entities?: string[];
+  /**
+   * Entity names this feature WRITES (subset of `entities`). When set, the
+   * consistency checker uses it to verify anonymous/public writes are
+   * satisfiable; falls back to `entities` when omitted.
+   */
+  writes?: string[];
 }
 
 export interface GlossaryTerm {
@@ -272,9 +371,15 @@ export interface ScratchPlan {
   stack: ScratchStack;
   dependencies?: ScratchDependency[];
   envVars?: string[];
-  i18n?: { locales: string[] } | null;
+  i18n?: { locales: string[]; messages?: MessageCatalog } | null;
   dataModel?: Entity[];
   interfaces?: InterfaceRow[];
+  /** Named domain enums (member lists) referenced by entity fields. */
+  enums?: EnumDef[];
+  /** External-service contracts (geocoding, email, payments…). */
+  services?: ServiceContract[];
+  /** Cross-cutting policies: rate limits, format validations, security. */
+  policies?: Policy[];
   features: ScratchFeature[];
   /** → CONTEXT.md glossary. */
   glossary?: GlossaryTerm[];
@@ -301,4 +406,4 @@ export interface RenderResult {
   copies: CopyOp[];
 }
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";

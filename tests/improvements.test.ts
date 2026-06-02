@@ -28,6 +28,7 @@ function opts(): Options {
     scratch: false,
     plan: "",
     tdd: false,
+    check: false,
   };
 }
 

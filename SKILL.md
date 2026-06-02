@@ -3,7 +3,7 @@ name: reconstruct
 description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec, from scratch, greenfield, build plan, new project, idea to PRD.
 license: MIT
 metadata:
-  version: 0.4.0
+  version: 0.5.0
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -60,11 +60,18 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    HTTP route, endpoint, tRPC/gRPC procedure, GraphQL operation, CLI command, and job —
    method · path/operation · handler file. Start from `hints.routeCandidates`/`apiCandidates`,
    then **read the source** to confirm. Cover the stack's real paradigm, not just file-based
-   routing. See `references/analysis-playbook.md` (§Interface surface).
+   routing. For each operation capture the **contract**: exact input shape, output shape,
+   auth rule, and side effects (which entities it writes, transactional or not). See
+   `references/analysis-playbook.md` (§Interface surface, §Contracts & buildability).
 
 5. **Extract the data model** → fill **`architecture/DATA-MODEL.md`**. List entities/tables,
-   key fields + types, relations, and indexes from the ORM/schema in `hints.schemaCandidates`
-   (raw copies in `data/schema/`). See the playbook (§Data model).
+   key fields + types, relations, indexes, and unique constraints from the ORM/schema in
+   `hints.schemaCandidates` (raw copies in `data/schema/`), and fill the **`## Enums & domain
+   types`** section with the *complete* member list of every enum/status/role set. Then fill
+   the **`architecture/ARCHITECTURE.md`** contract sections — **External services &
+   integrations** (provider, request/response, timeout, failure), **Cross-cutting policies**
+   (rate limits and format validations, quantified), and the i18n message catalog. See the
+   playbook (§Data model, §Contracts & buildability) and `references/buildability-checklist.md`.
 
 6. **Group features semantically — and keep them small.** Turn the path-based skeleton into real
    product features; rename and merge truly trivial ones, but **prefer many focused features over
@@ -85,8 +92,21 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
    by one, using `data/` and `source/` as ground truth).
 
+9. **Validate buildability — the gate must pass.** Run the consistency self-review (every
+   feature's entities/operations/enums/locales resolve against the architecture docs; every
+   write is satisfiable; anonymous writes target anonymous-capable entities), then run:
+
+   ```bash
+   node scripts/analyze.mjs --check --out <OUT>
+   ```
+
+   It exits non-zero on unresolved `🧠` callouts or placeholders, a feature that references
+   an undocumented entity/operation, a feature PRD missing its spine, or an uncovered locale.
+   Fix every error and resolve the warnings. See `references/buildability-checklist.md`.
+
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
-for per-stack cheat-sheets, and `references/architecture-analysis.md` /
+for per-stack cheat-sheets, `references/buildability-checklist.md` for the eight contract
+categories + the `--check` gate, and `references/architecture-analysis.md` /
 `references/rebuild-instructions.md` / the PRD templates for the reasoning checklists.
 
 ## Everything is a PRD — dig until done
@@ -122,10 +142,17 @@ interview that also proposes alternatives, enhancements, and more ADRs).
    them.
 
 3. **Write `plan.json`** — the structured output of the interview, mapping 1:1 onto the inventory.
-   Schema + worked example: `references/scratch-plan-schema.md`.
+   Capture the full contract surface so the from-scratch tree is as buildable as the
+   reverse-engineered one: `dataModel` (with `enumRef`, indexes, uniques), `enums` (full member
+   lists), `interfaces` (with input/output/sideEffects), `services`, `policies`, the
+   `i18n.messages` catalog, and each `feature.writes`. Schema + worked example:
+   `references/scratch-plan-schema.md`. The plan must be **internally consistent** — the engine
+   rejects dangling references and warns on anonymous writes to owner-FK tables.
 
 4. **Render the tree** with the deterministic engine (it scaffolds the PRDs and pre-fills the
-   `INTERFACES.md` / `DATA-MODEL.md` tables from the plan; add `--tdd` for a test-first build):
+   `INTERFACES.md` / `DATA-MODEL.md` / enums / services / policies / message-catalog sections
+   from the plan, and **validates the plan's consistency first**; add `--tdd` for a test-first
+   build):
 
    ```bash
    node scripts/analyze.mjs --scratch --plan plan.json --out <OUT> --level <light|complex> [--tdd]
@@ -138,7 +165,8 @@ interview that also proposes alternatives, enhancements, and more ADRs).
    acceptance criteria, edge cases, and a definition of done — **resolve every `> 🧠` callout and
    delete it**. Turn the pre-filled tables into a complete interface surface and data model, and
    finalize `REBUILD.md`'s tiered order. If `--tdd`, each unit is built test-first (red → green →
-   refactor).
+   refactor). Finally, run the gate — `node scripts/analyze.mjs --check --out <OUT>` — and the
+   consistency self-review; both must be clean (see `references/buildability-checklist.md`).
 
 ## Bundling the output
 
@@ -166,7 +194,13 @@ They work two ways:
 
 ## How to know you're done
 
-- `INTERFACES.md` lists the **whole** interface surface; `DATA-MODEL.md` lists every entity.
+- `INTERFACES.md` lists the **whole** interface surface, each with its input/output/side-effect
+  contract; `DATA-MODEL.md` lists every entity with field-level types and constraints, and
+  every enum with its **complete** member list.
+- **Every contract category is captured, not just named** — operation contracts, write
+  contracts (every required column/FK has a source; anonymous writes use anonymous-capable
+  entities), enums, format validations, external services, quantified policies, and the i18n
+  message catalog. The nine categories are in `references/buildability-checklist.md`.
 - **Every `features/<slug>/PRD.md` is a complete PRD** — the full spine is filled (user stories,
   numbered requirements, interface & data contracts, Given/When/Then acceptance criteria, edge
   cases, definition of done), and **no `> 🧠` callout or `_placeholder_` remains** anywhere.
@@ -174,7 +208,10 @@ They work two ways:
 - Every item in `inventory.json.unknowns` is resolved.
 - `REBUILD.md` has a dependency-ordered build order + validation checklist; `data/` holds
   translations, schema, and config verbatim (code mode).
-- **The self-check passes:** a fresh agent could rebuild each unit from its PRD alone.
+- **The gate passes:** `node scripts/analyze.mjs --check --out <OUT>` reports no errors, and
+  the consistency self-review is clean.
+- **The self-check passes:** a fresh agent could rebuild each unit *correctly* — getting the
+  contracts right, not just the gist — from its PRD + the architecture docs alone.
 
 ## Safety
 

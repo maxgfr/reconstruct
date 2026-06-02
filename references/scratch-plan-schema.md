@@ -4,8 +4,9 @@
 that elicits the project's facts from the user instead of reading a repo. It maps **1:1 onto
 the inventory**: `planToInventory()` is the bridge, validating the plan and projecting it into
 the *same* `Inventory` the code analyzer produces (empty `files`/`routes`/`hints` — there is no
-source to read — but populated `stack`, `dependencies`, `envVars`, `i18n`, tiered `features`,
-and pre-filled `interfaces`/`dataModel`, with `mode = "scratch"` and `fidelity = "describe"`).
+source to read — but populated `stack`, `dependencies`, `envVars`, `i18n` (+ message catalog),
+tiered `features`, and pre-filled `interfaces`/`dataModel`/`enums`/`services`/`policies`, with
+`mode = "scratch"` and `fidelity = "describe"`).
 From there the shared renderer takes over: the **engine** emits the deterministic scaffold and
 the **pre-filled** `INTERFACES.md` / `DATA-MODEL.md` tables, and the **agent** enriches the
 prose in the PRDs, `00-overview`, `CONTEXT.md`, and the ADRs.
@@ -36,22 +37,46 @@ Required fields are marked **`// REQUIRED`**; everything else is optional with a
       "dev":     { "dep": "ver" } }     //   default: {}
   ],
   "envVars": ["string"],                // optional, default: []
-  "i18n":    { "locales": ["string"] }, // optional, default: null (omit or null = no i18n)
+  "i18n": {                             // optional, default: null (omit or null = no i18n)
+    "locales":  ["string"],             //   REQUIRED when i18n is present
+    "messages": {                       //   optional — the buildable message catalog
+      "sourceLocale": "string",         //     locale the source strings are written in
+      "namespaces":   ["string"],       //     top-level message namespaces
+      "entries": [ { "key": "string", "source": "string" } ] } },  // keys + source strings
   "dataModel": [                        // optional, default: []
     { "entity": "string",
-      "fields":    [ { "name": "string", "type": "string", "constraints": "string" } ],
-      "relations": ["string"] }         //   optional; relations also seed CONTEXT.md
+      "fields": [ { "name": "string", "type": "string",
+                    "constraints": "string",   // PK/FK->table.col/not null/default/unique
+                    "enumRef": "string" } ],   // optional: an enums[].name (sets the member set)
+      "relations": ["string"],          //   optional; relations also seed CONTEXT.md
+      "indexes":   ["string"],          //   optional: index definitions
+      "uniques":   ["string"] }         //   optional: unique-constraint definitions
   ],
+  "enums": [                            // optional, default: [] — named domain sets
+    { "name": "string", "members": ["string"], "description": "string" } ],
   "interfaces": [                       // optional, default: []
     { "method": "string", "path": "string",
-      "kind": "string", "auth": "string", "notes": "string" } ],
+      "kind": "string", "auth": "string", "notes": "string",
+      "input": "string",                //   exact input/request shape (fields + types)
+      "output": "string",               //   exact output/response shape
+      "sideEffects": ["string"] } ],    //   writes / emails / jobs / external calls
+  "services": [                         // optional, default: [] — external integrations
+    { "name": "string", "purpose": "string", "provider": "string",
+      "operations": [ { "name": "string", "input": "string", "output": "string" } ],
+      "request": "string", "response": "string",
+      "timeout": "string", "onFailure": "string" } ],
+  "policies": [                         // optional, default: [] — rate limits, validations
+    { "name": "string", "kind": "string",   // rate-limit | validation | security | other
+      "rule": "string",                     // concrete, testable (thresholds, regex, window)
+      "appliesTo": ["string"] } ],          // interface paths / field names it governs
   "features": [                         // REQUIRED — at least one entry
     { "name": "string",                 //   REQUIRED
       "kind": "feature",                //   "feature" | "project-setup" | "internationalization" | "documentation"
       "tier": 1,                        //   0 | 1 | 2 — default: derived from kind
       "summary":    "string",
       "interfaces": ["string"],         //   paths/operations from interfaces[].path
-      "entities":   ["string"] } ],     //   entity names from dataModel[].entity
+      "entities":   ["string"],         //   entity names from dataModel[].entity
+      "writes":     ["string"] } ],     //   subset of entities this feature WRITES
   "glossary": [                         // optional -> CONTEXT.md Language section
     { "term": "string", "definition": "string", "avoid": ["string"] } ],
   "decisions": [                        // optional -> one terse ADR each
@@ -77,15 +102,39 @@ preserved**; features then get `NN-` numbered slugs in build order.
 | `dependencies[]` | no | `[]` | `ARCHITECTURE.md` deps; overview tech-stack |
 | `envVars[]` | no | `[]` | overview env section; `REBUILD.md` env-var checklist |
 | `i18n.locales` | no | `null` | Internationalization feature; overview locale count; `ARCHITECTURE.md` i18n line |
+| `i18n.messages` | no | omitted | `ARCHITECTURE.md` message catalog (namespaces + keys + source strings) |
 | `dataModel[]` | no | `[]` | `architecture/DATA-MODEL.md` **pre-filled** entity tables; relations seed `CONTEXT.md` |
+| `dataModel[].fields[].enumRef` | no | omitted | links a field to an `enums[]` member set |
+| `dataModel[].indexes` / `.uniques` | no | omitted | rendered per entity in `DATA-MODEL.md` |
+| `enums[]` | no | `[]` | `architecture/DATA-MODEL.md` `## Enums & domain types` (full member lists) |
 | `interfaces[]` | no | `[]` | `architecture/INTERFACES.md` **pre-filled** table |
+| `interface.input` / `.output` / `.sideEffects` | no | omitted | `INTERFACES.md` `## Operation contracts` per operation |
+| `services[]` | no | `[]` | `ARCHITECTURE.md` `## External services & integrations` |
+| `policies[]` | no | `[]` | `ARCHITECTURE.md` `## Cross-cutting policies` (rate limits, validations) |
 | `features[]` | **yes** (≥1) | — | `features/NN-<slug>/PRD.md`; dependency-tiered build order in `REBUILD.md` |
 | `feature.kind` | no | `"feature"` | tier derivation; PRD framing (setup / i18n / docs) |
 | `feature.tier` | no | derived | build order within `REBUILD.md` |
 | `feature.interfaces` / `feature.entities` | no | `[]` | cross-links from the feature PRD to `INTERFACES.md` / `DATA-MODEL.md` |
+| `feature.writes` | no | `[]` | entities the feature writes; drives the anonymous-write consistency check |
 | `glossary[]` | no | `[]` | `CONTEXT.md` Language section (format: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md)) |
 | `decisions[]` | no | `[]` | `docs/adr/NNNN-<slug>.md`, one per entry (format: [ADR-FORMAT.md](./ADR-FORMAT.md)) |
 | `tdd` | no | `false` | red→green→refactor build guidance in PRDs/`REBUILD.md` (same as `--tdd`) |
+
+## Consistency rules (enforced by `--scratch`)
+
+A buildable tree starts with an internally consistent plan, so the engine validates these
+before it renders — **errors abort**, **warnings print** (resolve them while enriching):
+
+- **Errors:** a `features[].entities`/`writes` or `features[].interfaces` that names something
+  not defined in `dataModel`/`interfaces`; an `enums[]` entry with no members; a field
+  `enumRef` that names no defined enum.
+- **Warning:** an `auth: "public"` mutation whose owning feature `writes` an entity that has a
+  non-null foreign key to an identity table (`users`) — an anonymous caller can't satisfy it,
+  so write to an anonymous-capable entity (e.g. a `contactRequests` table) instead.
+
+The post-enrichment gate (`node scripts/analyze.mjs --check --out <OUT>`) then verifies the
+rendered tree. See `references/buildability-checklist.md` for the full eight contract
+categories and the consistency self-review.
 
 ## Worked example — `linkrolls` (link-in-bio app)
 

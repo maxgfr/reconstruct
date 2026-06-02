@@ -46,14 +46,31 @@ send you back to sharpen an earlier one.
    before?")
 2. **Stack** — primary language, then frameworks, libraries, package managers, TypeScript.
    The stack picks the idioms for everything downstream (ORM shape, routing paradigm).
-3. **Data model** — entities, then each entity's fields (name · type · constraints), then
-   relations (1-1 / 1-N / N-N). Copy types in the user's words; don't paraphrase.
+3. **Data model** — entities, then each entity's fields (name · type · constraints incl.
+   PK/FK/nullability/default/unique), indexes, and relations (1-1 / 1-N / N-N). Copy types in
+   the user's words; don't paraphrase. Pin down every **enum/domain set** with its *complete*
+   member list (→ `plan.enums`), and reference it from the field (`enumRef`). A "status" with
+   no members is a `inventory.unknowns` you forgot to close.
 4. **Interface surface** — every way the outside world reaches the app: HTTP routes,
-   RPC/GraphQL ops, CLI commands, jobs. One row per operation: method · path · kind · auth.
-5. **Features** — the units of behavior a user cares about, each tied to its interfaces and
-   entities. Assign tiers (below). Features often surface a missing entity or route — go back.
-6. **Glossary** — sharpen the fuzzy terms that surfaced (see §Glossary). Write inline.
-7. **Decisions** — only the hard, surprising trade-offs (see §ADRs).
+   RPC/GraphQL ops, CLI commands, jobs. One row per operation, and for each: method · path ·
+   kind · auth · the exact **input** shape · the **output** shape · the **side effects**
+   (entities written, transactional?). An operation without a contract isn't buildable.
+5. **Contracts & policies** — the categories that are easy to leave implicit and impossible
+   to rebuild later (see `references/buildability-checklist.md`):
+   - **External services** (→ `plan.services`): email, geocoding, payments, storage, queues —
+     provider, exact request/response shape, the function signatures the app calls, timeout,
+     failure behavior.
+   - **Policies** (→ `plan.policies`): rate limits (concrete thresholds · window · key ·
+     store) and format validations (the real regex/checksum/length for coded identifiers, or
+     an honest "no validation"), each `appliesTo` its operations/fields.
+   - **i18n message catalog** (→ `plan.i18n.messages`): the source locale, the namespaces,
+     and the keys with their source strings — naming locales isn't buildable copy.
+6. **Features** — the units of behavior a user cares about, each tied to its `interfaces`,
+   `entities`, and the subset it **`writes`**. Assign tiers (below). Features often surface a
+   missing entity, enum, service, or route — go back. For any public/anonymous write, name an
+   **anonymous-capable** entity to write to (one with no owner FK), not a user-owned table.
+7. **Glossary** — sharpen the fuzzy terms that surfaced (see §Glossary). Write inline.
+8. **Decisions** — only the hard, surprising trade-offs (see §ADRs).
 
 **Tiers** drive the build order in `REBUILD.md`. Tier 0 = foundations (`project-setup`,
 `internationalization`); tier 1 = features; tier 2 = docs. If you don't set `tier`, the
@@ -107,10 +124,13 @@ immediately.
 | --- | --- | --- |
 | Project (name/summary/audience/value) | `project` | `repoName` + `00-overview` product summary |
 | Stack, deps, env vars | `stack` / `dependencies` / `envVars` | overview tech-stack, architecture deps, REBUILD env checklist |
-| Entities (fields, relations) | `dataModel` | `architecture/DATA-MODEL.md` pre-filled tables; relations seed `CONTEXT.md` |
-| Operations (routes, RPC, CLI, jobs) | `interfaces` | `architecture/INTERFACES.md` pre-filled table |
-| Features (and tiers) | `features` | `features/NN-<slug>/PRD.md`, tiered build order in `REBUILD.md` |
-| Locales | `i18n.locales` | Internationalization feature, overview locale count, architecture i18n line |
+| Entities (fields, relations, indexes, uniques; `enumRef`) | `dataModel` | `architecture/DATA-MODEL.md` pre-filled tables; relations seed `CONTEXT.md` |
+| Enums / domain sets (member lists) | `enums` | `architecture/DATA-MODEL.md` `## Enums & domain types` |
+| Operations (routes, RPC, CLI, jobs; input/output/sideEffects) | `interfaces` | `architecture/INTERFACES.md` pre-filled table + `## Operation contracts` |
+| External services (provider, contract, timeout, failure) | `services` | `architecture/ARCHITECTURE.md` `## External services & integrations` |
+| Policies (rate limits, format validations) | `policies` | `architecture/ARCHITECTURE.md` `## Cross-cutting policies` |
+| Features (tiers; interfaces/entities/`writes`) | `features` | `features/NN-<slug>/PRD.md`, tiered build order in `REBUILD.md` |
+| Locales + message catalog | `i18n.locales` / `i18n.messages` | Internationalization, overview locale count, architecture i18n message catalog |
 | Terms | `glossary` | `CONTEXT.md` (format: `references/CONTEXT-FORMAT.md`) |
 | Hard decisions | `decisions` | `docs/adr/NNNN-<slug>.md` (format: `references/ADR-FORMAT.md`) |
 
@@ -158,7 +178,12 @@ to mirror, so the PRDs must capture requirements precisely enough to rewrite fro
 ## §The hand-off
 
 1. **Write `plan.json`** from the interview — the structured transcript of every resolved
-   decision. Validate the required fields are present.
+   decision. Validate the required fields are present, and that it is **internally
+   consistent**: every `features[].entities`/`writes` is a real entity, every
+   `features[].interfaces` is a real operation, every `enumRef` names a defined enum, and no
+   public/anonymous write targets an owner-FK table. The engine enforces this — `--scratch`
+   **fails fast** on a dangling reference or empty enum, and **warns** on an anonymous write
+   to an owner-FK entity. Fix every error and resolve every warning before enriching.
 2. **Run the engine:**
 
    ```bash
@@ -181,5 +206,19 @@ to mirror, so the PRDs must capture requirements precisely enough to rewrite fro
    place means the unit isn't done.**
 
 You're done when every `> 🧠` callout is resolved, `INTERFACES.md` and `DATA-MODEL.md`
-match the interview, `CONTEXT.md` names every fuzzy term, and `REBUILD.md`'s tiered build
-order is one an agent can follow from the first foundation to the last doc.
+match the interview (enums enumerated, operation contracts and write contracts spelled out,
+services and policies concrete, the message catalog complete), `CONTEXT.md` names every
+fuzzy term, and `REBUILD.md`'s tiered build order is one an agent can follow from the first
+foundation to the last doc.
+
+Then run the buildability gate — it must pass:
+
+```bash
+node scripts/analyze.mjs --check --out <OUT>
+```
+
+It fails on unresolved `🧠`/placeholders, a feature that references an undocumented entity or
+operation, a feature PRD missing its spine, or an uncovered locale. The full category list —
+the nine contract categories and the consistency self-review — is in
+`references/buildability-checklist.md`. Work it until both the consistency review and
+`--check` are clean.

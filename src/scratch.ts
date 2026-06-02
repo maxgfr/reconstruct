@@ -5,6 +5,7 @@ import type {
   Artifact,
   DependencyInfo,
   Entity,
+  EntityField,
   Feature,
   I18nInfo,
   InterfaceRow,
@@ -83,8 +84,28 @@ function planDependencies(plan: ScratchPlan): DependencyInfo[] {
 function planDataModel(plan: ScratchPlan): Entity[] {
   return (plan.dataModel ?? []).map((e) => ({
     entity: e.entity,
-    fields: e.fields ?? [],
+    fields: (e.fields ?? []).map((f) => ({
+      name: f.name,
+      type: f.type,
+      ...(f.constraints ? { constraints: f.constraints } : {}),
+      ...(f.enumRef ? { enumRef: f.enumRef } : {}),
+    })),
     ...(e.relations && e.relations.length ? { relations: e.relations } : {}),
+    ...(e.indexes && e.indexes.length ? { indexes: e.indexes } : {}),
+    ...(e.uniques && e.uniques.length ? { uniques: e.uniques } : {}),
+  }));
+}
+
+function planInterfaces(plan: ScratchPlan): InterfaceRow[] {
+  return (plan.interfaces ?? []).map((r) => ({
+    method: r.method,
+    path: r.path,
+    ...(r.kind ? { kind: r.kind } : {}),
+    ...(r.auth ? { auth: r.auth } : {}),
+    ...(r.notes ? { notes: r.notes } : {}),
+    ...(r.input ? { input: r.input } : {}),
+    ...(r.output ? { output: r.output } : {}),
+    ...(r.sideEffects && r.sideEffects.length ? { sideEffects: r.sideEffects } : {}),
   }));
 }
 
@@ -102,6 +123,7 @@ function planFeatures(features: ScratchFeature[]): Feature[] {
         routes: [],
         ...(f.interfaces && f.interfaces.length ? { interfaces: f.interfaces } : {}),
         ...(f.entities && f.entities.length ? { entities: f.entities } : {}),
+        ...(f.writes && f.writes.length ? { writes: f.writes } : {}),
       },
       tier,
       // Preserve the plan's declared order within a tier — the author controls it.
@@ -121,9 +143,14 @@ function planFeatures(features: ScratchFeature[]): Feature[] {
  */
 export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
   const i18n: I18nInfo | null = plan.i18n
-    ? { locales: plan.i18n.locales, files: [], keyCount: 0 }
+    ? {
+        locales: plan.i18n.locales,
+        files: [],
+        keyCount: plan.i18n.messages?.entries?.length ?? 0,
+        ...(plan.i18n.messages ? { messages: plan.i18n.messages } : {}),
+      }
     : null;
-  const interfaces: InterfaceRow[] = plan.interfaces ?? [];
+  const interfaces: InterfaceRow[] = planInterfaces(plan);
 
   return {
     generatedWith: `reconstruct@${VERSION}`,
@@ -157,7 +184,151 @@ export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
     },
     interfaces,
     dataModel: planDataModel(plan),
+    ...(plan.enums && plan.enums.length ? { enums: plan.enums } : {}),
+    ...(plan.services && plan.services.length ? { services: plan.services } : {}),
+    ...(plan.policies && plan.policies.length ? { policies: plan.policies } : {}),
   };
+}
+
+// --- Plan consistency validation ---------------------------------------------
+// Buildability begins with an internally consistent plan: a feature cannot
+// reference an entity or operation that does not exist, an enum cannot be empty,
+// and an anonymous (public) write cannot target a table that requires an owner
+// foreign key. These checks run before rendering so the scratch path is
+// buildable *by construction* — they catch the class of contradiction that made
+// the original Public Directory PRD impossible to build.
+
+const IDENTITY_ENTITY = /^users?$/i;
+// An FK column the *caller* must own/author — the value can only be the caller's
+// own identity (created-by/sender/author/owner), which an anonymous request has
+// no way to supply. A recipient/target/subject FK is a *pre-existing* party
+// passed as input, so an anonymous caller CAN satisfy it — not the bug.
+const OWNER_FK_COLUMN = /(^user_?id$|owner|author|sender|creator|created_?by)/i;
+
+function fkTarget(f: EntityField): string | null {
+  const m = (f.constraints ?? "").match(/->\s*([a-z0-9_]+)/i);
+  return m ? (m[1] as string) : null;
+}
+
+/** A required FK to the identity table that names the caller as the row's owner. */
+function isOwnerCallerFk(f: EntityField): boolean {
+  const target = fkTarget(f);
+  if (!target || !IDENTITY_ENTITY.test(target)) return false;
+  if (isNullable(f) || hasDefault(f)) return false;
+  return OWNER_FK_COLUMN.test(f.name);
+}
+
+function isNullable(f: EntityField): boolean {
+  const c = (f.constraints ?? "").toLowerCase();
+  if (/\bnullable\b/.test(c)) return true;
+  if (/\bnot null\b/.test(c)) return false;
+  return false; // FK/identity columns are required unless explicitly nullable.
+}
+
+function hasDefault(f: EntityField): boolean {
+  return /\bdefault\b/i.test(f.constraints ?? "");
+}
+
+function isEnumTyped(f: EntityField): boolean {
+  return /\benum\b/i.test(f.type);
+}
+
+function enumMembersInline(f: EntityField): boolean {
+  return /\|/.test(f.constraints ?? "");
+}
+
+function isWriteOp(r: InterfaceRow): boolean {
+  if (/mutation/i.test(r.kind ?? "")) return true;
+  return ["POST", "PUT", "PATCH", "DELETE"].includes((r.method ?? "").toUpperCase());
+}
+
+function isAnonymousAuth(auth: string | undefined): boolean {
+  return /\b(public|anon(?:ymous)?|none)\b/i.test(auth ?? "");
+}
+
+/**
+ * Validate a plan's internal consistency. Returns hard `errors` (dangling
+ * references, empty/undefined enums) that block rendering, and `warnings`
+ * (under-specified enums, anonymous writes to owner-FK tables) the author
+ * should resolve. Pure — callers decide how to surface the results.
+ */
+export function validatePlanConsistency(plan: ScratchPlan): {
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const entities = new Map((plan.dataModel ?? []).map((e) => [e.entity, e]));
+  const interfacePaths = new Set((plan.interfaces ?? []).map((i) => i.path));
+  const enumNames = new Set((plan.enums ?? []).map((e) => e.name));
+
+  // Referential integrity: features → entities / interfaces / writes.
+  for (const f of plan.features) {
+    for (const e of f.entities ?? []) {
+      if (!entities.has(e)) {
+        errors.push(`feature "${f.name}" references entity \`${e}\` not defined in dataModel`);
+      }
+    }
+    for (const i of f.interfaces ?? []) {
+      if (!interfacePaths.has(i)) {
+        errors.push(`feature "${f.name}" references interface/operation \`${i}\` not defined in interfaces`);
+      }
+    }
+    for (const w of f.writes ?? []) {
+      if (!entities.has(w)) {
+        errors.push(`feature "${f.name}" writes entity \`${w}\` not defined in dataModel`);
+      }
+    }
+  }
+
+  // Enums: declared enums need members; field enumRefs must resolve.
+  for (const e of plan.enums ?? []) {
+    if (!e.members || e.members.length === 0) {
+      errors.push(`enum \`${e.name}\` has no members`);
+    }
+  }
+  for (const ent of plan.dataModel ?? []) {
+    for (const f of ent.fields ?? []) {
+      if (f.enumRef && !enumNames.has(f.enumRef)) {
+        errors.push(`field \`${ent.entity}.${f.name}\` references undefined enum \`${f.enumRef}\``);
+      }
+      if (isEnumTyped(f) && !f.enumRef && !enumMembersInline(f)) {
+        warnings.push(
+          `enum field \`${ent.entity}.${f.name}\` has no enumerated members — list them inline (\`A | B\`) or via enumRef so values are testable`,
+        );
+      }
+    }
+  }
+
+  // Anonymous writes: a public mutation whose feature WRITES an entity that
+  // requires a non-null owner FK cannot be satisfied by an account-less caller.
+  const featureByInterface = new Map<string, ScratchFeature[]>();
+  for (const f of plan.features) {
+    for (const i of f.interfaces ?? []) {
+      const list = featureByInterface.get(i) ?? [];
+      list.push(f);
+      featureByInterface.set(i, list);
+    }
+  }
+  for (const r of plan.interfaces ?? []) {
+    if (!isWriteOp(r) || !isAnonymousAuth(r.auth)) continue;
+    for (const f of featureByInterface.get(r.path) ?? []) {
+      for (const w of f.writes ?? []) {
+        const ent = entities.get(w);
+        if (!ent) continue;
+        for (const field of ent.fields ?? []) {
+          if (isOwnerCallerFk(field)) {
+            warnings.push(
+              `anonymous/public operation \`${r.path}\` writes \`${w}\`, which requires the caller's own non-null owner FK \`${w}.${field.name} -> ${fkTarget(field)}\` — an anonymous caller cannot supply it; use an anonymous-capable entity (e.g. a contactRequests table)`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return { errors, warnings };
 }
 
 /**

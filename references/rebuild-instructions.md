@@ -29,9 +29,12 @@ For each feature, in order:
 
 ## Final validation (from REBUILD.md)
 - Every interface in `architecture/INTERFACES.md` is implemented and responds as before.
-- Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.
-- All locales present; keys match `data/translations/`.
+- Data model matches `architecture/DATA-MODEL.md` and `data/schema/` (fields, types, enums, constraints).
+- Every write satisfies the schema; enum values are listed members; coded identifiers pass their format rule.
+- External services and policies (rate limits, validations) behave per `architecture/ARCHITECTURE.md`.
+- All locales present; keys match `data/translations/` and every key has copy in every locale.
 - Required env vars configured.
+- The PRD suite itself passes the buildability gate: `node scripts/analyze.mjs --check --out <OUT>`.
 - The project's own scripts (build/test/lint) pass.
 
 ## Tip for large projects

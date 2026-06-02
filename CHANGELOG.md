@@ -6,6 +6,54 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0]
+
+Make the output **buildable** — and prove it. Both fronts (reverse-engineer-from-code and
+from-scratch) now capture the *contracts* a fresh agent needs to rebuild a unit correctly, not
+just a faithful-looking sketch, and a deterministic gate enforces it. This closes the gaps a
+multi-agent audit found: contracts named but unspecified (enum members, function signatures,
+external-service shapes, rate limits, i18n copy) and internally contradictory plans (an
+anonymous write to a table that requires an owner foreign key).
+
+### Added
+- **`--check` buildability gate** (`src/check.ts`): validates an already-enriched output tree and
+  exits non-zero on unresolved `🧠` callouts / `fill this in` placeholders, a feature that
+  references an undocumented entity or operation, a feature PRD missing its spine, or an uncovered
+  locale. Mode-agnostic (reads the tree + `inventory.json`). `node scripts/analyze.mjs --check --out <OUT>`.
+  Includes **contract-substance gates** so a tree gutted to empty (callouts deleted but no
+  entities/operations/feature-content left) still fails — the code-path case that previously passed
+  vacuously because the reference checks ran over an empty inventory.
+- **Plan consistency validation** (`validatePlanConsistency` in `src/scratch.ts`, wired into
+  `--scratch`): the engine now **fails fast** on a dangling `features[]` → entity/interface
+  reference, an empty enum, or a field `enumRef` to an undefined enum, and **warns** on a
+  public/anonymous write to an entity with a non-null owner foreign key. The scratch path is
+  buildable by construction.
+- **Extended plan schema** for the contract surface (all optional, backward-compatible): `enums`
+  (named member sets), `services` (external-service contracts), `policies` (rate limits & format
+  validations), `i18n.messages` (a real catalog — namespaces + keys + source strings),
+  `interfaces[].input/output/sideEffects`, `dataModel[].fields[].enumRef`,
+  `dataModel[].indexes/uniques`, and `feature.writes`.
+- **Richer templates (both modes):** `DATA-MODEL.md` gains an *Enums & domain types* section and
+  per-entity indexes/uniques; `ARCHITECTURE.md` gains *External services & integrations*,
+  *Cross-cutting policies*, and an i18n *message catalog*; `INTERFACES.md` gains per-operation
+  *Operation contracts*; feature PRDs render a **Writes** line and a hardened Definition of Done
+  (write satisfiability, enum enumeration, source-string i18n coverage, and a `--check` line).
+- `references/buildability-checklist.md`: the nine contract categories (incl. shared/owned UI
+  components) + the consistency self-review + the gate. Linked from `SKILL.md` and both playbooks.
+
+### Changed
+- `references/analysis-playbook.md` and `references/scratch-playbook.md` gain a *Contracts &
+  buildability* section and a *consistency self-review & `--check`* discipline; the scratch
+  decision-tree now walks enums, services, policies, the message catalog, and per-feature writes.
+- `references/scratch-plan-schema.md` documents every new field + the enforced consistency rules.
+- `scripts/parity-medic.mjs` now asserts buildability-by-construction (the plan generates with no
+  consistency errors/warnings), scaffold richness (real entities incl. `contactRequests`, enums,
+  services, policies, message catalog), and locale parity — not just structural alignment.
+- The medic plan fixture (`tests/fixtures/scratch-plan/medic.plan.json`) was realigned to mirror
+  the real repo (correct `notifications`/`profileViewsLog` shapes, the anonymous `contactRequests`
+  table, NextAuth adapter tables, enums, services, policies, message catalog) so the from-code and
+  from-scratch paths converge.
+
 ## [0.4.0]
 
 Add a **from-scratch (greenfield)** mode: turn an idea into the same reconstruction tree via a

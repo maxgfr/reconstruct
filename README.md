@@ -2,9 +2,10 @@
 
 [![CI](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml/badge.svg)](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml)
 
-> Analyze any repository and generate **reconstruction PRDs** that let an AI agent
-> rebuild the project from scratch — faithfully (logic, routes, translations, schema,
-> config) and, optionally, with improvements.
+> Turn any repository — or a greenfield idea — into **reconstruction PRDs** an AI agent can
+> rebuild the project from: faithful to the original (logic, routes, translations, schema,
+> config), optionally improved, and **buildable enough that a fresh agent gets the contracts
+> right** — enforced by a `--check` gate.
 
 `reconstruct` is an [Agent Skill](https://www.skills.sh/) (the open agent-skills
 ecosystem by Vercel). It pairs a **thin deterministic scaffold** with a **thick AI
@@ -38,9 +39,9 @@ reconstruction/
 ├── SUMMARY.md                 # (--summary) one-page digest of the reconstruction
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
-│   ├── ARCHITECTURE.md        # current (preserve) or proposed (redesign) architecture
-│   ├── INTERFACES.md          # the full interface surface (routes, endpoints, RPC/GraphQL, CLI, jobs)
-│   ├── DATA-MODEL.md          # entities, fields, relations
+│   ├── ARCHITECTURE.md        # architecture + external services, cross-cutting policies, i18n message catalog
+│   ├── INTERFACES.md          # full interface surface + per-operation input/output/side-effect contracts
+│   ├── DATA-MODEL.md          # entities, fields, relations, indexes + enums & domain types
 │   └── diagram.md             # mermaid module diagram
 ├── features/
 │   └── NN-<slug>/PRD.md       # one PRD per feature/module (build-order tiered)
@@ -108,6 +109,28 @@ node scripts/analyze.mjs --merge --summary --out ./my-app/reconstruction
 The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,
 and errors clearly if the directory holds no `inventory.json`.
 
+## Validation: is it actually buildable?
+
+A reconstruction is only useful if a fresh agent can rebuild each unit **correctly** from
+the PRD + architecture docs alone. Once the PRDs are enriched, run the buildability gate:
+
+```bash
+node scripts/analyze.mjs --check --out ./my-app/reconstruction
+```
+
+It exits non-zero on the structural failures — unresolved `🧠` callouts or `fill this in`
+placeholders, a feature that references an undocumented entity/operation, a feature PRD
+missing its spine, an uncovered locale, and a **gutted** data model / interface surface /
+feature PRD (an emptied contract fails too, not just a callout-laden one).
+
+`--check` covers structure; the **nine contract categories** a PRD must actually carry —
+field-level data model, fully-enumerated enums, operation & write contracts (a public write
+can't require an owner foreign key), format validations, external services, quantified
+policies, the i18n message catalog, and shared/owned UI components — are in
+[`references/buildability-checklist.md`](./references/buildability-checklist.md). In
+greenfield mode the engine also **validates the plan's consistency** before rendering, so
+dangling references and anonymous-write-to-owner-FK contradictions are caught up front.
+
 ## From scratch (greenfield)
 
 No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your agent:
@@ -132,7 +155,9 @@ hand-write one if you prefer — the schema and a worked example are in
 Greenfield collapses two axes — mode is always `scratch`, fidelity is forced to `describe`
 (there is no source to mirror) — while `--level` still applies (`complex` = a deeper interview
 that also proposes alternatives and more ADRs). On top of the usual tree it also writes the
-interview's domain docs, and `INTERFACES.md` / `DATA-MODEL.md` come **pre-filled** from the plan:
+interview's domain docs, and `INTERFACES.md` / `DATA-MODEL.md` come **pre-filled** from the plan —
+along with the enums, external services, cross-cutting policies, and i18n message catalog the
+interview captures, so the from-scratch tree is as buildable as the reverse-engineered one:
 
 ```
 reconstruction/
