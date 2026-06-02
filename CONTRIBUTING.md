@@ -57,4 +57,34 @@ If you do change `src/`:
 - Update `CHANGELOG.md` (Unreleased section) and any affected docs.
 - Be kind and concise in descriptions — say what changed and why.
 
+## Commit messages
+
+Use [Conventional Commits](https://www.conventionalcommits.org) — `feat:`, `fix:`,
+`perf:`, `refactor:`, `docs:`, `test:`, `ci:`, `build:`, `chore:`, optionally scoped
+(`feat(scratch): …`). Release notes are generated from these, so a clear, typed subject
+line is what users read on the GitHub release page. Non-conventional commits still ship —
+they just land under an "Other" heading.
+
+## Releasing
+
+Releases are cut by **pushing a `vX.Y.Z` tag**; the [`Release`](.github/workflows/release.yml)
+workflow does the rest (gate → notes from commits → GitHub release + tarball). It is
+GitHub-only — nothing is published to npm.
+
+```bash
+# 1. bump the version and land the changelog entry
+#    (edit package.json "version" + move CHANGELOG Unreleased -> [X.Y.Z])
+npm run typecheck && npm test && npm run check:build   # same gate CI runs
+git commit -am "chore(release): vX.Y.Z"
+
+# 2. tag (must match package.json — the workflow asserts this) and push
+git tag vX.Y.Z
+git push origin main --tags
+```
+
+The release body is auto-generated from the Conventional Commits since the previous tag, so
+the hand-written `CHANGELOG.md` and the GitHub release notes are independent — keep the
+changelog for the curated narrative. A pre-release suffix (`vX.Y.Z-rc.1`) is marked as a
+GitHub pre-release automatically.
+
 By contributing you agree your work is licensed under the project's [MIT license](./LICENSE).

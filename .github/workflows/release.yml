@@ -1,0 +1,68 @@
+name: Release
+
+# Push a tag like `v0.5.0` to cut a release:
+#   - runs the full gate (typecheck / test / reproducible bundle)
+#   - generates release notes from the Conventional Commits since the previous tag
+#   - creates the GitHub release and attaches an `npm pack` tarball
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create releases + upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history + tags, required by git-cliff
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG ne correspond pas à package.json ($PKG). Bump la version avant de tagger."
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Committed bundle is up to date
+        run: npm run check:build
+
+      - name: Pack tarball
+        run: npm pack # -> reconstruct-<version>.tgz
+
+      - name: Generate release notes from commits
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXTRA=""
+          case "$GITHUB_REF_NAME" in *-*) EXTRA="--prerelease";; esac # v1.0.0-rc.1 -> prerelease
+          gh release create "$GITHUB_REF_NAME" $EXTRA \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file RELEASE_NOTES.md \
+            ./*.tgz
