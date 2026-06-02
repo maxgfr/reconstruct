@@ -122,6 +122,67 @@ describe("checkOutput — reference integrity", () => {
   });
 });
 
+// The code path leaves inventory.dataModel/interfaces empty and features without
+// entities/interfaces, so the reference-integrity checks are vacuous. These guard
+// against a "gutted" tree (callouts deleted, architecture docs emptied) still
+// passing — the defect the re-verification reproduced.
+const CODE_INVENTORY = {
+  generatedWith: "reconstruct@0.5.0",
+  repoName: "demo",
+  features: [
+    { slug: "01-auth", name: "Auth" },
+    { slug: "02-posts", name: "Posts" },
+  ],
+  i18n: null,
+};
+
+function cleanCodeTree() {
+  const dir = mkdtempSync(join(tmpdir(), "check-code-"));
+  write(dir, "inventory.json", JSON.stringify(CODE_INVENTORY));
+  write(dir, "REBUILD.md", "# REBUILD\n");
+  write(dir, "00-overview/PRD.md", "# Overview\n");
+  write(dir, "architecture/ARCHITECTURE.md", "# Architecture\nDescribed.\n");
+  write(dir, "architecture/INTERFACES.md", "# Interfaces\n- auth.register\n- posts.list\n");
+  write(dir, "architecture/DATA-MODEL.md", "# Data model\n### users\n### posts\n");
+  write(dir, "features/01-auth/PRD.md", "# Auth\n" + SPINE);
+  write(dir, "features/02-posts/PRD.md", "# Posts\n" + SPINE);
+  return dir;
+}
+
+describe("checkOutput — contract substance (code-path enforcement)", () => {
+  it("passes an enriched code-mode tree (empty inventory, but docs are filled)", () => {
+    const { errors } = checkOutput(cleanCodeTree());
+    expect(errors).toEqual([]);
+  });
+
+  it("fails a tree whose DATA-MODEL.md was gutted to no entities", () => {
+    const dir = cleanCodeTree();
+    write(dir, "architecture/DATA-MODEL.md", "# Data model\n"); // emptied, no callouts
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/DATA-MODEL\.md/);
+    expect(errors.join("\n")).toMatch(/entit|empty/i);
+  });
+
+  it("fails a tree whose INTERFACES.md was gutted to no operations", () => {
+    const dir = cleanCodeTree();
+    write(dir, "architecture/INTERFACES.md", "# Interface surface\n"); // emptied
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/INTERFACES\.md/);
+    expect(errors.join("\n")).toMatch(/operation|interface|empty/i);
+  });
+
+  it("fails a feature PRD that is headings with no content", () => {
+    const dir = cleanCodeTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      "# Auth\n## Functional requirements\n## Acceptance criteria\n## Definition of done\n",
+    );
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/content|empty/i);
+  });
+});
+
 describe("checkOutput — i18n coverage", () => {
   it("warns when a declared locale has no messages file and is not in the catalog", () => {
     const dir = cleanTree({ i18n: { locales: ["en", "zz"], files: [], keyCount: 0 } });

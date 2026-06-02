@@ -20,6 +20,9 @@ anonymous write to a table that requires an owner foreign key).
   exits non-zero on unresolved `🧠` callouts / `fill this in` placeholders, a feature that
   references an undocumented entity or operation, a feature PRD missing its spine, or an uncovered
   locale. Mode-agnostic (reads the tree + `inventory.json`). `node scripts/analyze.mjs --check --out <OUT>`.
+  Includes **contract-substance gates** so a tree gutted to empty (callouts deleted but no
+  entities/operations/feature-content left) still fails — the code-path case that previously passed
+  vacuously because the reference checks ran over an empty inventory.
 - **Plan consistency validation** (`validatePlanConsistency` in `src/scratch.ts`, wired into
   `--scratch`): the engine now **fails fast** on a dangling `features[]` → entity/interface
   reference, an empty enum, or a field `enumRef` to an undefined enum, and **warns** on a
@@ -35,8 +38,8 @@ anonymous write to a table that requires an owner foreign key).
   *Cross-cutting policies*, and an i18n *message catalog*; `INTERFACES.md` gains per-operation
   *Operation contracts*; feature PRDs render a **Writes** line and a hardened Definition of Done
   (write satisfiability, enum enumeration, source-string i18n coverage, and a `--check` line).
-- `references/buildability-checklist.md`: the eight contract categories + the consistency
-  self-review + the gate. Linked from `SKILL.md` and both playbooks.
+- `references/buildability-checklist.md`: the nine contract categories (incl. shared/owned UI
+  components) + the consistency self-review + the gate. Linked from `SKILL.md` and both playbooks.
 
 ### Changed
 - `references/analysis-playbook.md` and `references/scratch-playbook.md` gain a *Contracts &

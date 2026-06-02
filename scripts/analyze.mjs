@@ -2826,6 +2826,19 @@ function checkOutput(outDir) {
     for (const h of FEATURE_SPINE) {
       if (!d.content.includes(h)) errors.push(`${d.rel}: missing required section "${h}"`);
     }
+    if (!hasContent(d.content)) {
+      errors.push(`${d.rel}: has section headings but no content \u2014 fill the PRD (requirements, criteria, definition of done)`);
+    }
+  }
+  if (dataModelDoc2 && !declaresEntities(dataModelDoc2)) {
+    errors.push(
+      "architecture/DATA-MODEL.md declares no entities \u2014 the data model is empty; fill it before the tree is buildable"
+    );
+  }
+  if (interfacesDoc2 && !declaresOperations(interfacesDoc2)) {
+    errors.push(
+      "architecture/INTERFACES.md declares no operations \u2014 the interface surface is empty; enumerate it before the tree is buildable"
+    );
   }
   if (inv.i18n && inv.i18n.locales?.length) {
     const transDir = join10(outDir, "data", "translations");
@@ -2845,6 +2858,21 @@ function checkOutput(outDir) {
 }
 function documents(doc, token) {
   return doc.includes(token);
+}
+function tableDataRowCount(doc) {
+  return doc.split(/\r?\n/).filter((l) => {
+    const t = l.trim();
+    return t.startsWith("|") && !/^\|[\s|:-]+\|?$/.test(t);
+  }).length;
+}
+function declaresEntities(doc) {
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
+}
+function declaresOperations(doc) {
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(doc);
+}
+function hasContent(doc) {
+  return /^\s*[-*]\s+\S/m.test(doc) || /^\s*\d+\.\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
 }
 function formatCheckReport(r, outDir) {
   const lines = [];

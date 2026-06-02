@@ -165,12 +165,31 @@ export function checkOutput(outDir: string): CheckResult {
     }
   }
 
-  // 4. Feature PRD spine — enrichment must keep the demanding sections.
+  // 4. Feature PRD spine — enrichment must keep the demanding sections, and the
+  //    sections must carry content (a spine of bare headings is not a PRD).
   for (const d of docs) {
     if (!d.rel.includes("features/") || !d.rel.endsWith("PRD.md")) continue;
     for (const h of FEATURE_SPINE) {
       if (!d.content.includes(h)) errors.push(`${d.rel}: missing required section "${h}"`);
     }
+    if (!hasContent(d.content)) {
+      errors.push(`${d.rel}: has section headings but no content — fill the PRD (requirements, criteria, definition of done)`);
+    }
+  }
+
+  // 5. Contract substance — the decisive gate on the code path, where the
+  //    inventory carries no dataModel/interfaces so the reference checks above are
+  //    vacuous. An architecture doc emptied of its contract (no callouts left, but
+  //    no entities/operations either) must still fail: a hollow tree is not buildable.
+  if (dataModelDoc && !declaresEntities(dataModelDoc)) {
+    errors.push(
+      "architecture/DATA-MODEL.md declares no entities — the data model is empty; fill it before the tree is buildable",
+    );
+  }
+  if (interfacesDoc && !declaresOperations(interfacesDoc)) {
+    errors.push(
+      "architecture/INTERFACES.md declares no operations — the interface surface is empty; enumerate it before the tree is buildable",
+    );
   }
 
   // 5. i18n locale coverage (warning): every declared locale should have a
@@ -206,6 +225,29 @@ export function checkOutput(outDir: string): CheckResult {
 /** Whether a doc documents a token — as a word, not an incidental substring. */
 function documents(doc: string, token: string): boolean {
   return doc.includes(token);
+}
+
+/** Count markdown table rows that carry data (excluding the `| --- |` separator). */
+function tableDataRowCount(doc: string): number {
+  return doc.split(/\r?\n/).filter((l) => {
+    const t = l.trim();
+    return t.startsWith("|") && !/^\|[\s|:-]+\|?$/.test(t);
+  }).length;
+}
+
+/** A DATA-MODEL.md declares entities via `### <entity>` blocks or a filled table. */
+function declaresEntities(doc: string): boolean {
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
+}
+
+/** An INTERFACES.md declares operations via headings, a filled table, or path bullets. */
+function declaresOperations(doc: string): boolean {
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(doc);
+}
+
+/** A document carries real content if it has a list item, numbered step, or table rows. */
+function hasContent(doc: string): boolean {
+  return /^\s*[-*]\s+\S/m.test(doc) || /^\s*\d+\.\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
 }
 
 /** Human-readable report for the CLI; PASS when there are no errors. */

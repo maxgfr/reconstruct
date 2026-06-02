@@ -18,7 +18,7 @@ It exits non-zero on the structural failures (unresolved `🧠` callouts or
 operation, a feature PRD missing its spine, an uncovered locale). A clean
 `--check` is necessary, not sufficient — the categories below are the rest.
 
-## The eight contract categories
+## The nine contract categories
 
 Every one of these is a category the verification found *named but not
 specified*. Naming is not enough; capture the contract.
@@ -68,6 +68,14 @@ specified*. Naming is not enough; capture the contract.
    verbatim. Scratch mode: author the catalog — namespaces + keys + source
    strings.)
 
+9. **Shared & owned UI components.** For a unit that renders UI, the contract of
+   each shared or owned component it consumes or builds — props/inputs, the states
+   it must render (empty / loading / error / populated), validation, and which
+   design-system primitives it uses. A component named but not contracted (e.g.
+   `BookingCard`, `AvailabilityCalendar`) can't be rebuilt to a fixed spec, and a
+   structural acceptance criterion ("renders an h1", "two-card CTA") can't be
+   verified against one.
+
 Helpers the unit calls (e.g. `sendWelcomeEmail`) need their exact signatures too;
 fold them into category 3 (side effects) or 6 (services).
 
@@ -88,5 +96,5 @@ confirm — this catches the semantic contradictions a linter can't:
 
 > Could a fresh agent rebuild this unit from its PRD + the architecture docs
 > alone — no original product, no conversation — and get the **contracts**
-> right, not just the gist? If any of the eight categories is named but not
+> right, not just the gist? If any of the nine categories is named but not
 > specified, the answer is no. Dig further.

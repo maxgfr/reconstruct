@@ -99,7 +99,7 @@ policies (below): the real length/regex/checksum, not just the registry's name.
 ## §Contracts & buildability  → fill the contract, not just the name
 
 The recurring reason a faithful-looking PRD can't be rebuilt is a contract that was
-*named but not specified*. For every unit, capture all eight categories in
+*named but not specified*. For every unit, capture all nine categories in
 `references/buildability-checklist.md`. The ones most often missed when reverse-engineering:
 
 - **Operation contracts** (→ `INTERFACES.md` + each feature): read the handler and record

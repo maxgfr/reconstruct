@@ -200,7 +200,7 @@ They work two ways:
 - **Every contract category is captured, not just named** — operation contracts, write
   contracts (every required column/FK has a source; anonymous writes use anonymous-capable
   entities), enums, format validations, external services, quantified policies, and the i18n
-  message catalog. The eight categories are in `references/buildability-checklist.md`.
+  message catalog. The nine categories are in `references/buildability-checklist.md`.
 - **Every `features/<slug>/PRD.md` is a complete PRD** — the full spine is filled (user stories,
   numbered requirements, interface & data contracts, Given/When/Then acceptance criteria, edge
   cases, definition of done), and **no `> 🧠` callout or `_placeholder_` remains** anywhere.
