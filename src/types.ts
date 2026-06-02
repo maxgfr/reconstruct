@@ -1,6 +1,6 @@
 // Core data model shared across the analyzer pipeline.
 
-export type Mode = "preserve" | "redesign";
+export type Mode = "preserve" | "redesign" | "scratch";
 export type Level = "light" | "complex";
 export type Fidelity = "mirror" | "embed" | "describe";
 export type Granularity = "coarse" | "fine";
@@ -33,6 +33,18 @@ export interface Options {
    * is used without `--repo`.
    */
   standalone: boolean;
+  /**
+   * From-scratch (greenfield) mode: build the reconstruction tree from a
+   * `plan.json` interview instead of analysing a repo. Set by `--scratch`.
+   */
+  scratch: boolean;
+  /** Path to the `plan.json` that drives `--scratch` mode (else ""). */
+  plan: string;
+  /**
+   * Test-driven build mode: emit test-first guidance into the PRDs/REBUILD so
+   * the rebuild proceeds red→green→refactor. Set by `--tdd`. Orthogonal to mode.
+   */
+  tdd: boolean;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */
@@ -126,6 +138,33 @@ export interface Workspace {
   path: string;
 }
 
+/**
+ * One row of the interface surface. In code mode the agent fills these from the
+ * `hints`; in scratch mode they come pre-filled from the interview (`plan.json`).
+ */
+export interface InterfaceRow {
+  method: string;
+  path: string;
+  /** REST / tRPC / GraphQL / gRPC / CLI / job / webhook … */
+  kind?: string;
+  auth?: string;
+  notes?: string;
+}
+
+export interface EntityField {
+  name: string;
+  type: string;
+  constraints?: string;
+}
+
+/** One entity/table of the data model. */
+export interface Entity {
+  entity: string;
+  fields: EntityField[];
+  /** Free-text relation descriptions (e.g. "belongs to User"). */
+  relations?: string[];
+}
+
 export interface Inventory {
   generatedWith: string;
   /** Generation parameters this inventory was produced with (provenance). */
@@ -154,6 +193,91 @@ export interface Inventory {
   runtime?: { node?: string };
   /** Count of files skipped by ignore rules — surfaced for transparency. */
   excludedCount: number;
+  /**
+   * Scratch mode only: the product summary from the interview, used to fill the
+   * overview instead of leaving an "infer from the README" placeholder.
+   */
+  product?: { summary: string; audience?: string; value?: string };
+  /**
+   * Pre-filled interface surface (scratch mode). When present, `INTERFACES.md`
+   * renders a filled table instead of an empty skeleton.
+   */
+  interfaces?: InterfaceRow[];
+  /**
+   * Pre-filled data model (scratch mode). When present, `DATA-MODEL.md` renders
+   * filled entity tables instead of an empty skeleton.
+   */
+  dataModel?: Entity[];
+}
+
+// --- Scratch (greenfield) plan -----------------------------------------------
+// The structured output of the from-scratch interview. Maps 1:1 onto the
+// inventory; `planToInventory` is the bridge. Documented in
+// `references/scratch-plan-schema.md`.
+
+export interface ScratchProject {
+  name: string;
+  summary: string;
+  audience?: string;
+  value?: string;
+}
+
+export interface ScratchStack {
+  primaryLanguage: string;
+  languages?: string[];
+  frameworks?: string[];
+  libraries?: string[];
+  packageManagers?: string[];
+  hasTypeScript?: boolean;
+}
+
+export interface ScratchDependency {
+  manager: string;
+  manifest: string;
+  runtime?: Record<string, string>;
+  dev?: Record<string, string>;
+}
+
+export interface ScratchFeature {
+  name: string;
+  kind?: Feature["kind"];
+  /** Build tier hint: 0 foundation, 1 feature, 2 tail (tests/docs). */
+  tier?: 0 | 1 | 2;
+  summary?: string;
+  /** Names/paths of interfaces this feature exposes (cross-reference). */
+  interfaces?: string[];
+  /** Entity names this feature reads/writes (cross-reference). */
+  entities?: string[];
+}
+
+export interface GlossaryTerm {
+  term: string;
+  definition: string;
+  avoid?: string[];
+}
+
+export interface Decision {
+  title: string;
+  context?: string;
+  decision: string;
+  why?: string;
+}
+
+export interface ScratchPlan {
+  project: ScratchProject;
+  stack: ScratchStack;
+  dependencies?: ScratchDependency[];
+  envVars?: string[];
+  i18n?: { locales: string[] } | null;
+  dataModel?: Entity[];
+  interfaces?: InterfaceRow[];
+  features: ScratchFeature[];
+  /** → CONTEXT.md glossary. */
+  glossary?: GlossaryTerm[];
+  /** → docs/adr/NNNN-*.md decisions. */
+  decisions?: Decision[];
+  /** Request test-driven build guidance in the output (same as `--tdd`). */
+  tdd?: boolean;
 }
 
 /** A file to be written into the reconstruction output tree. */
@@ -173,4 +297,4 @@ export interface RenderResult {
   copies: CopyOp[];
 }
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";

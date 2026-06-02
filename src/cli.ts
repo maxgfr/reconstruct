@@ -3,8 +3,9 @@ import { pathToFileURL } from "node:url";
 import { existsSync, statSync } from "node:fs";
 import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
-import { writeOutput } from "./output.js";
+import { writeOutput, writeArtifactsIfAbsent } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
+import { loadPlan, planToInventory, renderScratchDocs } from "./scratch.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -13,6 +14,7 @@ Analyze a repository and generate reconstruction PRDs to rebuild it from scratch
 
 Usage:
   reconstruct [--repo <path>] [--out <path>] [options]
+  reconstruct --scratch --plan <plan.json> [--out <path>] [options]
 
 Options:
   --repo <path>        Repository to analyze            (default: current dir)
@@ -21,6 +23,9 @@ Options:
   --level <level>      light | complex                  (default: light)
   --fidelity <mode>    mirror | embed | describe        (default: derived from mode+level)
   --granularity <g>    coarse | fine (feature grouping) (default: coarse)
+  --scratch            Build from a plan.json (greenfield), not a repo
+  --plan <path>        The plan.json driving --scratch   (required with --scratch)
+  --tdd                Emit test-first build guidance into the PRDs/REBUILD
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -33,6 +38,13 @@ Options:
 Fidelity defaults:
   preserve+light  -> mirror     preserve+complex -> embed
   redesign+light  -> embed      redesign+complex -> describe
+
+From scratch (greenfield):
+  --scratch builds the SAME reconstruction tree from a plan.json interview
+  instead of a repo. mode/fidelity collapse to scratch/describe; --level still
+  applies (complex = deeper interview + alternatives). It also writes CONTEXT.md
+  (glossary) and docs/adr/ (decisions), and links them from 00-overview.
+    reconstruct --scratch --plan plan.json --out ./reconstruction --level complex
 
 Bundling:
   --merge / --summary during a normal run append the file(s) to the output tree.
@@ -71,6 +83,8 @@ export function parseArgs(argv: string[]): Options {
   let json = false;
   let merge = false;
   let summary = false;
+  let scratch = false;
+  let tdd = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -92,6 +106,14 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--summary") {
       summary = true;
+      continue;
+    }
+    if (arg === "--scratch") {
+      scratch = true;
+      continue;
+    }
+    if (arg === "--tdd") {
+      tdd = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -116,28 +138,47 @@ export function parseArgs(argv: string[]): Options {
     }
   }
 
+  // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle
+  // post-step. Validate up front so the rest of the resolution can assume it.
+  if (scratch && raw.plan === undefined) {
+    fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
+  }
+  const plan = raw.plan ? resolve(raw.plan) : "";
+
   // Standalone post-step: bundle an existing output dir when --merge/--summary
-  // is used without --repo (and not in --json mode, which writes nothing).
-  const standalone = (merge || summary) && !json && raw.repo === undefined;
+  // is used without --repo (and not in --json/--scratch mode).
+  const standalone = (merge || summary) && !json && !scratch && raw.repo === undefined;
 
   const repo = resolve(raw.repo ?? process.cwd());
-  if (!standalone && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  // Scratch reads no repo; standalone reads an existing output dir — both skip
+  // the repo-exists check.
+  if (!standalone && !scratch && (!existsSync(repo) || !statSync(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
-  const mode = oneOf<Mode>("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
-  const fidelity = oneOf<Fidelity>(
-    "fidelity",
-    raw.fidelity ?? defaultFidelity(mode, level),
-    ["mirror", "embed", "describe"],
-  );
+  // Greenfield collapses mode/fidelity: nothing to preserve, no source to mirror.
+  const mode = scratch
+    ? ("scratch" as Mode)
+    : oneOf<Mode>("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
+  const fidelity = scratch
+    ? ("describe" as Fidelity)
+    : oneOf<Fidelity>("fidelity", raw.fidelity ?? defaultFidelity(mode, level), [
+        "mirror",
+        "embed",
+        "describe",
+      ]);
   const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", [
     "coarse",
     "fine",
   ]);
-  const out = standalone
-    ? resolve(raw.out ?? process.cwd())
-    : resolve(raw.out ?? join(repo, "reconstruction"));
+  const out = resolve(
+    raw.out ??
+      (standalone
+        ? process.cwd()
+        : scratch
+          ? join(process.cwd(), "reconstruction")
+          : join(repo, "reconstruction")),
+  );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
@@ -157,11 +198,51 @@ export function parseArgs(argv: string[]): Options {
     merge,
     summary,
     standalone,
+    scratch,
+    plan,
+    tdd,
   };
 }
 
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
+
+  if (opts.scratch) {
+    let plan;
+    try {
+      plan = loadPlan(opts.plan);
+    } catch (e) {
+      fail((e as Error).message);
+    }
+    // The plan can request TDD too; OR it with the --tdd flag.
+    const effOpts: Options = { ...opts, tdd: opts.tdd || !!plan.tdd };
+    const inv = planToInventory(plan, effOpts);
+
+    if (effOpts.json) {
+      process.stdout.write(JSON.stringify(inv, null, 2) + "\n");
+      return;
+    }
+
+    const result = render(inv, effOpts);
+    writeOutput(result, effOpts);
+    // CONTEXT.md + ADRs: write only if absent so agent-authored versions win.
+    const docs = writeArtifactsIfAbsent(renderScratchDocs(plan), effOpts.out);
+    const adrCount = docs.filter((p) => p.startsWith("docs/adr/")).length;
+
+    const lines = [
+      `reconstruct: planned ${inv.repoName} from scratch (${inv.features.length} feature(s))`,
+      `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " · " + inv.stack.frameworks.join(", ") : ""}`,
+      `  surface:  ${inv.features.length} feature(s) · ${inv.interfaces?.length ?? 0} interface(s) · ${inv.dataModel?.length ?? 0} entit(y/ies) · ${inv.i18n ? inv.i18n.locales.length : 0} locale(s)`,
+      `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
+      ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
+      ...(effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
+      ...(effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
+      `  output:   ${effOpts.out}`,
+      `  next:     open ${join(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
+    ];
+    process.stderr.write(lines.join("\n") + "\n");
+    return;
+  }
 
   if (opts.standalone) {
     let result: RenderResult;

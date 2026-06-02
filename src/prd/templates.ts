@@ -1,4 +1,4 @@
-import type { Feature, Inventory, Options } from "../types.js";
+import type { Entity, Feature, InterfaceRow, Inventory, Options } from "../types.js";
 
 function agentNote(body: string): string {
   return `> 🧠 **For the AI agent:** ${body}\n`;
@@ -11,16 +11,78 @@ function metaBlock(inv: Inventory, opts: Options): string {
     `| Mode | \`${opts.mode}\` |`,
     `| Level | \`${opts.level}\` |`,
     `| Fidelity | \`${opts.fidelity}\` |`,
+    ...(opts.tdd ? ["| TDD | `on` (build test-first) |"] : []),
     `| Generated with | \`${inv.generatedWith}\` |`,
     "",
   ].join("\n");
 }
 
+/** Escape characters that would break a markdown table cell (pipes, newlines). */
+function cell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
+/** Render the interface surface as a filled table (scratch mode pre-fill). */
+function filledInterfaceTable(rows: InterfaceRow[]): string {
+  const header = [
+    "| Method / Trigger | Path / Operation | Kind | Auth | Notes |",
+    "| --- | --- | --- | --- | --- |",
+  ];
+  if (!rows.length) {
+    return [...header, "", "_Add one row per operation as the surface takes shape._"].join("\n");
+  }
+  const body = rows.map(
+    (r) =>
+      `| ${cell(r.method)} | \`${cell(r.path)}\` | ${cell(r.kind ?? "")} | ${cell(r.auth ?? "")} | ${cell(r.notes ?? "")} |`,
+  );
+  return [...header, ...body].join("\n");
+}
+
+/** Render the data model as filled per-entity tables (scratch mode pre-fill). */
+function filledEntityTables(entities: Entity[]): string {
+  if (!entities.length) return "_No entities yet — add them as the model takes shape._";
+  const parts: string[] = [];
+  for (const e of entities) {
+    parts.push(`### ${e.entity}`, "", "| Field | Type | Constraints |", "| --- | --- | --- |");
+    if (e.fields.length) {
+      for (const f of e.fields) {
+        parts.push(`| ${cell(f.name)} | ${cell(f.type)} | ${cell(f.constraints ?? "")} |`);
+      }
+    } else {
+      parts.push("| _tbd_ | | |");
+    }
+    parts.push("");
+    if (e.relations?.length) {
+      parts.push("Relations:", "");
+      for (const r of e.relations) parts.push(`- ${r}`);
+      parts.push("");
+    }
+  }
+  return parts.join("\n").trimEnd();
+}
+
 export function overviewPrd(inv: Inventory, opts: Options): string {
+  const isScratch = opts.mode === "scratch";
   const s = inv.stack;
   const featureIndex = inv.features
     .map((f) => `- [\`${f.slug}\`](../features/${f.slug}/PRD.md) — **${f.name}**: ${f.description}`)
     .join("\n");
+
+  const productSummary = isScratch
+    ? [
+        inv.product?.summary ?? "",
+        ...(inv.product?.audience ? ["", `**Audience:** ${inv.product.audience}`] : []),
+        ...(inv.product?.value ? ["", `**Core value:** ${inv.product.value}`] : []),
+        "",
+        agentNote(
+          "Expand this into a 1–2 paragraph product summary grounded in `../CONTEXT.md` (the glossary) and the feature list below.",
+        ),
+      ].join("\n")
+    : opts.level === "complex"
+      ? agentNote(
+          "Write a 1–2 paragraph product summary: what this project does, for whom, and the core value. Infer it from the README, routes, and feature names below, then refine.",
+        )
+      : "_Summarize what this project does, derived from the README and the feature list below._";
 
   const out: string[] = [
     `# ${inv.repoName} — Reconstruction Overview`,
@@ -28,11 +90,7 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
     metaBlock(inv, opts),
     "## Product summary",
     "",
-    opts.level === "complex"
-      ? agentNote(
-          "Write a 1–2 paragraph product summary: what this project does, for whom, and the core value. Infer it from the README, routes, and feature names below, then refine.",
-        )
-      : "_Summarize what this project does, derived from the README and the feature list below._",
+    productSummary,
     "",
     "## Tech stack",
     "",
@@ -45,7 +103,9 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
     "",
     "## Metrics",
     "",
-    `- Files analyzed: **${inv.fileCount}** (${inv.totalLines} lines)`,
+    isScratch
+      ? `- Files: **0** — greenfield (designed from the interview, not read from source)`
+      : `- Files analyzed: **${inv.fileCount}** (${inv.totalLines} lines)`,
     `- Features/modules: **${inv.features.length}**`,
     `- Routes: **${inv.routes.length}**`,
     `- Locales: **${inv.i18n ? inv.i18n.locales.length : 0}**`,
@@ -57,9 +117,17 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
     "",
     "## How to use this output",
     "",
-    "1. Read `architecture/ARCHITECTURE.md` for the overall shape, then `architecture/INTERFACES.md` (the full interface surface) and `architecture/DATA-MODEL.md` (entities & relations).",
-    "2. Rebuild feature by feature using each `features/<slug>/PRD.md`, in the order listed in `REBUILD.md`.",
-    "3. Use `data/` (translations, schema, config) and — when present — `source/` as ground truth.",
+    ...(isScratch
+      ? [
+          "1. Read `../CONTEXT.md` (the glossary) and the decisions in `../docs/adr/` — they are the ground truth for terminology and constraints.",
+          "2. Read `architecture/ARCHITECTURE.md`, then the pre-filled `architecture/INTERFACES.md` and `architecture/DATA-MODEL.md` (refine them).",
+          "3. Build feature by feature using each `features/<slug>/PRD.md`, in the order listed in `REBUILD.md`.",
+        ]
+      : [
+          "1. Read `architecture/ARCHITECTURE.md` for the overall shape, then `architecture/INTERFACES.md` (the full interface surface) and `architecture/DATA-MODEL.md` (entities & relations).",
+          "2. Rebuild feature by feature using each `features/<slug>/PRD.md`, in the order listed in `REBUILD.md`.",
+          "3. Use `data/` (translations, schema, config) and — when present — `source/` as ground truth.",
+        ]),
     "",
   ];
 
@@ -78,6 +146,7 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
 }
 
 export function architectureDoc(inv: Inventory, opts: Options): string {
+  const isScratch = opts.mode === "scratch";
   const topDirs = [
     ...new Set(inv.files.filter((f) => f.path.includes("/")).map((f) => f.path.split("/")[0])),
   ].sort();
@@ -111,12 +180,31 @@ export function architectureDoc(inv: Inventory, opts: Options): string {
     "## Internationalization",
     "",
     inv.i18n
-      ? `Locales: ${inv.i18n.locales.join(", ")} — files copied to \`data/translations/\`.`
+      ? isScratch
+        ? `Locales: ${inv.i18n.locales.join(", ")} — provide a messages file per locale (see the Internationalization feature).`
+        : `Locales: ${inv.i18n.locales.join(", ")} — files copied to \`data/translations/\`.`
       : "_No i18n detected._",
     "",
   ];
 
-  if (opts.mode === "preserve") {
+  if (isScratch) {
+    common.push(
+      "## Architecture (greenfield)",
+      "",
+      agentNote(
+        "Design the architecture that delivers the features below. Decide module boundaries, data flow, and folder structure. Ground every decision in `../CONTEXT.md` (the glossary) and the ADRs in `../docs/adr/`. Document the proposed structure here as a directory tree plus a short rationale per module.",
+      ),
+      "",
+    );
+    if (opts.level === "complex") {
+      common.push(
+        agentNote(
+          "Also sketch 1–2 alternative architectures you considered and why you rejected them, and note enhancements beyond the MVP that the structure should leave room for.",
+        ),
+        "",
+      );
+    }
+  } else if (opts.mode === "preserve") {
     common.push(
       "## Reconstruction guidance (preserve)",
       "",
@@ -152,6 +240,30 @@ function listOrNone(items: string[], empty: string): string {
 }
 
 export function interfacesDoc(inv: Inventory, opts: Options): string {
+  if (opts.mode === "scratch") {
+    return [
+      "# Interface surface",
+      "",
+      metaBlock(inv, opts),
+      agentNote(
+        "Design the complete interface surface from the interview & `../CONTEXT.md`. The table below is pre-filled from the plan — keep the columns, refine each row, and add any operation that's missing (HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, webhooks).",
+      ),
+      "",
+      "## Interface table",
+      "",
+      filledInterfaceTable(inv.interfaces ?? []),
+      "",
+      ...(opts.level === "complex"
+        ? [
+            agentNote(
+              "For each operation, note input/output shapes (link to `DATA-MODEL.md`), auth/permission requirements, and side effects.",
+            ),
+            "",
+          ]
+        : []),
+    ].join("\n");
+  }
+
   const routesTable = inv.routes.length
     ? [
         "| Kind | Route | Handler file |",
@@ -202,6 +314,26 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
 }
 
 export function dataModelDoc(inv: Inventory, opts: Options): string {
+  if (opts.mode === "scratch") {
+    return [
+      "# Data model",
+      "",
+      metaBlock(inv, opts),
+      agentNote(
+        "Design the complete data model from the interview & `../CONTEXT.md`. The entities below are pre-filled from the plan — refine fields, types, constraints, and relations, and add anything missing. Capture primary keys, foreign keys, enums, defaults, and indexes.",
+      ),
+      "",
+      "## Entities",
+      "",
+      filledEntityTables(inv.dataModel ?? []),
+      "",
+      "## Relations & integrity",
+      "",
+      "_Summarize relationships, cascade rules, and any derived/computed data._",
+      "",
+    ].join("\n");
+  }
+
   const schemaFiles = [...new Set([...inv.schemas, ...inv.hints.schemaCandidates])].sort();
 
   return [
@@ -266,6 +398,7 @@ export function featurePrd(
   opts: Options,
   sourceMarkdown: string,
 ): string {
+  const isScratch = opts.mode === "scratch";
   const out: string[] = [
     `# ${feature.name}`,
     "",
@@ -277,11 +410,15 @@ export function featurePrd(
     "",
     "## Functional requirements",
     "",
-    opts.level === "complex"
+    isScratch
       ? agentNote(
-          "Derive precise, testable functional requirements for this unit from the source material below. Cover happy paths, edge cases, validation, and error states.",
+          "Specify precise, testable functional requirements for this unit from the interview & `../../CONTEXT.md`. Cover happy paths, edge cases, validation, and error states.",
         )
-      : "_Describe what this unit must do, as a checklist of behaviors, based on the source below._",
+      : opts.level === "complex"
+        ? agentNote(
+            "Derive precise, testable functional requirements for this unit from the source material below. Cover happy paths, edge cases, validation, and error states.",
+          )
+        : "_Describe what this unit must do, as a checklist of behaviors, based on the source below._",
     "",
   ];
 
@@ -293,15 +430,41 @@ export function featurePrd(
     out.push("");
   }
 
-  out.push("## Source material", "", sourceMarkdown, "");
+  if (opts.tdd) {
+    out.push(
+      "## Test plan (write these first)",
+      "",
+      agentNote(
+        "Before writing any implementation, turn the functional requirements above into failing tests (red): one per behavior — happy paths, edge cases, validation, and error states. Implement only enough to make them pass (green), then refactor. List the test cases here as a checklist.",
+      ),
+      "",
+    );
+  }
+
+  if (isScratch) {
+    out.push(
+      "## Design inputs",
+      "",
+      agentNote(
+        "Build this unit greenfield. Ground it in `../../CONTEXT.md` (the glossary), the operations it exposes in `../../architecture/INTERFACES.md`, and the entities it touches in `../../architecture/DATA-MODEL.md`.",
+      ),
+      "",
+    );
+  } else {
+    out.push("## Source material", "", sourceMarkdown, "");
+  }
 
   if (opts.level === "complex") {
     out.push(
-      "## Improvements & refactors",
+      isScratch ? "## Enhancements & alternatives" : "## Improvements & refactors",
       "",
-      agentNote(
-        "Propose concrete improvements for this unit: better types, dead-code removal, performance, accessibility, security, and tests. Mark each as `[keep-behavior]` so the rebuild stays functionally identical unless the user opts in.",
-      ),
+      isScratch
+        ? agentNote(
+            "Propose enhancements beyond the MVP for this unit and note any alternative approaches worth considering, each marked `[post-MVP]` so the core build stays lean.",
+          )
+        : agentNote(
+            "Propose concrete improvements for this unit: better types, dead-code removal, performance, accessibility, security, and tests. Mark each as `[keep-behavior]` so the rebuild stays functionally identical unless the user opts in.",
+          ),
       "",
     );
   }
@@ -320,27 +483,83 @@ export function featurePrd(
 }
 
 export function rebuildDoc(inv: Inventory, opts: Options): string {
+  const isScratch = opts.mode === "scratch";
   const order = inv.features
     .map((f, i) => `${i + 1}. [ ] **${f.name}** → \`features/${f.slug}/PRD.md\``)
     .join("\n");
+
+  const modeBlurb =
+    opts.mode === "preserve"
+      ? "keep the current architecture"
+      : isScratch
+        ? "build the project from the interview/plan (greenfield)"
+        : "design a new architecture for the same features";
+
+  const procedure: string[] = [
+    isScratch
+      ? "1. Read `00-overview/PRD.md`, `CONTEXT.md` (the glossary), and the decisions in `docs/adr/`, then `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`, and `architecture/DATA-MODEL.md`."
+      : "1. Start with `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`, and `architecture/DATA-MODEL.md`.",
+    opts.tdd
+      ? "2. For each unit in order: write its failing acceptance tests first (red), implement until they pass (green), then refactor."
+      : "2. For each unit in order, open its PRD and implement it.",
+    isScratch
+      ? "3. Ground terminology and decisions in `CONTEXT.md` and `docs/adr/`; cross-reference `INTERFACES.md` and `DATA-MODEL.md`."
+      : "3. Wire shared data from `data/` (translations, schema, config).",
+    opts.fidelity === "mirror"
+      ? "4. Use the copied files under `source/<slug>/` as ground truth."
+      : "4. Validate behavior against the requirements in each PRD.",
+    isScratch
+      ? "5. Run your test suite, typecheck, and linter to verify each unit before moving on."
+      : "5. Run the project's own scripts to verify: " +
+        (Object.keys(inv.scripts).length
+          ? Object.keys(inv.scripts).slice(0, 6).map((s) => `\`${s}\``).join(", ")
+          : "_no scripts detected_") +
+        ".",
+  ];
+
+  const checklist: string[] = [
+    "- [ ] Every interface in `architecture/INTERFACES.md` is implemented (routes, endpoints, RPC/GraphQL, jobs).",
+    isScratch
+      ? "- [ ] Every entity in `architecture/DATA-MODEL.md` exists with its fields, relations, and constraints."
+      : "- [ ] Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.",
+    isScratch
+      ? "- [ ] All routes/operations respond per `architecture/INTERFACES.md`."
+      : "- [ ] All routes respond as before.",
+    ...(inv.i18n
+      ? [
+          isScratch
+            ? "- [ ] All locales present, each with its own messages file."
+            : "- [ ] All locales present and keys match `data/translations/`.",
+        ]
+      : []),
+    ...(opts.tdd
+      ? ["- [ ] Tests were written before implementation for each unit (red → green → refactor)."]
+      : []),
+    "- [ ] Required env vars configured: " +
+      (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") +
+      ".",
+  ];
 
   return [
     `# REBUILD — ${inv.repoName}`,
     "",
     metaBlock(inv, opts),
-    "This folder is a complete plan to rebuild the project from scratch.",
+    isScratch
+      ? "This folder is a complete plan to build the project from scratch."
+      : "This folder is a complete plan to rebuild the project from scratch.",
     "",
     "## Mode & level",
     "",
-    `- **${opts.mode}**: ${opts.mode === "preserve" ? "keep the current architecture" : "design a new architecture for the same features"}.`,
+    `- **${opts.mode}**: ${modeBlurb}.`,
     `- **${opts.level}**: ${opts.level === "light" ? "faithful, minimal-editorializing PRDs" : "PRDs that also suggest improvements to fold in"}.`,
     `- **${opts.fidelity}** fidelity: ${
       opts.fidelity === "mirror"
         ? "real files copied under `source/`"
         : opts.fidelity === "embed"
           ? "key code embedded directly in the PRDs"
-          : "descriptive PRDs only — rewrite from requirements"
+          : "descriptive PRDs only — build from requirements"
     }.`,
+    ...(opts.tdd ? ["- **TDD**: each unit is built test-first (red → green → refactor)."] : []),
     "",
     "## Build order",
     "",
@@ -350,27 +569,11 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
     "",
     "## Procedure",
     "",
-    "1. Start with `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`, and `architecture/DATA-MODEL.md`.",
-    "2. For each unit in order, open its PRD and implement it.",
-    "3. Wire shared data from `data/` (translations, schema, config).",
-    opts.fidelity === "mirror"
-      ? "4. Use the copied files under `source/<slug>/` as ground truth."
-      : "4. Validate behavior against the requirements in each PRD.",
-    "5. Run the project's own scripts to verify: " +
-      (Object.keys(inv.scripts).length
-        ? Object.keys(inv.scripts).slice(0, 6).map((s) => `\`${s}\``).join(", ")
-        : "_no scripts detected_") +
-      ".",
+    ...procedure,
     "",
     "## Validation checklist",
     "",
-    "- [ ] Every interface in `architecture/INTERFACES.md` is implemented (routes, endpoints, RPC/GraphQL, jobs).",
-    "- [ ] Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.",
-    "- [ ] All routes respond as before.",
-    "- [ ] All locales present and keys match `data/translations/`.",
-    "- [ ] Required env vars configured: " +
-      (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") +
-      ".",
+    ...checklist,
     "",
   ].join("\n");
 }

@@ -91,6 +91,9 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--level <level>` | `light` \| `complex` | `light` | Faithful & concise, or also surface improvements the agent folds in. |
 | `--fidelity <mode>` | `mirror` \| `embed` \| `describe` | derived from mode+level | How real code is carried into the PRDs (see below). |
 | `--granularity <g>` | `coarse` \| `fine` | `coarse` | Feature grouping. `coarse` folds trivial, route-less single-file groups into Core; `fine` keeps them split. |
+| `--scratch` | flag | off | **Greenfield** mode: build from a `plan.json` interview instead of a repo. Forces `mode=scratch`, `fidelity=describe`; `--repo` is not used. See [From scratch](#from-scratch-greenfield). |
+| `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md). |
+| `--tdd` | flag | off | Emit test-first build guidance into the PRDs/`REBUILD.md` (each unit built red → green → refactor). Works in any mode. |
 | `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--exclude <glob>` | gitignore-style glob | — | Skip files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--max-embed-bytes N` | integer > 0 | `16000` | Max bytes embedded per file when `fidelity=embed`. |
@@ -107,15 +110,53 @@ hints, monorepo workspaces, excluded-file count, unresolved `unknowns`, and the 
 
 ---
 
+## From scratch (greenfield)
+
+When there is **no repo** — you want to turn an idea into a build plan — reconstruct runs the
+other way around: it produces the *same* tree, but the facts come from an **interview** instead
+of source code. The two front-ends converge on one `Inventory` and one renderer, so a
+greenfield build plan and a reverse-engineered one are structurally identical.
+
+**Who writes `plan.json`?** The **agent** does — you never hand-author it. When you ask your
+agent to build something from scratch, it follows the `## From scratch` procedure in
+[`SKILL.md`](./SKILL.md) and the interview method in
+[`references/scratch-playbook.md`](./references/scratch-playbook.md):
+
+1. **Interview** — the agent grills you one question at a time (recommending an answer each
+   time), sharpening fuzzy terms into a glossary and probing entity/feature boundaries with
+   concrete scenarios.
+2. **Capture** — as decisions crystallize it writes `CONTEXT.md` (the glossary) and, sparingly,
+   ADRs under `docs/adr/`.
+3. **`plan.json`** — it serializes the resolved interview into a `plan.json` (the structured
+   transcript). This is an **intermediate artifact the agent generates**; the schema and a
+   worked example live in [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md)
+   if you'd rather hand-write or tweak one.
+4. **Render** — it runs the engine, which scaffolds the tree and **pre-fills** the
+   `INTERFACES.md` / `DATA-MODEL.md` tables from the plan:
+
+   ```bash
+   node scripts/analyze.mjs --scratch --plan plan.json --out ./reconstruction --level complex [--tdd]
+   ```
+5. **Enrich** — it fills the `> 🧠` callouts in each PRD from the interview + `CONTEXT.md` + ADRs.
+
+`--scratch` forces `mode=scratch` and `fidelity=describe` (there is no source to mirror); no
+`--repo` is read. On top of the usual tree it writes `CONTEXT.md` and `docs/adr/NNNN-*.md`,
+both **if-absent** so the agent's richer versions are never clobbered, and `00-overview` links
+to them. Add `--tdd` (in any mode) to make every feature PRD and `REBUILD.md` drive the build
+**test-first** (red → green → refactor). `npm run parity:medic` checks that the code path and
+the from-scratch path converge on the same tree.
+
+---
+
 ## The three axes
 
 reconstruct is steered by three orthogonal choices.
 
 | Axis | Values | Meaning |
 | --- | --- | --- |
-| **Mode** | `preserve` \| `redesign` | `preserve` documents the architecture as it is. `redesign` keeps the *features* but invites a fresh architecture. |
+| **Mode** | `preserve` \| `redesign` \| `scratch` | `preserve` documents the architecture as it is. `redesign` keeps the *features* but invites a fresh architecture. `scratch` is greenfield: there is no repo, so the facts come from an interview (`--scratch`, see below). |
 | **Level** | `light` \| `complex` | `light` is faithful and minimal. `complex` also adds "Improvements & refactors" sections and architectural suggestions. |
-| **Fidelity** | `mirror` \| `embed` \| `describe` | How much real source travels with the PRDs: `mirror` copies files verbatim under `source/`, `embed` inlines key code (truncated to `--max-embed-bytes`), `describe` is text-only. |
+| **Fidelity** | `mirror` \| `embed` \| `describe` | How much real source travels with the PRDs: `mirror` copies files verbatim under `source/`, `embed` inlines key code (truncated to `--max-embed-bytes`), `describe` is text-only. `scratch` always uses `describe` — there is no source to carry. |
 
 ### Default fidelity matrix
 

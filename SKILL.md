@@ -1,9 +1,9 @@
 ---
 name: reconstruct
-description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec.
+description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec, from scratch, greenfield, build plan, new project, idea to PRD.
 license: MIT
 metadata:
-  version: 0.3.0
+  version: 0.4.0
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -20,6 +20,9 @@ understanding** — the interface surface, the data model, and the real features
 - "Rebuild / recreate / clone / scaffold this project from scratch."
 - "Reverse-engineer this repo into a spec / PRDs."
 - "Document this codebase so another team or agent can rebuild it."
+- **Greenfield** — "build me a new project from scratch", "turn my idea into a build plan /
+  PRDs", "design a new app". There is no code yet: interview the user, then render the same
+  tree. → jump to [**From scratch**](#from-scratch).
 
 Skip it for tiny single-file scripts, or when the user wants a running app now, not a plan.
 
@@ -80,6 +83,39 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, and `references/architecture-analysis.md` /
 `references/rebuild-instructions.md` / the PRD templates for the reasoning checklists.
+
+## From scratch
+
+When there is **no repo** — the user wants to turn an idea into a build plan — elicit the facts
+through an interview and converge on the **same reconstruction tree**. Greenfield collapses two
+axes: mode is always `scratch` (nothing to preserve) and fidelity is forced to `describe` (no
+source to mirror); `--level` still applies (`light` = the MVP as described, `complex` = a deeper
+interview that also proposes alternatives, enhancements, and more ADRs).
+
+1. **Interview the user** per `references/scratch-playbook.md` — a grill-with-docs walk:
+   relentless, one question at a time, recommending an answer each time; sharpen fuzzy terms into
+   a canonical glossary; invent concrete scenarios to probe entity/feature boundaries.
+
+2. **Write `CONTEXT.md` + ADRs as decisions crystallize.** Capture the glossary inline in
+   `CONTEXT.md` (format: `references/CONTEXT-FORMAT.md`) and offer an ADR under `docs/adr/` only
+   when a decision is hard to reverse **and** surprising **and** a real trade-off
+   (format: `references/ADR-FORMAT.md`). These live in `<OUT>` and the engine will not clobber
+   them.
+
+3. **Write `plan.json`** — the structured output of the interview, mapping 1:1 onto the inventory.
+   Schema + worked example: `references/scratch-plan-schema.md`.
+
+4. **Render the tree** with the deterministic engine (it scaffolds the PRDs and pre-fills the
+   `INTERFACES.md` / `DATA-MODEL.md` tables from the plan; add `--tdd` for a test-first build):
+
+   ```bash
+   node scripts/analyze.mjs --scratch --plan plan.json --out <OUT> --level <light|complex> [--tdd]
+   ```
+
+5. **Enrich/author the prose.** Fill each `features/<slug>/PRD.md` and the architecture docs from
+   the interview + `CONTEXT.md` + ADRs as ground truth — resolve every `> 🧠` callout, turn the
+   pre-filled tables into a complete interface surface and data model, and finalize `REBUILD.md`'s
+   tiered build order. If `--tdd`, each unit is built test-first (red → green → refactor).
 
 ## Bundling the output
 

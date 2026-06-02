@@ -25,6 +25,9 @@ function opts(): Options {
     merge: false,
     summary: false,
     standalone: false,
+    scratch: false,
+    plan: "",
+    tdd: false,
   };
 }
 

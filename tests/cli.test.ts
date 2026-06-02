@@ -43,3 +43,43 @@ describe("parseArgs: merge/summary/standalone flags", () => {
     expect(o.standalone).toBe(false);
   });
 });
+
+describe("parseArgs: scratch (greenfield) mode", () => {
+  it("defaults scratch off, plan empty, tdd off", () => {
+    const o = parseArgs(["--repo", REPO]);
+    expect(o.scratch).toBe(false);
+    expect(o.plan).toBe("");
+    expect(o.tdd).toBe(false);
+  });
+
+  it("enters scratch mode with --scratch --plan, forcing mode=scratch + fidelity=describe", () => {
+    const o = parseArgs(["--scratch", "--plan", "p.json"]);
+    expect(o.scratch).toBe(true);
+    expect(o.mode).toBe("scratch");
+    expect(o.fidelity).toBe("describe");
+    expect(o.plan).toBe(resolve("p.json"));
+  });
+
+  it("does not require --repo to exist and defaults out to <cwd>/reconstruction", () => {
+    const o = parseArgs(["--scratch", "--plan", "p.json"]);
+    expect(o.standalone).toBe(false);
+    expect(o.out).toBe(resolve("reconstruction"));
+  });
+
+  it("respects --level in scratch mode", () => {
+    const o = parseArgs(["--scratch", "--plan", "p.json", "--level", "complex"]);
+    expect(o.level).toBe("complex");
+  });
+
+  it("honours an explicit --out in scratch mode", () => {
+    const o = parseArgs(["--scratch", "--plan", "p.json", "--out", "/tmp/greenfield"]);
+    expect(o.out).toBe(resolve("/tmp/greenfield"));
+  });
+});
+
+describe("parseArgs: --tdd flag", () => {
+  it("sets tdd as a boolean, independent of mode", () => {
+    expect(parseArgs(["--repo", REPO, "--tdd"]).tdd).toBe(true);
+    expect(parseArgs(["--scratch", "--plan", "p.json", "--tdd"]).tdd).toBe(true);
+  });
+});

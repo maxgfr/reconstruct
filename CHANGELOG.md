@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0]
+
+Add a **from-scratch (greenfield)** mode: turn an idea into the same reconstruction tree via a
+grill-with-docs interview instead of reading a repo — both front-ends converge on one inventory
+and one renderer. Plus an orthogonal **`--tdd`** mode for a test-first build plan.
+
+### Added
+- `--scratch --plan <plan.json>`: build the reconstruction tree from an interview-produced
+  `plan.json` rather than a repository. Mode collapses to `scratch` and fidelity to `describe`;
+  `--repo` is not required. `--level` still applies (`complex` = deeper interview + alternatives
+  + more ADRs).
+- `--tdd`: emit test-first build guidance into every feature PRD and `REBUILD.md` (write failing
+  tests → implement → refactor); a `TDD` row in the meta block. Works in any mode.
+- Scratch mode also writes the interview's domain docs into `<out>`: `CONTEXT.md` (glossary, from
+  `plan.glossary` + data-model relations) and `docs/adr/NNNN-*.md` (one terse ADR per decision),
+  both **written if-absent** so agent-authored versions are never clobbered. `00-overview` links
+  to them.
+- `architecture/INTERFACES.md` and `architecture/DATA-MODEL.md` render **pre-filled** tables from
+  the plan in scratch mode (markdown-pipe-safe) instead of empty skeletons.
+- `src/scratch.ts` (`loadPlan`, `planToInventory`, `renderScratchDocs`); `orderFeatures` extracted
+  from `src/features.ts` so both front-ends share the dependency-tier build order;
+  `writeArtifactsIfAbsent` in `src/output.ts`.
+- `references/scratch-playbook.md` (greenfield interview methodology), `references/scratch-plan-schema.md`
+  (the `plan.json` contract + worked example), and vendored `references/CONTEXT-FORMAT.md` /
+  `references/ADR-FORMAT.md` so the skill stays self-contained.
+- Medic convergence harness: `scripts/parity-medic.mjs` + `npm run parity:medic` structurally
+  diffs the code path and the from-scratch path; `tests/fixtures/scratch-plan/medic.plan.json`;
+  `tests/scratch.test.ts`.
+
 ## [0.3.0]
 
 Add opt-in **bundling**: collapse the whole reconstruction into one file, or emit a
@@ -66,7 +95,8 @@ teaches the agent to map any stack.
 Initial release: deterministic analyzer + agent-enriched reconstruction PRDs, tuned for
 JS/TS/Next.js with generic extraction for other stacks.
 
-[Unreleased]: https://github.com/maxgfr/reconstruct/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/maxgfr/reconstruct/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/maxgfr/reconstruct/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/maxgfr/reconstruct/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/maxgfr/reconstruct/releases/tag/v0.2.0
 [0.1.0]: https://github.com/maxgfr/reconstruct/releases/tag/v0.1.0

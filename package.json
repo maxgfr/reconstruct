@@ -1,6 +1,6 @@
 {
   "name": "reconstruct",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Analyze any repository and generate reconstruction PRDs to rebuild a project from scratch. A skills.sh agent skill.",
   "type": "module",
   "bin": {
@@ -22,7 +22,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check:build": "tsup && git diff --exit-code -- scripts/analyze.mjs",
-    "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light"
+    "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light",
+    "demo:scratch": "node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/medic.plan.json --out /tmp/reconstruct-scratch-demo --level complex",
+    "parity:medic": "node scripts/parity-medic.mjs"
   },
   "keywords": [
     "skills",

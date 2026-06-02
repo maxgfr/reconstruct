@@ -151,12 +151,39 @@ function foundationRank(key: string, hasSchema: boolean): number {
   return Number.POSITIVE_INFINITY;
 }
 
-interface Record_ {
+/**
+ * The minimal shape `orderFeatures` needs to sort and number a feature: its
+ * build `tier`, an intra-tier `rank`, and a `size` tie-breaker. Both front-ends
+ * — the code analyzer (`buildFeatures`) and the from-scratch bridge
+ * (`planToInventory`) — produce these so the build order is identical.
+ */
+export interface OrderingRecord {
   feature: Feature;
-  key: string;
   tier: 0 | 1 | 2;
   rank: number;
   size: number;
+}
+
+interface Record_ extends OrderingRecord {
+  key: string;
+}
+
+/**
+ * Sort records by build tier (foundations → features → tests/docs), then
+ * intra-tier rank, then size desc, then name, and assign the final `NN-`
+ * numbered slugs in build order. Shared by both front-ends.
+ */
+export function orderFeatures(records: OrderingRecord[]): Feature[] {
+  records.sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.size !== b.size) return b.size - a.size;
+    return a.feature.name.localeCompare(b.feature.name);
+  });
+  return records.map((r, i) => ({
+    ...r.feature,
+    slug: `${String(i + 1).padStart(2, "0")}-${r.feature.slug}`,
+  }));
 }
 
 export function buildFeatures(
@@ -308,17 +335,6 @@ export function buildFeatures(
     });
   }
 
-  // Sort by build tier, then foundation order / tail order, then size desc, then name.
-  records.sort((a, b) => {
-    if (a.tier !== b.tier) return a.tier - b.tier;
-    if (a.rank !== b.rank) return a.rank - b.rank;
-    if (a.size !== b.size) return b.size - a.size;
-    return a.feature.name.localeCompare(b.feature.name);
-  });
-
-  // Assign numbered slugs in final (build) order.
-  return records.map((r, i) => ({
-    ...r.feature,
-    slug: `${String(i + 1).padStart(2, "0")}-${r.feature.slug}`,
-  }));
+  // Sort + number by build tier, intra-tier rank, size, name (shared logic).
+  return orderFeatures(records);
 }

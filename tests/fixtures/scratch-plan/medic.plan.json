@@ -1,0 +1,296 @@
+{
+  "project": {
+    "name": "medic",
+    "summary": "A European marketplace and visibility platform for locum (replacement) doctors: a Doctolib-style professional page plus a marketplace of replacement missions, across France, Belgium, Germany and Switzerland.",
+    "audience": "Locum doctors looking for replacement work and medical practices (cabinets) needing cover.",
+    "value": "Doctors get a public profile and matched missions; practices find and book vetted replacements fast."
+  },
+  "stack": {
+    "primaryLanguage": "TypeScript",
+    "languages": ["TypeScript", "SQL"],
+    "frameworks": ["Next.js"],
+    "libraries": [
+      "Drizzle ORM",
+      "tRPC",
+      "NextAuth.js",
+      "next-intl",
+      "TanStack Query",
+      "Zod",
+      "Radix UI (shadcn/ui)",
+      "Tailwind CSS",
+      "Resend",
+      "Anthropic Claude API",
+      "Biome"
+    ],
+    "packageManagers": ["bun"],
+    "hasTypeScript": true
+  },
+  "dependencies": [
+    {
+      "manager": "bun",
+      "manifest": "package.json",
+      "runtime": {
+        "next": "15.x",
+        "react": "19.x",
+        "drizzle-orm": "latest",
+        "@trpc/server": "11.x",
+        "@trpc/client": "11.x",
+        "@tanstack/react-query": "5.x",
+        "next-auth": "5.x",
+        "next-intl": "3.x",
+        "zod": "3.x",
+        "resend": "latest",
+        "@anthropic-ai/sdk": "latest",
+        "postgres": "latest"
+      },
+      "dev": {
+        "drizzle-kit": "latest",
+        "@biomejs/biome": "latest",
+        "typescript": "5.x",
+        "tailwindcss": "4.x"
+      }
+    }
+  ],
+  "envVars": [
+    "DATABASE_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
+    "ANTHROPIC_API_KEY",
+    "RESEND_API_KEY",
+    "NEXT_PUBLIC_APP_URL"
+  ],
+  "i18n": { "locales": ["fr", "de", "nl", "en", "de-CH"] },
+  "dataModel": [
+    {
+      "entity": "users",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "email", "type": "text", "constraints": "unique, not null" },
+        { "name": "passwordHash", "type": "text", "constraints": "nullable (OAuth users)" },
+        { "name": "role", "type": "enum", "constraints": "CABINET | DOCTOR | ADMIN" },
+        { "name": "country", "type": "enum", "constraints": "FR | BE | DE | CH" },
+        { "name": "locale", "type": "text", "constraints": "default 'fr'" }
+      ],
+      "relations": [
+        "A users row has one doctorProfiles OR one cabinetProfiles (by role)",
+        "A users row has many notifications"
+      ]
+    },
+    {
+      "entity": "doctorProfiles",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "userId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "slug", "type": "text", "constraints": "unique (public URL)" },
+        { "name": "headline", "type": "text", "constraints": "" },
+        { "name": "bio", "type": "text", "constraints": "" },
+        { "name": "specialties", "type": "text[]", "constraints": "" },
+        { "name": "intent", "type": "enum", "constraints": "visibility | missions | both" },
+        { "name": "acceptingPatients", "type": "boolean", "constraints": "default true" },
+        { "name": "isTopRemplacant", "type": "boolean", "constraints": "default false" },
+        { "name": "practitionerNumber", "type": "text", "constraints": "RPPS/INAMI/Approbation/GLN by country" }
+      ],
+      "relations": [
+        "doctorProfiles belongs to users",
+        "doctorProfiles has many doctorAvailabilityDates",
+        "doctorProfiles has many missionApplications"
+      ]
+    },
+    {
+      "entity": "cabinetProfiles",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "userId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "name", "type": "text", "constraints": "not null" },
+        { "name": "lat", "type": "double", "constraints": "geocoded" },
+        { "name": "lng", "type": "double", "constraints": "geocoded" }
+      ],
+      "relations": ["cabinetProfiles belongs to users", "cabinetProfiles has many missions"]
+    },
+    {
+      "entity": "missions",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "cabinetProfileId", "type": "uuid", "constraints": "FK -> cabinetProfiles.id" },
+        { "name": "startDate", "type": "date", "constraints": "not null" },
+        { "name": "endDate", "type": "date", "constraints": "not null" },
+        { "name": "specialty", "type": "text", "constraints": "" },
+        { "name": "rate", "type": "numeric", "constraints": "" },
+        { "name": "isUrgent", "type": "boolean", "constraints": "auto-true if start < 48h" }
+      ],
+      "relations": ["missions belongs to cabinetProfiles", "missions has many missionApplications"]
+    },
+    {
+      "entity": "missionApplications",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "missionId", "type": "uuid", "constraints": "FK -> missions.id" },
+        { "name": "doctorProfileId", "type": "uuid", "constraints": "FK -> doctorProfiles.id" },
+        { "name": "status", "type": "enum", "constraints": "PENDING | ACCEPTED | REJECTED" }
+      ],
+      "relations": ["missionApplications belongs to missions and doctorProfiles"]
+    },
+    {
+      "entity": "bookings",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "cabinetProfileId", "type": "uuid", "constraints": "FK -> cabinetProfiles.id" },
+        { "name": "doctorProfileId", "type": "uuid", "constraints": "FK -> doctorProfiles.id" },
+        { "name": "date", "type": "date", "constraints": "" },
+        { "name": "status", "type": "enum", "constraints": "PENDING | CONFIRMED | REJECTED" }
+      ],
+      "relations": ["bookings link a cabinet and a doctor on a date"]
+    },
+    {
+      "entity": "doctorAlertPreferences",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "doctorProfileId", "type": "uuid", "constraints": "FK -> doctorProfiles.id" },
+        { "name": "specialties", "type": "text[]", "constraints": "" },
+        { "name": "radiusKm", "type": "integer", "constraints": "" },
+        { "name": "minRate", "type": "numeric", "constraints": "" },
+        { "name": "channels", "type": "text[]", "constraints": "email | in-app" }
+      ],
+      "relations": ["doctorAlertPreferences belongs to doctorProfiles"]
+    },
+    {
+      "entity": "doctorAvailabilityDates",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "doctorProfileId", "type": "uuid", "constraints": "FK -> doctorProfiles.id" },
+        { "name": "date", "type": "date", "constraints": "unique on (doctorProfileId, date)" },
+        { "name": "available", "type": "boolean", "constraints": "" }
+      ],
+      "relations": ["doctorAvailabilityDates belongs to doctorProfiles"]
+    },
+    {
+      "entity": "reviews",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "authorUserId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "subjectUserId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "rating", "type": "integer", "constraints": "1..5" },
+        { "name": "comment", "type": "text", "constraints": "" }
+      ],
+      "relations": ["reviews are bidirectional between a doctor and a cabinet"]
+    },
+    {
+      "entity": "conversations",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "doctorUserId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "cabinetUserId", "type": "uuid", "constraints": "FK -> users.id" }
+      ],
+      "relations": ["conversations has many messages"]
+    },
+    {
+      "entity": "messages",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "conversationId", "type": "uuid", "constraints": "FK -> conversations.id" },
+        { "name": "senderUserId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "body", "type": "text", "constraints": "" }
+      ],
+      "relations": ["messages belongs to conversations"]
+    },
+    {
+      "entity": "notifications",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "userId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "type", "type": "text", "constraints": "" },
+        { "name": "read", "type": "boolean", "constraints": "default false" }
+      ],
+      "relations": ["notifications belongs to users"]
+    },
+    {
+      "entity": "profileViewsLog",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "doctorProfileId", "type": "uuid", "constraints": "FK -> doctorProfiles.id" },
+        { "name": "day", "type": "date", "constraints": "" },
+        { "name": "count", "type": "integer", "constraints": "daily snapshot" }
+      ],
+      "relations": ["profileViewsLog belongs to doctorProfiles"]
+    },
+    {
+      "entity": "favorites",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "cabinetUserId", "type": "uuid", "constraints": "FK -> users.id" },
+        { "name": "doctorProfileId", "type": "uuid", "constraints": "FK -> doctorProfiles.id" }
+      ],
+      "relations": ["favorites: a cabinet saves doctors"]
+    },
+    {
+      "entity": "accounts",
+      "fields": [
+        { "name": "id", "type": "uuid", "constraints": "PK" },
+        { "name": "userId", "type": "uuid", "constraints": "FK -> users.id (NextAuth)" }
+      ],
+      "relations": ["accounts belongs to users (OAuth)"]
+    }
+  ],
+  "interfaces": [
+    { "method": "tRPC", "path": "ai.generateBio", "kind": "tRPC mutation", "auth": "doctor", "notes": "Claude-generated bio/headline, locale-aware" },
+    { "method": "tRPC", "path": "alerts.upsert", "kind": "tRPC mutation", "auth": "doctor", "notes": "CRUD doctor alert preferences" },
+    { "method": "tRPC", "path": "auth.register", "kind": "tRPC mutation", "auth": "public", "notes": "Registration (doctor or cabinet)" },
+    { "method": "tRPC", "path": "auth.updateProfile", "kind": "tRPC mutation", "auth": "user", "notes": "Profile CRUD" },
+    { "method": "tRPC", "path": "auth.adminValidate", "kind": "tRPC mutation", "auth": "admin", "notes": "Approve/reject pending profiles" },
+    { "method": "tRPC", "path": "availability.upsert", "kind": "tRPC mutation", "auth": "doctor", "notes": "Toggle per-date availability (unique constraint)" },
+    { "method": "tRPC", "path": "bookings.create", "kind": "tRPC mutation", "auth": "cabinet", "notes": "Cabinet books a doctor" },
+    { "method": "tRPC", "path": "bookings.respond", "kind": "tRPC mutation", "auth": "doctor", "notes": "Doctor confirms/rejects" },
+    { "method": "tRPC", "path": "directory.search", "kind": "tRPC query", "auth": "public", "notes": "Public doctor search" },
+    { "method": "tRPC", "path": "directory.bySlug", "kind": "tRPC query", "auth": "public", "notes": "Doctor profile by slug" },
+    { "method": "tRPC", "path": "directory.contact", "kind": "tRPC mutation", "auth": "public", "notes": "Contact request to a doctor" },
+    { "method": "tRPC", "path": "favorites.toggle", "kind": "tRPC mutation", "auth": "cabinet", "notes": "Save/unsave a doctor" },
+    { "method": "tRPC", "path": "messages.send", "kind": "tRPC mutation", "auth": "user", "notes": "Send a message in a conversation" },
+    { "method": "tRPC", "path": "missions.create", "kind": "tRPC mutation", "auth": "cabinet", "notes": "Create a replacement mission" },
+    { "method": "tRPC", "path": "missions.search", "kind": "tRPC query", "auth": "user", "notes": "Smart-matched mission search" },
+    { "method": "tRPC", "path": "missions.apply", "kind": "tRPC mutation", "auth": "doctor", "notes": "Apply to a mission" },
+    { "method": "tRPC", "path": "missions.respond", "kind": "tRPC mutation", "auth": "cabinet", "notes": "Accept/reject an application" },
+    { "method": "tRPC", "path": "notifications.list", "kind": "tRPC query", "auth": "user", "notes": "User notifications" },
+    { "method": "tRPC", "path": "profileStats.summary", "kind": "tRPC query", "auth": "doctor", "notes": "Completion score, views, badge check" },
+    { "method": "tRPC", "path": "reviews.create", "kind": "tRPC mutation", "auth": "user", "notes": "Bidirectional rating" },
+    { "method": "GET", "path": "/api/auth/[...nextauth]", "kind": "REST", "auth": "public", "notes": "NextAuth handler" },
+    { "method": "POST", "path": "/api/trpc/[trpc]", "kind": "REST", "auth": "mixed", "notes": "tRPC HTTP handler" },
+    { "method": "GET", "path": "/sitemap.xml", "kind": "REST", "auth": "public", "notes": "Multi-locale sitemap with hreflang" },
+    { "method": "GET", "path": "/annuaire/[slug]", "kind": "page (SSR)", "auth": "public", "notes": "Doctor page with Schema.org Physician" }
+  ],
+  "features": [
+    { "name": "Project Setup & Tooling", "kind": "project-setup", "tier": 0, "summary": "Next.js 15 App Router, Biome, Tailwind v4, Drizzle config, Docker (Postgres + app), env wiring." },
+    { "name": "Internationalization", "kind": "internationalization", "tier": 0, "summary": "next-intl with localePrefix as-needed; 5 locales; messages/{locale}.json; locale-aware dates, links, emails." },
+    { "name": "Database & Schema", "kind": "feature", "tier": 0, "summary": "Drizzle schema for users, profiles, missions, bookings, availability, messaging, reviews, notifications, NextAuth tables.", "entities": ["users", "doctorProfiles", "cabinetProfiles", "missions"] },
+    { "name": "Authentication & Authorization", "kind": "feature", "tier": 0, "summary": "NextAuth (credentials + OAuth); roles CABINET/DOCTOR/ADMIN; profile CRUD; admin validation gate.", "interfaces": ["auth.register", "auth.updateProfile", "auth.adminValidate"], "entities": ["users", "accounts"] },
+    { "name": "Public Directory (Annuaire)", "kind": "feature", "tier": 1, "summary": "Public search and doctor pages by slug, contact requests, specialty/city SEO landing pages.", "interfaces": ["directory.search", "directory.bySlug", "directory.contact"], "entities": ["doctorProfiles"] },
+    { "name": "Replacement Marketplace (Missions)", "kind": "feature", "tier": 1, "summary": "Create/search/apply/track missions with smart matching and urgency detection.", "interfaces": ["missions.create", "missions.search", "missions.apply", "missions.respond"], "entities": ["missions", "missionApplications"] },
+    { "name": "Availability Calendar", "kind": "feature", "tier": 1, "summary": "Interactive click-to-toggle per-date availability; feeds matching and bookings.", "interfaces": ["availability.upsert"], "entities": ["doctorAvailabilityDates"] },
+    { "name": "Smart Alerts", "kind": "feature", "tier": 1, "summary": "Doctors configure criteria; email + in-app notifications for matching missions.", "interfaces": ["alerts.upsert"], "entities": ["doctorAlertPreferences"] },
+    { "name": "AI Profile Generator", "kind": "feature", "tier": 1, "summary": "Claude-powered, locale-aware bio and headline generation.", "interfaces": ["ai.generateBio"], "entities": ["doctorProfiles"] },
+    { "name": "Profile Analytics", "kind": "feature", "tier": 1, "summary": "Completion score, view stats, QR code, share link, mission history, Top Remplaçant badge.", "interfaces": ["profileStats.summary"], "entities": ["profileViewsLog", "doctorProfiles"] },
+    { "name": "Messaging", "kind": "feature", "tier": 1, "summary": "Conversations and messages between doctors and cabinets.", "interfaces": ["messages.send"], "entities": ["conversations", "messages"] },
+    { "name": "Bidirectional Reviews", "kind": "feature", "tier": 1, "summary": "Doctor <-> cabinet ratings after a mission.", "interfaces": ["reviews.create"], "entities": ["reviews"] },
+    { "name": "Bookings", "kind": "feature", "tier": 1, "summary": "Cabinet books a doctor on dates; doctor confirms/rejects.", "interfaces": ["bookings.create", "bookings.respond"], "entities": ["bookings"] },
+    { "name": "Favorites", "kind": "feature", "tier": 1, "summary": "Cabinets save doctors for later.", "interfaces": ["favorites.toggle"], "entities": ["favorites"] },
+    { "name": "Notifications", "kind": "feature", "tier": 1, "summary": "In-app notifications CRUD and badges.", "interfaces": ["notifications.list"], "entities": ["notifications"] },
+    { "name": "Admin Validation", "kind": "feature", "tier": 1, "summary": "Admin panels to approve/reject pending profiles (PENDING -> APPROVED/REJECTED).", "interfaces": ["auth.adminValidate"], "entities": ["users"] },
+    { "name": "SEO & Sitemap", "kind": "feature", "tier": 1, "summary": "Schema.org Physician + BreadcrumbList, generateMetadata per doctor, SSG, multi-locale sitemap with hreflang.", "interfaces": ["/sitemap.xml", "/annuaire/[slug]"] },
+    { "name": "Transactional Emails", "kind": "feature", "tier": 1, "summary": "13 multilingual Resend templates; recipient locale fetched from DB per send." },
+    { "name": "Documentation", "kind": "documentation", "tier": 2, "summary": "CLAUDE.md, country regulatory differences, README and dev docs." }
+  ],
+  "glossary": [
+    { "term": "Remplaçant", "definition": "A locum doctor who covers a practice temporarily.", "avoid": ["substitute", "temp"] },
+    { "term": "Cabinet", "definition": "A medical practice that posts missions and books replacements.", "avoid": ["clinic", "office"] },
+    { "term": "Mission", "definition": "A replacement need posted by a Cabinet, with dates, specialty and rate.", "avoid": ["job", "gig", "shift"] },
+    { "term": "Intent", "definition": "A doctor's goal on the platform: visibility (personal page), missions (marketplace), or both.", "avoid": ["mode", "type"] },
+    { "term": "Top Remplaçant", "definition": "A badge for doctors with 10+ completed missions and a 4.5+ rating.", "avoid": ["verified", "premium"] },
+    { "term": "Annuaire", "definition": "The public directory of doctor profiles, indexed for SEO.", "avoid": ["listing", "search"] }
+  ],
+  "decisions": [
+    { "title": "tRPC for the API layer", "context": "Wanted end-to-end type safety between the Next.js client and server without hand-written API contracts.", "decision": "Use tRPC routers as the primary API instead of REST controllers.", "why": "Type inference across the boundary eliminates a class of integration bugs and removes schema duplication; REST is kept only for NextAuth and webhooks." },
+    { "title": "Drizzle ORM over Prisma", "context": "Needed a typed Postgres layer with predictable SQL and lightweight migrations.", "decision": "Adopt Drizzle ORM with drizzle-kit migrations.", "why": "Closer-to-SQL queries, smaller runtime, and first-class TypeScript types without a separate generation step." },
+    { "title": "next-intl with localePrefix 'as-needed'", "context": "Five locales including a regional variant (de-CH); French is the default market.", "decision": "Use next-intl with no URL prefix for the default locale and prefixes for the rest.", "why": "Clean canonical URLs for the primary market while still serving correct hreflang and SEO for the others." },
+    { "title": "Admin validation gate for profiles", "context": "Medical directory credibility depends on vetting practitioners across FR/BE/DE/CH regulatory regimes.", "decision": "Profiles start PENDING and require admin APPROVED before appearing publicly.", "why": "Trust and regulatory compliance outweigh the onboarding friction; the explicit state machine makes the gate auditable." }
+  ],
+  "tdd": false
+}

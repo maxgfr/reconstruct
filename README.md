@@ -56,7 +56,7 @@ reconstruction/
 
 | Axis | Values | Effect |
 | --- | --- | --- |
-| **Mode** | `preserve` \| `redesign` | Keep the current architecture, or design a fresh one for the same features. |
+| **Mode** | `preserve` \| `redesign` \| `scratch` | Keep the current architecture, design a fresh one for the same features, or build **greenfield** from an interview (see [From scratch](#from-scratch-greenfield)). |
 | **Level** | `light` \| `complex` | Faithful & concise, or also suggest improvements the agent folds in. |
 | **Fidelity** | `mirror` \| `embed` \| `describe` | Copy real files / inline key code / text-only. |
 
@@ -107,6 +107,48 @@ node scripts/analyze.mjs --merge --summary --out ./my-app/reconstruction
 
 The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,
 and errors clearly if the directory holds no `inventory.json`.
+
+## From scratch (greenfield)
+
+No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your agent:
+
+> "Use reconstruct to turn my idea into a build plan."
+
+**You don't write `plan.json` by hand — the agent does.** Following [`SKILL.md`](./SKILL.md) →
+[`references/scratch-playbook.md`](./references/scratch-playbook.md), it **interviews you**
+(grill-with-docs style: one question at a time, recommending an answer each time), writes the
+domain docs (`CONTEXT.md`, `docs/adr/`) and a **`plan.json`** — the structured transcript of the
+interview — then runs the engine and enriches the PRDs:
+
+```bash
+# the agent runs this for you, once the interview has produced plan.json
+node scripts/analyze.mjs --scratch --plan plan.json --out ./reconstruction --level complex --tdd
+```
+
+`plan.json` is an intermediate artifact the agent generates from your answers. You *can*
+hand-write one if you prefer — the schema and a worked example are in
+[`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md).
+
+Greenfield collapses two axes — mode is always `scratch`, fidelity is forced to `describe`
+(there is no source to mirror) — while `--level` still applies (`complex` = a deeper interview
+that also proposes alternatives and more ADRs). On top of the usual tree it also writes the
+interview's domain docs, and `INTERFACES.md` / `DATA-MODEL.md` come **pre-filled** from the plan:
+
+```
+reconstruction/
+├── …                         # the same REBUILD / overview / architecture / features tree
+├── CONTEXT.md                # the glossary (from plan.glossary + data-model relations)
+└── docs/adr/NNNN-*.md        # one terse ADR per recorded decision
+```
+
+`CONTEXT.md` and `docs/adr/` are written **if-absent**, so a richer version you authored during
+the interview is never clobbered. Add `--tdd` (here or in any mode) to make every feature PRD and
+`REBUILD.md` drive the build **test-first** (red → green → refactor).
+
+- **The interview:** [`references/scratch-playbook.md`](./references/scratch-playbook.md)
+- **The `plan.json` contract + example:** [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md)
+- **A full worked plan:** [`tests/fixtures/scratch-plan/medic.plan.json`](./tests/fixtures/scratch-plan/medic.plan.json)
+  (`npm run parity:medic` checks that the code path and the from-scratch path converge).
 
 ## How the rebuild works
 
