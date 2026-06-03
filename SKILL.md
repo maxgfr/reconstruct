@@ -102,11 +102,15 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      node scripts/analyze.mjs --check --out <OUT>
      ```
 
-     It exits non-zero on unresolved `🧠` callouts or placeholders, a feature that references
-     an undocumented entity/operation, a feature PRD missing its spine or left content-less, or
-     an architecture doc emptied of its contract (no entities in `DATA-MODEL.md`, no operations
-     in `INTERFACES.md`); an uncovered locale is a warning. Fix every error and resolve the
-     warnings. See `references/buildability-checklist.md`.
+     It exits non-zero on: a **missing required document** (`REBUILD.md`, `00-overview/PRD.md`,
+     or any of the three architecture docs); unresolved `🧠` callouts or `fill this in`
+     placeholders; a feature PRD **missing a spine section or leaving one empty** (a heading with
+     no content); or an architecture doc **emptied of its contract** (no entities in
+     `DATA-MODEL.md`, no operations in `INTERFACES.md`). On the **scratch path** it additionally
+     enforces reference integrity — a feature must not reference an entity/operation absent from
+     the architecture docs (on the code path the inventory carries no `dataModel`/`interfaces`, so
+     the contract-substance check above is the operative gate instead). An uncovered locale is a
+     warning. Fix every error and resolve the warnings. See `references/buildability-checklist.md`.
 
    - **Layer 2 — the AI review (substance).** The gate proves structure but cannot judge
      whether the prose is *actually buildable*. Once `--check` passes, **you (the agent) run a

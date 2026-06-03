@@ -4,11 +4,22 @@ import { joinRoute, readSources } from "./util.js";
 
 const SRC_EXTS = [".js", ".ts", ".mjs", ".cjs"];
 const APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
-const ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.)?Router\(\)/g;
+// `const r = express.Router()` / `Router()` / `require("express").Router()`.
+const ROUTER_RE =
+  /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]express["'`]\s*\)\.)?Router\(\)/g;
 const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 const USE_RE = /(\w+)\.use\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)/g;
 const ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+// `router.route("/x").get(h).post(h)` — match the path; the chained verbs are
+// scanned from the rest of the statement (handler args can nest parens, so a
+// balanced-paren capture is unreliable).
+const ROUTE_CHAIN_RE = /(\w+)\.route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
+const CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all)\s*\(/g;
+
+function methodOf(verb: string): string {
+  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
+}
 
 function dirOf(p: string): string {
   const i = p.lastIndexOf("/");
@@ -46,18 +57,27 @@ export const expressAdapter: RouteAdapter = {
     const sources = readSources(files, repo, SRC_EXTS);
 
     // Mount prefix per router *module*, from `app.use("/p", routerVar)` where the
-    // var was required/imported from another file.
+    // var was required/imported from another file; AND per local router var when
+    // a router is defined and mounted in the SAME file (`const api =
+    // express.Router(); app.use("/v1", api)`), keyed by "file::var".
     const mountByFile = new Map<string, string>();
+    const mountByLocalVar = new Map<string, string>();
     for (const [path, src] of sources) {
+      const localRouters = localVars(src, ROUTER_RE);
       const moduleOf = new Map<string, string>();
       for (const m of src.matchAll(REQUIRE_RE)) moduleOf.set(m[1] as string, m[2] as string);
       for (const m of src.matchAll(IMPORT_RE)) moduleOf.set(m[1] as string, m[2] as string);
       for (const m of src.matchAll(USE_RE)) {
         const prefix = m[2] as string;
-        const spec = moduleOf.get(m[3] as string);
-        if (!spec) continue;
-        const target = resolveModule(path, spec, sources);
-        if (target) mountByFile.set(target, prefix);
+        const usedVar = m[3] as string;
+        const spec = moduleOf.get(usedVar);
+        if (spec) {
+          const target = resolveModule(path, spec, sources);
+          if (target) mountByFile.set(target, prefix);
+        } else if (localRouters.has(usedVar)) {
+          // Same-file router mount: the prefix belongs to this var here.
+          mountByLocalVar.set(`${path}::${usedVar}`, prefix);
+        }
       }
     }
 
@@ -65,12 +85,40 @@ export const expressAdapter: RouteAdapter = {
     for (const [path, src] of sources) {
       const appVars = localVars(src, APP_RE);
       const routerVars = localVars(src, ROUTER_RE);
+      // The prefix that applies to a route receiver in this file: a same-file
+      // mount wins over the cross-file module mount; an `express()` app is absolute.
+      const prefixFor = (obj: string): string => {
+        if (appVars.has(obj)) return "";
+        if (!routerVars.has(obj)) return "";
+        return mountByLocalVar.get(`${path}::${obj}`) ?? mountByFile.get(path) ?? "";
+      };
+      const known = (obj: string) => appVars.has(obj) || routerVars.has(obj);
+
       for (const m of src.matchAll(ROUTE_RE)) {
         const obj = m[1] as string;
-        const routePath = m[3] as string;
-        if (!appVars.has(obj) && !routerVars.has(obj)) continue;
-        const prefix = routerVars.has(obj) ? (mountByFile.get(path) ?? "") : "";
-        routes.push({ route: joinRoute(prefix, routePath), file: path, kind: "api" });
+        if (!known(obj)) continue;
+        routes.push({
+          route: joinRoute(prefixFor(obj), m[3] as string),
+          file: path,
+          kind: "api",
+          method: methodOf(m[2] as string),
+        });
+      }
+      // `router.route("/x").get().post()` — one route per chained verb (or a
+      // method-agnostic route when the chain declares no verb on this statement).
+      for (const m of src.matchAll(ROUTE_CHAIN_RE)) {
+        const obj = m[1] as string;
+        if (!known(obj)) continue;
+        const route = joinRoute(prefixFor(obj), m[2] as string);
+        const start = (m.index ?? 0) + (m[0] as string).length;
+        const lineEnd = src.indexOf("\n", start);
+        const tail = src.slice(start, lineEnd === -1 ? start + 200 : lineEnd);
+        const verbs = [...tail.matchAll(CHAIN_VERB_RE)].map((v) => v[1] as string);
+        if (verbs.length) {
+          for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf(v) });
+        } else {
+          routes.push({ route, file: path, kind: "api" });
+        }
       }
     }
     return routes;

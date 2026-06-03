@@ -1,14 +1,39 @@
 import type { Artifact, GenerationInfo, Inventory, Options } from "../types.js";
 
+/** A line that could be the *content* of a setext heading (plain prose). */
+function isSetextContent(s: string): boolean {
+  const t = s.trim();
+  return t !== "" && !/^[#>\-*+|=]/.test(t) && !/^\d+[.)]/.test(t);
+}
+
 /**
- * Shift every ATX heading in a markdown string down by `by` levels, capped at
- * h6. Fence-aware: headings inside ``` or ~~~ code blocks are left untouched,
- * and `#text` without a trailing space is not treated as a heading.
+ * Shift every heading in a markdown string down by `by` levels, capped at h6, so
+ * an embedded document folds under the bundle's own headings. Handles:
+ *  - ATX headings (`## x`), with the standard ≤3-space indent (4-space-indented
+ *    `#` lines are code per CommonMark and left alone),
+ *  - setext H1 (`Title` underlined with `===`) → converted to ATX so it can't
+ *    leak a second top-level H1 into the single-H1 bundle (the ambiguous `---`
+ *    underline is left as-is to avoid clashing with thematic breaks),
+ *  - fenced code blocks (``` / ~~~) and a leading YAML/TOML front-matter block,
+ *    both passed through verbatim so a `#` inside them is never demoted.
  */
 export function demoteHeadings(md: string, by = 1): string {
+  const lines = md.split("\n");
   const out: string[] = [];
+  let i = 0;
+
+  // Leading front matter (--- … --- or +++ … +++): copy through verbatim.
+  const fm = lines[0]?.match(/^(---|\+\+\+)\s*$/);
+  if (fm) {
+    out.push(lines[0] as string);
+    i = 1;
+    while (i < lines.length && (lines[i] as string).trim() !== fm[1]) out.push(lines[i++] as string);
+    if (i < lines.length) out.push(lines[i++] as string); // closing fence
+  }
+
   let fence: string | null = null;
-  for (const line of md.split("\n")) {
+  for (; i < lines.length; i++) {
+    const line = lines[i] as string;
     const fenceMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
     if (fenceMatch?.[2]) {
       const marker = fenceMatch[2].startsWith("`") ? "`" : "~";
@@ -20,6 +45,12 @@ export function demoteHeadings(md: string, by = 1): string {
     if (fence !== null) {
       out.push(line);
       continue;
+    }
+    // setext H1: a `===` underline directly under a plain-text line.
+    if (/^\s{0,3}=+\s*$/.test(line) && out.length && isSetextContent(out[out.length - 1] as string)) {
+      const level = Math.min(6, 1 + by);
+      out[out.length - 1] = `${"#".repeat(level)} ${(out[out.length - 1] as string).trim()}`;
+      continue; // drop the underline
     }
     const h = line.match(/^(\s{0,3})(#{1,6})(\s.*)?$/);
     if (h?.[2]) {

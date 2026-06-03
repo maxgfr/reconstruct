@@ -179,10 +179,16 @@ export function checkOutput(outDir: string): CheckResult {
   for (const d of docs) {
     if (!d.rel.includes("features/") || !d.rel.endsWith("PRD.md")) continue;
     for (const h of FEATURE_SPINE) {
-      if (!d.content.includes(h)) errors.push(`${d.rel}: missing required section "${h}"`);
-    }
-    if (!hasContent(d.content)) {
-      errors.push(`${d.rel}: has section headings but no content — fill the PRD (requirements, criteria, definition of done)`);
+      if (!d.content.includes(h)) {
+        errors.push(`${d.rel}: missing required section "${h}"`);
+      } else if (!sectionHasContent(d.content, h)) {
+        // A heading whose body is empty (or only its scaffold callout) is not a
+        // filled PRD section — the auto-generated DoD/Routes/Source elsewhere in
+        // the doc must not mask an unwritten requirements/criteria section.
+        errors.push(
+          `${d.rel}: section "${h}" has no content — fill it (a heading alone is not a PRD section)`,
+        );
+      }
     }
   }
 
@@ -244,9 +250,36 @@ function stripCode(s: string): string {
     .replace(/`[^`\n]*`/g, "");
 }
 
-/** Drop double-quoted spans so a *quoted* placeholder example doesn't false-fail. */
+/**
+ * Drop quoted spans so a *quoted* placeholder example doesn't false-fail — straight
+ * double quotes and the curly “…” / ‘…’ forms (authors quote the gate phrase or the
+ * 🧠 marker many ways). ASCII single quotes are left alone: they collide with prose
+ * apostrophes and stripping them could mask a real placeholder.
+ */
 function stripQuotes(s: string): string {
-  return s.replace(/"[^"\n]*"/g, "");
+  return s
+    .replace(/"[^"\n]*"/g, "")
+    .replace(/[“”][^“”\n]*[“”]/g, "")
+    .replace(/[‘’][^‘’\n]*[‘’]/g, "");
+}
+
+/**
+ * Strip the boilerplate provenance table (`| Setting | Value |`) the scaffold
+ * injects into every architecture doc, so its 4–5 rows can't masquerade as a
+ * filled contract in the substance checks below.
+ */
+function stripMetaTable(doc: string): string {
+  const lines = doc.split(/\r?\n/);
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\|\s*Setting\s*\|\s*Value\s*\|/i.test((lines[i] as string).trim())) {
+      i++; // skip the header; then skip the separator + every data row
+      while (i + 1 < lines.length && /^\|/.test((lines[i + 1] as string).trim())) i++;
+      continue;
+    }
+    out.push(lines[i] as string);
+  }
+  return out.join("\n");
 }
 
 /** Count markdown table rows that carry data (excluding the `| --- |` separator). */
@@ -259,17 +292,41 @@ function tableDataRowCount(doc: string): number {
 
 /** A DATA-MODEL.md declares entities via `### <entity>` blocks or a filled table. */
 function declaresEntities(doc: string): boolean {
-  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
+  const real = stripMetaTable(doc);
+  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2;
 }
 
 /** An INTERFACES.md declares operations via headings, a filled table, or path bullets. */
 function declaresOperations(doc: string): boolean {
-  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(doc);
+  const real = stripMetaTable(doc);
+  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(real);
 }
 
-/** A document carries real content if it has a list item, numbered step, or table rows. */
-function hasContent(doc: string): boolean {
-  return /^\s*[-*]\s+\S/m.test(doc) || /^\s*\d+\.\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
+/** The body of a `## <heading>` section: lines until the next level-2 heading. */
+function sectionBody(doc: string, heading: string): string {
+  const lines = doc.split(/\r?\n/);
+  const start = lines.findIndex((l) => l.trim() === heading);
+  if (start === -1) return "";
+  const body: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i] as string)) break;
+    body.push(lines[i] as string);
+  }
+  return body.join("\n");
+}
+
+/**
+ * A section carries real content if any line is neither blank, a heading, nor a
+ * blockquote/callout (`>` / `> 🧠 …`). Prose, lists, tables and code all count —
+ * only a heading left alone (or with just its scaffold callout) is "empty".
+ */
+function sectionHasContent(doc: string, heading: string): boolean {
+  return sectionBody(doc, heading)
+    .split(/\r?\n/)
+    .some((l) => {
+      const t = l.trim();
+      return t !== "" && !t.startsWith(">") && !t.startsWith("#");
+    });
 }
 
 /** Human-readable report for the CLI; PASS when there are no errors. */

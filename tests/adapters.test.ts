@@ -160,9 +160,10 @@ describe("rails adapter", () => {
 
   it("prefixes routes inside a `scope` block and honors `only:`", () => {
     // scope "/api" { resources :sessions, only: [:create, :destroy] }
-    expect(hasRoute(inv.routes, "/api/sessions", "page", file)).toBe(true);
-    expect(hasRoute(inv.routes, "/api/sessions/:id", "page", file)).toBe(true);
-    expect(hasRoute(inv.routes, "/api/sessions/new", "page", file)).toBe(false);
+    // Routes under an `api` segment are classed `api`, not server-rendered `page`.
+    expect(hasRoute(inv.routes, "/api/sessions", "api", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/api/sessions/:id", "api", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/api/sessions/new", "api", file)).toBe(false);
   });
 
   it("restricts the expansion when `only:` is given", () => {

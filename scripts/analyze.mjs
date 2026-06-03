@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join12 } from "path";
+import { resolve as resolve2, join as join13 } from "path";
 import { pathToFileURL } from "url";
 import { existsSync as existsSync5, statSync as statSync3 } from "fs";
 
@@ -39,10 +39,12 @@ var DEFAULT_IGNORE_FILES = /* @__PURE__ */ new Set([
   "yarn.lock",
   "pnpm-lock.yaml",
   "bun.lockb",
+  "bun.lock",
   "Cargo.lock",
   "poetry.lock",
   "Gemfile.lock",
-  "composer.lock"
+  "composer.lock",
+  "pubspec.lock"
 ]);
 var BINARY_EXTS = /* @__PURE__ */ new Set([
   ".png",
@@ -212,7 +214,7 @@ function categorize(relPath, ext) {
   if (lower.includes(".test.") || lower.includes(".spec.") || inDir2("__tests__", "test", "tests", "spec", "e2e", "__mocks__")) {
     return "test";
   }
-  if (base === "package.json" || base === "tsconfig.json" || base.endsWith(".config.js") || base.endsWith(".config.ts") || base.endsWith(".config.mjs") || base.startsWith(".eslintrc") || base.startsWith(".prettierrc") || base.startsWith(".env") || base === "dockerfile" || base.startsWith("docker-compose") || base === "vite.config.ts" || base === "next.config.js" || base === "next.config.mjs" || base === "tailwind.config.js" || base === "tailwind.config.ts" || base === "pyproject.toml" || base === "cargo.toml" || base === "go.mod" || base === "requirements.txt" || base === "gemfile" || base === "composer.json" || base === "makefile") {
+  if (base === "package.json" || base === "tsconfig.json" || base.endsWith(".config.js") || base.endsWith(".config.ts") || base.endsWith(".config.mjs") || base.startsWith(".eslintrc") || base.startsWith(".prettierrc") || base.startsWith(".env") || base === "dockerfile" || base.startsWith("docker-compose") || base === "vite.config.ts" || base === "next.config.js" || base === "next.config.mjs" || base === "tailwind.config.js" || base === "tailwind.config.ts" || base === "pyproject.toml" || base === "cargo.toml" || base === "go.mod" || base === "requirements.txt" || base === "gemfile" || base === "composer.json" || base === "pubspec.yaml" || base === "makefile") {
     return "config";
   }
   if (DOC_EXTS.has(ext)) return "doc";
@@ -467,6 +469,7 @@ function detectStack(repo, files) {
   const packageManagers = /* @__PURE__ */ new Set();
   let libraries = [];
   let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
+  const hasPkg = existsSync(join2(repo, "package.json"));
   const pkg = readJson(join2(repo, "package.json"));
   if (pkg) {
     const allDeps = {
@@ -478,9 +481,15 @@ function detectStack(repo, files) {
     }
     libraries = detectLibraries(allDeps);
     if ("typescript" in allDeps) hasTypeScript = true;
+  }
+  const hasJsManifest = hasPkg || ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some(
+    (f) => existsSync(join2(repo, f))
+  );
+  if (hasJsManifest) {
     if (existsSync(join2(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
     else if (existsSync(join2(repo, "yarn.lock"))) packageManagers.add("yarn");
-    else if (existsSync(join2(repo, "bun.lockb"))) packageManagers.add("bun");
+    else if (existsSync(join2(repo, "bun.lockb")) || existsSync(join2(repo, "bun.lock")))
+      packageManagers.add("bun");
     else packageManagers.add("npm");
   }
   if (existsSync(join2(repo, "requirements.txt")) || existsSync(join2(repo, "pyproject.toml"))) {
@@ -489,6 +498,13 @@ function detectStack(repo, files) {
     if (/\bdjango\b/i.test(py)) frameworks.add("Django");
     if (/\bflask\b/i.test(py)) frameworks.add("Flask");
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
+  }
+  if (existsSync(join2(repo, "pubspec.yaml"))) {
+    packageManagers.add("pub");
+    const pubspec = safeRead(join2(repo, "pubspec.yaml"));
+    if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
+      frameworks.add("Flutter");
+    }
   }
   if (existsSync(join2(repo, "Cargo.toml"))) packageManagers.add("cargo");
   if (existsSync(join2(repo, "go.mod"))) {
@@ -646,10 +662,41 @@ var ROUTE_DIRS = [
   "pages",
   "api"
 ];
-var API_DIRS = ["routers", "trpc", "resolvers", "graphql"];
+var API_DIRS = ["trpc", "resolvers", "graphql"];
 var SCHEMA_DIRS = ["models", "entities", "migrations"];
 var ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
-var ROUTE_CONTENT_RE = /\b(?:app|router|route|api|blueprint|fastify|server|mux|r)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(|@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b|@(?:app|router|blueprint|api)\.(?:route|get|post|put|delete|patch)\b|Route::(?:get|post|put|patch|delete|resource|apiResource|group)\b/i;
+var ROUTE_FILE_NAMES = /* @__PURE__ */ new Set(["routes.rb"]);
+var ROUTE_CONTENT_RE = new RegExp(
+  [
+    // method-call routers (JS/TS/Go/Python): app.get(, router.post(, r.GET(, bp.put(
+    String.raw`\b(?:app|router|route|api|blueprint|fastify|server|mux|r|bp|blp)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(`,
+    // any receiver registering a net/http handler: mux.HandleFunc(, http.Handle(
+    String.raw`\.handle(?:func)?\s*\(`,
+    // decorator frameworks: Spring (@GetMapping/@RequestMapping/@Controller), NestJS
+    String.raw`@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b`,
+    // Python decorator routes: @app.route, @bp.get, @router.post …
+    String.raw`@(?:app|router|blueprint|api|bp|blp)\.(?:route|get|post|put|delete|patch)\b`,
+    // Laravel: Route::get(, Route::resource(, Route::group(
+    String.raw`Route::(?:get|post|put|patch|delete|resource|apiResource|group|match|any)\b`,
+    // Flask functional / class-based / flask-restful registration
+    String.raw`\.add_url_rule\s*\(`,
+    String.raw`\badd_resource\s*\(`,
+    String.raw`\bclass\s+\w+\s*\(\s*(?:\w+\.)?(?:Resource|MethodView)\b`,
+    String.raw`=\s*Blueprint\s*\(`,
+    // Django: urlpatterns table, re_path(, DRF router.register(/DefaultRouter
+    String.raw`\burlpatterns\b`,
+    String.raw`\bre_path\s*\(`,
+    String.raw`routers\.(?:Default|Simple)Router\b`,
+    String.raw`\.register\s*\(\s*r?["']`,
+    // Rails DSL (covers config/routes.rb and any drawn routes file)
+    String.raw`Rails\.application\.routes\.draw\b`,
+    // Rust: axum Router::new().route(, actix web::resource/scope/get(
+    String.raw`Router::new\b`,
+    String.raw`\.route\s*\(`,
+    String.raw`web::(?:resource|scope|get|post|put|delete|patch)\s*\(`
+  ].join("|"),
+  "i"
+);
 var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
 var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
 var MAX_CONTENT_SCAN_BYTES = 2e6;
@@ -681,7 +728,9 @@ function detectCandidates(repo, files, stack) {
     const lower = p.toLowerCase();
     const base = baseName(lower);
     const ext = f.ext;
-    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base)) routeCandidates.add(p);
+    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base) || ROUTE_FILE_NAMES.has(base)) {
+      routeCandidates.add(p);
+    }
     if (ext === ".graphql" || ext === ".gql" || ext === ".proto") apiCandidates.add(p);
     if ((ext === ".json" || ext === ".yaml" || ext === ".yml") && /openapi|swagger/.test(base)) {
       apiCandidates.add(p);
@@ -735,7 +784,9 @@ var CONVENTIONAL_ENTRIES = [
   "config.ru",
   "bin/rails",
   // Rust
-  "src/main.rs"
+  "src/main.rs",
+  // Dart / Flutter
+  "lib/main.dart"
 ];
 function detectEntryPoints(repo, files) {
   const entries = /* @__PURE__ */ new Set();
@@ -807,6 +858,15 @@ function extractDependencies(repo, files) {
       if (m) runtime[m[1]] = (m[2] ?? "").trim();
     }
     result.push({ manager: "pip", manifest: "requirements.txt", runtime, dev: {} });
+  }
+  if (present.has("pubspec.yaml")) {
+    const raw = read(repo, "pubspec.yaml") ?? "";
+    result.push({
+      manager: "pub",
+      manifest: "pubspec.yaml",
+      runtime: parseYamlDeps(raw, "dependencies"),
+      dev: parseYamlDeps(raw, "dev_dependencies")
+    });
   }
   if (present.has("Cargo.toml")) {
     const raw = read(repo, "Cargo.toml") ?? "";
@@ -901,6 +961,21 @@ function extractDependencies(repo, files) {
   }
   return result;
 }
+function parseYamlDeps(yaml, section) {
+  const out = {};
+  const lines = yaml.split(/\r?\n/);
+  let inSection = false;
+  for (const line of lines) {
+    if (/^\S/.test(line)) {
+      inSection = new RegExp(`^${section}\\s*:`).test(line);
+      continue;
+    }
+    if (!inSection) continue;
+    const m = line.match(/^\s{2}([\w.-]+)\s*:\s*(["']?[\d.^<>=~\s+*]*["']?)\s*(?:#.*)?$/);
+    if (m) out[m[1]] = m[2].replace(/["']/g, "").trim();
+  }
+  return out;
+}
 function parseTomlSection(toml, section) {
   const out = {};
   const re = new RegExp(`\\[${section}\\]([\\s\\S]*?)(\\n\\[|$)`);
@@ -955,20 +1030,51 @@ function collectByCategory(files, category) {
 }
 
 // src/adapters/nextjs.ts
+import { readFileSync as readFileSync5 } from "fs";
+import { join as join5 } from "path";
 var CODE_PAGE_EXTS = /* @__PURE__ */ new Set([".tsx", ".ts", ".jsx", ".js"]);
 var PAGES_SPECIAL = /* @__PURE__ */ new Set(["_app", "_document", "_error", "middleware"]);
+var HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 function cleanAppSegments(segs) {
-  return segs.filter((s) => !(s.startsWith("(") && s.endsWith(")")) && !s.startsWith("@"));
+  const out = [];
+  for (const raw of segs) {
+    const s = raw.replace(/^(\(\.{1,3}\))+/, "");
+    if (!s) continue;
+    if (s.startsWith("@")) continue;
+    if (s.startsWith("(") && s.endsWith(")")) continue;
+    out.push(s);
+  }
+  return out;
 }
+var WORKSPACE_PREFIX_RE = /^(?:apps|packages)\/[^/]+(?:\/src)?$/;
 function afterDir(path, dir) {
   const parts = path.split("/");
-  const idx = parts.indexOf(dir);
-  if (idx === -1) return null;
-  if (idx > 1) return null;
-  if (idx === 1 && parts[0] !== "src") return null;
-  return parts.slice(idx + 1);
+  for (let idx = 0; idx < parts.length; idx++) {
+    if (parts[idx] !== dir) continue;
+    const prefix = parts.slice(0, idx).join("/");
+    if (prefix === "" || prefix === "src" || WORKSPACE_PREFIX_RE.test(prefix)) {
+      return parts.slice(idx + 1);
+    }
+  }
+  return null;
 }
-function detectAppRoutes(files) {
+function routeMethods(repo, file) {
+  let src;
+  try {
+    src = readFileSync5(join5(repo, file), "utf8");
+  } catch {
+    return [];
+  }
+  const found = /* @__PURE__ */ new Set();
+  for (const m of src.matchAll(/export\s+(?:async\s+)?function\s+([A-Z]+)\b/g)) {
+    if (HTTP_METHODS.includes(m[1])) found.add(m[1]);
+  }
+  for (const m of src.matchAll(/export\s+const\s+([A-Z]+)\s*=/g)) {
+    if (HTTP_METHODS.includes(m[1])) found.add(m[1]);
+  }
+  return [...found];
+}
+function detectAppRoutes(files, repo) {
   const routes = [];
   for (const f of files) {
     if (!CODE_PAGE_EXTS.has(f.ext)) continue;
@@ -981,7 +1087,12 @@ function detectAppRoutes(files) {
     if (fileName === "page") {
       routes.push({ route: normalized, file: f.path, kind: "page" });
     } else if (fileName === "route") {
-      routes.push({ route: normalized, file: f.path, kind: "api" });
+      const methods = routeMethods(repo, f.path);
+      if (methods.length) {
+        for (const method of methods) routes.push({ route: normalized, file: f.path, kind: "api", method });
+      } else {
+        routes.push({ route: normalized, file: f.path, kind: "api" });
+      }
     } else if (fileName === "layout") {
       routes.push({ route: normalized, file: f.path, kind: "layout" });
     }
@@ -1007,21 +1118,21 @@ function detectPagesRoutes(files) {
 var nextjsAdapter = {
   id: "nextjs",
   frameworks: ["Next.js"],
-  detectRoutes(files) {
-    return [...detectAppRoutes(files), ...detectPagesRoutes(files)];
+  detectRoutes(files, repo) {
+    return [...detectAppRoutes(files, repo), ...detectPagesRoutes(files)];
   }
 };
 
 // src/adapters/util.ts
-import { readFileSync as readFileSync5 } from "fs";
-import { join as join5 } from "path";
+import { readFileSync as readFileSync6 } from "fs";
+import { join as join6 } from "path";
 function readSources(files, repo, exts) {
   const set = new Set(exts);
   const out = /* @__PURE__ */ new Map();
   for (const f of files) {
     if (!set.has(f.ext)) continue;
     try {
-      out.set(f.path, readFileSync5(join5(repo, f.path), "utf8"));
+      out.set(f.path, readFileSync6(join6(repo, f.path), "utf8"));
     } catch {
     }
   }
@@ -1051,9 +1162,24 @@ function pythonImportAliases(src) {
 
 // src/adapters/flask.ts
 var HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
-var DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']`, "g");
-var BLUEPRINT_DEF_RE = /^\s*(\w+)\s*=\s*Blueprint\s*\(/gm;
-var REGISTER_RE = /register_blueprint\(\s*(\w+)([^)]*)\)/g;
+var DECORATOR_RE = new RegExp(
+  `@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
+  "g"
+);
+var BLUEPRINT_DEF_RE = /(\w+)\s*=\s*Blueprint\s*\(([^)]*)\)/g;
+var REGISTER_RE = /(\w+)\.register_blueprint\(\s*(\w+)([^)]*)\)/g;
+var ADD_URL_RE = /(\w+)\.add_url_rule\(\s*["']([^"']*)["']([^)]*)\)/g;
+function urlPrefixOf(args) {
+  const m = args.match(/url_prefix\s*=\s*["']([^"']*)["']/);
+  return m ? m[1] : "";
+}
+function methodsOf(args) {
+  const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
+  if (!m) return [];
+  return [...m[1].matchAll(/["']([A-Za-z]+)["']/g)].map(
+    (v) => v[1].toUpperCase()
+  );
+}
 function routeKind(src, from) {
   const next = src.slice(from + 1).search(/\n@\w+\.(route|get|post|put|delete|patch)/);
   const block = next === -1 ? src.slice(from) : src.slice(from, from + 1 + next);
@@ -1066,38 +1192,63 @@ var flaskAdapter = {
     const sources = readSources(files, repo, [".py"]);
     const blueprintKeys = /* @__PURE__ */ new Set();
     const blueprintVarsByFile = /* @__PURE__ */ new Map();
+    const ownPrefix = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const vars = /* @__PURE__ */ new Set();
-      for (const m of src.matchAll(BLUEPRINT_DEF_RE)) vars.add(m[1]);
-      if (vars.size) {
-        blueprintVarsByFile.set(path, vars);
-        for (const v of vars) blueprintKeys.add(`${moduleName(path)}::${v}`);
+      for (const m of src.matchAll(BLUEPRINT_DEF_RE)) {
+        const v = m[1];
+        vars.add(v);
+        const key = `${moduleName(path)}::${v}`;
+        blueprintKeys.add(key);
+        ownPrefix.set(key, urlPrefixOf(m[2]));
       }
+      if (vars.size) blueprintVarsByFile.set(path, vars);
     }
-    const prefixByKey = /* @__PURE__ */ new Map();
+    const regOf = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const aliases = pythonImportAliases(src);
+      const keyFor = (v) => aliases.get(v) ?? `${moduleName(path)}::${v}`;
       for (const m of src.matchAll(REGISTER_RE)) {
-        const registeredVar = m[1];
-        const prefixMatch = m[2].match(/url_prefix\s*=\s*["']([^"']*)["']/);
-        const prefix = prefixMatch ? prefixMatch[1] : "";
-        const key = aliases.get(registeredVar) ?? `${moduleName(path)}::${registeredVar}`;
-        if (blueprintKeys.has(key)) prefixByKey.set(key, prefix);
+        const childKey = keyFor(m[2]);
+        if (!blueprintKeys.has(childKey)) continue;
+        regOf.set(childKey, {
+          receiverKey: keyFor(m[1]),
+          regPrefix: urlPrefixOf(m[3])
+        });
       }
     }
+    const effectivePrefix = (key, seen = /* @__PURE__ */ new Set()) => {
+      if (seen.has(key)) return "";
+      seen.add(key);
+      const own = ownPrefix.get(key) ?? "";
+      const reg = regOf.get(key);
+      if (!reg) return own;
+      const childPrefix = reg.regPrefix || own;
+      if (blueprintKeys.has(reg.receiverKey)) {
+        return joinRoute(effectivePrefix(reg.receiverKey, seen), childPrefix);
+      }
+      return childPrefix;
+    };
     const routes = [];
     for (const [path, src] of sources) {
       const localBlueprints = blueprintVarsByFile.get(path) ?? /* @__PURE__ */ new Set();
+      const prefixForObj = (obj) => localBlueprints.has(obj) ? effectivePrefix(`${moduleName(path)}::${obj}`) : "";
       for (const m of src.matchAll(DECORATOR_RE)) {
         const obj = m[1];
-        const decoratorPath = m[3];
-        const isBlueprint = localBlueprints.has(obj);
-        const prefix = isBlueprint ? prefixByKey.get(`${moduleName(path)}::${obj}`) ?? "" : "";
-        routes.push({
-          route: joinRoute(prefix, decoratorPath),
-          file: path,
-          kind: routeKind(src, m.index ?? 0)
-        });
+        const decorator = m[2];
+        const route = joinRoute(prefixForObj(obj), m[3]);
+        const kind = routeKind(src, m.index ?? 0);
+        const methods = decorator === "route" ? methodsOf(m[4]) : [decorator.toUpperCase()];
+        const verbs = methods.length ? methods : ["GET"];
+        for (const method of verbs) routes.push({ route, file: path, kind, method });
+      }
+      for (const m of src.matchAll(ADD_URL_RE)) {
+        const route = joinRoute(prefixForObj(m[1]), m[2]);
+        const kind = routeKind(src, m.index ?? 0);
+        const verbs = methodsOf(m[3]);
+        for (const method of verbs.length ? verbs : ["GET"]) {
+          routes.push({ route, file: path, kind, method });
+        }
       }
     }
     return routes;
@@ -1105,14 +1256,25 @@ var flaskAdapter = {
 };
 
 // src/adapters/fastapi.ts
-var METHODS = "get|post|put|delete|patch|options|head|api_route";
-var DECORATOR_RE2 = new RegExp(`@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']`, "g");
+var METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
+var DECORATOR_RE2 = new RegExp(
+  `@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
+  "g"
+);
 var ROUTER_DEF_RE = /(\w+)\s*=\s*APIRouter\(([^)]*)\)/g;
-var INCLUDE_RE = /\.include_router\(\s*(\w+)([^)]*)\)/g;
+var INCLUDE_RE = /(\w+)\.include_router\(\s*([\w.]+)([^)]*)\)/g;
 function prefixArg(args) {
   const m = args.match(/prefix\s*=\s*["']([^"']*)["']/);
   return m ? m[1] : "";
 }
+function methodsOf2(args) {
+  const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
+  if (!m) return [];
+  return [...m[1].matchAll(/["']([A-Za-z]+)["']/g)].map(
+    (v) => v[1].toUpperCase()
+  );
+}
+var lastSeg = (mod) => mod.split(".").pop() ?? mod;
 var fastapiAdapter = {
   id: "fastapi",
   frameworks: ["FastAPI"],
@@ -1124,24 +1286,56 @@ var fastapiAdapter = {
         ownPrefix.set(`${moduleName(path)}::${m[1]}`, prefixArg(m[2]));
       }
     }
-    const mountPrefix = /* @__PURE__ */ new Map();
+    const routerKeys = [...ownPrefix.keys()];
+    const resolveRouter = (expr, fileModule, aliases) => {
+      if (expr.includes(".")) {
+        const parts = expr.split(".");
+        const attr = parts.pop();
+        const mod = parts.pop();
+        return routerKeys.find((k) => k.endsWith(`::${attr}`) && lastSeg(k.split("::")[0]) === mod) ?? null;
+      }
+      const key = aliases.get(expr) ?? `${fileModule}::${expr}`;
+      return ownPrefix.has(key) ? key : null;
+    };
+    const includeOf = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
+      const fileModule = moduleName(path);
       const aliases = pythonImportAliases(src);
       for (const m of src.matchAll(INCLUDE_RE)) {
-        const includedVar = m[1];
-        const key = aliases.get(includedVar) ?? `${moduleName(path)}::${includedVar}`;
-        mountPrefix.set(key, prefixArg(m[2]));
+        const childKey = resolveRouter(m[2], fileModule, aliases);
+        if (!childKey) continue;
+        const receiverVar = m[1];
+        const receiverKey = aliases.get(receiverVar) ?? `${fileModule}::${receiverVar}`;
+        includeOf.set(childKey, {
+          receiverKey: ownPrefix.has(receiverKey) ? receiverKey : null,
+          mountPrefix: prefixArg(m[3])
+        });
       }
     }
+    const fullPrefix = (key, seen = /* @__PURE__ */ new Set()) => {
+      if (seen.has(key)) return "";
+      seen.add(key);
+      const own = ownPrefix.get(key) ?? "";
+      const inc = includeOf.get(key);
+      if (!inc) return own;
+      const parent = inc.receiverKey ? fullPrefix(inc.receiverKey, seen) : "";
+      return joinRoute(parent, inc.mountPrefix, own);
+    };
     const routes = [];
     for (const [path, src] of sources) {
+      const fileModule = moduleName(path);
       for (const m of src.matchAll(DECORATOR_RE2)) {
         const obj = m[1];
-        const decoratorPath = m[3];
-        const key = `${moduleName(path)}::${obj}`;
-        const isRouter = ownPrefix.has(key);
-        const route = isRouter ? joinRoute(mountPrefix.get(key) ?? "", ownPrefix.get(key) ?? "", decoratorPath) : joinRoute(decoratorPath);
-        routes.push({ route, file: path, kind: "api" });
+        const decorator = m[2];
+        const key = `${fileModule}::${obj}`;
+        const prefix = ownPrefix.has(key) ? fullPrefix(key) : "";
+        const route = joinRoute(prefix, m[3]);
+        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? methodsOf2(m[4]) : [decorator.toUpperCase()];
+        if (methods.length) {
+          for (const method of methods) routes.push({ route, file: path, kind: "api", method });
+        } else {
+          routes.push({ route, file: path, kind: "api" });
+        }
       }
     }
     return routes;
@@ -1149,28 +1343,61 @@ var fastapiAdapter = {
 };
 
 // src/adapters/nestjs.ts
-var CONTROLLER_RE = /@Controller\(\s*(?:["'`]([^"'`]*)["'`])?/g;
-var METHOD_RE = /@(Get|Post|Put|Delete|Patch|Options|Head|All)\(\s*(?:["'`]([^"'`]*)["'`])?/g;
+var CONTROLLER_RE = /@Controller\(\s*([^)]*)\)/g;
+var METHOD_RE = /@(Get|Post|Put|Delete|Patch|Options|Head|All)\(\s*([^)]*)\)/g;
+var GLOBAL_PREFIX_RE = /setGlobalPrefix\(\s*["'`]([^"'`]*)["'`]/;
+function pathsFromArg(arg) {
+  const t = arg.trim();
+  if (!t) return [""];
+  if (t.startsWith("[")) {
+    const parts = [...t.matchAll(/["'`]([^"'`]*)["'`]/g)].map((m) => m[1]);
+    return parts.length ? parts : [""];
+  }
+  const str = t.match(/^["'`]([^"'`]*)["'`]/);
+  if (str) return [str[1]];
+  const obj = t.match(/path\s*:\s*["'`]([^"'`]*)["'`]/);
+  if (obj) return [obj[1]];
+  return [""];
+}
+var methodOf = (verb) => verb === "All" ? "*" : verb.toUpperCase();
 var nestjsAdapter = {
   id: "nestjs",
   frameworks: ["NestJS"],
   detectRoutes(files, repo) {
     const sources = readSources(files, repo, [".ts"]);
+    let globalPrefix = "";
+    for (const [, src] of sources) {
+      const m = src.match(GLOBAL_PREFIX_RE);
+      if (m) {
+        globalPrefix = m[1];
+        break;
+      }
+    }
     const routes = [];
     for (const [path, src] of sources) {
       const controllers = [...src.matchAll(CONTROLLER_RE)].map((m) => ({
         index: m.index ?? 0,
-        base: m[1] ?? ""
+        bases: pathsFromArg(m[1])
       }));
       if (!controllers.length) continue;
       for (const m of src.matchAll(METHOD_RE)) {
         const idx = m.index ?? 0;
-        let base = "";
+        let bases = [""];
         for (const c of controllers) {
-          if (c.index < idx) base = c.base;
+          if (c.index < idx) bases = c.bases;
           else break;
         }
-        routes.push({ route: joinRoute(base, m[2] ?? ""), file: path, kind: "api" });
+        const method = methodOf(m[1]);
+        for (const base of bases) {
+          for (const sub of pathsFromArg(m[2])) {
+            routes.push({
+              route: joinRoute(globalPrefix, base, sub),
+              file: path,
+              kind: "api",
+              method
+            });
+          }
+        }
       }
     }
     return routes;
@@ -1180,11 +1407,16 @@ var nestjsAdapter = {
 // src/adapters/express.ts
 var SRC_EXTS = [".js", ".ts", ".mjs", ".cjs"];
 var APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
-var ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.)?Router\(\)/g;
+var ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]express["'`]\s*\)\.)?Router\(\)/g;
 var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 var USE_RE = /(\w+)\.use\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)/g;
 var ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+var ROUTE_CHAIN_RE = /(\w+)\.route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
+var CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all)\s*\(/g;
+function methodOf2(verb) {
+  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
+}
 function dirOf(p) {
   const i = p.lastIndexOf("/");
   return i === -1 ? "" : p.slice(0, i);
@@ -1211,28 +1443,57 @@ var expressAdapter = {
   detectRoutes(files, repo) {
     const sources = readSources(files, repo, SRC_EXTS);
     const mountByFile = /* @__PURE__ */ new Map();
+    const mountByLocalVar = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
+      const localRouters = localVars(src, ROUTER_RE);
       const moduleOf = /* @__PURE__ */ new Map();
       for (const m of src.matchAll(REQUIRE_RE)) moduleOf.set(m[1], m[2]);
       for (const m of src.matchAll(IMPORT_RE)) moduleOf.set(m[1], m[2]);
       for (const m of src.matchAll(USE_RE)) {
         const prefix = m[2];
-        const spec = moduleOf.get(m[3]);
-        if (!spec) continue;
-        const target = resolveModule(path, spec, sources);
-        if (target) mountByFile.set(target, prefix);
+        const usedVar = m[3];
+        const spec = moduleOf.get(usedVar);
+        if (spec) {
+          const target = resolveModule(path, spec, sources);
+          if (target) mountByFile.set(target, prefix);
+        } else if (localRouters.has(usedVar)) {
+          mountByLocalVar.set(`${path}::${usedVar}`, prefix);
+        }
       }
     }
     const routes = [];
     for (const [path, src] of sources) {
       const appVars = localVars(src, APP_RE);
       const routerVars = localVars(src, ROUTER_RE);
+      const prefixFor = (obj) => {
+        if (appVars.has(obj)) return "";
+        if (!routerVars.has(obj)) return "";
+        return mountByLocalVar.get(`${path}::${obj}`) ?? mountByFile.get(path) ?? "";
+      };
+      const known = (obj) => appVars.has(obj) || routerVars.has(obj);
       for (const m of src.matchAll(ROUTE_RE)) {
         const obj = m[1];
-        const routePath = m[3];
-        if (!appVars.has(obj) && !routerVars.has(obj)) continue;
-        const prefix = routerVars.has(obj) ? mountByFile.get(path) ?? "" : "";
-        routes.push({ route: joinRoute(prefix, routePath), file: path, kind: "api" });
+        if (!known(obj)) continue;
+        routes.push({
+          route: joinRoute(prefixFor(obj), m[3]),
+          file: path,
+          kind: "api",
+          method: methodOf2(m[2])
+        });
+      }
+      for (const m of src.matchAll(ROUTE_CHAIN_RE)) {
+        const obj = m[1];
+        if (!known(obj)) continue;
+        const route = joinRoute(prefixFor(obj), m[2]);
+        const start = (m.index ?? 0) + m[0].length;
+        const lineEnd = src.indexOf("\n", start);
+        const tail = src.slice(start, lineEnd === -1 ? start + 200 : lineEnd);
+        const verbs = [...tail.matchAll(CHAIN_VERB_RE)].map((v) => v[1]);
+        if (verbs.length) {
+          for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf2(v) });
+        } else {
+          routes.push({ route, file: path, kind: "api" });
+        }
       }
     }
     return routes;
@@ -1240,31 +1501,67 @@ var expressAdapter = {
 };
 
 // src/adapters/django.ts
-var ENTRY_RE = /\b(path|re_path)\(\s*r?["']([^"']*)["']\s*,\s*(\w+)/g;
-var INCLUDE_RE2 = /\b(?:path|re_path)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*["']([^"']*)["']/g;
+var ENTRY_RE = /\b(path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*([\w.]+)/g;
+var INCLUDE_RE2 = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*["']([^"']*)["']/g;
+var DRF_ROUTER_RE = /(\w+)\s*=\s*(?:routers\.)?(?:Default|Simple)Router\(/g;
+var DRF_REGISTER_RE = /(\w+)\.register\(\s*r?["']([^"']*)["']/g;
+var DRF_MOUNT_RE = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*(\w+)\.urls/g;
 function cleanRegex(pattern) {
-  return pattern.replace(/^\^/, "").replace(/\$$/, "");
+  return pattern.replace(/^\^/, "").replace(/\$$/, "").replace(/\(\?P<(\w+)>[^)]*\)/g, "<$1>");
+}
+function isApiContext(src, route) {
+  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src) || /(^|\/)api(\/|$)/.test(route);
 }
 var djangoAdapter = {
   id: "django",
   frameworks: ["Django"],
   detectRoutes(files, repo) {
     const sources = readSources(files, repo, [".py"]);
-    const prefixByModule = /* @__PURE__ */ new Map();
+    const includeEdge = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       if (!path.endsWith("urls.py")) continue;
+      const parent = moduleName(path);
       for (const m of src.matchAll(INCLUDE_RE2)) {
-        prefixByModule.set(m[2], m[1]);
+        const child = m[2];
+        if (!includeEdge.has(child)) includeEdge.set(child, { parent, prefix: m[1] });
       }
     }
+    const fullPrefix = (mod, seen = /* @__PURE__ */ new Set()) => {
+      if (seen.has(mod)) return "";
+      seen.add(mod);
+      const e = includeEdge.get(mod);
+      return e ? joinRoute(fullPrefix(e.parent, seen), e.prefix) : "";
+    };
     const routes = [];
     for (const [path, src] of sources) {
       if (!path.endsWith("urls.py")) continue;
-      const prefix = prefixByModule.get(moduleName(path)) ?? "";
+      const prefix = fullPrefix(moduleName(path));
       for (const m of src.matchAll(ENTRY_RE)) {
-        if (m[3] === "include") continue;
-        const raw = m[1] === "re_path" ? cleanRegex(m[2]) : m[2];
-        routes.push({ route: joinRoute(prefix, raw), file: path, kind: "page" });
+        const view = m[3];
+        if (view === "include") continue;
+        if (view.endsWith(".site.urls") || view === "admin") continue;
+        const raw = m[1] !== "path" ? cleanRegex(m[2]) : m[2];
+        const route = joinRoute(prefix, raw);
+        routes.push({ route, file: path, kind: isApiContext(src, route) ? "api" : "page" });
+      }
+      const routerVars = new Set([...src.matchAll(DRF_ROUTER_RE)].map((m) => m[1]));
+      if (!routerVars.size) continue;
+      const mountOf = /* @__PURE__ */ new Map();
+      for (const m of src.matchAll(DRF_MOUNT_RE)) {
+        if (routerVars.has(m[2])) mountOf.set(m[2], m[1]);
+      }
+      for (const m of src.matchAll(DRF_REGISTER_RE)) {
+        const router = m[1];
+        if (!routerVars.has(router)) continue;
+        const base = joinRoute(prefix, mountOf.get(router) ?? "", m[2]);
+        const detail = joinRoute(base, "<pk>");
+        const add = (route, method) => routes.push({ route, file: path, kind: "api", method });
+        add(base, "GET");
+        add(base, "POST");
+        add(detail, "GET");
+        add(detail, "PUT");
+        add(detail, "PATCH");
+        add(detail, "DELETE");
       }
     }
     return routes;
@@ -1272,36 +1569,54 @@ var djangoAdapter = {
 };
 
 // src/adapters/rails.ts
-var ALL_ACTIONS = ["index", "create", "new", "show", "update", "destroy", "edit"];
-var ACTION_SEGMENTS = {
-  index: [],
-  create: [],
-  new: ["new"],
-  show: [":id"],
-  update: [":id"],
-  destroy: [":id"],
-  edit: [":id", "edit"]
+var PLURAL_ACTIONS = {
+  index: [{ method: "GET", segs: [] }],
+  create: [{ method: "POST", segs: [] }],
+  new: [{ method: "GET", segs: ["new"] }],
+  show: [{ method: "GET", segs: [":id"] }],
+  update: [{ method: "PUT", segs: [":id"] }, { method: "PATCH", segs: [":id"] }],
+  destroy: [{ method: "DELETE", segs: [":id"] }],
+  edit: [{ method: "GET", segs: [":id", "edit"] }]
+};
+var SINGULAR_ACTIONS = {
+  create: [{ method: "POST", segs: [] }],
+  new: [{ method: "GET", segs: ["new"] }],
+  show: [{ method: "GET", segs: [] }],
+  update: [{ method: "PUT", segs: [] }, { method: "PATCH", segs: [] }],
+  destroy: [{ method: "DELETE", segs: [] }],
+  edit: [{ method: "GET", segs: ["edit"] }]
 };
 var ROOT_RE = /^root\b/;
-var VERB_RE = /\b(?:get|post|put|patch|delete)\s+["']([^"']+)["']/g;
-var RESOURCES_RE = /\bresources\s+:(\w+)([^\n]*)/g;
-var NAMESPACE_RE = /^namespace\s+:(\w+)/;
-var SCOPE_PATH_RE = /^scope\s+["']([^"']+)["']/;
+var VERB_RE = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
+var RESOURCES_RE = /\b(resources|resource)\s+:(\w+)([^\n]*)/g;
+var NAMESPACE_RE = /^namespace\s+:?(\w+)/;
+var SCOPE_STR_RE = /^scope\s+["']([^"']+)["']/;
+var SCOPE_PATH_RE = /^scope\b[^#\n]*\bpath:\s*["']([^"']+)["']/;
+var MOUNT_RE = /\bmount\s+[\w:]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
 var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
-function actionsFor(args) {
+var MEMBER_RE = /^member\b/;
+var COLLECTION_RE = /^collection\b/;
+function singularize(n) {
+  if (n.endsWith("ies")) return n.slice(0, -3) + "y";
+  if (n.endsWith("s")) return n.slice(0, -1);
+  return n;
+}
+function actionsFor(args, singular) {
+  const all = Object.keys(singular ? SINGULAR_ACTIONS : PLURAL_ACTIONS);
   const parse = (s) => new Set(s.split(",").map((a) => a.trim().replace(/^:/, "")).filter(Boolean));
   const only = args.match(/\bonly:\s*\[([^\]]*)\]/);
   if (only) {
     const set = parse(only[1]);
-    return ALL_ACTIONS.filter((a) => set.has(a));
+    return all.filter((a) => set.has(a));
   }
   const except = args.match(/\bexcept:\s*\[([^\]]*)\]/);
   if (except) {
     const set = parse(except[1]);
-    return ALL_ACTIONS.filter((a) => !set.has(a));
+    return all.filter((a) => !set.has(a));
   }
-  return [...ALL_ACTIONS];
+  return all;
 }
+var apiKind = (route) => /(^|\/)api(\/|$)/i.test(route) ? "api" : "page";
 var railsAdapter = {
   id: "rails",
   frameworks: ["Ruby on Rails"],
@@ -1310,33 +1625,71 @@ var railsAdapter = {
     for (const [path, src] of readSources(files, repo, [".rb"])) {
       if (!path.endsWith("routes.rb")) continue;
       const frames = [];
-      const prefixStack = [];
-      const here = () => joinRoute(...prefixStack);
-      const emit = (...segs) => routes.push({ route: joinRoute(here(), ...segs), file: path, kind: "page" });
+      const emit = (route, method, kind) => routes.push({ route, file: path, kind: kind ?? apiKind(route), ...method ? { method } : {} });
+      const nestPrefix = (upto) => {
+        const out = [];
+        for (let i = 0; i < upto; i++) {
+          const f = frames[i];
+          if (f.type === "prefix") out.push(...f.segs);
+          else if (f.type === "resources") out.push(f.name, `:${f.singular}_id`);
+          else if (f.type === "singular") out.push(f.name);
+        }
+        return out;
+      };
+      const verbPrefix = () => {
+        const top = frames[frames.length - 1];
+        if (top && (top.type === "member" || top.type === "collection")) {
+          let parentIdx = frames.length - 1;
+          for (let i = frames.length - 2; i >= 0; i--) {
+            const f = frames[i];
+            if (f.type === "resources" || f.type === "singular") {
+              parentIdx = i;
+              break;
+            }
+          }
+          const base = nestPrefix(parentIdx);
+          return top.type === "member" ? [...base, top.name, ":id"] : [...base, top.name];
+        }
+        return nestPrefix(frames.length);
+      };
       for (const rawLine of src.split(/\r?\n/)) {
         const line = rawLine.trim();
         if (!line || line.startsWith("#")) continue;
-        if (ROOT_RE.test(line)) emit("");
-        for (const m of line.matchAll(VERB_RE)) emit(m[1]);
+        if (ROOT_RE.test(line)) emit(joinRoute(...verbPrefix()), "GET");
+        for (const m of line.matchAll(VERB_RE)) {
+          const p = m[2] ?? m[3];
+          emit(joinRoute(...verbPrefix(), p), m[1].toUpperCase());
+        }
         for (const m of line.matchAll(RESOURCES_RE)) {
-          const name = m[1];
-          const seen = /* @__PURE__ */ new Set();
-          for (const action of actionsFor(m[2] ?? "")) {
-            const route = joinRoute(here(), name, ...ACTION_SEGMENTS[action]);
-            if (seen.has(route)) continue;
-            seen.add(route);
-            routes.push({ route, file: path, kind: "page" });
+          const singular = m[1] === "resource";
+          const name = m[2];
+          const args = m[3] ?? "";
+          const base = joinRoute(...nestPrefix(frames.length), name);
+          const table = singular ? SINGULAR_ACTIONS : PLURAL_ACTIONS;
+          for (const action of actionsFor(args, singular)) {
+            for (const def of table[action]) {
+              emit(joinRoute(base, ...def.segs), def.method);
+            }
           }
         }
+        const mount = line.match(MOUNT_RE);
+        if (mount) emit(joinRoute(...nestPrefix(frames.length), mount[1]), void 0, "api");
         if (/^end\b/.test(line)) {
-          if (frames.pop()) prefixStack.pop();
+          frames.pop();
+          continue;
         }
         if (OPENS_BLOCK_RE.test(line)) {
+          const res = line.match(/^(resources|resource)\s+:(\w+)/);
           const ns = line.match(NAMESPACE_RE);
-          const sc = line.match(SCOPE_PATH_RE);
-          const contributed = ns ? "/" + ns[1] : sc ? sc[1] : null;
-          frames.push(contributed);
-          if (contributed) prefixStack.push(contributed);
+          const scopePath = line.match(SCOPE_PATH_RE) ?? line.match(SCOPE_STR_RE);
+          const parentRes = [...frames].reverse().find((f) => f.type === "resources" || f.type === "singular");
+          if (MEMBER_RE.test(line)) frames.push({ type: "member", name: parentRes?.name ?? "" });
+          else if (COLLECTION_RE.test(line)) frames.push({ type: "collection", name: parentRes?.name ?? "" });
+          else if (res && res[1] === "resources") frames.push({ type: "resources", name: res[2], singular: singularize(res[2]) });
+          else if (res) frames.push({ type: "singular", name: res[2] });
+          else if (ns) frames.push({ type: "prefix", segs: [ns[1]] });
+          else if (scopePath) frames.push({ type: "prefix", segs: [scopePath[1]] });
+          else frames.push({ type: "prefix", segs: [] });
         }
       }
     }
@@ -1345,12 +1698,35 @@ var railsAdapter = {
 };
 
 // src/adapters/go.ts
-var METHODS2 = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|Get|Post|Put|Delete|Patch|Head|Options";
-var ROUTE_RE2 = new RegExp(`(\\w+)\\.(?:${METHODS2})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
+var VERB_TOKENS = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
+var VERB_RE2 = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
+var HANDLE_VERB_RE = /(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
+var HANDLEFUNC_RE = /(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
+var METHODS_CHAIN_RE = /\.Methods\(\s*([^)]*)\)/;
 var GROUP_RE = /(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
+var ROUTE_OPEN_RE = /(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
+var MOUNT_RE2 = /(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
+var STD_VERBS = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/;
+function methodOf3(verb) {
+  const up = verb.toUpperCase();
+  return up === "ANY" || up === "ALL" ? "*" : up;
+}
+function braceMatch(src) {
+  const stack = [];
+  const pairs = /* @__PURE__ */ new Map();
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "{") stack.push(i);
+    else if (c === "}") {
+      const open = stack.pop();
+      if (open !== void 0) pairs.set(open, i);
+    }
+  }
+  return pairs;
+}
 var goAdapter = {
   id: "go",
-  frameworks: ["Gin", "Echo", "chi", "Fiber"],
+  frameworks: ["Gin", "Echo", "chi", "Fiber", "Gorilla"],
   detectRoutes(files, repo) {
     const routes = [];
     for (const [path, src] of readSources(files, repo, [".go"])) {
@@ -1358,17 +1734,70 @@ var goAdapter = {
       for (const m of src.matchAll(GROUP_RE)) {
         groups.set(m[1], { parent: m[2], seg: m[3] });
       }
-      const prefixOf = (v, seen = /* @__PURE__ */ new Set()) => {
+      const groupPrefix = (v, seen = /* @__PURE__ */ new Set()) => {
         const g = groups.get(v);
         if (!g || seen.has(v)) return "";
         seen.add(v);
-        return joinRoute(prefixOf(g.parent, seen), g.seg);
+        return joinRoute(groupPrefix(g.parent, seen), g.seg);
       };
-      for (const m of src.matchAll(ROUTE_RE2)) {
-        const recv = m[1];
-        const routePath = m[2];
+      const pairs = braceMatch(src);
+      const opens = [...pairs.keys()].sort((a, b) => a - b);
+      const ranges = [];
+      for (const m of src.matchAll(ROUTE_OPEN_RE)) {
+        const at = m.index ?? 0;
+        const open = opens.find((o) => o > at);
+        if (open === void 0) continue;
+        ranges.push({ start: open, end: pairs.get(open), seg: m[2] });
+      }
+      const closurePrefix = (idx) => joinRoute(
+        ...ranges.filter((r) => idx >= r.start && idx <= r.end).sort((a, b) => a.start - b.start).map((r) => r.seg)
+      );
+      const prefixAt = (recv, idx) => joinRoute(closurePrefix(idx), groupPrefix(recv));
+      for (const m of src.matchAll(VERB_RE2)) {
+        const routePath = m[3];
         if (!routePath.startsWith("/")) continue;
-        routes.push({ route: joinRoute(prefixOf(recv), routePath), file: path, kind: "api" });
+        routes.push({
+          route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
+          file: path,
+          kind: "api",
+          method: methodOf3(m[2])
+        });
+      }
+      for (const m of src.matchAll(HANDLE_VERB_RE)) {
+        const routePath = m[3];
+        if (!routePath.startsWith("/")) continue;
+        routes.push({
+          route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
+          file: path,
+          kind: "api",
+          method: methodOf3(m[2])
+        });
+      }
+      for (const m of src.matchAll(HANDLEFUNC_RE)) {
+        const raw = m[2];
+        const verbInPattern = raw.match(/^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(\/\S*)$/);
+        const routePath = verbInPattern ? verbInPattern[2] : raw;
+        if (!routePath.startsWith("/")) continue;
+        const prefix = prefixAt(m[1], m.index ?? 0);
+        const chained = m[0].match(METHODS_CHAIN_RE);
+        const methods = chained ? [...chained[1].matchAll(/["`]([A-Za-z]+)["`]/g)].map((v) => v[1].toUpperCase()).filter((v) => STD_VERBS.test(v)) : [];
+        const route = joinRoute(prefix, routePath);
+        if (verbInPattern) {
+          routes.push({ route, file: path, kind: "api", method: verbInPattern[1] });
+        } else if (methods.length) {
+          for (const v of methods) routes.push({ route, file: path, kind: "api", method: v });
+        } else {
+          routes.push({ route, file: path, kind: "api" });
+        }
+      }
+      for (const m of src.matchAll(MOUNT_RE2)) {
+        const seg = m[2];
+        if (!seg.startsWith("/")) continue;
+        routes.push({
+          route: joinRoute(prefixAt(m[1], m.index ?? 0), seg),
+          file: path,
+          kind: "api"
+        });
       }
     }
     return routes;
@@ -1394,20 +1823,23 @@ function detectRoutes(files, stack, repo) {
   const merged = [];
   for (const adapter of active) {
     for (const r of adapter.detectRoutes(files, repo)) {
-      const key = `${r.kind} ${r.route} ${r.file}`;
+      const key = `${r.method ?? ""} ${r.kind} ${r.route} ${r.file}`;
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(r);
     }
   }
-  merged.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind));
+  merged.sort(
+    (a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind) || (a.method ?? "").localeCompare(b.method ?? "")
+  );
   return merged;
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync6 } from "fs";
-import { join as join6, basename as basename2, extname as extname2 } from "path";
-var LOCALE_RE = /^[a-z]{2}(-[A-Za-z]{2,4})?$/;
+import { readFileSync as readFileSync7 } from "fs";
+import { join as join7, basename as basename2, extname as extname2 } from "path";
+var LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
+var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
 function countJsonLeaves(value) {
   if (value === null || typeof value !== "object") return 1;
   if (Array.isArray(value)) return value.length || 1;
@@ -1424,30 +1856,30 @@ function localeOf(path) {
   const parts = path.split("/");
   const parent = parts[parts.length - 2];
   if (parent && LOCALE_RE.test(parent)) return parent;
+  const grand = parts[parts.length - 3];
+  if (parent && grand && I18N_DIR_RE.test(grand)) return parent;
   return base;
+}
+function keysIn(repo, f) {
+  try {
+    const raw = readFileSync7(join7(repo, f.path), "utf8");
+    if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
+    return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
+  } catch {
+    return 0;
+  }
 }
 function detectI18n(repo, files) {
   const i18nFiles = files.filter((f) => f.category === "i18n");
   if (i18nFiles.length === 0) return null;
   const locales = /* @__PURE__ */ new Set();
-  let keyCount = 0;
+  const keysByLocale = /* @__PURE__ */ new Map();
   for (const f of i18nFiles) {
-    locales.add(localeOf(f.path));
-    if (f.ext === ".json") {
-      try {
-        const data = JSON.parse(readFileSync6(join6(repo, f.path), "utf8"));
-        keyCount = Math.max(keyCount, countJsonLeaves(data));
-      } catch {
-      }
-    } else {
-      try {
-        const raw = readFileSync6(join6(repo, f.path), "utf8");
-        const approx = raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
-        keyCount = Math.max(keyCount, approx);
-      } catch {
-      }
-    }
+    const loc = localeOf(f.path);
+    locales.add(loc);
+    keysByLocale.set(loc, (keysByLocale.get(loc) ?? 0) + keysIn(repo, f));
   }
+  const keyCount = Math.max(0, ...keysByLocale.values());
   return {
     locales: [...locales].sort(),
     files: i18nFiles.map((f) => f.path).sort(),
@@ -1775,7 +2207,7 @@ function computeUnknowns(stack, routes, hints) {
   const u = [];
   if (stack.frameworks.length === 0) {
     u.push(
-      "No web framework was detected from manifests \u2014 identify the stack and entry points from `hints.entryPoints`, then map the interface surface manually."
+      "No web framework was detected from manifests \u2014 identify the stack from `stack.languages` + `dependencies`, find the entry points (`hints.entryPoints`, else the file tree), then map the interface surface manually."
     );
   }
   if (routes.length === 0 && (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0)) {
@@ -1847,7 +2279,7 @@ function analyze(opts) {
 }
 
 // src/prd/render.ts
-import { join as join8 } from "path";
+import { join as join9 } from "path";
 
 // src/prd/templates.ts
 function agentNote(body) {
@@ -2191,10 +2623,10 @@ function interfacesDoc(inv, opts) {
     ].join("\n");
   }
   const routesTable = inv.routes.length ? [
-    "| Kind | Route | Handler file |",
-    "| --- | --- | --- |",
-    ...inv.routes.map((r) => `| ${r.kind} | \`${r.route}\` | \`${r.file}\` |`)
-  ].join("\n") : "_None resolved deterministically (the engine only resolves Next.js file-based routes)._";
+    "| Method | Kind | Route | Handler file |",
+    "| --- | --- | --- | --- |",
+    ...inv.routes.map((r) => `| ${r.method ?? "\u2014"} | ${r.kind} | \`${r.route}\` | \`${r.file}\` |`)
+  ].join("\n") : "_None resolved deterministically \u2014 read the candidate files below to map the surface._";
   const routeCandidates = /* @__PURE__ */ new Set([...inv.hints.routeCandidates]);
   for (const r of inv.routes) routeCandidates.delete(r.file);
   return [
@@ -2202,7 +2634,7 @@ function interfacesDoc(inv, opts) {
     "",
     metaBlock(inv, opts),
     agentNote(
-      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine only resolves Next.js file-based routes; for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
+      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
     ),
     "",
     "## Resolved routes (deterministic \u2014 verify against source)",
@@ -2332,9 +2764,9 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
     ""
   ];
   if (feature.routes.length) {
-    out.push("## Routes", "", "| Route | Kind | File |", "| --- | --- | --- |");
+    out.push("## Routes", "", "| Method | Route | Kind | File |", "| --- | --- | --- | --- |");
     for (const r of feature.routes) {
-      out.push(`| \`${r.route}\` | ${r.kind} | \`${r.file}\` |`);
+      out.push(`| ${r.method ?? "\u2014"} | \`${r.route}\` | ${r.kind} | \`${r.file}\` |`);
     }
     out.push("");
   }
@@ -2481,8 +2913,8 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync7 } from "fs";
-import { join as join7 } from "path";
+import { readFileSync as readFileSync8 } from "fs";
+import { join as join8 } from "path";
 var FENCE_LANG = {
   ".ts": "ts",
   ".tsx": "tsx",
@@ -2530,7 +2962,7 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body;
     try {
-      body = readFileSync7(join7(opts.repo, rel), "utf8");
+      body = readFileSync8(join8(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
@@ -2557,8 +2989,8 @@ function mirrorSection(feature, opts) {
   ];
   for (const rel of feature.files) {
     copies.push({
-      from: join7(opts.repo, rel),
-      to: join7(opts.out, "source", feature.slug, rel)
+      from: join8(opts.repo, rel),
+      to: join8(opts.out, "source", feature.slug, rel)
     });
     lines.push(`- [\`${rel}\`](../../source/${feature.slug}/${rel})`);
   }
@@ -2578,10 +3010,24 @@ function renderSourceMaterial(feature, opts) {
 }
 
 // src/prd/bundle.ts
+function isSetextContent(s) {
+  const t = s.trim();
+  return t !== "" && !/^[#>\-*+|=]/.test(t) && !/^\d+[.)]/.test(t);
+}
 function demoteHeadings(md, by = 1) {
+  const lines = md.split("\n");
   const out = [];
+  let i = 0;
+  const fm = lines[0]?.match(/^(---|\+\+\+)\s*$/);
+  if (fm) {
+    out.push(lines[0]);
+    i = 1;
+    while (i < lines.length && lines[i].trim() !== fm[1]) out.push(lines[i++]);
+    if (i < lines.length) out.push(lines[i++]);
+  }
   let fence = null;
-  for (const line of md.split("\n")) {
+  for (; i < lines.length; i++) {
+    const line = lines[i];
     const fenceMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
     if (fenceMatch?.[2]) {
       const marker = fenceMatch[2].startsWith("`") ? "`" : "~";
@@ -2592,6 +3038,11 @@ function demoteHeadings(md, by = 1) {
     }
     if (fence !== null) {
       out.push(line);
+      continue;
+    }
+    if (/^\s{0,3}=+\s*$/.test(line) && out.length && isSetextContent(out[out.length - 1])) {
+      const level = Math.min(6, 1 + by);
+      out[out.length - 1] = `${"#".repeat(level)} ${out[out.length - 1].trim()}`;
       continue;
     }
     const h = line.match(/^(\s{0,3})(#{1,6})(\s.*)?$/);
@@ -2741,7 +3192,7 @@ function render(inv, opts) {
   }
   const dataCopy = (paths, sub) => {
     for (const rel of paths) {
-      copies.push({ from: join8(opts.repo, rel), to: join8(opts.out, "data", sub, rel) });
+      copies.push({ from: join9(opts.repo, rel), to: join9(opts.out, "data", sub, rel) });
     }
   };
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
@@ -2758,10 +3209,10 @@ function render(inv, opts) {
 
 // src/output.ts
 import { mkdirSync, writeFileSync, copyFileSync, existsSync as existsSync2 } from "fs";
-import { dirname, join as join9 } from "path";
+import { dirname, join as join10 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
-    const dest = join9(opts.out, a.relPath);
+    const dest = join10(opts.out, a.relPath);
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
   }
@@ -2777,7 +3228,7 @@ function writeOutput(result, opts) {
 function writeArtifactsIfAbsent(artifacts, outDir) {
   const written = [];
   for (const a of artifacts) {
-    const dest = join9(outDir, a.relPath);
+    const dest = join10(outDir, a.relPath);
     if (existsSync2(dest)) continue;
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
@@ -2787,20 +3238,20 @@ function writeArtifactsIfAbsent(artifacts, outDir) {
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync8, existsSync as existsSync3 } from "fs";
-import { join as join10, relative as relative2, sep } from "path";
+import { readdirSync as readdirSync3, readFileSync as readFileSync9, existsSync as existsSync3 } from "fs";
+import { join as join11, relative as relative2, sep } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
   const out = [];
   const walk2 = (abs) => {
     for (const entry of readdirSync3(abs, { withFileTypes: true })) {
-      const child = join10(abs, entry.name);
+      const child = join11(abs, entry.name);
       const rel = relative2(dir, child).split(sep).join("/");
       if (entry.isDirectory()) {
         if (GROUND_TRUTH_DIRS.has(rel)) continue;
         walk2(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out.push({ relPath: rel, content: readFileSync8(child, "utf8") });
+        out.push({ relPath: rel, content: readFileSync9(child, "utf8") });
       }
     }
   };
@@ -2809,13 +3260,13 @@ function readMarkdownTree(dir) {
 }
 function bundleExisting(opts) {
   const dir = opts.out;
-  const invPath = join10(dir, "inventory.json");
+  const invPath = join11(dir, "inventory.json");
   if (!existsSync3(invPath)) {
     throw new Error(
       `no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`
     );
   }
-  const inv = JSON.parse(readFileSync8(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync9(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -2824,11 +3275,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync9 } from "fs";
+import { readFileSync as readFileSync10 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync9(path, "utf8");
+    raw = readFileSync10(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -3015,6 +3466,14 @@ function validatePlanConsistency(plan) {
   const entities = new Map((plan.dataModel ?? []).map((e) => [e.entity, e]));
   const interfacePaths = new Set((plan.interfaces ?? []).map((i) => i.path));
   const enumNames = new Set((plan.enums ?? []).map((e) => e.name));
+  const entityNamesLower = new Set([...entities.keys()].map((n) => n.toLowerCase()));
+  const seenEntity = /* @__PURE__ */ new Set();
+  for (const e of plan.dataModel ?? []) {
+    if (seenEntity.has(e.entity)) {
+      errors.push(`dataModel defines entity \`${e.entity}\` more than once \u2014 names must be unique`);
+    }
+    seenEntity.add(e.entity);
+  }
   for (const f of plan.features) {
     for (const e of f.entities ?? []) {
       if (!entities.has(e)) {
@@ -3026,9 +3485,24 @@ function validatePlanConsistency(plan) {
         errors.push(`feature "${f.name}" references interface/operation \`${i}\` not defined in interfaces`);
       }
     }
+    const featureEntities = new Set(f.entities ?? []);
     for (const w of f.writes ?? []) {
       if (!entities.has(w)) {
         errors.push(`feature "${f.name}" writes entity \`${w}\` not defined in dataModel`);
+      } else if (!featureEntities.has(w)) {
+        warnings.push(
+          `feature "${f.name}" writes \`${w}\` but does not list it among its entities \u2014 add it (writes must be a subset of entities)`
+        );
+      }
+    }
+  }
+  for (const ent of plan.dataModel ?? []) {
+    for (const f of ent.fields ?? []) {
+      const target = fkTarget(f);
+      if (target && !entityNamesLower.has(target.toLowerCase())) {
+        errors.push(
+          `field \`${ent.entity}.${f.name}\` has a foreign key to undefined table \`${target}\` \u2014 define it in dataModel or fix the reference`
+        );
       }
     }
   }
@@ -3116,8 +3590,8 @@ ${body}
 }
 
 // src/check.ts
-import { existsSync as existsSync4, readFileSync as readFileSync10, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
-import { join as join11, relative as relative3 } from "path";
+import { existsSync as existsSync4, readFileSync as readFileSync11, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
+import { join as join12, relative as relative3 } from "path";
 var REQUIRED_DOCS = [
   "REBUILD.md",
   "00-overview/PRD.md",
@@ -3140,7 +3614,7 @@ function collectMarkdown(dir, base = dir) {
     return out;
   }
   for (const name of entries) {
-    const full = join11(dir, name);
+    const full = join12(dir, name);
     let st;
     try {
       st = statSync2(full);
@@ -3151,7 +3625,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name)) continue;
       out.push(...collectMarkdown(full, base));
     } else if (name.endsWith(".md")) {
-      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync10(full, "utf8") });
+      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync11(full, "utf8") });
     }
   }
   return out;
@@ -3165,7 +3639,7 @@ function fileNames(dir) {
     return out;
   }
   for (const name of entries) {
-    const full = join11(dir, name);
+    const full = join12(dir, name);
     let st;
     try {
       st = statSync2(full);
@@ -3180,7 +3654,7 @@ function fileNames(dir) {
 function checkOutput(outDir) {
   const errors = [];
   const warnings = [];
-  const invPath = join11(outDir, "inventory.json");
+  const invPath = join12(outDir, "inventory.json");
   if (!existsSync4(invPath)) {
     errors.push(
       `no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`
@@ -3189,7 +3663,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync10(invPath, "utf8"));
+    inv = JSON.parse(readFileSync11(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -3241,10 +3715,13 @@ function checkOutput(outDir) {
   for (const d of docs) {
     if (!d.rel.includes("features/") || !d.rel.endsWith("PRD.md")) continue;
     for (const h of FEATURE_SPINE) {
-      if (!d.content.includes(h)) errors.push(`${d.rel}: missing required section "${h}"`);
-    }
-    if (!hasContent(d.content)) {
-      errors.push(`${d.rel}: has section headings but no content \u2014 fill the PRD (requirements, criteria, definition of done)`);
+      if (!d.content.includes(h)) {
+        errors.push(`${d.rel}: missing required section "${h}"`);
+      } else if (!sectionHasContent(d.content, h)) {
+        errors.push(
+          `${d.rel}: section "${h}" has no content \u2014 fill it (a heading alone is not a PRD section)`
+        );
+      }
     }
   }
   if (dataModelDoc2 && !declaresEntities(dataModelDoc2)) {
@@ -3258,7 +3735,7 @@ function checkOutput(outDir) {
     );
   }
   if (inv.i18n && inv.i18n.locales?.length) {
-    const transDir = join11(outDir, "data", "translations");
+    const transDir = join12(outDir, "data", "translations");
     const names = existsSync4(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
     for (const loc of inv.i18n.locales) {
@@ -3280,7 +3757,20 @@ function stripCode(s) {
   return s.replace(/```[\s\S]*?```/g, "").replace(/~~~[\s\S]*?~~~/g, "").replace(/`[^`\n]*`/g, "");
 }
 function stripQuotes(s) {
-  return s.replace(/"[^"\n]*"/g, "");
+  return s.replace(/"[^"\n]*"/g, "").replace(/[“”][^“”\n]*[“”]/g, "").replace(/[‘’][^‘’\n]*[‘’]/g, "");
+}
+function stripMetaTable(doc) {
+  const lines = doc.split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\|\s*Setting\s*\|\s*Value\s*\|/i.test(lines[i].trim())) {
+      i++;
+      while (i + 1 < lines.length && /^\|/.test(lines[i + 1].trim())) i++;
+      continue;
+    }
+    out.push(lines[i]);
+  }
+  return out.join("\n");
 }
 function tableDataRowCount(doc) {
   return doc.split(/\r?\n/).filter((l) => {
@@ -3289,13 +3779,29 @@ function tableDataRowCount(doc) {
   }).length;
 }
 function declaresEntities(doc) {
-  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
+  const real = stripMetaTable(doc);
+  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2;
 }
 function declaresOperations(doc) {
-  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(doc);
+  const real = stripMetaTable(doc);
+  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(real);
 }
-function hasContent(doc) {
-  return /^\s*[-*]\s+\S/m.test(doc) || /^\s*\d+\.\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2;
+function sectionBody(doc, heading) {
+  const lines = doc.split(/\r?\n/);
+  const start = lines.findIndex((l) => l.trim() === heading);
+  if (start === -1) return "";
+  const body = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i])) break;
+    body.push(lines[i]);
+  }
+  return body.join("\n");
+}
+function sectionHasContent(doc, heading) {
+  return sectionBody(doc, heading).split(/\r?\n/).some((l) => {
+    const t = l.trim();
+    return t !== "" && !t.startsWith(">") && !t.startsWith("#");
+  });
 }
 function formatCheckReport(r, outDir) {
   const lines = [];
@@ -3363,11 +3869,12 @@ Bundling:
 
 Validation:
   --check runs on an already-enriched output tree and exits non-zero if it is
-  not buildable: unresolved \u{1F9E0} callouts or "fill this in" placeholders, a feature
-  that references an undocumented entity/operation, a feature PRD missing its
-  spine or left content-less, or an architecture doc emptied of its contract (no
-  entities in DATA-MODEL.md, no operations in INTERFACES.md). An uncovered locale
-  is reported as a warning. Run it before calling a reconstruction done:
+  not buildable: a missing required document, unresolved \u{1F9E0} callouts or "fill
+  this in" placeholders, a feature PRD missing a spine section or leaving one
+  empty, or an architecture doc emptied of its contract (no entities in
+  DATA-MODEL.md, no operations in INTERFACES.md). On the scratch path it also
+  checks feature\u2192entity/operation reference integrity. An uncovered locale is
+  reported as a warning. Run it before calling a reconstruction done:
     reconstruct --check --out <reconstruction-dir>
 `;
 function fail(message) {
@@ -3474,7 +3981,7 @@ function parseArgs(argv) {
     "fine"
   ]);
   const out = resolve2(
-    raw.out ?? (standalone || check ? process.cwd() : scratch ? join12(process.cwd(), "reconstruction") : join12(repo, "reconstruction"))
+    raw.out ?? (standalone || check ? process.cwd() : scratch ? join13(process.cwd(), "reconstruction") : join13(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -3545,7 +4052,7 @@ function main() {
       ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join12(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join13(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -3587,7 +4094,7 @@ function main() {
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join12(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join13(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

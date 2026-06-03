@@ -262,6 +262,16 @@ export function validatePlanConsistency(plan: ScratchPlan): {
   const entities = new Map((plan.dataModel ?? []).map((e) => [e.entity, e]));
   const interfacePaths = new Set((plan.interfaces ?? []).map((i) => i.path));
   const enumNames = new Set((plan.enums ?? []).map((e) => e.name));
+  const entityNamesLower = new Set([...entities.keys()].map((n) => n.toLowerCase()));
+
+  // Duplicate entity definitions render two contradictory tables for one name.
+  const seenEntity = new Set<string>();
+  for (const e of plan.dataModel ?? []) {
+    if (seenEntity.has(e.entity)) {
+      errors.push(`dataModel defines entity \`${e.entity}\` more than once — names must be unique`);
+    }
+    seenEntity.add(e.entity);
+  }
 
   // Referential integrity: features → entities / interfaces / writes.
   for (const f of plan.features) {
@@ -275,9 +285,28 @@ export function validatePlanConsistency(plan: ScratchPlan): {
         errors.push(`feature "${f.name}" references interface/operation \`${i}\` not defined in interfaces`);
       }
     }
+    const featureEntities = new Set(f.entities ?? []);
     for (const w of f.writes ?? []) {
       if (!entities.has(w)) {
         errors.push(`feature "${f.name}" writes entity \`${w}\` not defined in dataModel`);
+      } else if (!featureEntities.has(w)) {
+        warnings.push(
+          `feature "${f.name}" writes \`${w}\` but does not list it among its entities — add it (writes must be a subset of entities)`,
+        );
+      }
+    }
+  }
+
+  // Foreign-key targets must resolve: a `-> table` constraint pointing at an
+  // entity that isn't defined is the densest reference type in a schema and was
+  // previously rendered as authoritative truth without validation.
+  for (const ent of plan.dataModel ?? []) {
+    for (const f of ent.fields ?? []) {
+      const target = fkTarget(f);
+      if (target && !entityNamesLower.has(target.toLowerCase())) {
+        errors.push(
+          `field \`${ent.entity}.${f.name}\` has a foreign key to undefined table \`${target}\` — define it in dataModel or fix the reference`,
+        );
       }
     }
   }

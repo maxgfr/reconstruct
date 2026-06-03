@@ -87,6 +87,14 @@ export interface RouteInfo {
   route: string;
   file: string;
   kind: "page" | "api" | "layout" | "component";
+  /**
+   * HTTP method/verb when the framework declares one (`GET`, `POST`, …; `*` for
+   * any/all). Carries the read-vs-write dimension so two operations on the same
+   * path (e.g. `GET /items` + `POST /items`) survive as distinct routes. Omitted
+   * when the framework's routing is verb-agnostic (file-based pages, Django
+   * view-dispatched URLs).
+   */
+  method?: string;
 }
 
 export interface I18nInfo {

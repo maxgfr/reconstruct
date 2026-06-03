@@ -1,0 +1,266 @@
+{
+  "project": {
+    "name": "bookshop",
+    "summary": "A small online bookstore: browse a catalog, place orders, and leave reviews. A compact, synthetic plan used to exercise the from-scratch (greenfield) path end to end.",
+    "audience": "Readers buying books online and an admin curating the catalog.",
+    "value": "A clear, buildable example plan: a few entities, enums, interfaces, services and policies that map 1:1 onto the rendered reconstruction tree."
+  },
+  "stack": {
+    "primaryLanguage": "TypeScript",
+    "languages": ["TypeScript", "SQL"],
+    "frameworks": ["Next.js"],
+    "libraries": ["Drizzle ORM", "tRPC", "Zod", "Tailwind CSS"],
+    "packageManagers": ["pnpm"],
+    "hasTypeScript": true
+  },
+  "dependencies": [
+    {
+      "manager": "pnpm",
+      "manifest": "package.json",
+      "runtime": {
+        "next": "15.x",
+        "react": "19.x",
+        "drizzle-orm": "latest",
+        "@trpc/server": "11.x",
+        "zod": "3.x"
+      },
+      "dev": {
+        "drizzle-kit": "latest",
+        "typescript": "5.x"
+      }
+    }
+  ],
+  "envVars": ["DATABASE_URL", "AUTH_SECRET", "STRIPE_SECRET_KEY", "EMAIL_FROM"],
+  "i18n": {
+    "locales": ["en", "fr"],
+    "messages": {
+      "sourceLocale": "en",
+      "namespaces": ["common", "catalog", "cart", "auth"],
+      "entries": [
+        { "key": "common.save", "source": "Save" },
+        { "key": "catalog.title", "source": "Browse books" },
+        { "key": "cart.checkout", "source": "Checkout" },
+        { "key": "auth.signIn", "source": "Sign in" }
+      ]
+    }
+  },
+  "enums": [
+    {
+      "name": "UserRole",
+      "members": ["CUSTOMER", "ADMIN"],
+      "description": "users.role, default CUSTOMER. ADMIN curates the catalog."
+    },
+    {
+      "name": "OrderStatus",
+      "members": ["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED"],
+      "description": "orders.status, default PENDING. PAID is set after a successful charge."
+    }
+  ],
+  "dataModel": [
+    {
+      "entity": "users",
+      "fields": [
+        { "name": "id", "type": "varchar(255)", "constraints": "PK, default crypto.randomUUID()" },
+        { "name": "email", "type": "varchar(255)", "constraints": "not null, unique" },
+        { "name": "name", "type": "varchar(255)", "constraints": "nullable" },
+        { "name": "passwordHash", "type": "varchar(255)", "constraints": "not null (bcrypt)" },
+        { "name": "role", "type": "enum", "constraints": "not null, default 'CUSTOMER'", "enumRef": "UserRole" },
+        { "name": "createdAt", "type": "timestamp", "constraints": "not null, default CURRENT_TIMESTAMP" }
+      ],
+      "relations": ["A users row has many orders and many reviews"],
+      "uniques": ["unique on (email)"]
+    },
+    {
+      "entity": "books",
+      "fields": [
+        { "name": "id", "type": "varchar(255)", "constraints": "PK, default crypto.randomUUID()" },
+        { "name": "title", "type": "varchar(255)", "constraints": "not null" },
+        { "name": "author", "type": "varchar(255)", "constraints": "not null" },
+        { "name": "priceCents", "type": "integer", "constraints": "not null (price in integer cents)" },
+        { "name": "stock", "type": "integer", "constraints": "not null, default 0" },
+        { "name": "createdAt", "type": "timestamp", "constraints": "not null, default CURRENT_TIMESTAMP" }
+      ],
+      "relations": ["A books row has many orderItems and many reviews"],
+      "indexes": ["book_author_idx on (author)"]
+    },
+    {
+      "entity": "orders",
+      "fields": [
+        { "name": "id", "type": "varchar(255)", "constraints": "PK, default crypto.randomUUID()" },
+        { "name": "userId", "type": "varchar(255)", "constraints": "not null, FK -> users.id" },
+        { "name": "status", "type": "enum", "constraints": "not null, default 'PENDING'", "enumRef": "OrderStatus" },
+        { "name": "totalCents", "type": "integer", "constraints": "not null" },
+        { "name": "createdAt", "type": "timestamp", "constraints": "not null, default CURRENT_TIMESTAMP" }
+      ],
+      "relations": ["orders belongs to users; has many orderItems"],
+      "indexes": ["order_user_id_idx on (userId)", "order_status_idx on (status)"]
+    },
+    {
+      "entity": "orderItems",
+      "fields": [
+        { "name": "id", "type": "varchar(255)", "constraints": "PK, default crypto.randomUUID()" },
+        { "name": "orderId", "type": "varchar(255)", "constraints": "not null, FK -> orders.id, on delete cascade" },
+        { "name": "bookId", "type": "varchar(255)", "constraints": "not null, FK -> books.id" },
+        { "name": "quantity", "type": "integer", "constraints": "not null (>= 1)" },
+        { "name": "unitPriceCents", "type": "integer", "constraints": "not null (price snapshot at purchase)" }
+      ],
+      "relations": ["orderItems belongs to orders and references a books row"],
+      "indexes": ["order_item_order_id_idx on (orderId)", "order_item_book_id_idx on (bookId)"]
+    },
+    {
+      "entity": "reviews",
+      "fields": [
+        { "name": "id", "type": "varchar(255)", "constraints": "PK, default crypto.randomUUID()" },
+        { "name": "bookId", "type": "varchar(255)", "constraints": "not null, FK -> books.id, on delete cascade" },
+        { "name": "userId", "type": "varchar(255)", "constraints": "not null, FK -> users.id" },
+        { "name": "rating", "type": "integer", "constraints": "not null (1..5)" },
+        { "name": "comment", "type": "text", "constraints": "nullable" },
+        { "name": "createdAt", "type": "timestamp", "constraints": "not null, default CURRENT_TIMESTAMP" }
+      ],
+      "relations": ["reviews belongs to books and to the authoring users row"],
+      "indexes": ["review_book_id_idx on (bookId)", "review_user_id_idx on (userId)"],
+      "uniques": ["unique on (bookId, userId)"]
+    }
+  ],
+  "interfaces": [
+    {
+      "method": "tRPC", "path": "catalog.list", "kind": "tRPC query", "auth": "public",
+      "notes": "Paginated catalog listing, optionally filtered by author.",
+      "input": "{ author?: string, page?: number >= 1, pageSize?: number 1..100 }",
+      "output": "{ items: books[], total: number }"
+    },
+    {
+      "method": "tRPC", "path": "catalog.get", "kind": "tRPC query", "auth": "public",
+      "notes": "One book by id, with its average rating.",
+      "input": "{ id: string }",
+      "output": "books row + { averageRating: number | null }",
+      "sideEffects": ["Errors: NOT_FOUND when the book does not exist"]
+    },
+    {
+      "method": "tRPC", "path": "auth.register", "kind": "tRPC mutation", "auth": "public",
+      "notes": "Create a customer account. Hashes the password (bcrypt). Writes only the users row (which it owns), so no caller-owned foreign key is required.",
+      "input": "{ email: string email, name?: string, password: string 8..128 }",
+      "output": "{ id, email, role }",
+      "sideEffects": [
+        "INSERT users { email, name, passwordHash: bcrypt.hash(pw), role: 'CUSTOMER' }",
+        "Errors: CONFLICT when the email already exists"
+      ]
+    },
+    {
+      "method": "tRPC", "path": "auth.login", "kind": "tRPC mutation", "auth": "public",
+      "notes": "Verify credentials and open a session. Rate limited per IP (see AuthRateLimit).",
+      "input": "{ email: string email, password: string }",
+      "output": "{ token: string }",
+      "sideEffects": ["Errors: UNAUTHORIZED on bad credentials; TOO_MANY_REQUESTS when rate limited"]
+    },
+    {
+      "method": "tRPC", "path": "orders.create", "kind": "tRPC mutation", "auth": "protected",
+      "notes": "Place an order for the signed-in user; charges the card via the PaymentGateway and decrements stock.",
+      "input": "{ items: Array<{ bookId: string, quantity: number >= 1 }> min 1, paymentToken: string }",
+      "output": "orders row + { items: orderItems[] }",
+      "sideEffects": [
+        "INSERT orders { userId: ctx.user.id, status: 'PENDING', totalCents }",
+        "INSERT orderItems (one per line, with unitPriceCents snapshot)",
+        "PaymentGateway.createCharge → on success UPDATE orders SET status = 'PAID'",
+        "UPDATE books SET stock = stock - quantity",
+        "Errors: BAD_REQUEST insufficient stock; PAYMENT_FAILED leaves the order CANCELLED"
+      ]
+    },
+    {
+      "method": "tRPC", "path": "orders.get", "kind": "tRPC query", "auth": "protected",
+      "notes": "Fetch one of the signed-in user's own orders.",
+      "input": "{ id: string }",
+      "output": "orders row + { items: orderItems[] }",
+      "sideEffects": ["Errors: NOT_FOUND; FORBIDDEN when the order belongs to another user"]
+    },
+    {
+      "method": "tRPC", "path": "reviews.create", "kind": "tRPC mutation", "auth": "protected",
+      "notes": "Leave a 1..5 star review on a book the signed-in user has purchased. One review per (book, user).",
+      "input": "{ bookId: string, rating: integer 1..5, comment?: string max 2000 }",
+      "output": "reviews row",
+      "sideEffects": [
+        "INSERT reviews { bookId, userId: ctx.user.id, rating, comment }",
+        "Errors: CONFLICT when the user already reviewed the book; FORBIDDEN when they never purchased it"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "name": "PaymentGateway",
+      "purpose": "Charge a customer's card when an order is placed.",
+      "provider": "Stripe",
+      "operations": [
+        { "name": "createCharge", "input": "{ amountCents: number, currency: 'usd'|'eur', token: string }", "output": "{ chargeId: string, status: 'succeeded'|'failed' }" }
+      ],
+      "timeout": "10s",
+      "onFailure": "Mark the order CANCELLED, surface PAYMENT_FAILED to the caller, and do not decrement stock."
+    },
+    {
+      "name": "EmailService",
+      "purpose": "Send transactional email (order confirmation, password reset).",
+      "provider": "Resend",
+      "operations": [
+        { "name": "send", "input": "{ to: string, template: string, data: object }", "output": "{ id: string }" }
+      ],
+      "timeout": "5s",
+      "onFailure": "Log and continue — email is best-effort and never blocks the order."
+    }
+  ],
+  "policies": [
+    {
+      "name": "AuthRateLimit",
+      "kind": "rate-limit",
+      "rule": "At most 5 failed login attempts per IP per 15-minute sliding window; the 6th returns TOO_MANY_REQUESTS.",
+      "appliesTo": ["auth.login"]
+    },
+    {
+      "name": "ReviewRating",
+      "kind": "validation",
+      "rule": "reviews.rating must be an integer in [1, 5]; anything else is rejected with BAD_REQUEST.",
+      "appliesTo": ["reviews.create"]
+    }
+  ],
+  "features": [
+    { "name": "Project Setup & Tooling", "kind": "project-setup", "tier": 0, "summary": "Next.js + Drizzle + tRPC scaffolding, env vars, and the database schema." },
+    { "name": "Internationalization", "kind": "internationalization", "tier": 0, "summary": "English/French message catalog and locale routing." },
+    {
+      "name": "Catalog",
+      "summary": "Browse and view books.",
+      "entities": ["books"],
+      "interfaces": ["catalog.list", "catalog.get"]
+    },
+    {
+      "name": "Authentication",
+      "summary": "Register and sign in.",
+      "entities": ["users"],
+      "interfaces": ["auth.register", "auth.login"],
+      "writes": ["users"]
+    },
+    {
+      "name": "Orders & Checkout",
+      "summary": "Place an order, charge the card, and track its status.",
+      "entities": ["orders", "orderItems", "books"],
+      "interfaces": ["orders.create", "orders.get"],
+      "writes": ["orders", "orderItems"]
+    },
+    {
+      "name": "Reviews",
+      "summary": "Rate and review purchased books.",
+      "entities": ["reviews"],
+      "interfaces": ["reviews.create"],
+      "writes": ["reviews"]
+    }
+  ],
+  "glossary": [
+    { "term": "Order", "definition": "A customer's purchase of one or more books, captured as an orders row plus its orderItems." },
+    { "term": "Stock", "definition": "The number of copies of a book available to sell; decremented when an order is paid." }
+  ],
+  "decisions": [
+    {
+      "title": "Store money as integer cents",
+      "context": "Floating-point money is lossy and rounds badly.",
+      "decision": "Persist every monetary amount as an integer number of cents (priceCents, totalCents, unitPriceCents).",
+      "why": "Exact arithmetic; formatting to a currency happens only at the edge."
+    }
+  ]
+}

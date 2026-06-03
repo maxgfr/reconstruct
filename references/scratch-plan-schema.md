@@ -246,6 +246,6 @@ and run `node scripts/analyze.mjs --scratch --plan linkrolls.plan.json --out ./o
 never clobbered, but a bare engine run is still self-contained. `00-overview` links to
 `../CONTEXT.md` and `../docs/adr/`.
 
-> A real, larger plan — a five-country medical marketplace with 19 features, ~24 interfaces, and
-> 15 entities — lives at [`tests/fixtures/scratch-plan/medic.plan.json`](../tests/fixtures/scratch-plan/medic.plan.json).
-> Read it for a full-scale example of every section at depth.
+> A complete worked plan — a small online bookstore (6 features, 7 interfaces, 5 entities, 2 enums,
+> 2 services, 2 policies) — lives at [`tests/fixtures/scratch-plan/example.plan.json`](../tests/fixtures/scratch-plan/example.plan.json).
+> Read it for a end-to-end example of every section.

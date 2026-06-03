@@ -176,6 +176,7 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
   let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
 
   // JS/TS ecosystem.
+  const hasPkg = existsSync(join(repo, "package.json"));
   const pkg = readJson(join(repo, "package.json"));
   if (pkg) {
     const allDeps = {
@@ -187,9 +188,20 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
     }
     libraries = detectLibraries(allDeps);
     if ("typescript" in allDeps) hasTypeScript = true;
+  }
+  // Package manager from the lockfile — resolved independently of whether
+  // package.json parsed, so a malformed manifest with a lockfile present still
+  // reports a manager. `bun.lock` is Bun's modern text lockfile (bun.lockb is legacy).
+  const hasJsManifest =
+    hasPkg ||
+    ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some((f) =>
+      existsSync(join(repo, f)),
+    );
+  if (hasJsManifest) {
     if (existsSync(join(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
     else if (existsSync(join(repo, "yarn.lock"))) packageManagers.add("yarn");
-    else if (existsSync(join(repo, "bun.lockb"))) packageManagers.add("bun");
+    else if (existsSync(join(repo, "bun.lockb")) || existsSync(join(repo, "bun.lock")))
+      packageManagers.add("bun");
     else packageManagers.add("npm");
   }
 
@@ -200,6 +212,14 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
     if (/\bdjango\b/i.test(py)) frameworks.add("Django");
     if (/\bflask\b/i.test(py)) frameworks.add("Flask");
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
+  }
+  // Dart / Flutter (pub).
+  if (existsSync(join(repo, "pubspec.yaml"))) {
+    packageManagers.add("pub");
+    const pubspec = safeRead(join(repo, "pubspec.yaml"));
+    if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
+      frameworks.add("Flutter");
+    }
   }
   if (existsSync(join(repo, "Cargo.toml"))) packageManagers.add("cargo");
   if (existsSync(join(repo, "go.mod"))) {

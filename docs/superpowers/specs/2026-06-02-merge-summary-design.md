@@ -25,7 +25,7 @@ Both flags are off by default, combinable, and must work in two modes.
    against an already-generated reconstruction directory (`--out`, default cwd).
    It reads `inventory.json` + every `.md` from disk and writes the requested
    file(s) back into that directory. No repo re-analysis.
-   - Example: `reconstruct --merge --summary --out ./medic-reconstruction`
+   - Example: `reconstruct --merge --summary --out ./reconstruction`
 
 ## Flag matrix (must all be handled)
 

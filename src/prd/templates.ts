@@ -403,11 +403,11 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
 
   const routesTable = inv.routes.length
     ? [
-        "| Kind | Route | Handler file |",
-        "| --- | --- | --- |",
-        ...inv.routes.map((r) => `| ${r.kind} | \`${r.route}\` | \`${r.file}\` |`),
+        "| Method | Kind | Route | Handler file |",
+        "| --- | --- | --- | --- |",
+        ...inv.routes.map((r) => `| ${r.method ?? "—"} | ${r.kind} | \`${r.route}\` | \`${r.file}\` |`),
       ].join("\n")
-    : "_None resolved deterministically (the engine only resolves Next.js file-based routes)._";
+    : "_None resolved deterministically — read the candidate files below to map the surface._";
 
   const routeCandidates = new Set([...inv.hints.routeCandidates]);
   for (const r of inv.routes) routeCandidates.delete(r.file); // don't repeat resolved handlers
@@ -419,7 +419,8 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
     agentNote(
       "Enumerate **every** interface this project exposes — HTTP routes, REST/JSON endpoints, " +
         "tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. " +
-        "The deterministic engine only resolves Next.js file-based routes; for everything else, **read the " +
+        "The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Flask, " +
+        "FastAPI, NestJS, Django, Rails, Go); for everything else, **read the " +
         "candidate files below** and follow `references/analysis-playbook.md` (§Interface surface) plus the " +
         "matching guide in `references/stack-guides/`. Fill the target table with one row per operation.",
     ),
@@ -579,9 +580,9 @@ export function featurePrd(
   ];
 
   if (feature.routes.length) {
-    out.push("## Routes", "", "| Route | Kind | File |", "| --- | --- | --- |");
+    out.push("## Routes", "", "| Method | Route | Kind | File |", "| --- | --- | --- | --- |");
     for (const r of feature.routes) {
-      out.push(`| \`${r.route}\` | ${r.kind} | \`${r.file}\` |`);
+      out.push(`| ${r.method ?? "—"} | \`${r.route}\` | ${r.kind} | \`${r.file}\` |`);
     }
     out.push("");
   }

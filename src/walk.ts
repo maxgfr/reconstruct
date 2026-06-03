@@ -32,10 +32,12 @@ const DEFAULT_IGNORE_FILES = new Set([
   "yarn.lock",
   "pnpm-lock.yaml",
   "bun.lockb",
+  "bun.lock",
   "Cargo.lock",
   "poetry.lock",
   "Gemfile.lock",
   "composer.lock",
+  "pubspec.lock",
 ]);
 
 const BINARY_EXTS = new Set([
@@ -210,6 +212,7 @@ export function categorize(relPath: string, ext: string): FileCategory {
     base === "requirements.txt" ||
     base === "gemfile" ||
     base === "composer.json" ||
+    base === "pubspec.yaml" ||
     base === "makefile"
   ) {
     return "config";

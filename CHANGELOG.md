@@ -19,20 +19,59 @@ All notable changes to this project are documented here. The format is based on
   and **Express** (`app.<method>` + `router.<method>` prefixed by the cross-file `app.use` mount).
   Each ships a fixture + tests. These upgrade their framework's interface surface from *candidate
   hints* to *resolved routes*.
-- **Generic convergence harness** `scripts/parity.mjs` + `npm run parity`, replacing the
-  medic-specific `scripts/parity-medic.mjs` / `npm run parity:medic`. It derives ALL its
+- **Generic convergence harness** `scripts/parity.mjs` + `pnpm run parity`, replacing the earlier
+  product-specific harness. It derives ALL its
   expectations from the plan itself (every declared entity, enum, interface, service, policy
   and locale must be pre-filled into the matching architecture doc), so it proves
-  buildability-by-construction for **any** `plan.json`, not just medic. `--plan` is required;
+  buildability-by-construction for **any** `plan.json`, not just one product. `--plan` is required;
   `--repo` is optional and adds the code-path↔scratch-path structural-convergence check. CI now
-  runs `npm run parity` against the committed medic fixture (no external repo needed).
+  runs `pnpm run parity` against the committed example fixture (no external repo needed).
+- **HTTP method on the interface surface**: `RouteInfo` now carries the verb (`GET`/`POST`/…; `*`
+  for any), so `GET /items` and `POST /items` survive as distinct operations and the resolved-routes
+  / feature tables render a **Method** column. Populated by every method-aware adapter
+  (Express/NestJS/Flask/FastAPI/Django-DRF/Rails/Go), which lets a Rails `resources` expand to its 7
+  RESTful actions by verb.
+- **Django, Rails and Go route adapters** gained full prefix + method resolution (see Fixed), and
+  **Next.js `route.ts`** is now content-scanned for its exported HTTP method handlers.
+- **Flutter / Dart detection**: `pubspec.yaml` → framework `Flutter`, package manager `pub`,
+  dependency parsing, and `lib/main.dart` as an entry point.
+- **Broader candidate hints** so a stack with no dedicated route adapter is never invisible:
+  flask-restful (`add_resource`/`Resource`/`add_url_rule`), Django DRF (`router.register`,
+  `DefaultRouter`), Rails `config/routes.rb`, Go `net/http`, Rust (axum/actix), Laravel and Spring
+  route files now surface as route candidates.
 
 ### Changed
-- **`--check` gate hardening** (`src/check.ts`): the `🧠` callout scan now strips quoted spans
-  symmetrically with the `fill this in` placeholder scan, so a PRD that *documents* the gate by
-  quoting the `🧠` marker no longer false-fails.
+- **Migrated the toolchain to pnpm** (`packageManager` pinned; `pnpm-lock.yaml`; CI on
+  `pnpm/action-setup`), replacing the npm/bun lockfiles.
+- **Automated, Conventional-Commit-driven releases via semantic-release**, fully in CI on push to
+  `main` (replaces the manual `vX.Y.Z` tag flow): it computes the version, syncs it across
+  `package.json` / `src/types.ts` / `SKILL.md` / `CHANGELOG.md`, rebuilds the bundle, commits the
+  bump, tags, and creates the GitHub release. GitHub-only (no npm-registry publish).
+- **`--check` gate hardening** (`src/check.ts`): the `🧠`/placeholder scans also exempt curly-quoted
+  examples; the scaffold's own `Setting | Value` meta table no longer satisfies the contract-substance
+  check (false-pass); and an empty feature spine section now fails per-section (a heading whose body
+  is only a callout/blank is not a filled PRD).
+- **Route kind classification**: Rails and Django routes under an `api` segment / DRF views are
+  classed `api` (not `page`); a plain-REST FastAPI app no longer mislabels its `routers/` as a
+  tRPC/GraphQL/gRPC surface.
 
 ### Fixed
+- **Prefix composition (wrong → correct paths)** across adapters: Flask `Blueprint(url_prefix=…)`
+  constructor prefix + nested blueprints; FastAPI `module.router` includes + nested routers +
+  websockets; Django transitive `include()` chains + legacy `url()` + DRF list/detail expansion;
+  Rails nested `resources`, `member`/`collection`, singular `resource`, `scope path:`, `mount`;
+  Go chi `r.Route`/`r.Mount` closures + gorilla/`net/http` `HandleFunc` + verb-as-argument
+  `r.Handle`; NestJS array paths (no more bogus `/`) + `setGlobalPrefix`; Express same-file router
+  mounts + `router.route().get().post()` chaining; Next.js intercepting-route markers + monorepo
+  `apps/*/app` dirs.
+- **i18n locale detection**: 3-letter BCP-47 locales (`fil`, `yue`) are kept and a namespace filename
+  is never emitted as a locale; `keyCount` is summed per locale instead of `max` across files.
+- **Stack robustness**: a present lockfile still yields a package manager even when `package.json`
+  is malformed; Bun's modern text `bun.lock` is recognized as `bun`.
+- **Bundle (`--merge`) heading demotion**: setext `===` H1s are demoted (single-H1 guarantee) and a
+  leading YAML/TOML front-matter block passes through without its `#` lines being demoted.
+- **Scratch plan consistency**: dangling foreign-key targets, duplicate entity names, and
+  `writes`-not-in-`entities` are now caught by `validatePlanConsistency`.
 - **Docs ↔ gate parity**: the `--check` descriptions (`SKILL.md`, `references/buildability-checklist.md`,
   `references/analysis-playbook.md`, `references/scratch-playbook.md`, the CLI `--help`) now list the
   contract-substance failures (empty `DATA-MODEL.md` / `INTERFACES.md`, a content-less feature PRD)
@@ -79,10 +118,10 @@ anonymous write to a table that requires an owner foreign key).
   buildability* section and a *consistency self-review & `--check`* discipline; the scratch
   decision-tree now walks enums, services, policies, the message catalog, and per-feature writes.
 - `references/scratch-plan-schema.md` documents every new field + the enforced consistency rules.
-- `scripts/parity-medic.mjs` now asserts buildability-by-construction (the plan generates with no
+- `scripts/parity.mjs` now asserts buildability-by-construction (the plan generates with no
   consistency errors/warnings), scaffold richness (real entities incl. `contactRequests`, enums,
   services, policies, message catalog), and locale parity — not just structural alignment.
-- The medic plan fixture (`tests/fixtures/scratch-plan/medic.plan.json`) was realigned to mirror
+- The example plan fixture (`tests/fixtures/scratch-plan/example.plan.json`) was realigned to mirror
   the real repo (correct `notifications`/`profileViewsLog` shapes, the anonymous `contactRequests`
   table, NextAuth adapter tables, enums, services, policies, message catalog) so the from-code and
   from-scratch paths converge.
@@ -118,8 +157,8 @@ and one renderer. Plus an orthogonal **`--tdd`** mode for a test-first build pla
 - `references/scratch-playbook.md` (greenfield interview methodology), `references/scratch-plan-schema.md`
   (the `plan.json` contract + worked example), and vendored `references/CONTEXT-FORMAT.md` /
   `references/ADR-FORMAT.md` so the skill stays self-contained.
-- Medic convergence harness: `scripts/parity-medic.mjs` + `npm run parity:medic` structurally
-  diffs the code path and the from-scratch path; `tests/fixtures/scratch-plan/medic.plan.json`;
+- Convergence harness: `scripts/parity.mjs` + `npm run parity` structurally
+  diffs the code path and the from-scratch path; `tests/fixtures/scratch-plan/example.plan.json`;
   `tests/scratch.test.ts`.
 
 ## [0.3.0]

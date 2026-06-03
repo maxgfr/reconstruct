@@ -54,6 +54,17 @@ export function extractDependencies(repo: string, files: FileInfo[]): Dependency
     result.push({ manager: "pip", manifest: "requirements.txt", runtime, dev: {} });
   }
 
+  // pub / pubspec.yaml (Dart / Flutter)
+  if (present.has("pubspec.yaml")) {
+    const raw = read(repo, "pubspec.yaml") ?? "";
+    result.push({
+      manager: "pub",
+      manifest: "pubspec.yaml",
+      runtime: parseYamlDeps(raw, "dependencies"),
+      dev: parseYamlDeps(raw, "dev_dependencies"),
+    });
+  }
+
   // cargo / Cargo.toml
   if (present.has("Cargo.toml")) {
     const raw = read(repo, "Cargo.toml") ?? "";
@@ -161,6 +172,28 @@ export function extractDependencies(repo: string, files: FileInfo[]): Dependency
   }
 
   return result;
+}
+
+/**
+ * Dependencies under a top-level `dependencies:` / `dev_dependencies:` key in a
+ * pubspec.yaml. Collects the immediate `name: version` children (2-space indent),
+ * stopping at the next top-level key. A child with no inline value (e.g. `flutter:`
+ * with a nested `sdk: flutter`) is recorded with an empty version.
+ */
+function parseYamlDeps(yaml: string, section: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const lines = yaml.split(/\r?\n/);
+  let inSection = false;
+  for (const line of lines) {
+    if (/^\S/.test(line)) {
+      inSection = new RegExp(`^${section}\\s*:`).test(line);
+      continue;
+    }
+    if (!inSection) continue;
+    const m = line.match(/^\s{2}([\w.-]+)\s*:\s*(["']?[\d.^<>=~\s+*]*["']?)\s*(?:#.*)?$/);
+    if (m) out[m[1] as string] = (m[2] as string).replace(/["']/g, "").trim();
+  }
+  return out;
 }
 
 function parseTomlSection(toml: string, section: string): Record<string, string> {

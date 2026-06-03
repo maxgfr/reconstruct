@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadPlan, planToInventory, renderScratchDocs } from "../src/scratch.js";
+import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "../src/scratch.js";
 import { render } from "../src/prd/render.js";
 import { writeArtifactsIfAbsent } from "../src/output.js";
 import {
@@ -383,28 +383,34 @@ describe("scratch pipeline integration (render)", () => {
   });
 });
 
-describe("medic plan fixture (convergence test case)", () => {
+describe("example plan fixture (convergence test case)", () => {
   const fixturePath = fileURLToPath(
-    new URL("./fixtures/scratch-plan/medic.plan.json", import.meta.url),
+    new URL("./fixtures/scratch-plan/example.plan.json", import.meta.url),
   );
 
   it("loads and validates", () => {
     const plan = loadPlan(fixturePath);
-    expect(plan.project.name).toBe("medic");
-    expect(plan.i18n?.locales).toEqual(["fr", "de", "nl", "en", "de-CH"]);
+    expect(plan.project.name).toBe("bookshop");
+    expect(plan.i18n?.locales).toEqual(["en", "fr"]);
   });
 
-  it("produces a rich, dependency-tiered inventory", () => {
+  it("is internally consistent (no errors, no warnings)", () => {
+    const { errors, warnings } = validatePlanConsistency(loadPlan(fixturePath));
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("produces a dependency-tiered inventory mapping 1:1 onto the plan", () => {
     const inv = planToInventory(loadPlan(fixturePath), opts());
-    expect(inv.i18n?.locales.length).toBe(5);
-    expect((inv.interfaces ?? []).length).toBeGreaterThanOrEqual(20);
-    expect((inv.dataModel ?? []).length).toBeGreaterThanOrEqual(12);
-    expect(inv.features.length).toBeGreaterThanOrEqual(15);
+    expect(inv.i18n?.locales).toEqual(["en", "fr"]);
+    expect((inv.interfaces ?? []).length).toBe(7);
+    expect((inv.dataModel ?? []).length).toBe(5);
+    expect((inv.enums ?? []).length).toBe(2);
+    expect(inv.features.length).toBe(6);
     const names = inv.features.map((f) => f.name);
-    expect(names.indexOf("Authentication & Authorization")).toBeLessThan(
-      names.indexOf("Replacement Marketplace (Missions)"),
-    );
-    expect(names[names.length - 1]).toBe("Documentation");
+    // Foundation tiers (project-setup / i18n) sort ahead of feature units.
+    expect(names.indexOf("Authentication")).toBeLessThan(names.indexOf("Orders & Checkout"));
+    expect(inv.features[0]?.kind).toBe("project-setup");
     expect(inv.features.every((f) => /^\d{2}-/.test(f.slug))).toBe(true);
   });
 });

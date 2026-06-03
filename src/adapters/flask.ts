@@ -3,9 +3,32 @@ import type { RouteAdapter } from "./types.js";
 import { joinRoute, moduleName, pythonImportAliases, readSources } from "./util.js";
 
 const HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
-const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']`, "g");
-const BLUEPRINT_DEF_RE = /^\s*(\w+)\s*=\s*Blueprint\s*\(/gm;
-const REGISTER_RE = /register_blueprint\(\s*(\w+)([^)]*)\)/g;
+// Capture the path AND the trailing kwargs so `methods=[...]` can be read.
+const DECORATOR_RE = new RegExp(
+  `@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
+  "g",
+);
+// Capture the Blueprint constructor args so a `url_prefix=` set there is honored.
+const BLUEPRINT_DEF_RE = /(\w+)\s*=\s*Blueprint\s*\(([^)]*)\)/g;
+// `app.register_blueprint(bp, url_prefix=...)` — receiver kept so blueprints
+// registered onto another blueprint (nested) compose the parent prefix.
+const REGISTER_RE = /(\w+)\.register_blueprint\(\s*(\w+)([^)]*)\)/g;
+// Functional / class-based registration: `app.add_url_rule("/x", view_func=…, methods=[…])`.
+const ADD_URL_RE = /(\w+)\.add_url_rule\(\s*["']([^"']*)["']([^)]*)\)/g;
+
+function urlPrefixOf(args: string): string {
+  const m = args.match(/url_prefix\s*=\s*["']([^"']*)["']/);
+  return m ? (m[1] as string) : "";
+}
+
+/** HTTP methods declared via `methods=["GET","POST"]`, uppercased. */
+function methodsOf(args: string): string[] {
+  const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
+  if (!m) return [];
+  return [...(m[1] as string).matchAll(/["']([A-Za-z]+)["']/g)].map((v) =>
+    (v[1] as string).toUpperCase(),
+  );
+}
 
 /** A `page` if the handler block renders a template, else an `api` endpoint. */
 function routeKind(src: string, from: number): "page" | "api" {
@@ -15,10 +38,12 @@ function routeKind(src: string, from: number): "page" | "api" {
 }
 
 /**
- * Flask routing: `@app.route("/x")` / method shortcuts, plus `Blueprint` routes
- * resolved through their registered `url_prefix`. Blueprint registration and
- * definition usually live in different files, so prefixes are resolved across
- * the module graph via the import aliases (`from routes.users import bp as x`).
+ * Flask routing: `@app.route("/x")` / method shortcuts and `app.add_url_rule(...)`,
+ * plus `Blueprint` routes resolved through their `url_prefix` — taken from the
+ * `Blueprint(...)` constructor and/or the `register_blueprint(...)` call (the
+ * registration prefix overrides the constructor's). Blueprints registered onto
+ * another blueprint compose the parent's prefix transitively. The HTTP method is
+ * preserved (shortcut decorator or `methods=[…]`).
  */
 export const flaskAdapter: RouteAdapter = {
   id: "flask",
@@ -26,47 +51,77 @@ export const flaskAdapter: RouteAdapter = {
   detectRoutes(files: FileInfo[], repo: string): RouteInfo[] {
     const sources = readSources(files, repo, [".py"]);
 
-    // 1. Where is each blueprint variable defined? key = "module::var".
+    // 1. Blueprint vars per file, their keys ("module::var"), and constructor prefix.
     const blueprintKeys = new Set<string>();
     const blueprintVarsByFile = new Map<string, Set<string>>();
+    const ownPrefix = new Map<string, string>();
     for (const [path, src] of sources) {
       const vars = new Set<string>();
-      for (const m of src.matchAll(BLUEPRINT_DEF_RE)) vars.add(m[1] as string);
-      if (vars.size) {
-        blueprintVarsByFile.set(path, vars);
-        for (const v of vars) blueprintKeys.add(`${moduleName(path)}::${v}`);
+      for (const m of src.matchAll(BLUEPRINT_DEF_RE)) {
+        const v = m[1] as string;
+        vars.add(v);
+        const key = `${moduleName(path)}::${v}`;
+        blueprintKeys.add(key);
+        ownPrefix.set(key, urlPrefixOf(m[2] as string));
       }
+      if (vars.size) blueprintVarsByFile.set(path, vars);
     }
 
-    // 2. Map each blueprint (by "module::name") to its registered url_prefix.
-    const prefixByKey = new Map<string, string>();
+    // 2. Registrations: childKey -> { receiverKey, regPrefix }.
+    const regOf = new Map<string, { receiverKey: string; regPrefix: string }>();
     for (const [path, src] of sources) {
       const aliases = pythonImportAliases(src);
+      const keyFor = (v: string) => aliases.get(v) ?? `${moduleName(path)}::${v}`;
       for (const m of src.matchAll(REGISTER_RE)) {
-        const registeredVar = m[1] as string;
-        const prefixMatch = (m[2] as string).match(/url_prefix\s*=\s*["']([^"']*)["']/);
-        const prefix = prefixMatch ? (prefixMatch[1] as string) : "";
-        // Resolve the registered var to the blueprint's "module::name": either an
-        // imported alias, or a blueprint defined locally in this same file.
-        const key = aliases.get(registeredVar) ?? `${moduleName(path)}::${registeredVar}`;
-        if (blueprintKeys.has(key)) prefixByKey.set(key, prefix);
+        const childKey = keyFor(m[2] as string);
+        if (!blueprintKeys.has(childKey)) continue;
+        regOf.set(childKey, {
+          receiverKey: keyFor(m[1] as string),
+          regPrefix: urlPrefixOf(m[3] as string),
+        });
       }
     }
 
-    // 3. Emit a route per decorator, prefixing blueprint routes.
+    // The full mount prefix for a blueprint key: registration prefix overrides the
+    // constructor's; a blueprint registered onto another inherits the parent's.
+    const effectivePrefix = (key: string, seen = new Set<string>()): string => {
+      if (seen.has(key)) return "";
+      seen.add(key);
+      const own = ownPrefix.get(key) ?? "";
+      const reg = regOf.get(key);
+      if (!reg) return own;
+      const childPrefix = reg.regPrefix || own;
+      if (blueprintKeys.has(reg.receiverKey)) {
+        return joinRoute(effectivePrefix(reg.receiverKey, seen), childPrefix);
+      }
+      return childPrefix;
+    };
+
+    // 3. Emit routes from decorators and add_url_rule, prefixing blueprint routes.
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
       const localBlueprints = blueprintVarsByFile.get(path) ?? new Set<string>();
+      const prefixForObj = (obj: string): string =>
+        localBlueprints.has(obj) ? effectivePrefix(`${moduleName(path)}::${obj}`) : "";
+
       for (const m of src.matchAll(DECORATOR_RE)) {
         const obj = m[1] as string;
-        const decoratorPath = m[3] as string;
-        const isBlueprint = localBlueprints.has(obj);
-        const prefix = isBlueprint ? (prefixByKey.get(`${moduleName(path)}::${obj}`) ?? "") : "";
-        routes.push({
-          route: joinRoute(prefix, decoratorPath),
-          file: path,
-          kind: routeKind(src, m.index ?? 0),
-        });
+        const decorator = m[2] as string;
+        const route = joinRoute(prefixForObj(obj), m[3] as string);
+        const kind = routeKind(src, m.index ?? 0);
+        const methods =
+          decorator === "route" ? methodsOf(m[4] as string) : [decorator.toUpperCase()];
+        const verbs = methods.length ? methods : ["GET"]; // @route defaults to GET
+        for (const method of verbs) routes.push({ route, file: path, kind, method });
+      }
+
+      for (const m of src.matchAll(ADD_URL_RE)) {
+        const route = joinRoute(prefixForObj(m[1] as string), m[2] as string);
+        const kind = routeKind(src, m.index ?? 0);
+        const verbs = methodsOf(m[3] as string);
+        for (const method of verbs.length ? verbs : ["GET"]) {
+          routes.push({ route, file: path, kind, method });
+        }
       }
     }
     return routes;

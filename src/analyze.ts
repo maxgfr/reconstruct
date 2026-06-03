@@ -23,7 +23,7 @@ function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints): s
   const u: string[] = [];
   if (stack.frameworks.length === 0) {
     u.push(
-      "No web framework was detected from manifests — identify the stack and entry points from `hints.entryPoints`, then map the interface surface manually.",
+      "No web framework was detected from manifests — identify the stack from `stack.languages` + `dependencies`, find the entry points (`hints.entryPoints`, else the file tree), then map the interface surface manually.",
     );
   }
   if (routes.length === 0 && (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0)) {

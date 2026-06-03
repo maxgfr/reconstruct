@@ -16,18 +16,57 @@ const CONTENT_SCAN_EXTS = new Set([
 const ROUTE_DIRS = [
   "routes", "controllers", "handlers", "endpoints", "views", "pages", "api",
 ];
-const API_DIRS = ["routers", "trpc", "resolvers", "graphql"];
+// RPC/GraphQL surface dirs ONLY. "routers" is deliberately NOT here: it is a
+// REST convention for Flask/FastAPI/Express as much as a tRPC one, and the
+// route adapters + ROUTE_CONTENT_RE already surface those files — listing it
+// here made plain-REST apps wrongly trip the "tRPC/GraphQL/gRPC" unknown.
+const API_DIRS = ["trpc", "resolvers", "graphql"];
 const SCHEMA_DIRS = ["models", "entities", "migrations"];
 
 // File-based-routing leaf files (Next.js, SvelteKit, Remix, Nuxt). `index` is
 // intentionally excluded — it is just as often a module entry point.
 const ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
 
-// `r` is kept as a router name because it is the idiomatic gin/chi router variable
-// (`r.GET(...)`). Candidates are "to verify" hints, so a few false positives are
-// acceptable; missing a real framework's routes is not.
-const ROUTE_CONTENT_RE =
-  /\b(?:app|router|route|api|blueprint|fastify|server|mux|r)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(|@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b|@(?:app|router|blueprint|api)\.(?:route|get|post|put|delete|patch)\b|Route::(?:get|post|put|patch|delete|resource|apiResource|group)\b/i;
+// Files whose basename alone declares a routing table for a framework whose DSL
+// (Rails) or directory (config/) the heuristics below would otherwise miss.
+const ROUTE_FILE_NAMES = new Set(["routes.rb"]);
+
+// Content signals that a file declares request handlers, across stacks. Candidates
+// are "to verify" hints, so a few false positives are acceptable (see the file
+// header); silently missing a real framework's routes is the failure to avoid.
+// `r`/`bp`/`blp` are kept as receiver names: idiomatic gin/chi (`r.GET`) and
+// Flask blueprint (`bp.route`, smorest `blp.route`) variables.
+const ROUTE_CONTENT_RE = new RegExp(
+  [
+    // method-call routers (JS/TS/Go/Python): app.get(, router.post(, r.GET(, bp.put(
+    String.raw`\b(?:app|router|route|api|blueprint|fastify|server|mux|r|bp|blp)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(`,
+    // any receiver registering a net/http handler: mux.HandleFunc(, http.Handle(
+    String.raw`\.handle(?:func)?\s*\(`,
+    // decorator frameworks: Spring (@GetMapping/@RequestMapping/@Controller), NestJS
+    String.raw`@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b`,
+    // Python decorator routes: @app.route, @bp.get, @router.post …
+    String.raw`@(?:app|router|blueprint|api|bp|blp)\.(?:route|get|post|put|delete|patch)\b`,
+    // Laravel: Route::get(, Route::resource(, Route::group(
+    String.raw`Route::(?:get|post|put|patch|delete|resource|apiResource|group|match|any)\b`,
+    // Flask functional / class-based / flask-restful registration
+    String.raw`\.add_url_rule\s*\(`,
+    String.raw`\badd_resource\s*\(`,
+    String.raw`\bclass\s+\w+\s*\(\s*(?:\w+\.)?(?:Resource|MethodView)\b`,
+    String.raw`=\s*Blueprint\s*\(`,
+    // Django: urlpatterns table, re_path(, DRF router.register(/DefaultRouter
+    String.raw`\burlpatterns\b`,
+    String.raw`\bre_path\s*\(`,
+    String.raw`routers\.(?:Default|Simple)Router\b`,
+    String.raw`\.register\s*\(\s*r?["']`,
+    // Rails DSL (covers config/routes.rb and any drawn routes file)
+    String.raw`Rails\.application\.routes\.draw\b`,
+    // Rust: axum Router::new().route(, actix web::resource/scope/get(
+    String.raw`Router::new\b`,
+    String.raw`\.route\s*\(`,
+    String.raw`web::(?:resource|scope|get|post|put|delete|patch)\s*\(`,
+  ].join("|"),
+  "i",
+);
 
 const API_CONTENT_RE =
   /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
@@ -78,7 +117,9 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
     const ext = f.ext;
 
     // --- path-based signals ---
-    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base)) routeCandidates.add(p);
+    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base) || ROUTE_FILE_NAMES.has(base)) {
+      routeCandidates.add(p);
+    }
     if (ext === ".graphql" || ext === ".gql" || ext === ".proto") apiCandidates.add(p);
     if ((ext === ".json" || ext === ".yaml" || ext === ".yml") && /openapi|swagger/.test(base)) {
       apiCandidates.add(p);
@@ -124,6 +165,8 @@ const CONVENTIONAL_ENTRIES = [
   "config.ru", "bin/rails",
   // Rust
   "src/main.rs",
+  // Dart / Flutter
+  "lib/main.dart",
 ];
 
 /** Best-effort entry points from package.json + cross-ecosystem conventions. */

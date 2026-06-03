@@ -55,11 +55,12 @@ Bundling:
 
 Validation:
   --check runs on an already-enriched output tree and exits non-zero if it is
-  not buildable: unresolved 🧠 callouts or "fill this in" placeholders, a feature
-  that references an undocumented entity/operation, a feature PRD missing its
-  spine or left content-less, or an architecture doc emptied of its contract (no
-  entities in DATA-MODEL.md, no operations in INTERFACES.md). An uncovered locale
-  is reported as a warning. Run it before calling a reconstruction done:
+  not buildable: a missing required document, unresolved 🧠 callouts or "fill
+  this in" placeholders, a feature PRD missing a spine section or leaving one
+  empty, or an architecture doc emptied of its contract (no entities in
+  DATA-MODEL.md, no operations in INTERFACES.md). On the scratch path it also
+  checks feature→entity/operation reference integrity. An uncovered locale is
+  reported as a warning. Run it before calling a reconstruction done:
     reconstruct --check --out <reconstruction-dir>
 `;
 

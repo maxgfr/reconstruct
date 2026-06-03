@@ -38,12 +38,20 @@ export function detectRoutes(files: FileInfo[], stack: StackInfo, repo: string):
   const merged: RouteInfo[] = [];
   for (const adapter of active) {
     for (const r of adapter.detectRoutes(files, repo)) {
-      const key = `${r.kind} ${r.route} ${r.file}`;
+      // Method is part of the identity: `GET /items` and `POST /items` are two
+      // distinct operations, not one route. Verb-agnostic routes (method
+      // undefined) still de-dupe on kind+route+file.
+      const key = `${r.method ?? ""} ${r.kind} ${r.route} ${r.file}`;
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(r);
     }
   }
-  merged.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind));
+  merged.sort(
+    (a, b) =>
+      a.route.localeCompare(b.route) ||
+      a.kind.localeCompare(b.kind) ||
+      (a.method ?? "").localeCompare(b.method ?? ""),
+  );
   return merged;
 }
