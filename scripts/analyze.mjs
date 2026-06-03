@@ -2,8 +2,8 @@
 
 // src/cli.ts
 import { resolve as resolve2, join as join13 } from "path";
-import { pathToFileURL } from "url";
-import { existsSync as existsSync5, statSync as statSync3 } from "fs";
+import { pathToFileURL, fileURLToPath } from "url";
+import { existsSync as existsSync5, statSync as statSync3, realpathSync } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -4098,8 +4098,17 @@ function main() {
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }
-var invokedDirectly = process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) main();
+function isInvokedDirectly() {
+  const argv1 = process.argv[1];
+  if (argv1 === void 0) return false;
+  const modulePath = fileURLToPath(import.meta.url);
+  try {
+    if (realpathSync(argv1) === realpathSync(modulePath)) return true;
+  } catch {
+  }
+  return import.meta.url === pathToFileURL(argv1).href;
+}
+if (isInvokedDirectly()) main();
 export {
   parseArgs
 };

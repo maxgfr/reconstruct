@@ -1,6 +1,6 @@
 import { resolve, join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { existsSync, statSync } from "node:fs";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { existsSync, statSync, realpathSync } from "node:fs";
 import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent } from "./output.js";
@@ -334,7 +334,21 @@ function main(): void {
 }
 
 // Only run when invoked directly (node scripts/analyze.mjs), not when imported
-// (e.g. by tests that exercise parseArgs).
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) main();
+// (e.g. by tests that exercise parseArgs). Compare *real* paths: Node resolves
+// import.meta.url to the canonical (symlink-resolved) path, but process.argv[1]
+// is left as-typed. On a symlinked invocation path — e.g. macOS `/tmp` -> the
+// real `/private/tmp`, or a globally-linked skill folder — a raw URL compare
+// silently fails and main() never runs (exit 0, no output). Realpath both sides
+// first, then fall back to the URL compare if a path can't be resolved.
+function isInvokedDirectly(): boolean {
+  const argv1 = process.argv[1];
+  if (argv1 === undefined) return false;
+  const modulePath = fileURLToPath(import.meta.url);
+  try {
+    if (realpathSync(argv1) === realpathSync(modulePath)) return true;
+  } catch {
+    // a path may not exist on disk (e.g. a virtual entry) — fall through
+  }
+  return import.meta.url === pathToFileURL(argv1).href;
+}
+if (isInvokedDirectly()) main();
