@@ -101,3 +101,102 @@ describe("express adapter", () => {
     expect(hasRoute(inv.routes, "/api/users/:id", "api", "routes/users.js")).toBe(true);
   });
 });
+
+describe("django adapter", () => {
+  const inv = analyze(opts("django-app"));
+
+  it("detects Django", () => {
+    expect(inv.stack.frameworks).toContain("Django");
+  });
+
+  it("resolves a root-level path()", () => {
+    expect(hasRoute(inv.routes, "/", "page", "config/urls.py")).toBe(true);
+  });
+
+  it("prefixes included app routes with their include() mount path (cross-file)", () => {
+    // config/urls.py: path("blog/", include("blog.urls")) + blog/urls.py path("")
+    expect(hasRoute(inv.routes, "/blog", "page", "blog/urls.py")).toBe(true);
+    expect(hasRoute(inv.routes, "/blog/<int:year>", "page", "blog/urls.py")).toBe(true);
+  });
+
+  it("resolves re_path() patterns, stripping the regex anchors", () => {
+    // re_path(r"^feed/$", views.feed) mounted under "blog/"
+    expect(hasRoute(inv.routes, "/blog/feed", "page", "blog/urls.py")).toBe(true);
+  });
+
+  it("does not emit the include() mount itself as a leaf route", () => {
+    expect(hasRoute(inv.routes, "/blog", "page", "config/urls.py")).toBe(false);
+  });
+});
+
+describe("rails adapter", () => {
+  const inv = analyze(opts("rails-app"));
+  const file = "config/routes.rb";
+
+  it("detects Ruby on Rails", () => {
+    expect(inv.stack.frameworks).toContain("Ruby on Rails");
+  });
+
+  it("resolves the root route", () => {
+    expect(hasRoute(inv.routes, "/", "page", file)).toBe(true);
+  });
+
+  it("resolves an explicit HTTP verb route", () => {
+    expect(hasRoute(inv.routes, "/health", "page", file)).toBe(true);
+  });
+
+  it("expands `resources` into its RESTful member/collection paths", () => {
+    // resources :photos -> index/create, new, show/update/destroy, edit
+    expect(hasRoute(inv.routes, "/photos", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/photos/new", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/photos/:id", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/photos/:id/edit", "page", file)).toBe(true);
+  });
+
+  it("prefixes routes inside a `namespace` block", () => {
+    expect(hasRoute(inv.routes, "/admin/articles", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/admin/articles/:id/edit", "page", file)).toBe(true);
+  });
+
+  it("prefixes routes inside a `scope` block and honors `only:`", () => {
+    // scope "/api" { resources :sessions, only: [:create, :destroy] }
+    expect(hasRoute(inv.routes, "/api/sessions", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/api/sessions/:id", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/api/sessions/new", "page", file)).toBe(false);
+  });
+
+  it("restricts the expansion when `only:` is given", () => {
+    // resources :users, only: [:index, :show] -> /users and /users/:id only
+    expect(hasRoute(inv.routes, "/users", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/users/:id", "page", file)).toBe(true);
+    expect(hasRoute(inv.routes, "/users/new", "page", file)).toBe(false);
+    expect(hasRoute(inv.routes, "/users/:id/edit", "page", file)).toBe(false);
+  });
+});
+
+describe("go adapter", () => {
+  const inv = analyze(opts("go-app"));
+
+  it("detects Gin", () => {
+    expect(inv.stack.frameworks).toContain("Gin");
+  });
+
+  it("resolves a top-level method route", () => {
+    expect(hasRoute(inv.routes, "/health", "api", "main.go")).toBe(true);
+  });
+
+  it("prefixes routes with their .Group() mount path", () => {
+    // v1 := r.Group("/api/v1") ; v1.GET("/users") / v1.GET("/users/:id")
+    expect(hasRoute(inv.routes, "/api/v1/users", "api", "main.go")).toBe(true);
+    expect(hasRoute(inv.routes, "/api/v1/users/:id", "api", "main.go")).toBe(true);
+  });
+
+  it("composes nested .Group() prefixes", () => {
+    // admin := v1.Group("/admin") ; admin.DELETE("/users/:id")
+    expect(hasRoute(inv.routes, "/api/v1/admin/users/:id", "api", "main.go")).toBe(true);
+  });
+
+  it("ignores HTTP client calls like http.Get(url)", () => {
+    expect(inv.routes.every((r) => !r.route.includes("example.com"))).toBe(true);
+  });
+});

@@ -128,6 +128,16 @@ const NPM_LIBRARIES: Array<[string, string]> = [
   ["@aws-sdk/", "AWS SDK"],
 ];
 
+// Go web frameworks keyed by their go.mod module path (matched as a substring,
+// so version-suffixed paths like `github.com/go-chi/chi/v5` still hit).
+const GO_FRAMEWORKS: Array<[RegExp, string]> = [
+  [/github\.com\/gin-gonic\/gin/, "Gin"],
+  [/github\.com\/labstack\/echo/, "Echo"],
+  [/github\.com\/gofiber\/fiber/, "Fiber"],
+  [/github\.com\/go-chi\/chi/, "chi"],
+  [/github\.com\/gorilla\/mux/, "Gorilla"],
+];
+
 /** Detect notable libraries from a merged dependency map (runtime + dev). */
 export function detectLibraries(deps: Record<string, string>): string[] {
   const names = Object.keys(deps);
@@ -192,7 +202,13 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
   }
   if (existsSync(join(repo, "Cargo.toml"))) packageManagers.add("cargo");
-  if (existsSync(join(repo, "go.mod"))) packageManagers.add("go modules");
+  if (existsSync(join(repo, "go.mod"))) {
+    packageManagers.add("go modules");
+    const gomod = safeRead(join(repo, "go.mod"));
+    for (const [pattern, label] of GO_FRAMEWORKS) {
+      if (pattern.test(gomod)) frameworks.add(label);
+    }
+  }
   if (existsSync(join(repo, "Gemfile"))) {
     packageManagers.add("bundler");
     if (/\brails\b/i.test(safeRead(join(repo, "Gemfile")))) frameworks.add("Ruby on Rails");

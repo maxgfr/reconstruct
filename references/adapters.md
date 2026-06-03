@@ -53,50 +53,56 @@ Express API) — their routes merge.
 | `fastapi` | FastAPI      | `@app.<method>` + `APIRouter`: `include_router(prefix) + APIRouter(prefix) + path` across modules |
 | `nestjs`  | NestJS       | `@Controller(base)` + method decorators `@Get(sub)` → `/base/sub` |
 | `express` | Express      | `app.<method>` absolute; `router.<method>` prefixed by the cross-file `app.use("/mount", router)` |
+| `django`  | Django       | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules |
+| `rails`   | Ruby on Rails| `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes via `do`/`end` nesting |
+| `go`      | Gin, Echo, chi, Fiber | `<router>.GET("/x")` (both `GET`/`Get` casings) prefixed by `<child> := <parent>.Group("/p")` chains, resolved transitively |
 
-## Add an adapter — worked example (Django, a good first PR)
+## Add an adapter — worked example (Sinatra, a good first PR)
 
-Django routes live in `urls.py` as `path("articles/", views.index)` /
-`re_path(...)` entries, often nested with `include("blog.urls")`.
+The `django`, `rails`, and `go` adapters are now shipped — read
+`src/adapters/{django,rails,go}.ts` for fuller examples (cross-file `include`
+resolution, `resources` expansion, transitive `Group` prefixes). For the *shape*
+of a minimal PR, here's an unshipped framework with trivial routing: **Sinatra**,
+whose routes are `get "/x" do … end` blocks in a Ruby file.
 
-1. **Detection already exists.** `src/detect/stack.ts` labels a repo `"Django"`
-   from `requirements.txt` / `pyproject.toml`. If your framework is *not* yet
-   detected, add its signal there first (a one-liner in the matcher table).
+1. **Detection already exists.** `src/detect/stack.ts` labels a repo `"Sinatra"`
+   from a `Gemfile`. If your framework is *not* yet detected, add its signal there
+   first — exactly as the `go` adapter added a `GO_FRAMEWORKS` table matching
+   `github.com/gin-gonic/gin` etc. from `go.mod`.
 
-2. **Create `src/adapters/django.ts`:**
+2. **Create `src/adapters/sinatra.ts`:**
 
    ```ts
    import type { FileInfo, RouteInfo } from "../types.js";
    import type { RouteAdapter } from "./types.js";
    import { joinRoute, readSources } from "./util.js";
 
-   const PATH_RE = /\b(?:path|re_path)\(\s*["'`]([^"'`]*)["'`]/g;
+   const ROUTE_RE = /\b(?:get|post|put|patch|delete)\s+["']([^"']*)["']\s+do\b/g;
 
-   export const djangoAdapter: RouteAdapter = {
-     id: "django",
-     frameworks: ["Django"],
+   export const sinatraAdapter: RouteAdapter = {
+     id: "sinatra",
+     frameworks: ["Sinatra"],
      detectRoutes(files: FileInfo[], repo: string): RouteInfo[] {
        const routes: RouteInfo[] = [];
-       for (const [path, src] of readSources(files, repo, [".py"])) {
-         if (!path.endsWith("urls.py")) continue;
-         for (const m of src.matchAll(PATH_RE)) {
+       for (const [path, src] of readSources(files, repo, [".rb"])) {
+         for (const m of src.matchAll(ROUTE_RE)) {
            routes.push({ route: joinRoute(m[1] as string), file: path, kind: "page" });
          }
        }
        return routes;
-       // Stretch goal: resolve include("app.urls", prefix) mounts across files,
-       // the way the flask/express adapters resolve blueprint/router prefixes.
+       // Stretch goal: resolve `Sinatra::Base` subclasses mounted under a prefix
+       // (`map("/admin") { run Admin }`), the way django/rails resolve mounts.
      },
    };
    ```
 
-3. **Register it** in `src/adapters/registry.ts`: add `djangoAdapter` to
+3. **Register it** in `src/adapters/registry.ts`: add `sinatraAdapter` to
    `ROUTE_ADAPTERS`.
 
-4. **Add a fixture + test.** Drop a minimal `tests/fixtures/django-app/` (a
-   `requirements.txt` with `django`, a `urls.py`) and a `describe("django
-   adapter", …)` block in `tests/adapters.test.ts` asserting the resolved routes.
-   Write the test first (red), then make it pass (green).
+4. **Add a fixture + test.** Drop a minimal `tests/fixtures/sinatra-app/` (a
+   `Gemfile` with `sinatra`, an `app.rb`) and a `describe("sinatra adapter", …)`
+   block in `tests/adapters.test.ts` asserting the resolved routes. Write the test
+   first (red), then make it pass (green).
 
 5. **Rebuild the bundle:** `npm run build` (regenerates `scripts/analyze.mjs`),
    then `npm test && npm run check:build`.

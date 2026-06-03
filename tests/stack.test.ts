@@ -53,6 +53,28 @@ describe("detectStack — extended framework catalogue", () => {
     expect(stack.packageManagers).toContain("composer");
   });
 
+  it("detects Go web frameworks from go.mod requires", () => {
+    const r = repo((w) =>
+      w(
+        "go.mod",
+        [
+          "module example.com/api",
+          "",
+          "go 1.22",
+          "",
+          "require (",
+          "\tgithub.com/gin-gonic/gin v1.9.1",
+          "\tgithub.com/go-chi/chi/v5 v5.0.12",
+          ")",
+        ].join("\n"),
+      ),
+    );
+    const stack = detectStack(r, [fi("main.go", ".go")]);
+    expect(stack.frameworks).toContain("Gin");
+    expect(stack.frameworks).toContain("chi");
+    expect(stack.packageManagers).toContain("go modules");
+  });
+
   it("detects Spring Boot from a Maven pom.xml", () => {
     const r = repo((w) =>
       w(

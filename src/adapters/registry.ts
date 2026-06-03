@@ -5,6 +5,9 @@ import { flaskAdapter } from "./flask.js";
 import { fastapiAdapter } from "./fastapi.js";
 import { nestjsAdapter } from "./nestjs.js";
 import { expressAdapter } from "./express.js";
+import { djangoAdapter } from "./django.js";
+import { railsAdapter } from "./rails.js";
+import { goAdapter } from "./go.js";
 
 /**
  * Every registered route adapter. To add a framework, append its adapter here
@@ -17,6 +20,9 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
   fastapiAdapter,
   nestjsAdapter,
   expressAdapter,
+  djangoAdapter,
+  railsAdapter,
+  goAdapter,
 ];
 
 /**

@@ -433,6 +433,13 @@ var NPM_LIBRARIES = [
   ["stripe", "Stripe"],
   ["@aws-sdk/", "AWS SDK"]
 ];
+var GO_FRAMEWORKS = [
+  [/github\.com\/gin-gonic\/gin/, "Gin"],
+  [/github\.com\/labstack\/echo/, "Echo"],
+  [/github\.com\/gofiber\/fiber/, "Fiber"],
+  [/github\.com\/go-chi\/chi/, "chi"],
+  [/github\.com\/gorilla\/mux/, "Gorilla"]
+];
 function detectLibraries(deps) {
   const names = Object.keys(deps);
   const found = /* @__PURE__ */ new Set();
@@ -484,7 +491,13 @@ function detectStack(repo, files) {
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
   }
   if (existsSync(join2(repo, "Cargo.toml"))) packageManagers.add("cargo");
-  if (existsSync(join2(repo, "go.mod"))) packageManagers.add("go modules");
+  if (existsSync(join2(repo, "go.mod"))) {
+    packageManagers.add("go modules");
+    const gomod = safeRead(join2(repo, "go.mod"));
+    for (const [pattern, label] of GO_FRAMEWORKS) {
+      if (pattern.test(gomod)) frameworks.add(label);
+    }
+  }
   if (existsSync(join2(repo, "Gemfile"))) {
     packageManagers.add("bundler");
     if (/\brails\b/i.test(safeRead(join2(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
@@ -1226,13 +1239,152 @@ var expressAdapter = {
   }
 };
 
+// src/adapters/django.ts
+var ENTRY_RE = /\b(path|re_path)\(\s*r?["']([^"']*)["']\s*,\s*(\w+)/g;
+var INCLUDE_RE2 = /\b(?:path|re_path)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*["']([^"']*)["']/g;
+function cleanRegex(pattern) {
+  return pattern.replace(/^\^/, "").replace(/\$$/, "");
+}
+var djangoAdapter = {
+  id: "django",
+  frameworks: ["Django"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, [".py"]);
+    const prefixByModule = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      if (!path.endsWith("urls.py")) continue;
+      for (const m of src.matchAll(INCLUDE_RE2)) {
+        prefixByModule.set(m[2], m[1]);
+      }
+    }
+    const routes = [];
+    for (const [path, src] of sources) {
+      if (!path.endsWith("urls.py")) continue;
+      const prefix = prefixByModule.get(moduleName(path)) ?? "";
+      for (const m of src.matchAll(ENTRY_RE)) {
+        if (m[3] === "include") continue;
+        const raw = m[1] === "re_path" ? cleanRegex(m[2]) : m[2];
+        routes.push({ route: joinRoute(prefix, raw), file: path, kind: "page" });
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/rails.ts
+var ALL_ACTIONS = ["index", "create", "new", "show", "update", "destroy", "edit"];
+var ACTION_SEGMENTS = {
+  index: [],
+  create: [],
+  new: ["new"],
+  show: [":id"],
+  update: [":id"],
+  destroy: [":id"],
+  edit: [":id", "edit"]
+};
+var ROOT_RE = /^root\b/;
+var VERB_RE = /\b(?:get|post|put|patch|delete)\s+["']([^"']+)["']/g;
+var RESOURCES_RE = /\bresources\s+:(\w+)([^\n]*)/g;
+var NAMESPACE_RE = /^namespace\s+:(\w+)/;
+var SCOPE_PATH_RE = /^scope\s+["']([^"']+)["']/;
+var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
+function actionsFor(args) {
+  const parse = (s) => new Set(s.split(",").map((a) => a.trim().replace(/^:/, "")).filter(Boolean));
+  const only = args.match(/\bonly:\s*\[([^\]]*)\]/);
+  if (only) {
+    const set = parse(only[1]);
+    return ALL_ACTIONS.filter((a) => set.has(a));
+  }
+  const except = args.match(/\bexcept:\s*\[([^\]]*)\]/);
+  if (except) {
+    const set = parse(except[1]);
+    return ALL_ACTIONS.filter((a) => !set.has(a));
+  }
+  return [...ALL_ACTIONS];
+}
+var railsAdapter = {
+  id: "rails",
+  frameworks: ["Ruby on Rails"],
+  detectRoutes(files, repo) {
+    const routes = [];
+    for (const [path, src] of readSources(files, repo, [".rb"])) {
+      if (!path.endsWith("routes.rb")) continue;
+      const frames = [];
+      const prefixStack = [];
+      const here = () => joinRoute(...prefixStack);
+      const emit = (...segs) => routes.push({ route: joinRoute(here(), ...segs), file: path, kind: "page" });
+      for (const rawLine of src.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith("#")) continue;
+        if (ROOT_RE.test(line)) emit("");
+        for (const m of line.matchAll(VERB_RE)) emit(m[1]);
+        for (const m of line.matchAll(RESOURCES_RE)) {
+          const name = m[1];
+          const seen = /* @__PURE__ */ new Set();
+          for (const action of actionsFor(m[2] ?? "")) {
+            const route = joinRoute(here(), name, ...ACTION_SEGMENTS[action]);
+            if (seen.has(route)) continue;
+            seen.add(route);
+            routes.push({ route, file: path, kind: "page" });
+          }
+        }
+        if (/^end\b/.test(line)) {
+          if (frames.pop()) prefixStack.pop();
+        }
+        if (OPENS_BLOCK_RE.test(line)) {
+          const ns = line.match(NAMESPACE_RE);
+          const sc = line.match(SCOPE_PATH_RE);
+          const contributed = ns ? "/" + ns[1] : sc ? sc[1] : null;
+          frames.push(contributed);
+          if (contributed) prefixStack.push(contributed);
+        }
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/go.ts
+var METHODS2 = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|Get|Post|Put|Delete|Patch|Head|Options";
+var ROUTE_RE2 = new RegExp(`(\\w+)\\.(?:${METHODS2})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
+var GROUP_RE = /(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
+var goAdapter = {
+  id: "go",
+  frameworks: ["Gin", "Echo", "chi", "Fiber"],
+  detectRoutes(files, repo) {
+    const routes = [];
+    for (const [path, src] of readSources(files, repo, [".go"])) {
+      const groups = /* @__PURE__ */ new Map();
+      for (const m of src.matchAll(GROUP_RE)) {
+        groups.set(m[1], { parent: m[2], seg: m[3] });
+      }
+      const prefixOf = (v, seen = /* @__PURE__ */ new Set()) => {
+        const g = groups.get(v);
+        if (!g || seen.has(v)) return "";
+        seen.add(v);
+        return joinRoute(prefixOf(g.parent, seen), g.seg);
+      };
+      for (const m of src.matchAll(ROUTE_RE2)) {
+        const recv = m[1];
+        const routePath = m[2];
+        if (!routePath.startsWith("/")) continue;
+        routes.push({ route: joinRoute(prefixOf(recv), routePath), file: path, kind: "api" });
+      }
+    }
+    return routes;
+  }
+};
+
 // src/adapters/registry.ts
 var ROUTE_ADAPTERS = [
   nextjsAdapter,
   flaskAdapter,
   fastapiAdapter,
   nestjsAdapter,
-  expressAdapter
+  expressAdapter,
+  djangoAdapter,
+  railsAdapter,
+  goAdapter
 ];
 function detectRoutes(files, stack, repo) {
   const active = ROUTE_ADAPTERS.filter(
