@@ -94,6 +94,23 @@ function splitGlobs(value: string): string[] {
     .filter(Boolean);
 }
 
+// The flags that take a value (`--key <value>` or `--key=<value>`). Every other
+// recognized flag is a boolean switch handled inline above. Used to reject an
+// unknown or typo'd flag loudly instead of silently swallowing it (and then
+// falling back to a default the user never asked for).
+const VALUE_FLAGS = new Set([
+  "repo",
+  "out",
+  "mode",
+  "level",
+  "fidelity",
+  "granularity",
+  "plan",
+  "max-embed-bytes",
+  "include",
+  "exclude",
+]);
+
 export function parseArgs(argv: string[]): Options {
   const raw: Record<string, string> = {};
   const includeGlobs: string[] = [];
@@ -150,17 +167,18 @@ export function parseArgs(argv: string[]): Options {
       continue;
     }
     if (arg.startsWith("--")) {
-      let key: string;
-      let value: string;
       const eq = arg.indexOf("=");
+      const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
+      if (!VALUE_FLAGS.has(key)) {
+        fail(`unknown flag: --${key} (run --help for the supported options)`);
+      }
+      let value: string;
       if (eq !== -1) {
-        key = arg.slice(2, eq);
         value = arg.slice(eq + 1);
       } else {
-        key = arg.slice(2);
         const next = argv[i + 1];
         if (next === undefined || next.startsWith("--")) {
-          fail(`missing value for ${arg}`);
+          fail(`missing value for --${key}`);
         }
         value = next as string;
         i++;
@@ -168,7 +186,11 @@ export function parseArgs(argv: string[]): Options {
       if (key === "include") includeGlobs.push(...splitGlobs(value));
       else if (key === "exclude") excludeGlobs.push(...splitGlobs(value));
       else raw[key] = value;
+      continue;
     }
+    // Not a boolean switch, not -h/-v, not a known --flag: a stray positional or
+    // an unknown short flag. Fail rather than silently ignore it.
+    fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
 
   // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle

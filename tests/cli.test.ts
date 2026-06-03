@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { parseArgs } from "../src/cli.js";
@@ -99,5 +99,69 @@ describe("parseArgs: --tdd flag", () => {
   it("sets tdd as a boolean, independent of mode", () => {
     expect(parseArgs(["--repo", REPO, "--tdd"]).tdd).toBe(true);
     expect(parseArgs(["--scratch", "--plan", "p.json", "--tdd"]).tdd).toBe(true);
+  });
+});
+
+describe("parseArgs: strict flag validation", () => {
+  // parseArgs reports usage errors via fail() → process.exit(1). Trap the exit
+  // (and silence the message) so the failing branch is observable as a throw.
+  afterEach(() => vi.restoreAllMocks());
+  function expectFail(argv: string[], pattern: RegExp) {
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(() => parseArgs(argv)).toThrow(/process\.exit\(1\)/);
+    const message = stderr.mock.calls.map((c) => String(c[0])).join("");
+    expect(message).toMatch(pattern);
+  }
+
+  it("rejects an unknown long flag instead of swallowing it", () => {
+    expectFail(["--repo", REPO, "--bogus"], /unknown flag: --bogus/);
+  });
+
+  it("rejects a typo'd value flag (e.g. --mdoe) rather than ignoring it", () => {
+    expectFail(["--repo", REPO, "--mdoe", "preserve"], /unknown flag: --mdoe/);
+  });
+
+  it("rejects a stray positional argument", () => {
+    expectFail(["./some-repo"], /unexpected argument: \.\/some-repo/);
+  });
+
+  it("rejects an unknown short flag", () => {
+    expectFail(["-x"], /unexpected argument: -x/);
+  });
+
+  it("still reports a missing value for a known value flag", () => {
+    expectFail(["--repo"], /missing value for --repo/);
+  });
+
+  it("accepts every known value flag (including = form) and routes globs", () => {
+    const o = parseArgs([
+      "--repo",
+      REPO,
+      "--out",
+      "/tmp/strict-out",
+      "--mode",
+      "redesign",
+      "--level",
+      "complex",
+      "--fidelity",
+      "embed",
+      "--granularity",
+      "fine",
+      "--max-embed-bytes=5000",
+      "--include",
+      "src/**,lib/**",
+      "--exclude",
+      "dist/**",
+    ]);
+    expect(o.mode).toBe("redesign");
+    expect(o.level).toBe("complex");
+    expect(o.fidelity).toBe("embed");
+    expect(o.granularity).toBe("fine");
+    expect(o.maxEmbedBytes).toBe(5000);
+    expect(o.include).toEqual(["src/**", "lib/**"]);
+    expect(o.exclude).toEqual(["dist/**"]);
   });
 });

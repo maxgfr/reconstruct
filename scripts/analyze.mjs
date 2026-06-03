@@ -3988,6 +3988,18 @@ function defaultFidelity(mode, level) {
 function splitGlobs(value) {
   return value.split(",").map((s) => s.trim()).filter(Boolean);
 }
+var VALUE_FLAGS = /* @__PURE__ */ new Set([
+  "repo",
+  "out",
+  "mode",
+  "level",
+  "fidelity",
+  "granularity",
+  "plan",
+  "max-embed-bytes",
+  "include",
+  "exclude"
+]);
 function parseArgs(argv) {
   const raw = {};
   const includeGlobs = [];
@@ -4043,17 +4055,18 @@ function parseArgs(argv) {
       continue;
     }
     if (arg.startsWith("--")) {
-      let key;
-      let value;
       const eq = arg.indexOf("=");
+      const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
+      if (!VALUE_FLAGS.has(key)) {
+        fail(`unknown flag: --${key} (run --help for the supported options)`);
+      }
+      let value;
       if (eq !== -1) {
-        key = arg.slice(2, eq);
         value = arg.slice(eq + 1);
       } else {
-        key = arg.slice(2);
         const next = argv[i + 1];
         if (next === void 0 || next.startsWith("--")) {
-          fail(`missing value for ${arg}`);
+          fail(`missing value for --${key}`);
         }
         value = next;
         i++;
@@ -4061,7 +4074,9 @@ function parseArgs(argv) {
       if (key === "include") includeGlobs.push(...splitGlobs(value));
       else if (key === "exclude") excludeGlobs.push(...splitGlobs(value));
       else raw[key] = value;
+      continue;
     }
+    fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
