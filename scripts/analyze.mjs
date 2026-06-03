@@ -2200,7 +2200,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 }
 
 // src/types.ts
-var VERSION = "0.6.3";
+var VERSION = "0.7.0";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints) {

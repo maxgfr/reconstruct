@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-03
+
 ### Added
 - **Pluggable route-adapter registry** (`src/adapters/registry.ts` + `src/adapters/types.ts`):
   adapters now implement a `RouteAdapter` contract and register in one array, so adding a
