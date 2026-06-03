@@ -3,7 +3,7 @@ name: reconstruct
 description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec, from scratch, greenfield, build plan, new project, idea to PRD.
 license: MIT
 metadata:
-  version: 0.6.1
+  version: 0.6.2
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -115,10 +115,13 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      the reviewer); for a large tree, fan it out one reviewer per feature. A unit is done when
      it has **zero blockers**. Fix blockers in place, re-run `--check`, repeat until clean.
 
-10. **Run the convergence loop — don't stop at "it generated".** A reconstruction is not done
-    when the scaffold is filled; it is done when it **converges** to buildable. Iterate both
-    layers until the tree is clean — this loop is what turns "PRDs exist" into "a fresh agent
-    rebuilds the right software":
+10. **Run the convergence loop — autonomously, to completion.** A reconstruction is not done
+    when the scaffold is filled; it is done when it **converges** to buildable. **You own this
+    loop end-to-end: run it yourself, to the fixpoint, in one go.** Do not hand rounds back to
+    the user, do not ask "should I continue?", and do not stop at the first pass — the user
+    invokes the skill once and expects a finished, buildable tree out the other side. Iterate
+    both layers until the tree is clean — this loop is what turns "PRDs exist" into "a fresh
+    agent rebuilds the right software":
 
     ```
     repeat:
@@ -145,7 +148,15 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
       architecture docs is wrong, not the feature PRD — fix `INTERFACES.md`/`DATA-MODEL.md` first.
 
     At scale, drive the loop with parallel agents — one finder/fixer + one independent verifier
-    per feature — and keep looping until a full review round adds nothing new.
+    per feature — and keep looping until a full review round adds nothing new. **Terminate
+    deterministically:** stop when `--check` passes and a whole review round yields zero
+    blockers (the fixpoint), or when two consecutive rounds make no progress on the *same*
+    residual findings — at which point fix the upstream architecture contract those findings
+    share, or, if a finding is a faithful property of the original (a real bug you're preserving),
+    record it explicitly rather than looping on it. Bound the rounds (e.g. ≤ 5) so a pathological
+    unit can't spin forever. **Report once, at the end** — the final `--check` result, the
+    zero-blocker confirmation, and anything you deliberately left (majors/minors, preserved
+    quirks). The user should relaunch nothing; one skill invocation goes scaffold → buildable.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, `references/buildability-checklist.md` for the eight contract

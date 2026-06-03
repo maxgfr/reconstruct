@@ -72,6 +72,10 @@ Make it terminate on a *correct* fixpoint:
 - **If the same finding keeps reappearing,** the contract in the architecture docs is
   wrong, not the feature PRD — fix `INTERFACES.md` / `DATA-MODEL.md` first, then the
   features that hang off it stop regressing.
+- **Run it autonomously, and bound it.** The agent drives every round itself — the user
+  relaunches nothing. Terminate at the zero-blocker fixpoint, or after ≤ 5 rounds / two
+  no-progress rounds; if a residual finding is a faithful property of the original (a real
+  bug being preserved), record it and move on instead of looping on it. Report once at the end.
 
 ## The nine checks
 
