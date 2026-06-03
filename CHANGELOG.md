@@ -7,6 +7,18 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Pluggable route-adapter registry** (`src/adapters/registry.ts` + `src/adapters/types.ts`):
+  adapters now implement a `RouteAdapter` contract and register in one array, so adding a
+  framework is a small, self-contained PR (one file under `src/adapters/` + one registry line +
+  a fixture/test) with no core change. The registry runs every adapter whose framework is active
+  and merges + de-dupes + sorts the routes — a repo can activate several at once. Guide:
+  [`references/adapters.md`](./references/adapters.md).
+- **New deterministic route adapters** beyond Next.js: **Flask** (`@app.route`/method shortcuts +
+  `Blueprint` `url_prefix` resolved across modules), **FastAPI** (`include_router(prefix)` +
+  `APIRouter(prefix)` + decorator path), **NestJS** (`@Controller(base)` + method decorators),
+  and **Express** (`app.<method>` + `router.<method>` prefixed by the cross-file `app.use` mount).
+  Each ships a fixture + tests. These upgrade their framework's interface surface from *candidate
+  hints* to *resolved routes*.
 - **Generic convergence harness** `scripts/parity.mjs` + `npm run parity`, replacing the
   medic-specific `scripts/parity-medic.mjs` / `npm run parity:medic`. It derives ALL its
   expectations from the plan itself (every declared entity, enum, interface, service, policy

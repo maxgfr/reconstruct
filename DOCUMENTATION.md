@@ -24,8 +24,9 @@ reconstruct splits the work into two layers with a sharp boundary:
    features semantically, and turns source into concrete, testable PRDs.
 
 The engine guarantees correct facts and good starting points; the agent supplies the
-understanding. A per-framework adapter does not scale — a markdown playbook that teaches the
-agent *where to look* in any stack does.
+understanding. A markdown playbook that teaches the agent *where to look* scales to any stack;
+on top of it, a pluggable registry of route adapters resolves routes deterministically where a
+framework has a clear convention (see [Adapters](#adapters)).
 
 ---
 
@@ -237,35 +238,48 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 
 | Adapter | File | What it does |
 | --- | --- | --- |
-| Generic | [`src/adapters/generic.ts`](./src/adapters/generic.ts) | Dependencies (npm, pip, Cargo, Go modules, Composer), npm scripts, env vars, file categories. |
-| Next.js | [`src/adapters/nextjs.ts`](./src/adapters/nextjs.ts) | Deterministic route detection for the app + pages routers (route groups, parallel slots, API routes). |
+| Generic | [`src/adapters/generic.ts`](./src/adapters/generic.ts) | Dependencies (npm, pip, Cargo, Go modules, Composer, Maven, Gradle, Bundler), scripts, env vars, file categories. |
+| Route registry | [`src/adapters/registry.ts`](./src/adapters/registry.ts) | Runs every route adapter whose framework is active, then merges + de-dupes + sorts the resolved routes. |
+| Next.js | [`src/adapters/nextjs.ts`](./src/adapters/nextjs.ts) | File-based routing: `app/` (`page`/`route`/`layout`) + `pages/` (incl. `pages/api/*`); route groups & parallel slots. |
+| Flask | [`src/adapters/flask.ts`](./src/adapters/flask.ts) | `@app.route` + method shortcuts; `Blueprint` routes resolved through their registered `url_prefix` across modules. |
+| FastAPI | [`src/adapters/fastapi.ts`](./src/adapters/fastapi.ts) | `@app.<method>` + `APIRouter`: `include_router(prefix)` + `APIRouter(prefix)` + decorator path across modules. |
+| NestJS | [`src/adapters/nestjs.ts`](./src/adapters/nestjs.ts) | `@Controller(base)` + method decorators (`@Get(sub)`) → `/base/sub`. |
+| Express | [`src/adapters/express.ts`](./src/adapters/express.ts) | `app.<method>` absolute; `router.<method>` prefixed by the cross-file `app.use("/mount", router)`. |
 | i18n | [`src/adapters/i18n.ts`](./src/adapters/i18n.ts) | Locale detection and per-file translation-key counting. |
 
-Next.js routes are the one paradigm resolved deterministically; every other stack's interface
-surface and data model are mapped by the **AI playbook** from the candidate hints — see
-[`references/analysis-playbook.md`](./references/analysis-playbook.md) and the per-stack
-cheat-sheets in [`references/stack-guides/`](./references/stack-guides). The engine stays
-universal; framework depth lives in markdown.
+Several web frameworks resolve routes **deterministically** (Next.js, Flask, FastAPI, NestJS,
+Express); every other stack's interface surface and data model are mapped by the **AI playbook**
+from the candidate hints — see [`references/analysis-playbook.md`](./references/analysis-playbook.md)
+and the per-stack cheat-sheets in [`references/stack-guides/`](./references/stack-guides). The two
+layers are **complementary**: an adapter gives a resolved head-start where a framework has a clear
+routing convention; the playbook + candidates cover everything else and all the deep semantic work.
 
 ---
 
-## Extending: add a stack guide (markdown, not code)
+## Extending: two complementary paths
 
-Support for a new stack is almost always **markdown**, not an adapter:
+Framework support has two seams; pick the one that fits — or both.
+
+**1. Add a stack guide (markdown) — scales to any stack, no code.** This is the default for
+*understanding* depth:
 
 1. Add `references/stack-guides/<stack>.md` following the existing 5-section shape
    (`Where the interface surface lives`, `Data model`, `Entry points & boot`, `Config & env`,
    `Gotchas`, + a closing `> tip:`). Keep it a dense cheat-sheet with real file paths and
-   function/decorator names. The agent loads it on demand and uses it to fill `INTERFACES.md`
-   and `DATA-MODEL.md`.
-2. *Optional:* if a cheap, framework-agnostic signal would help the agent find the right
-   files, add a candidate heuristic to [`src/detect/candidates.ts`](./src/detect/candidates.ts)
-   (a *candidate*, never asserted truth), cover it with a test, and `npm run build` to refresh
-   the committed bundle.
+   function/decorator names. The agent loads it on demand to fill `INTERFACES.md` / `DATA-MODEL.md`.
+2. *Optional:* if a cheap, framework-agnostic signal helps the agent find the right files, add a
+   candidate heuristic to [`src/detect/candidates.ts`](./src/detect/candidates.ts) (a *candidate*,
+   never asserted truth), cover it with a test, and `npm run build`.
 
-This is the whole point of the v0.2 architecture: a per-framework adapter does not scale, so
-framework knowledge lives in markdown the agent follows. See
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
+**2. Add a route adapter (code) — a pluggable registry, one small PR.** When a framework has a
+clear routing convention, a deterministic adapter upgrades its routes from *candidates* to
+*resolved*. The registry is data-driven, so a new adapter is one file under `src/adapters/` + one
+line in `src/adapters/registry.ts` + a fixture/test — no core change. Full walkthrough (with a
+worked Django example): [`references/adapters.md`](./references/adapters.md).
+
+Markdown remains the way to teach the agent *any* stack; adapters make deterministic route
+resolution cheap to add where a convention exists. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
+the full workflow.
 
 ---
 
@@ -324,8 +338,9 @@ emits candidate hints for routes/API/schema/entry points on any stack; the frame
 depth (the interface surface and data model) comes from the AI playbook plus the per-stack
 guides in [`references/stack-guides/`](./references/stack-guides) — Next.js, Remix, Nuxt,
 SvelteKit, Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go,
-Spring Boot, tRPC/gRPC, GraphQL, and mobile. Next.js routes are additionally resolved
-deterministically. Missing a guide? Adding one is just markdown.
+Spring Boot, tRPC/gRPC, GraphQL, and mobile. Next.js, Flask, FastAPI, NestJS, and Express
+routes are additionally resolved deterministically by [route adapters](#adapters). Missing a
+guide? Adding one is just markdown — missing a route adapter? That's one small PR.
 
 **No features detected?** The repo is probably flat. Group by top-level folders manually
 and note it in `00-overview/PRD.md`.
