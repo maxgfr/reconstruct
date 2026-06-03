@@ -121,20 +121,22 @@ export function checkOutput(outDir: string): CheckResult {
   // 2. Unresolved scaffolding — the #1 cause of an unbuildable PRD is an
   //    architecture doc or feature spec left as a 🧠 skeleton.
   for (const d of docs) {
-    // Scan PROSE only. Code spans/blocks and quoted examples legitimately
-    // contain a 🧠 or the words "fill this in" — e.g. the Definition-of-done
-    // line that names the callout marker inside backticks, embedded source under
-    // "## Source material", or a PRD that documents the gate and quotes the
-    // placeholder phrase. Those are not unresolved scaffolding; a real callout
-    // is always the bare `> 🧠 ...` blockquote, never code or a quote.
-    const prose = stripCode(d.content);
+    // Scan PROSE only — code spans/blocks AND quoted examples stripped. Both
+    // a 🧠 and the words "fill this in" legitimately appear in code or quotes:
+    // the Definition-of-done line that names the callout marker inside backticks,
+    // embedded source under "## Source material", or a PRD that documents the
+    // gate and quotes the placeholder phrase / the 🧠 marker. Those are not
+    // unresolved scaffolding; a real callout is always the bare `> 🧠 ...`
+    // blockquote, never code or a quote. The 🧠 and placeholder scans use the
+    // SAME stripped prose so a quoted example is exempted symmetrically.
+    const prose = stripQuotes(stripCode(d.content));
     const callouts = prose.split("🧠").length - 1;
     if (callouts > 0) {
       errors.push(
         `${d.rel}: ${callouts} unresolved \`🧠\` agent callout(s) — resolve them exhaustively and delete the callout`,
       );
     }
-    if (/fill this in/i.test(stripQuotes(prose))) {
+    if (/fill this in/i.test(prose)) {
       errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
     }
   }

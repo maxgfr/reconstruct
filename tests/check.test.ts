@@ -121,6 +121,17 @@ describe("checkOutput — unresolved scaffolding", () => {
     expect(errors).toEqual([]);
   });
 
+  it("does not flag a 🧠 quoted as an example in prose (symmetric with the placeholder check)", () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      `# Auth\n${SPINE}\n- A real callout is always a bare blockquote like "> 🧠 …", never inline. (FR1)\n`,
+    );
+    const { errors } = checkOutput(dir);
+    expect(errors).toEqual([]);
+  });
+
   it("still flags a real `> 🧠` callout and a bare (fill this in) placeholder", () => {
     const dir = cleanTree();
     write(

@@ -2797,14 +2797,14 @@ function checkOutput(outDir) {
     if (!findDoc(req)) errors.push(`missing required document: ${req}`);
   }
   for (const d of docs) {
-    const prose = stripCode(d.content);
+    const prose = stripQuotes(stripCode(d.content));
     const callouts = prose.split("\u{1F9E0}").length - 1;
     if (callouts > 0) {
       errors.push(
         `${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`
       );
     }
-    if (/fill this in/i.test(stripQuotes(prose))) {
+    if (/fill this in/i.test(prose)) {
       errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
     }
   }
@@ -2961,7 +2961,9 @@ Validation:
   --check runs on an already-enriched output tree and exits non-zero if it is
   not buildable: unresolved \u{1F9E0} callouts or "fill this in" placeholders, a feature
   that references an undocumented entity/operation, a feature PRD missing its
-  spine, or an uncovered locale. Run it before calling a reconstruction done:
+  spine or left content-less, or an architecture doc emptied of its contract (no
+  entities in DATA-MODEL.md, no operations in INTERFACES.md). An uncovered locale
+  is reported as a warning. Run it before calling a reconstruction done:
     reconstruct --check --out <reconstruction-dir>
 `;
 function fail(message) {
