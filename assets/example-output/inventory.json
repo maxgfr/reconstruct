@@ -1,5 +1,11 @@
 {
-  "generatedWith": "reconstruct@0.2.0",
+  "generatedWith": "reconstruct@0.7.0",
+  "generation": {
+    "mode": "redesign",
+    "level": "complex",
+    "fidelity": "describe",
+    "granularity": "coarse"
+  },
   "repoName": "sample-app",
   "stack": {
     "languages": [
@@ -148,7 +154,8 @@
     {
       "route": "/api/users",
       "file": "app/api/users/route.ts",
-      "kind": "api"
+      "kind": "api",
+      "method": "GET"
     },
     {
       "route": "/dashboard",
@@ -241,7 +248,8 @@
         {
           "route": "/api/users",
           "file": "app/api/users/route.ts",
-          "kind": "api"
+          "kind": "api",
+          "method": "GET"
         }
       ]
     },

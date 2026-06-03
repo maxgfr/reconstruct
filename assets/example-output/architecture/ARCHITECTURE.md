@@ -5,7 +5,7 @@
 | Mode | `redesign` |
 | Level | `complex` |
 | Fidelity | `describe` |
-| Generated with | `reconstruct@0.2.0` |
+| Generated with | `reconstruct@0.7.0` |
 
 ## Detected stack
 
@@ -33,6 +33,16 @@ Next.js, React · TypeScript
 ## Internationalization
 
 Locales: en, fr — files copied to `data/translations/`.
+
+## External services & integrations
+
+> 🧠 **For the AI agent:** List **every** external service the project calls (payment, email, geocoding, storage, analytics, queues, third-party APIs). For each: provider, the exact request/response shape, timeout, and what happens on failure (best-effort? hard error?). Naming the service is not enough — capture the contract.
+
+
+## Cross-cutting policies
+
+> 🧠 **For the AI agent:** Capture every cross-cutting rule that is otherwise left vague: rate limits (exact thresholds, window, key, store), format validations (e.g. national registry numbers — give the regex/checksum/length), and security policies. Each rule must be concrete enough to write a test against.
+
 
 ## Proposed architecture (redesign)
 

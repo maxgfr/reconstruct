@@ -5,7 +5,7 @@
 | Mode | `redesign` |
 | Level | `complex` |
 | Fidelity | `describe` |
-| Generated with | `reconstruct@0.2.0` |
+| Generated with | `reconstruct@0.7.0` |
 
 This folder is a complete plan to rebuild the project from scratch.
 
@@ -13,7 +13,7 @@ This folder is a complete plan to rebuild the project from scratch.
 
 - **redesign**: design a new architecture for the same features.
 - **complex**: PRDs that also suggest improvements to fold in.
-- **describe** fidelity: descriptive PRDs only — rewrite from requirements.
+- **describe** fidelity: descriptive PRDs only — build from requirements.
 
 ## Build order
 

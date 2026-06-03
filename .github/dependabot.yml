@@ -1,6 +1,9 @@
 # Keep dev dependencies and CI actions up to date.
 # (reconstruct ships a zero-dependency committed bundle; updates here only touch
 # the build/test toolchain and GitHub Actions.)
+# Version updates are scoped to the repo root ("/"). The sample under
+# assets/example-output/ is illustrative output, not real deps — its copied
+# package.json is gitignored so Dependabot has no manifest to scan there.
 version: 2
 updates:
   - package-ecosystem: "npm"

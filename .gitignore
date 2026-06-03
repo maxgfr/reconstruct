@@ -7,3 +7,6 @@ coverage/
 /tmp/
 reconstruction/
 *.tgz
+# The committed example output copies the source repo's config verbatim; don't
+# commit its package.json so Dependabot can't open PRs against the sample's deps.
+assets/example-output/data/config/package.json
