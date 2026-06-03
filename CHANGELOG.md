@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [0.7.2](https://github.com/maxgfr/reconstruct/compare/v0.7.1...v0.7.2) (2026-06-03)
+
+
+### Bug Fixes
+
+* **release:** write generated notes to CHANGELOG.md via @semantic-release/changelog ([c3f62dc](https://github.com/maxgfr/reconstruct/commit/c3f62dc5bc7a7114996e6c0a4b4d9b311ee5b77e))
+
 ## [0.7.1](https://github.com/maxgfr/reconstruct/compare/v0.7.0...v0.7.1) (2026-06-03)
 
 ### Bug Fixes
