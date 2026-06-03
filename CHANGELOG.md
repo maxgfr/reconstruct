@@ -1,12 +1,12 @@
 # Changelog
 
-All notable changes to this project are documented here. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
-## [Unreleased]
+## [0.7.1](https://github.com/maxgfr/reconstruct/compare/v0.7.0...v0.7.1) (2026-06-03)
 
-## [0.7.1] - 2026-06-03
+### Bug Fixes
+
+* **readme:** reflect v0.7.0 — deterministic route adapters + HTTP method ([2f30073](https://github.com/maxgfr/reconstruct/commit/2f300737e609181ff33b355956804038a4c4986c))
 
 ## [0.7.0] - 2026-06-03
 
@@ -225,7 +225,6 @@ teaches the agent to map any stack.
 Initial release: deterministic analyzer + agent-enriched reconstruction PRDs, tuned for
 JS/TS/Next.js with generic extraction for other stacks.
 
-[Unreleased]: https://github.com/maxgfr/reconstruct/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/maxgfr/reconstruct/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/maxgfr/reconstruct/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/maxgfr/reconstruct/releases/tag/v0.2.0

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Sync the release version across the three places it lives and stamp the
-// CHANGELOG, then let the caller rebuild the bundle. Invoked by
+// Sync the release version across the three places it lives, then let the
+// caller rebuild the bundle. Invoked by
 // @semantic-release/exec (prepareCmd):  node scripts/sync-version.mjs <version>
 //
 // The version is duplicated in package.json, src/types.ts (the value the bundle
 // embeds), and SKILL.md frontmatter; semantic-release computes it from the
-// Conventional Commits, so this keeps all three — plus the CHANGELOG — in lockstep.
+// Conventional Commits, so this keeps all three in lockstep. CHANGELOG.md is
+// owned by @semantic-release/changelog, which writes the generated release
+// notes before @semantic-release/git commits the bump — so it is NOT touched here.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];
@@ -32,11 +34,4 @@ edit("src/types.ts", (s) => s.replace(/(export const VERSION = ")[^"]+(";)/, `$1
 // SKILL.md — the indented `version:` under the frontmatter `metadata:` block.
 edit("SKILL.md", (s) => s.replace(/(\n[ \t]+version:[ \t]*)[^\n]+/, `$1${version}`));
 
-// CHANGELOG.md — promote the rolling "[Unreleased]" entries to this version and
-// reopen a fresh, empty "[Unreleased]" (Keep a Changelog convention).
-edit("CHANGELOG.md", (s) => {
-  const date = new Date().toISOString().slice(0, 10);
-  return s.replace(/## \[Unreleased\]/, `## [Unreleased]\n\n## [${version}] - ${date}`);
-});
-
-console.log(`sync-version: set ${version} in package.json, src/types.ts, SKILL.md, CHANGELOG.md`);
+console.log(`sync-version: set ${version} in package.json, src/types.ts, SKILL.md`);
