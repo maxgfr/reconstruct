@@ -19,6 +19,13 @@ workflow, and — most importantly — how to add support for a new stack.
 > A per-framework adapter does not scale; a markdown playbook that teaches the agent where
 > to look does.
 
+## Prerequisites
+
+The **dev toolchain** (vitest 4 / vite 8) needs **Node ≥ 20.19** and pnpm (pinned via
+`packageManager`). The **shipped bundle** (`scripts/analyze.mjs`) is dependency-free and runs
+on **Node ≥ 18** — that floor is the `engines.node` promise, and CI guards it with a dedicated
+zero-install job that runs the committed bundle on Node 18. Keep `src/` within Node-18 APIs.
+
 ## Add support for a new stack — write markdown, not code
 
 The high-leverage way to extend `reconstruct` is a **stack guide**, not an adapter:
@@ -49,7 +56,8 @@ If you do change `src/`:
   pnpm run check:build  # asserts the committed bundle matches src/
   ```
 
-  CI runs all of the above on Node 24, plus a smoke run of the committed bundle.
+  CI runs all of the above on Node 24, plus a smoke run of the committed bundle, and a
+  separate Node-18 job that runs the bundle on the `engines` floor (no install).
 
 ## Pull requests
 
