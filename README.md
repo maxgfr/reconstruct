@@ -39,6 +39,7 @@ reconstruction/
 ├── REBUILD.md                 # master plan: build order + validation checklist
 ├── RECONSTRUCTION.md          # (--merge) the whole tree bundled into one markdown
 ├── FEATURES.md                # (--features) every feature PRD only, in build order
+├── SPECS.md                   # (--specs) feature PRDs with the embedded code stripped
 ├── SUMMARY.md                 # (--summary) one-page digest of the reconstruction
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
@@ -92,7 +93,7 @@ Run `node scripts/analyze.mjs --help` for all flags.
 
 ## Bundling: one file or a digest
 
-Three optional, combinable flags collapse the multi-file tree:
+Four optional, combinable flags collapse the multi-file tree:
 
 - `--merge` → **`RECONSTRUCTION.md`**: the whole tree in one coherent markdown
   (single H1, linked table of contents, headings demoted one level; ordered
@@ -100,16 +101,19 @@ Three optional, combinable flags collapse the multi-file tree:
 - `--features` → **`FEATURES.md`**: every feature PRD only — the product
   functionality — in build order, in one file (single H1 + table of contents).
   The features-only counterpart to `--merge`.
+- `--specs` → **`SPECS.md`**: the same feature PRDs as `--features`, but with each
+  one's `## Source material` section (the embedded source code) stripped — the
+  specs/requirements without the code. Smaller and readable.
 - `--summary` → **`SUMMARY.md`**: a one-page digest from the inventory (stack,
   libraries, size, features in build order, interface/data counts, locales,
   unknowns, next steps).
 
 ```bash
 # inline: produce the tree and the bundles in one run
-node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --features --summary
+node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --features --specs --summary
 
 # standalone post-step: (re)build the bundles from an existing output, no --repo
-node scripts/analyze.mjs --merge --features --summary --out ./my-app/reconstruction
+node scripts/analyze.mjs --merge --features --specs --summary --out ./my-app/reconstruction
 ```
 
 The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,

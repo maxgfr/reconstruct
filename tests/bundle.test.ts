@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { demoteHeadings, mergeArtifacts, mergeFeatures, summarize } from "../src/prd/bundle.js";
+import {
+  demoteHeadings,
+  mergeArtifacts,
+  mergeFeatures,
+  mergeSpecs,
+  stripSourceMaterial,
+  summarize,
+} from "../src/prd/bundle.js";
 import type { Artifact, Inventory, Options, StackInfo } from "../src/types.js";
 
 const STACK: StackInfo = {
@@ -57,6 +64,7 @@ function makeOpts(over: Partial<Options> = {}): Options {
     merge: false,
     summary: false,
     features: false,
+    specs: false,
     standalone: false,
     scratch: false,
     plan: "",
@@ -233,5 +241,90 @@ describe("mergeFeatures", () => {
   it("handles a tree with no features gracefully", () => {
     const empty = mergeFeatures(sampleArtifacts(), makeInv({ features: [] }), makeOpts());
     expect(empty).toMatch(/No features detected/i);
+  });
+});
+
+const FEAT_WITH_SOURCE = [
+  "# Core",
+  "",
+  "## Functional requirements",
+  "1. Does the thing.",
+  "",
+  "## Source material",
+  "",
+  "Key source for this unit:",
+  "",
+  "#### `src/core.ts`",
+  "```ts",
+  "export const SOURCE_CODE_SENTINEL = 1;",
+  "## not a heading (inside the code fence)",
+  "```",
+  "",
+  "## Definition of done",
+  "- [ ] Built.",
+  "",
+].join("\n");
+
+describe("stripSourceMaterial", () => {
+  const out = stripSourceMaterial(FEAT_WITH_SOURCE);
+
+  it("removes the ## Source material section, including its fenced code", () => {
+    expect(out).not.toContain("## Source material");
+    expect(out).not.toContain("SOURCE_CODE_SENTINEL");
+    expect(out).not.toContain("#### `src/core.ts`");
+  });
+
+  it("keeps the sections before and after it", () => {
+    expect(out).toContain("## Functional requirements");
+    expect(out).toContain("1. Does the thing.");
+    expect(out).toContain("## Definition of done");
+    expect(out).toContain("- [ ] Built.");
+  });
+
+  it("does not end the section early on a ## line inside the code fence", () => {
+    expect(out).not.toContain("## not a heading (inside the code fence)");
+  });
+
+  it("is a no-op when there is no Source material section", () => {
+    const md = "# Feature\n\n## Functional requirements\n1. x.\n";
+    expect(stripSourceMaterial(md).trim()).toBe(md.trim());
+  });
+});
+
+describe("mergeSpecs", () => {
+  const arts: Artifact[] = [
+    { relPath: "00-overview/PRD.md", content: "# Overview\n\nSummary.\n" },
+    { relPath: "features/01-core/PRD.md", content: FEAT_WITH_SOURCE },
+    {
+      relPath: "features/02-auth/PRD.md",
+      content: "# Auth\n\n## Functional requirements\n1. Login.\n\n## Source material\n\n```ts\nconst AUTH_SOURCE_SENTINEL = 1;\n```\n",
+    },
+    { relPath: "inventory.json", content: "{}\n" },
+  ];
+  const out = mergeSpecs(arts, makeInv(), makeOpts());
+
+  it("titles itself 'Feature specs' with a single H1", () => {
+    const h1s = out.split("\n").filter((l) => /^# (?!#)/.test(l));
+    expect(h1s.length).toBe(1);
+    expect(h1s[0]).toMatch(/Feature specs/i);
+  });
+
+  it("keeps the spec prose but strips every feature's embedded source code", () => {
+    expect(out).toContain("### Functional requirements"); // demoted from ##
+    expect(out).not.toContain("SOURCE_CODE_SENTINEL");
+    expect(out).not.toContain("AUTH_SOURCE_SENTINEL");
+    // The feature's "## Source material" section would demote to "### Source
+    // material" if it survived; it must not. (The intro names it in prose, so we
+    // assert on the demoted *section heading*, not the bare phrase.)
+    expect(out).not.toContain("### Source material");
+  });
+
+  it("points back to FEATURES.md (with code) and RECONSTRUCTION.md", () => {
+    expect(out).toContain("FEATURES.md");
+    expect(out).toContain("RECONSTRUCTION.md");
+  });
+
+  it("excludes non-feature docs", () => {
+    expect(out).not.toContain("## Overview");
   });
 });

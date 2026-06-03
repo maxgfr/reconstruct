@@ -31,6 +31,7 @@ function opts(overrides: Partial<Options> = {}): Options {
     merge: false,
     summary: false,
     features: false,
+    specs: false,
     standalone: false,
     scratch: true,
     plan: "plan.json",

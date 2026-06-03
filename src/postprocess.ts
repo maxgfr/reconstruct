@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { Artifact, Inventory, Options, RenderResult } from "./types.js";
-import { mergeArtifacts, mergeFeatures, summarize } from "./prd/bundle.js";
+import { mergeArtifacts, mergeFeatures, mergeSpecs, summarize } from "./prd/bundle.js";
 
 /** Top-level dirs holding verbatim copies, not generated docs — never bundled. */
 const GROUND_TRUTH_DIRS = new Set(["source", "data"]);
@@ -33,11 +33,11 @@ function readMarkdownTree(dir: string): Artifact[] {
  * Standalone post-step: rebuild the requested bundle(s) from an already-generated
  * reconstruction directory (`opts.out`) without re-analysing a repo. Reads
  * `inventory.json` (for provenance + feature order) and every `.md` on disk,
- * then returns only the requested `SUMMARY.md` / `FEATURES.md` /
+ * then returns only the requested `SUMMARY.md` / `FEATURES.md` / `SPECS.md` /
  * `RECONSTRUCTION.md` artifacts.
  *
  * The bundlers exclude any pre-existing `SUMMARY.md` / `FEATURES.md` /
- * `RECONSTRUCTION.md`, so re-running is idempotent.
+ * `SPECS.md` / `RECONSTRUCTION.md`, so re-running is idempotent.
  */
 export function bundleExisting(opts: Options): RenderResult {
   const dir = opts.out;
@@ -54,6 +54,7 @@ export function bundleExisting(opts: Options): RenderResult {
   const artifacts: Artifact[] = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
   if (opts.features) artifacts.push({ relPath: "FEATURES.md", content: mergeFeatures(tree, inv, opts) });
+  if (opts.specs) artifacts.push({ relPath: "SPECS.md", content: mergeSpecs(tree, inv, opts) });
   if (opts.merge) artifacts.push({ relPath: "RECONSTRUCTION.md", content: mergeArtifacts(tree, inv, opts) });
   return { artifacts, copies: [] };
 }

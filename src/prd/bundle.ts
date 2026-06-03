@@ -94,7 +94,13 @@ interface Section {
 }
 
 /** The relPaths the bundle must never inline (it would duplicate or recurse). */
-const BUNDLE_EXCLUDE = new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md", "FEATURES.md"]);
+const BUNDLE_EXCLUDE = new Set([
+  "inventory.json",
+  "SUMMARY.md",
+  "RECONSTRUCTION.md",
+  "FEATURES.md",
+  "SPECS.md",
+]);
 
 /** Ordered sections of the merged document, built from what the tree contains. */
 function orderedSections(artifacts: Artifact[], inv: Inventory): Section[] {
@@ -163,12 +169,57 @@ export function mergeArtifacts(artifacts: Artifact[], inv: Inventory, opts: Opti
 }
 
 /**
- * Bundle only the feature PRDs — the product functionality — into a single
- * markdown document, in build order, each feature's headings demoted one level
- * so the result reads as one file. Excludes the overview, architecture, and
- * build-order docs; for the whole tree use `mergeArtifacts` (`RECONSTRUCTION.md`).
+ * Remove the `## Source material` section (the embedded source code) from a
+ * feature PRD, leaving the spec prose. The section runs from its `## Source
+ * material` heading to the next `##` heading (or end of file); fenced code
+ * blocks inside it are tracked so a `##` line *within* embedded code never ends
+ * the section early.
  */
-export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Options): string {
+export function stripSourceMaterial(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let skipping = false;
+  let fence: string | null = null;
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
+    const marker = fenceMatch?.[2] ? (fenceMatch[2].startsWith("`") ? "`" : "~") : null;
+    if (skipping) {
+      if (fence !== null) {
+        if (marker === fence) fence = null; // closing fence
+        continue;
+      }
+      if (marker) {
+        fence = marker; // opening fence inside the stripped section
+        continue;
+      }
+      if (/^##\s/.test(line)) skipping = false; // next section heading ends the skip
+      else continue;
+    }
+    if (!skipping && /^##\s+Source material\b/i.test(line)) {
+      skipping = true;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+interface FeatureBundleVariant {
+  /** Suffix after `# <repo> — ` in the bundle title. */
+  heading: string;
+  /** Intro sentence under the title. */
+  intro: string;
+  /** Strip each feature's `## Source material` (embedded code) section. */
+  stripSource: boolean;
+}
+
+/** Shared core for the feature-only bundles (`mergeFeatures` / `mergeSpecs`). */
+function bundleFeatureSet(
+  artifacts: Artifact[],
+  inv: Inventory,
+  opts: Options,
+  variant: FeatureBundleVariant,
+): string {
   const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
   const have = new Set(artifacts.map((a) => a.relPath));
   const sections: Section[] = [];
@@ -178,14 +229,11 @@ export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Optio
   }
 
   const parts: string[] = [];
-  parts.push(`# ${inv.repoName} — Features`);
+  parts.push(`# ${inv.repoName} — ${variant.heading}`);
   parts.push("");
   parts.push(metaLine(inv, opts));
   parts.push("");
-  parts.push(
-    "Single-file bundle of every feature PRD (the product functionality), in build order. " +
-      "For the full reconstruction — architecture, interfaces, data model, build order — see `RECONSTRUCTION.md`.",
-  );
+  parts.push(variant.intro);
   parts.push("");
   parts.push("## Contents");
   parts.push("");
@@ -193,7 +241,8 @@ export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Optio
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
 
   for (const s of sections) {
-    const content = byPath.get(s.relPath) ?? "";
+    const raw = byPath.get(s.relPath) ?? "";
+    const content = variant.stripSource ? stripSourceMaterial(raw) : raw;
     parts.push("");
     parts.push("---");
     parts.push("");
@@ -203,6 +252,39 @@ export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Optio
   }
 
   return parts.join("\n") + "\n";
+}
+
+/**
+ * Bundle only the feature PRDs — the product functionality — into a single
+ * markdown document, in build order, each feature's headings demoted one level
+ * so the result reads as one file. Excludes the overview, architecture, and
+ * build-order docs; for the whole tree use `mergeArtifacts` (`RECONSTRUCTION.md`).
+ */
+export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Options): string {
+  return bundleFeatureSet(artifacts, inv, opts, {
+    heading: "Features",
+    intro:
+      "Single-file bundle of every feature PRD (the product functionality), in build order. " +
+      "For the full reconstruction — architecture, interfaces, data model, build order — see `RECONSTRUCTION.md`.",
+    stripSource: false,
+  });
+}
+
+/**
+ * Like `mergeFeatures`, but with each feature's `## Source material` section
+ * (the embedded source code) stripped — the PRD specs without the code. Smaller
+ * and readable; the counterpart to `FEATURES.md` when you want the requirements,
+ * not the implementation.
+ */
+export function mergeSpecs(artifacts: Artifact[], inv: Inventory, opts: Options): string {
+  return bundleFeatureSet(artifacts, inv, opts, {
+    heading: "Feature specs",
+    intro:
+      "Single-file bundle of every feature PRD with the embedded source code (`## Source material`) " +
+      "stripped — the specs/requirements only, in build order. For the same PRDs *with* the source see " +
+      "`FEATURES.md`; for the whole reconstruction see `RECONSTRUCTION.md`.",
+    stripSource: true,
+  });
 }
 
 /**

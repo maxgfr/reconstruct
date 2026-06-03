@@ -28,6 +28,7 @@ function makeOpts(over: Partial<Options> = {}): Options {
     merge: false,
     summary: false,
     features: false,
+    specs: false,
     standalone: false,
     scratch: false,
     plan: "",

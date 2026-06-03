@@ -128,7 +128,7 @@ describe("templates: well-formed fill-in tables (review #13)", () => {
       unknowns: [], excludedCount: 0,
     };
   }
-  const opts = { mode: "preserve", level: "light", fidelity: "describe", granularity: "coarse", include: [], exclude: [], json: false, maxEmbedBytes: 16000, repo: "/x", out: "/o", merge: false, summary: false, features: false, standalone: false, scratch: false, plan: "", tdd: false, check: false } as Options;
+  const opts = { mode: "preserve", level: "light", fidelity: "describe", granularity: "coarse", include: [], exclude: [], json: false, maxEmbedBytes: 16000, repo: "/x", out: "/o", merge: false, summary: false, features: false, specs: false, standalone: false, scratch: false, plan: "", tdd: false, check: false } as Options;
 
   it("separates the table delimiter row from the trailing note with a blank line", () => {
     expect(interfacesDoc(inv(), opts)).toMatch(/\| --- \|[^\n]*\n\n_/);

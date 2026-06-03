@@ -29,10 +29,12 @@ export interface Options {
   summary: boolean;
   /** Emit a features-only bundle (`FEATURES.md`) — every feature PRD, nothing else. */
   features: boolean;
+  /** Emit a specs bundle (`SPECS.md`) — feature PRDs with embedded source code stripped. */
+  specs: boolean;
   /**
-   * Post-step mode: rebuild the merge/summary/features bundle(s) from an
+   * Post-step mode: rebuild the merge/summary/features/specs bundle(s) from an
    * already-generated output directory (`out`) without re-analysing a repo. Set
-   * when `--merge`/`--summary`/`--features` is used without `--repo`.
+   * when `--merge`/`--summary`/`--features`/`--specs` is used without `--repo`.
    */
   standalone: boolean;
   /**

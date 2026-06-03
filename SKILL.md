@@ -39,11 +39,11 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    `scripts/analyze.mjs` inside the installed skill folder:
 
    ```bash
-   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>] [--granularity coarse|fine] [--merge] [--features] [--summary]
+   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>] [--granularity coarse|fine] [--merge] [--features] [--specs] [--summary]
    ```
 
    Add `--json` to inspect the raw inventory first; `--help` for all flags
-   (`--include`/`--exclude` globs scope large repos). `--merge`/`--features`/`--summary`
+   (`--include`/`--exclude` globs scope large repos). `--merge`/`--features`/`--specs`/`--summary`
    are optional bundles — see **Bundling the output** below.
 
 2. **Read the scaffold:** `inventory.json` (facts **+ `hints` + `unknowns`**),
@@ -231,7 +231,7 @@ interview that also proposes alternatives, enhancements, and more ADRs).
 
 ## Bundling the output
 
-Three optional, combinable flags collapse the multi-file tree for sharing or review:
+Four optional, combinable flags collapse the multi-file tree for sharing or review:
 
 - **`--merge`** → `RECONSTRUCTION.md`: the whole tree in one coherent markdown
   (single H1, linked table of contents, every document with headings demoted one
@@ -240,6 +240,10 @@ Three optional, combinable flags collapse the multi-file tree for sharing or rev
   functionality — in build order, in one file (single H1 + linked table of
   contents, headings demoted one level). The features-only counterpart to
   `--merge`; skips the overview, architecture and build-order docs.
+- **`--specs`** → `SPECS.md`: the same feature PRDs as `--features`, but with each
+  one's `## Source material` section (the embedded source code) stripped — the
+  specs/requirements without the code. Smaller and readable when you want the
+  what, not the implementation.
 - **`--summary`** → `SUMMARY.md`: a one-page digest from the inventory (stack,
   libraries, size, features in build order, interface/data counts, locales,
   unknowns, next steps).
@@ -251,7 +255,7 @@ They work two ways:
    output to (re)build just the bundles, no re-analysis:
 
    ```bash
-   node scripts/analyze.mjs --merge --features --summary --out <OUT>
+   node scripts/analyze.mjs --merge --features --specs --summary --out <OUT>
    ```
 
    This reads `<OUT>/inventory.json` + the `.md` files and rewrites the bundle(s);
