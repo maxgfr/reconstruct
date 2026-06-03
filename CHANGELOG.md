@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [0.7.3](https://github.com/maxgfr/reconstruct/compare/v0.7.2...v0.7.3) (2026-06-03)
+
+
+### Bug Fixes
+
+* **cli:** run main() when invoked through a symlinked path ([eac4a44](https://github.com/maxgfr/reconstruct/commit/eac4a44bc90cbdf7b95894c7aae3079c565cb8cd))
+
 ## [0.7.2](https://github.com/maxgfr/reconstruct/compare/v0.7.1...v0.7.2) (2026-06-03)
 
 
