@@ -8,7 +8,7 @@ import {
   extractEnvVars,
   collectByCategory,
 } from "./adapters/generic.js";
-import { detectRoutes } from "./adapters/nextjs.js";
+import { detectRoutes } from "./adapters/registry.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
 import { VERSION } from "./types.js";
@@ -28,7 +28,7 @@ function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints): s
   }
   if (routes.length === 0 && (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0)) {
     u.push(
-      "Routes were not resolved deterministically (non-Next.js routing, or an RPC/GraphQL surface) — derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`.",
+      "Routes were not resolved deterministically (a framework without a dedicated route adapter, or an RPC/GraphQL surface) — derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`.",
     );
   }
   if (hints.apiCandidates.length > 0) {
@@ -53,7 +53,7 @@ export function analyze(opts: Options): Inventory {
   });
   const stack = detectStack(opts.repo, files);
   const dependencies = extractDependencies(opts.repo, files);
-  const routes = detectRoutes(files, stack);
+  const routes = detectRoutes(files, stack, opts.repo);
   const i18n = detectI18n(opts.repo, files);
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");

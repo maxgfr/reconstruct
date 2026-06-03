@@ -1,4 +1,5 @@
-import type { FileInfo, RouteInfo, StackInfo } from "../types.js";
+import type { FileInfo, RouteInfo } from "../types.js";
+import type { RouteAdapter } from "./types.js";
 
 const CODE_PAGE_EXTS = new Set([".tsx", ".ts", ".jsx", ".js"]);
 const PAGES_SPECIAL = new Set(["_app", "_document", "_error", "middleware"]);
@@ -58,11 +59,15 @@ function detectPagesRoutes(files: FileInfo[]): RouteInfo[] {
   return routes;
 }
 
-export function detectRoutes(files: FileInfo[], stack: StackInfo): RouteInfo[] {
-  if (!stack.frameworks.includes("Next.js")) return [];
-  const app = detectAppRoutes(files);
-  const pages = detectPagesRoutes(files);
-  const all = [...app, ...pages];
-  all.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind));
-  return all;
-}
+/**
+ * Next.js file-based routing: the App Router (`app/`, `page`/`route`/`layout`)
+ * and the legacy Pages Router (`pages/`, `pages/api/*`). Purely path-based, so
+ * it never reads file contents.
+ */
+export const nextjsAdapter: RouteAdapter = {
+  id: "nextjs",
+  frameworks: ["Next.js"],
+  detectRoutes(files: FileInfo[]): RouteInfo[] {
+    return [...detectAppRoutes(files), ...detectPagesRoutes(files)];
+  },
+};

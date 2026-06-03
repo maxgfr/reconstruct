@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join11 } from "path";
+import { resolve as resolve2, join as join12 } from "path";
 import { pathToFileURL } from "url";
 import { existsSync as existsSync5, statSync as statSync3 } from "fs";
 
@@ -991,18 +991,270 @@ function detectPagesRoutes(files) {
   }
   return routes;
 }
-function detectRoutes(files, stack) {
-  if (!stack.frameworks.includes("Next.js")) return [];
-  const app = detectAppRoutes(files);
-  const pages = detectPagesRoutes(files);
-  const all = [...app, ...pages];
-  all.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind));
-  return all;
+var nextjsAdapter = {
+  id: "nextjs",
+  frameworks: ["Next.js"],
+  detectRoutes(files) {
+    return [...detectAppRoutes(files), ...detectPagesRoutes(files)];
+  }
+};
+
+// src/adapters/util.ts
+import { readFileSync as readFileSync5 } from "fs";
+import { join as join5 } from "path";
+function readSources(files, repo, exts) {
+  const set = new Set(exts);
+  const out = /* @__PURE__ */ new Map();
+  for (const f of files) {
+    if (!set.has(f.ext)) continue;
+    try {
+      out.set(f.path, readFileSync5(join5(repo, f.path), "utf8"));
+    } catch {
+    }
+  }
+  return out;
+}
+function moduleName(path) {
+  return path.replace(/\.py$/, "").replace(/\/__init__$/, "").split("/").join(".");
+}
+function joinRoute(...parts) {
+  const segs = parts.join("/").split("/").filter(Boolean);
+  return "/" + segs.join("/");
+}
+function pythonImportAliases(src) {
+  const out = /* @__PURE__ */ new Map();
+  for (const m of src.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(.+)$/gm)) {
+    const module = m[1];
+    for (const part of m[2].split(",")) {
+      const asMatch = part.trim().match(/^(\w+)(?:\s+as\s+(\w+))?$/);
+      if (!asMatch) continue;
+      const name = asMatch[1];
+      const alias = asMatch[2] ?? name;
+      out.set(alias, `${module}::${name}`);
+    }
+  }
+  return out;
+}
+
+// src/adapters/flask.ts
+var HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
+var DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']`, "g");
+var BLUEPRINT_DEF_RE = /^\s*(\w+)\s*=\s*Blueprint\s*\(/gm;
+var REGISTER_RE = /register_blueprint\(\s*(\w+)([^)]*)\)/g;
+function routeKind(src, from) {
+  const next = src.slice(from + 1).search(/\n@\w+\.(route|get|post|put|delete|patch)/);
+  const block = next === -1 ? src.slice(from) : src.slice(from, from + 1 + next);
+  return /render_template\s*\(/.test(block) ? "page" : "api";
+}
+var flaskAdapter = {
+  id: "flask",
+  frameworks: ["Flask"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, [".py"]);
+    const blueprintKeys = /* @__PURE__ */ new Set();
+    const blueprintVarsByFile = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const vars = /* @__PURE__ */ new Set();
+      for (const m of src.matchAll(BLUEPRINT_DEF_RE)) vars.add(m[1]);
+      if (vars.size) {
+        blueprintVarsByFile.set(path, vars);
+        for (const v of vars) blueprintKeys.add(`${moduleName(path)}::${v}`);
+      }
+    }
+    const prefixByKey = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const aliases = pythonImportAliases(src);
+      for (const m of src.matchAll(REGISTER_RE)) {
+        const registeredVar = m[1];
+        const prefixMatch = m[2].match(/url_prefix\s*=\s*["']([^"']*)["']/);
+        const prefix = prefixMatch ? prefixMatch[1] : "";
+        const key = aliases.get(registeredVar) ?? `${moduleName(path)}::${registeredVar}`;
+        if (blueprintKeys.has(key)) prefixByKey.set(key, prefix);
+      }
+    }
+    const routes = [];
+    for (const [path, src] of sources) {
+      const localBlueprints = blueprintVarsByFile.get(path) ?? /* @__PURE__ */ new Set();
+      for (const m of src.matchAll(DECORATOR_RE)) {
+        const obj = m[1];
+        const decoratorPath = m[3];
+        const isBlueprint = localBlueprints.has(obj);
+        const prefix = isBlueprint ? prefixByKey.get(`${moduleName(path)}::${obj}`) ?? "" : "";
+        routes.push({
+          route: joinRoute(prefix, decoratorPath),
+          file: path,
+          kind: routeKind(src, m.index ?? 0)
+        });
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/fastapi.ts
+var METHODS = "get|post|put|delete|patch|options|head|api_route";
+var DECORATOR_RE2 = new RegExp(`@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']`, "g");
+var ROUTER_DEF_RE = /(\w+)\s*=\s*APIRouter\(([^)]*)\)/g;
+var INCLUDE_RE = /\.include_router\(\s*(\w+)([^)]*)\)/g;
+function prefixArg(args) {
+  const m = args.match(/prefix\s*=\s*["']([^"']*)["']/);
+  return m ? m[1] : "";
+}
+var fastapiAdapter = {
+  id: "fastapi",
+  frameworks: ["FastAPI"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, [".py"]);
+    const ownPrefix = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      for (const m of src.matchAll(ROUTER_DEF_RE)) {
+        ownPrefix.set(`${moduleName(path)}::${m[1]}`, prefixArg(m[2]));
+      }
+    }
+    const mountPrefix = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const aliases = pythonImportAliases(src);
+      for (const m of src.matchAll(INCLUDE_RE)) {
+        const includedVar = m[1];
+        const key = aliases.get(includedVar) ?? `${moduleName(path)}::${includedVar}`;
+        mountPrefix.set(key, prefixArg(m[2]));
+      }
+    }
+    const routes = [];
+    for (const [path, src] of sources) {
+      for (const m of src.matchAll(DECORATOR_RE2)) {
+        const obj = m[1];
+        const decoratorPath = m[3];
+        const key = `${moduleName(path)}::${obj}`;
+        const isRouter = ownPrefix.has(key);
+        const route = isRouter ? joinRoute(mountPrefix.get(key) ?? "", ownPrefix.get(key) ?? "", decoratorPath) : joinRoute(decoratorPath);
+        routes.push({ route, file: path, kind: "api" });
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/nestjs.ts
+var CONTROLLER_RE = /@Controller\(\s*(?:["'`]([^"'`]*)["'`])?/g;
+var METHOD_RE = /@(Get|Post|Put|Delete|Patch|Options|Head|All)\(\s*(?:["'`]([^"'`]*)["'`])?/g;
+var nestjsAdapter = {
+  id: "nestjs",
+  frameworks: ["NestJS"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, [".ts"]);
+    const routes = [];
+    for (const [path, src] of sources) {
+      const controllers = [...src.matchAll(CONTROLLER_RE)].map((m) => ({
+        index: m.index ?? 0,
+        base: m[1] ?? ""
+      }));
+      if (!controllers.length) continue;
+      for (const m of src.matchAll(METHOD_RE)) {
+        const idx = m.index ?? 0;
+        let base = "";
+        for (const c of controllers) {
+          if (c.index < idx) base = c.base;
+          else break;
+        }
+        routes.push({ route: joinRoute(base, m[2] ?? ""), file: path, kind: "api" });
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/express.ts
+var SRC_EXTS = [".js", ".ts", ".mjs", ".cjs"];
+var APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
+var ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.)?Router\(\)/g;
+var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
+var USE_RE = /(\w+)\.use\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)/g;
+var ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+function dirOf(p) {
+  const i = p.lastIndexOf("/");
+  return i === -1 ? "" : p.slice(0, i);
+}
+function resolveModule(fromFile, spec, sources) {
+  const segs = [];
+  for (const s of `${dirOf(fromFile)}/${spec}`.split("/")) {
+    if (s === "" || s === ".") continue;
+    if (s === "..") segs.pop();
+    else segs.push(s);
+  }
+  const base = segs.join("/");
+  for (const cand of [base, ...SRC_EXTS.map((e) => base + e), ...SRC_EXTS.map((e) => `${base}/index${e}`)]) {
+    if (sources.has(cand)) return cand;
+  }
+  return null;
+}
+function localVars(src, re) {
+  return new Set([...src.matchAll(re)].map((m) => m[1]));
+}
+var expressAdapter = {
+  id: "express",
+  frameworks: ["Express"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, SRC_EXTS);
+    const mountByFile = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const moduleOf = /* @__PURE__ */ new Map();
+      for (const m of src.matchAll(REQUIRE_RE)) moduleOf.set(m[1], m[2]);
+      for (const m of src.matchAll(IMPORT_RE)) moduleOf.set(m[1], m[2]);
+      for (const m of src.matchAll(USE_RE)) {
+        const prefix = m[2];
+        const spec = moduleOf.get(m[3]);
+        if (!spec) continue;
+        const target = resolveModule(path, spec, sources);
+        if (target) mountByFile.set(target, prefix);
+      }
+    }
+    const routes = [];
+    for (const [path, src] of sources) {
+      const appVars = localVars(src, APP_RE);
+      const routerVars = localVars(src, ROUTER_RE);
+      for (const m of src.matchAll(ROUTE_RE)) {
+        const obj = m[1];
+        const routePath = m[3];
+        if (!appVars.has(obj) && !routerVars.has(obj)) continue;
+        const prefix = routerVars.has(obj) ? mountByFile.get(path) ?? "" : "";
+        routes.push({ route: joinRoute(prefix, routePath), file: path, kind: "api" });
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/registry.ts
+var ROUTE_ADAPTERS = [
+  nextjsAdapter,
+  flaskAdapter,
+  fastapiAdapter,
+  nestjsAdapter,
+  expressAdapter
+];
+function detectRoutes(files, stack, repo) {
+  const active = ROUTE_ADAPTERS.filter(
+    (a) => a.frameworks.some((f) => stack.frameworks.includes(f))
+  );
+  const seen = /* @__PURE__ */ new Set();
+  const merged = [];
+  for (const adapter of active) {
+    for (const r of adapter.detectRoutes(files, repo)) {
+      const key = `${r.kind} ${r.route} ${r.file}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(r);
+    }
+  }
+  merged.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind));
+  return merged;
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync5 } from "fs";
-import { join as join5, basename as basename2, extname as extname2 } from "path";
+import { readFileSync as readFileSync6 } from "fs";
+import { join as join6, basename as basename2, extname as extname2 } from "path";
 var LOCALE_RE = /^[a-z]{2}(-[A-Za-z]{2,4})?$/;
 function countJsonLeaves(value) {
   if (value === null || typeof value !== "object") return 1;
@@ -1031,13 +1283,13 @@ function detectI18n(repo, files) {
     locales.add(localeOf(f.path));
     if (f.ext === ".json") {
       try {
-        const data = JSON.parse(readFileSync5(join5(repo, f.path), "utf8"));
+        const data = JSON.parse(readFileSync6(join6(repo, f.path), "utf8"));
         keyCount = Math.max(keyCount, countJsonLeaves(data));
       } catch {
       }
     } else {
       try {
-        const raw = readFileSync5(join5(repo, f.path), "utf8");
+        const raw = readFileSync6(join6(repo, f.path), "utf8");
         const approx = raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
         keyCount = Math.max(keyCount, approx);
       } catch {
@@ -1376,7 +1628,7 @@ function computeUnknowns(stack, routes, hints) {
   }
   if (routes.length === 0 && (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0)) {
     u.push(
-      "Routes were not resolved deterministically (non-Next.js routing, or an RPC/GraphQL surface) \u2014 derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`."
+      "Routes were not resolved deterministically (a framework without a dedicated route adapter, or an RPC/GraphQL surface) \u2014 derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`."
     );
   }
   if (hints.apiCandidates.length > 0) {
@@ -1399,7 +1651,7 @@ function analyze(opts) {
   });
   const stack = detectStack(opts.repo, files);
   const dependencies = extractDependencies(opts.repo, files);
-  const routes = detectRoutes(files, stack);
+  const routes = detectRoutes(files, stack, opts.repo);
   const i18n = detectI18n(opts.repo, files);
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");
@@ -1443,7 +1695,7 @@ function analyze(opts) {
 }
 
 // src/prd/render.ts
-import { join as join7 } from "path";
+import { join as join8 } from "path";
 
 // src/prd/templates.ts
 function agentNote(body) {
@@ -2077,8 +2329,8 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync6 } from "fs";
-import { join as join6 } from "path";
+import { readFileSync as readFileSync7 } from "fs";
+import { join as join7 } from "path";
 var FENCE_LANG = {
   ".ts": "ts",
   ".tsx": "tsx",
@@ -2126,7 +2378,7 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body;
     try {
-      body = readFileSync6(join6(opts.repo, rel), "utf8");
+      body = readFileSync7(join7(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
@@ -2153,8 +2405,8 @@ function mirrorSection(feature, opts) {
   ];
   for (const rel of feature.files) {
     copies.push({
-      from: join6(opts.repo, rel),
-      to: join6(opts.out, "source", feature.slug, rel)
+      from: join7(opts.repo, rel),
+      to: join7(opts.out, "source", feature.slug, rel)
     });
     lines.push(`- [\`${rel}\`](../../source/${feature.slug}/${rel})`);
   }
@@ -2337,7 +2589,7 @@ function render(inv, opts) {
   }
   const dataCopy = (paths, sub) => {
     for (const rel of paths) {
-      copies.push({ from: join7(opts.repo, rel), to: join7(opts.out, "data", sub, rel) });
+      copies.push({ from: join8(opts.repo, rel), to: join8(opts.out, "data", sub, rel) });
     }
   };
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
@@ -2354,10 +2606,10 @@ function render(inv, opts) {
 
 // src/output.ts
 import { mkdirSync, writeFileSync, copyFileSync, existsSync as existsSync2 } from "fs";
-import { dirname, join as join8 } from "path";
+import { dirname, join as join9 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
-    const dest = join8(opts.out, a.relPath);
+    const dest = join9(opts.out, a.relPath);
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
   }
@@ -2373,7 +2625,7 @@ function writeOutput(result, opts) {
 function writeArtifactsIfAbsent(artifacts, outDir) {
   const written = [];
   for (const a of artifacts) {
-    const dest = join8(outDir, a.relPath);
+    const dest = join9(outDir, a.relPath);
     if (existsSync2(dest)) continue;
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
@@ -2383,20 +2635,20 @@ function writeArtifactsIfAbsent(artifacts, outDir) {
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync7, existsSync as existsSync3 } from "fs";
-import { join as join9, relative as relative2, sep } from "path";
+import { readdirSync as readdirSync3, readFileSync as readFileSync8, existsSync as existsSync3 } from "fs";
+import { join as join10, relative as relative2, sep } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
   const out = [];
   const walk2 = (abs) => {
     for (const entry of readdirSync3(abs, { withFileTypes: true })) {
-      const child = join9(abs, entry.name);
+      const child = join10(abs, entry.name);
       const rel = relative2(dir, child).split(sep).join("/");
       if (entry.isDirectory()) {
         if (GROUND_TRUTH_DIRS.has(rel)) continue;
         walk2(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out.push({ relPath: rel, content: readFileSync7(child, "utf8") });
+        out.push({ relPath: rel, content: readFileSync8(child, "utf8") });
       }
     }
   };
@@ -2405,13 +2657,13 @@ function readMarkdownTree(dir) {
 }
 function bundleExisting(opts) {
   const dir = opts.out;
-  const invPath = join9(dir, "inventory.json");
+  const invPath = join10(dir, "inventory.json");
   if (!existsSync3(invPath)) {
     throw new Error(
       `no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`
     );
   }
-  const inv = JSON.parse(readFileSync7(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync8(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -2420,11 +2672,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync8 } from "fs";
+import { readFileSync as readFileSync9 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync8(path, "utf8");
+    raw = readFileSync9(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -2712,8 +2964,8 @@ ${body}
 }
 
 // src/check.ts
-import { existsSync as existsSync4, readFileSync as readFileSync9, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
-import { join as join10, relative as relative3 } from "path";
+import { existsSync as existsSync4, readFileSync as readFileSync10, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
+import { join as join11, relative as relative3 } from "path";
 var REQUIRED_DOCS = [
   "REBUILD.md",
   "00-overview/PRD.md",
@@ -2736,7 +2988,7 @@ function collectMarkdown(dir, base = dir) {
     return out;
   }
   for (const name of entries) {
-    const full = join10(dir, name);
+    const full = join11(dir, name);
     let st;
     try {
       st = statSync2(full);
@@ -2747,7 +2999,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name)) continue;
       out.push(...collectMarkdown(full, base));
     } else if (name.endsWith(".md")) {
-      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync9(full, "utf8") });
+      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync10(full, "utf8") });
     }
   }
   return out;
@@ -2761,7 +3013,7 @@ function fileNames(dir) {
     return out;
   }
   for (const name of entries) {
-    const full = join10(dir, name);
+    const full = join11(dir, name);
     let st;
     try {
       st = statSync2(full);
@@ -2776,7 +3028,7 @@ function fileNames(dir) {
 function checkOutput(outDir) {
   const errors = [];
   const warnings = [];
-  const invPath = join10(outDir, "inventory.json");
+  const invPath = join11(outDir, "inventory.json");
   if (!existsSync4(invPath)) {
     errors.push(
       `no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`
@@ -2785,7 +3037,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync9(invPath, "utf8"));
+    inv = JSON.parse(readFileSync10(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -2854,7 +3106,7 @@ function checkOutput(outDir) {
     );
   }
   if (inv.i18n && inv.i18n.locales?.length) {
-    const transDir = join10(outDir, "data", "translations");
+    const transDir = join11(outDir, "data", "translations");
     const names = existsSync4(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
     for (const loc of inv.i18n.locales) {
@@ -3070,7 +3322,7 @@ function parseArgs(argv) {
     "fine"
   ]);
   const out = resolve2(
-    raw.out ?? (standalone || check ? process.cwd() : scratch ? join11(process.cwd(), "reconstruction") : join11(repo, "reconstruction"))
+    raw.out ?? (standalone || check ? process.cwd() : scratch ? join12(process.cwd(), "reconstruction") : join12(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -3141,7 +3393,7 @@ function main() {
       ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join11(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join12(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -3183,7 +3435,7 @@ function main() {
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join11(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join12(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }
