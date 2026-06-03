@@ -43,9 +43,9 @@
     "url": "https://github.com/maxgfr/reconstruct"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^25.9.1",
     "tsup": "^8.3.0",
-    "typescript": "^5.5.0",
-    "vitest": "^2.1.0"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   }
 }
