@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [0.10.1](https://github.com/maxgfr/reconstruct/compare/v0.10.0...v0.10.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **deps:** bump vitest to v4 to clear critical + moderate advisories ([3136485](https://github.com/maxgfr/reconstruct/commit/3136485db52a1107f23ec115e4606c556e6f5eb8))
+
 # [0.10.0](https://github.com/maxgfr/reconstruct/compare/v0.9.0...v0.10.0) (2026-06-03)
 
 
