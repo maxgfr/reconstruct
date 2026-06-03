@@ -24,7 +24,7 @@
     "check:build": "tsup && git diff --exit-code -- scripts/analyze.mjs",
     "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light",
     "demo:scratch": "node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/medic.plan.json --out /tmp/reconstruct-scratch-demo --level complex",
-    "parity:medic": "node scripts/parity-medic.mjs"
+    "parity": "node scripts/parity.mjs --plan tests/fixtures/scratch-plan/medic.plan.json"
   },
   "keywords": [
     "skills",

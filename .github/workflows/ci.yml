@@ -38,3 +38,6 @@ jobs:
 
       - name: Assert reconstruction output was produced
         run: test -f /tmp/reconstruct-demo/inventory.json && test -f /tmp/reconstruct-demo/REBUILD.md
+
+      - name: Convergence/parity (scratch path, buildable-by-construction)
+        run: npm run parity # node scripts/parity.mjs --plan <medic fixture>; --repo omitted, no external repo needed
