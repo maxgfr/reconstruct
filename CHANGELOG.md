@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [0.8.1](https://github.com/maxgfr/reconstruct/compare/v0.8.0...v0.8.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **skill:** quote SKILL.md description so `skills add` can parse the frontmatter ([6e87f2f](https://github.com/maxgfr/reconstruct/commit/6e87f2f270cffdac3f430f3c7c749b2286e73532))
+
 # [0.8.0](https://github.com/maxgfr/reconstruct/compare/v0.7.3...v0.8.0) (2026-06-03)
 
 
