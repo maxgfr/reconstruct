@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.8.0](https://github.com/maxgfr/reconstruct/compare/v0.7.3...v0.8.0) (2026-06-03)
+
+
+### Features
+
+* **cli:** add --features bundle (FEATURES.md — feature PRDs only) ([37ae347](https://github.com/maxgfr/reconstruct/commit/37ae3478e8e44993a49b2a11c29e544dc9ff8fca))
+
 ## [0.7.3](https://github.com/maxgfr/reconstruct/compare/v0.7.2...v0.7.3) (2026-06-03)
 
 
