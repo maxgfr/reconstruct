@@ -30,6 +30,7 @@ function opts(overrides: Partial<Options> = {}): Options {
     maxEmbedBytes: 16000,
     merge: false,
     summary: false,
+    features: false,
     standalone: false,
     scratch: true,
     plan: "plan.json",

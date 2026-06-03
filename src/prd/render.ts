@@ -10,7 +10,7 @@ import {
   rebuildDoc,
 } from "./templates.js";
 import { renderSourceMaterial } from "./fidelity.js";
-import { mergeArtifacts, summarize } from "./bundle.js";
+import { mergeArtifacts, mergeFeatures, summarize } from "./bundle.js";
 
 /** Turn an inventory into the full set of files/copies for the reconstruction tree. */
 export function render(inv: Inventory, opts: Options): RenderResult {
@@ -45,10 +45,14 @@ export function render(inv: Inventory, opts: Options): RenderResult {
   dataCopy(inv.schemas, "schema");
   dataCopy(inv.configs, "config");
 
-  // Opt-in bundles. SUMMARY is pushed before the merge, which excludes it (and
-  // RECONSTRUCTION/inventory) so the single file never duplicates itself.
+  // Opt-in bundles. SUMMARY and FEATURES are pushed before the merge, which
+  // excludes them (and RECONSTRUCTION/inventory) so the single file never
+  // duplicates itself.
   if (opts.summary) {
     artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
+  }
+  if (opts.features) {
+    artifacts.push({ relPath: "FEATURES.md", content: mergeFeatures(artifacts, inv, opts) });
   }
   if (opts.merge) {
     artifacts.push({ relPath: "RECONSTRUCTION.md", content: mergeArtifacts(artifacts, inv, opts) });

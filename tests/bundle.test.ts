@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { demoteHeadings, mergeArtifacts, summarize } from "../src/prd/bundle.js";
+import { demoteHeadings, mergeArtifacts, mergeFeatures, summarize } from "../src/prd/bundle.js";
 import type { Artifact, Inventory, Options, StackInfo } from "../src/types.js";
 
 const STACK: StackInfo = {
@@ -56,6 +56,7 @@ function makeOpts(over: Partial<Options> = {}): Options {
     maxEmbedBytes: 16000,
     merge: false,
     summary: false,
+    features: false,
     standalone: false,
     scratch: false,
     plan: "",
@@ -191,5 +192,46 @@ describe("summarize", () => {
 
   it("points to REBUILD.md as the next step", () => {
     expect(out).toContain("REBUILD.md");
+  });
+});
+
+describe("mergeFeatures", () => {
+  const out = mergeFeatures(sampleArtifacts(), makeInv(), makeOpts());
+
+  it("has exactly one top-level H1 (the features title)", () => {
+    const h1s = out.split("\n").filter((l) => /^# (?!#)/.test(l));
+    expect(h1s.length).toBe(1);
+    expect(h1s[0]).toContain("demo");
+    expect(h1s[0]).toMatch(/Features/i);
+  });
+
+  it("includes only the feature PRDs, in build order", () => {
+    expect(out).toContain("## Core"); // was "# Core"
+    expect(out).toContain("## Auth"); // was "# Auth"
+    expect(out.indexOf("## Core")).toBeLessThan(out.indexOf("## Auth"));
+  });
+
+  it("excludes overview, architecture, diagram and build-order docs", () => {
+    expect(out).not.toContain("## Overview");
+    expect(out).not.toContain("## Architecture");
+    expect(out).not.toContain("## Interfaces");
+    expect(out).not.toContain("## Data model");
+    expect(out).not.toContain("Build order here.");
+    expect(out).not.toContain("INVENTORY_SENTINEL");
+  });
+
+  it("links to feature anchors in its table of contents", () => {
+    expect(out).toMatch(/## Contents/i);
+    expect(out).toContain("(#feature-01-core)");
+    expect(out).toContain('id="feature-02-auth"');
+  });
+
+  it("points back to RECONSTRUCTION.md for the full tree", () => {
+    expect(out).toContain("RECONSTRUCTION.md");
+  });
+
+  it("handles a tree with no features gracefully", () => {
+    const empty = mergeFeatures(sampleArtifacts(), makeInv({ features: [] }), makeOpts());
+    expect(empty).toMatch(/No features detected/i);
   });
 });

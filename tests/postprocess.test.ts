@@ -25,6 +25,7 @@ function makeOpts(over: Partial<Options> = {}): Options {
     maxEmbedBytes: 16000,
     merge: false,
     summary: false,
+    features: false,
     standalone: false,
     scratch: false,
     plan: "",
@@ -68,7 +69,24 @@ describe("bundleExisting (standalone post-step)", () => {
     writeOutput(bundleExisting(makeOpts({ out: isolated, summary: true, standalone: true })), makeOpts({ out: isolated }));
     expect(existsSync(join(isolated, "SUMMARY.md"))).toBe(true);
     expect(existsSync(join(isolated, "RECONSTRUCTION.md"))).toBe(false);
+    expect(existsSync(join(isolated, "FEATURES.md"))).toBe(false);
     rmSync(isolated, { recursive: true, force: true });
+  });
+
+  it("builds FEATURES.md (feature PRDs only) from an existing tree", () => {
+    const opts = makeOpts({ out: dir, features: true, standalone: true });
+    writeOutput(bundleExisting(opts), opts);
+
+    expect(existsSync(join(dir, "FEATURES.md"))).toBe(true);
+    const featuresDoc = readFileSync(join(dir, "FEATURES.md"), "utf8");
+    expect(featuresDoc).toMatch(/# sample-app — Features/);
+    expect(featuresDoc).toContain("## Contents");
+    // It points back to the full bundle but does not inline the architecture docs.
+    expect(featuresDoc).toContain("RECONSTRUCTION.md");
+    expect(featuresDoc).not.toContain("# Interface surface");
+    // Single top-level H1 (the features title), feature headings demoted under it.
+    const h1s = featuresDoc.split("\n").filter((l) => /^# (?!#)/.test(l));
+    expect(h1s.length).toBe(1);
   });
 
   it("is idempotent: re-running keeps a single bundle H1", () => {

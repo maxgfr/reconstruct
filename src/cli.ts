@@ -33,6 +33,7 @@ Options:
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
   --merge              Also write RECONSTRUCTION.md (whole tree in one file)
   --summary            Also write SUMMARY.md (one-page digest)
+  --features           Also write FEATURES.md (every feature PRD, nothing else)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
   -v, --version        Show version
@@ -49,9 +50,11 @@ From scratch (greenfield):
     reconstruct --scratch --plan plan.json --out ./reconstruction --level complex
 
 Bundling:
-  --merge / --summary during a normal run append the file(s) to the output tree.
-  Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
-    reconstruct --merge --summary --out <reconstruction-dir>
+  --merge / --summary / --features during a normal run append the file(s) to the
+  output tree. RECONSTRUCTION.md is the whole tree in one file; FEATURES.md is the
+  feature PRDs only (the product functionality). Used WITHOUT --repo, they run as
+  a post-step on an existing reconstruction:
+    reconstruct --merge --summary --features --out <reconstruction-dir>
 
 Validation:
   --check runs on an already-enriched output tree and exits non-zero if it is
@@ -95,6 +98,7 @@ export function parseArgs(argv: string[]): Options {
   let json = false;
   let merge = false;
   let summary = false;
+  let features = false;
   let scratch = false;
   let tdd = false;
   let check = false;
@@ -119,6 +123,10 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--summary") {
       summary = true;
+      continue;
+    }
+    if (arg === "--features") {
+      features = true;
       continue;
     }
     if (arg === "--scratch") {
@@ -162,9 +170,10 @@ export function parseArgs(argv: string[]): Options {
   }
   const plan = raw.plan ? resolve(raw.plan) : "";
 
-  // Standalone post-step: bundle an existing output dir when --merge/--summary
-  // is used without --repo (and not in --json/--scratch mode).
-  const standalone = (merge || summary) && !json && !scratch && raw.repo === undefined;
+  // Standalone post-step: bundle an existing output dir when
+  // --merge/--summary/--features is used without --repo (and not in
+  // --json/--scratch mode).
+  const standalone = (merge || summary || features) && !json && !scratch && raw.repo === undefined;
 
   const repo = resolve(raw.repo ?? process.cwd());
   // Scratch reads no repo; standalone and --check read an existing output dir —
@@ -214,6 +223,7 @@ export function parseArgs(argv: string[]): Options {
     maxEmbedBytes,
     merge,
     summary,
+    features,
     standalone,
     scratch,
     plan,
@@ -277,6 +287,7 @@ function main(): void {
         : []),
       ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
       ...(effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
+      ...(effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
       ...(effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
       `  output:   ${effOpts.out}`,
       `  next:     open ${join(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
@@ -295,6 +306,7 @@ function main(): void {
     writeOutput(result, opts);
     const made = [
       ...(opts.summary ? ["SUMMARY.md"] : []),
+      ...(opts.features ? ["FEATURES.md"] : []),
       ...(opts.merge ? ["RECONSTRUCTION.md"] : []),
     ];
     process.stderr.write(`reconstruct: bundled ${made.join(" + ")} into ${opts.out}\n`);
@@ -326,6 +338,7 @@ function main(): void {
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...(opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
+    ...(opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
     ...(opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
     `  output:   ${opts.out}`,
     `  next:     open ${join(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,

@@ -27,10 +27,12 @@ export interface Options {
   merge: boolean;
   /** Emit a one-page digest (`SUMMARY.md`) derived from the inventory. */
   summary: boolean;
+  /** Emit a features-only bundle (`FEATURES.md`) — every feature PRD, nothing else. */
+  features: boolean;
   /**
-   * Post-step mode: rebuild the merge/summary from an already-generated output
-   * directory (`out`) without re-analysing a repo. Set when `--merge`/`--summary`
-   * is used without `--repo`.
+   * Post-step mode: rebuild the merge/summary/features bundle(s) from an
+   * already-generated output directory (`out`) without re-analysing a repo. Set
+   * when `--merge`/`--summary`/`--features` is used without `--repo`.
    */
   standalone: boolean;
   /**

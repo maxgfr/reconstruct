@@ -94,7 +94,7 @@ interface Section {
 }
 
 /** The relPaths the bundle must never inline (it would duplicate or recurse). */
-const BUNDLE_EXCLUDE = new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md"]);
+const BUNDLE_EXCLUDE = new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md", "FEATURES.md"]);
 
 /** Ordered sections of the merged document, built from what the tree contains. */
 function orderedSections(artifacts: Artifact[], inv: Inventory): Section[] {
@@ -147,6 +147,49 @@ export function mergeArtifacts(artifacts: Artifact[], inv: Inventory, opts: Opti
   parts.push("");
   parts.push("## Contents");
   parts.push("");
+  for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
+
+  for (const s of sections) {
+    const content = byPath.get(s.relPath) ?? "";
+    parts.push("");
+    parts.push("---");
+    parts.push("");
+    parts.push(`<a id="${s.anchor}"></a>`);
+    parts.push("");
+    parts.push(demoteHeadings(content).trimEnd());
+  }
+
+  return parts.join("\n") + "\n";
+}
+
+/**
+ * Bundle only the feature PRDs — the product functionality — into a single
+ * markdown document, in build order, each feature's headings demoted one level
+ * so the result reads as one file. Excludes the overview, architecture, and
+ * build-order docs; for the whole tree use `mergeArtifacts` (`RECONSTRUCTION.md`).
+ */
+export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Options): string {
+  const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
+  const have = new Set(artifacts.map((a) => a.relPath));
+  const sections: Section[] = [];
+  for (const f of inv.features) {
+    const relPath = `features/${f.slug}/PRD.md`;
+    if (have.has(relPath)) sections.push({ relPath, title: f.name, anchor: `feature-${f.slug}` });
+  }
+
+  const parts: string[] = [];
+  parts.push(`# ${inv.repoName} — Features`);
+  parts.push("");
+  parts.push(metaLine(inv, opts));
+  parts.push("");
+  parts.push(
+    "Single-file bundle of every feature PRD (the product functionality), in build order. " +
+      "For the full reconstruction — architecture, interfaces, data model, build order — see `RECONSTRUCTION.md`.",
+  );
+  parts.push("");
+  parts.push("## Contents");
+  parts.push("");
+  if (sections.length === 0) parts.push("_No features detected._");
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
 
   for (const s of sections) {

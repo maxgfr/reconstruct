@@ -3070,7 +3070,7 @@ function metaLine(inv, opts) {
 function slugify2(value) {
   return value.toLowerCase().replace(/\.md$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
-var BUNDLE_EXCLUDE = /* @__PURE__ */ new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md"]);
+var BUNDLE_EXCLUDE = /* @__PURE__ */ new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md", "FEATURES.md"]);
 function orderedSections(artifacts, inv) {
   const have = new Set(artifacts.map((a) => a.relPath));
   const sections = [];
@@ -3107,6 +3107,38 @@ function mergeArtifacts(artifacts, inv, opts) {
   parts.push("");
   parts.push("## Contents");
   parts.push("");
+  for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
+  for (const s of sections) {
+    const content = byPath.get(s.relPath) ?? "";
+    parts.push("");
+    parts.push("---");
+    parts.push("");
+    parts.push(`<a id="${s.anchor}"></a>`);
+    parts.push("");
+    parts.push(demoteHeadings(content).trimEnd());
+  }
+  return parts.join("\n") + "\n";
+}
+function mergeFeatures(artifacts, inv, opts) {
+  const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
+  const have = new Set(artifacts.map((a) => a.relPath));
+  const sections = [];
+  for (const f of inv.features) {
+    const relPath = `features/${f.slug}/PRD.md`;
+    if (have.has(relPath)) sections.push({ relPath, title: f.name, anchor: `feature-${f.slug}` });
+  }
+  const parts = [];
+  parts.push(`# ${inv.repoName} \u2014 Features`);
+  parts.push("");
+  parts.push(metaLine(inv, opts));
+  parts.push("");
+  parts.push(
+    "Single-file bundle of every feature PRD (the product functionality), in build order. For the full reconstruction \u2014 architecture, interfaces, data model, build order \u2014 see `RECONSTRUCTION.md`."
+  );
+  parts.push("");
+  parts.push("## Contents");
+  parts.push("");
+  if (sections.length === 0) parts.push("_No features detected._");
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
   for (const s of sections) {
     const content = byPath.get(s.relPath) ?? "";
@@ -3201,6 +3233,9 @@ function render(inv, opts) {
   if (opts.summary) {
     artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
   }
+  if (opts.features) {
+    artifacts.push({ relPath: "FEATURES.md", content: mergeFeatures(artifacts, inv, opts) });
+  }
   if (opts.merge) {
     artifacts.push({ relPath: "RECONSTRUCTION.md", content: mergeArtifacts(artifacts, inv, opts) });
   }
@@ -3270,6 +3305,7 @@ function bundleExisting(opts) {
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
+  if (opts.features) artifacts.push({ relPath: "FEATURES.md", content: mergeFeatures(tree, inv, opts) });
   if (opts.merge) artifacts.push({ relPath: "RECONSTRUCTION.md", content: mergeArtifacts(tree, inv, opts) });
   return { artifacts, copies: [] };
 }
@@ -3847,6 +3883,7 @@ Options:
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
   --merge              Also write RECONSTRUCTION.md (whole tree in one file)
   --summary            Also write SUMMARY.md (one-page digest)
+  --features           Also write FEATURES.md (every feature PRD, nothing else)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
   -v, --version        Show version
@@ -3863,9 +3900,11 @@ From scratch (greenfield):
     reconstruct --scratch --plan plan.json --out ./reconstruction --level complex
 
 Bundling:
-  --merge / --summary during a normal run append the file(s) to the output tree.
-  Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
-    reconstruct --merge --summary --out <reconstruction-dir>
+  --merge / --summary / --features during a normal run append the file(s) to the
+  output tree. RECONSTRUCTION.md is the whole tree in one file; FEATURES.md is the
+  feature PRDs only (the product functionality). Used WITHOUT --repo, they run as
+  a post-step on an existing reconstruction:
+    reconstruct --merge --summary --features --out <reconstruction-dir>
 
 Validation:
   --check runs on an already-enriched output tree and exits non-zero if it is
@@ -3902,6 +3941,7 @@ function parseArgs(argv) {
   let json = false;
   let merge = false;
   let summary = false;
+  let features = false;
   let scratch = false;
   let tdd = false;
   let check = false;
@@ -3925,6 +3965,10 @@ function parseArgs(argv) {
     }
     if (arg === "--summary") {
       summary = true;
+      continue;
+    }
+    if (arg === "--features") {
+      features = true;
       continue;
     }
     if (arg === "--scratch") {
@@ -3964,7 +4008,7 @@ function parseArgs(argv) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
   const plan = raw.plan ? resolve2(raw.plan) : "";
-  const standalone = (merge || summary) && !json && !scratch && raw.repo === void 0;
+  const standalone = (merge || summary || features) && !json && !scratch && raw.repo === void 0;
   const repo = resolve2(raw.repo ?? process.cwd());
   if (!standalone && !scratch && !check && (!existsSync5(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
@@ -4000,6 +4044,7 @@ function parseArgs(argv) {
     maxEmbedBytes,
     merge,
     summary,
+    features,
     standalone,
     scratch,
     plan,
@@ -4050,6 +4095,7 @@ function main() {
       ] : [],
       ...effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : [],
       ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
+      ...effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
       `  next:     open ${join13(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
@@ -4067,6 +4113,7 @@ function main() {
     writeOutput(result2, opts);
     const made = [
       ...opts.summary ? ["SUMMARY.md"] : [],
+      ...opts.features ? ["FEATURES.md"] : [],
       ...opts.merge ? ["RECONSTRUCTION.md"] : []
     ];
     process.stderr.write(`reconstruct: bundled ${made.join(" + ")} into ${opts.out}
@@ -4092,6 +4139,7 @@ function main() {
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
+    ...opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
     `  next:     open ${join13(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`

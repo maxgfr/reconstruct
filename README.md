@@ -38,6 +38,7 @@ This installs the skill into your agent (Claude Code, Cursor, Codex, …). Then 
 reconstruction/
 ├── REBUILD.md                 # master plan: build order + validation checklist
 ├── RECONSTRUCTION.md          # (--merge) the whole tree bundled into one markdown
+├── FEATURES.md                # (--features) every feature PRD only, in build order
 ├── SUMMARY.md                 # (--summary) one-page digest of the reconstruction
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
@@ -91,21 +92,24 @@ Run `node scripts/analyze.mjs --help` for all flags.
 
 ## Bundling: one file or a digest
 
-Two optional, combinable flags collapse the multi-file tree:
+Three optional, combinable flags collapse the multi-file tree:
 
 - `--merge` → **`RECONSTRUCTION.md`**: the whole tree in one coherent markdown
   (single H1, linked table of contents, headings demoted one level; ordered
   overview → architecture → features → build order).
+- `--features` → **`FEATURES.md`**: every feature PRD only — the product
+  functionality — in build order, in one file (single H1 + table of contents).
+  The features-only counterpart to `--merge`.
 - `--summary` → **`SUMMARY.md`**: a one-page digest from the inventory (stack,
   libraries, size, features in build order, interface/data counts, locales,
   unknowns, next steps).
 
 ```bash
 # inline: produce the tree and the bundles in one run
-node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --summary
+node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --features --summary
 
 # standalone post-step: (re)build the bundles from an existing output, no --repo
-node scripts/analyze.mjs --merge --summary --out ./my-app/reconstruction
+node scripts/analyze.mjs --merge --features --summary --out ./my-app/reconstruction
 ```
 
 The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,

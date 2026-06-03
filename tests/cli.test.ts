@@ -10,13 +10,22 @@ describe("parseArgs: merge/summary/standalone flags", () => {
     const o = parseArgs(["--repo", REPO]);
     expect(o.merge).toBe(false);
     expect(o.summary).toBe(false);
+    expect(o.features).toBe(false);
     expect(o.standalone).toBe(false);
   });
 
-  it("sets --merge and --summary as booleans", () => {
-    const o = parseArgs(["--repo", REPO, "--merge", "--summary"]);
+  it("sets --merge, --summary and --features as booleans", () => {
+    const o = parseArgs(["--repo", REPO, "--merge", "--summary", "--features"]);
     expect(o.merge).toBe(true);
     expect(o.summary).toBe(true);
+    expect(o.features).toBe(true);
+  });
+
+  it("enters standalone when --features is used without --repo", () => {
+    const o = parseArgs(["--features", "--out", "/tmp/some-recon"]);
+    expect(o.standalone).toBe(true);
+    expect(o.features).toBe(true);
+    expect(o.out).toBe(resolve("/tmp/some-recon"));
   });
 
   it("stays inline (not standalone) when --repo is provided", () => {

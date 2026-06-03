@@ -19,6 +19,7 @@ function opts(fixture: string): Options {
     maxEmbedBytes: 16000,
     merge: false,
     summary: false,
+    features: false,
     standalone: false,
     scratch: false,
     plan: "",
