@@ -188,7 +188,8 @@ the interview is never clobbered. Add `--tdd` (here or in any mode) to make ever
 - **The interview:** [`references/scratch-playbook.md`](./references/scratch-playbook.md)
 - **The `plan.json` contract + example:** [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md)
 - **A full worked plan:** [`tests/fixtures/scratch-plan/medic.plan.json`](./tests/fixtures/scratch-plan/medic.plan.json)
-  (`npm run parity:medic` checks that the code path and the from-scratch path converge).
+  (`npm run parity` renders this plan and checks it is buildable-by-construction; pass
+  `-- --repo <repo>` to also check the code path and the from-scratch path converge).
 
 ## How the rebuild works
 

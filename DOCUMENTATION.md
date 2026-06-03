@@ -144,8 +144,10 @@ agent to build something from scratch, it follows the `## From scratch` procedur
 `--repo` is read. On top of the usual tree it writes `CONTEXT.md` and `docs/adr/NNNN-*.md`,
 both **if-absent** so the agent's richer versions are never clobbered, and `00-overview` links
 to them. Add `--tdd` (in any mode) to make every feature PRD and `REBUILD.md` drive the build
-**test-first** (red → green → refactor). `npm run parity:medic` checks that the code path and
-the from-scratch path converge on the same tree.
+**test-first** (red → green → refactor). `npm run parity` renders a plan and checks it is
+buildable-by-construction (every declared entity/interface/enum/service/policy/locale is
+pre-filled); pass `-- --repo <repo>` to also assert the code path and the from-scratch path
+converge on the same tree.
 
 ---
 

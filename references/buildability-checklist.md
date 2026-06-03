@@ -15,8 +15,11 @@ node scripts/analyze.mjs --check --out <OUT>
 
 It exits non-zero on the structural failures (unresolved `🧠` callouts or
 `fill this in` placeholders, a feature that references an undocumented entity or
-operation, a feature PRD missing its spine, an uncovered locale). A clean
-`--check` is necessary, not sufficient — the categories below are the rest.
+operation, a feature PRD missing its spine or left content-less, or an
+architecture doc emptied of its contract — no entities in `DATA-MODEL.md`, no
+operations in `INTERFACES.md`). An uncovered locale is a **warning**, not a
+non-zero exit. A clean `--check` is necessary, not sufficient — the categories
+below are the rest.
 
 ## The nine contract categories
 

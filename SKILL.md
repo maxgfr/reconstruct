@@ -103,8 +103,10 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      ```
 
      It exits non-zero on unresolved `🧠` callouts or placeholders, a feature that references
-     an undocumented entity/operation, a feature PRD missing its spine, or an uncovered locale.
-     Fix every error and resolve the warnings. See `references/buildability-checklist.md`.
+     an undocumented entity/operation, a feature PRD missing its spine or left content-less, or
+     an architecture doc emptied of its contract (no entities in `DATA-MODEL.md`, no operations
+     in `INTERFACES.md`); an uncovered locale is a warning. Fix every error and resolve the
+     warnings. See `references/buildability-checklist.md`.
 
    - **Layer 2 — the AI review (substance).** The gate proves structure but cannot judge
      whether the prose is *actually buildable*. Once `--check` passes, **you (the agent) run a
@@ -159,7 +161,7 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
     quirks). The user should relaunch nothing; one skill invocation goes scaffold → buildable.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
-for per-stack cheat-sheets, `references/buildability-checklist.md` for the eight contract
+for per-stack cheat-sheets, `references/buildability-checklist.md` for the nine contract
 categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
 review, and `references/architecture-analysis.md` / `references/rebuild-instructions.md` / the
 PRD templates for the reasoning checklists.

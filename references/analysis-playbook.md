@@ -194,7 +194,8 @@ data model never declared.
   node scripts/analyze.mjs --check --out <OUT>
   ```
 
-  Fix every error (unresolved `🧠`/placeholder, dangling entity/operation reference, missing
-  feature spine, uncovered locale) and resolve the warnings. The full category list is in
+  Fix every error (unresolved `🧠`/placeholder, dangling entity/operation reference, a feature
+  spine that is missing or content-less, an emptied `DATA-MODEL.md`/`INTERFACES.md`) and resolve
+  the warnings (e.g. an uncovered locale). The full category list is in
   `references/buildability-checklist.md`. A `🧠` callout left anywhere means the unit is not
   done.

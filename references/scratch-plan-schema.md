@@ -133,7 +133,7 @@ before it renders — **errors abort**, **warnings print** (resolve them while e
   so write to an anonymous-capable entity (e.g. a `contactRequests` table) instead.
 
 The post-enrichment gate (`node scripts/analyze.mjs --check --out <OUT>`) then verifies the
-rendered tree. See `references/buildability-checklist.md` for the full eight contract
+rendered tree. See `references/buildability-checklist.md` for the full nine contract
 categories and the consistency self-review.
 
 ## Worked example — `linkrolls` (link-in-bio app)

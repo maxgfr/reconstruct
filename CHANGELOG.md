@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Generic convergence harness** `scripts/parity.mjs` + `npm run parity`, replacing the
+  medic-specific `scripts/parity-medic.mjs` / `npm run parity:medic`. It derives ALL its
+  expectations from the plan itself (every declared entity, enum, interface, service, policy
+  and locale must be pre-filled into the matching architecture doc), so it proves
+  buildability-by-construction for **any** `plan.json`, not just medic. `--plan` is required;
+  `--repo` is optional and adds the code-path↔scratch-path structural-convergence check. CI now
+  runs `npm run parity` against the committed medic fixture (no external repo needed).
+
+### Changed
+- **`--check` gate hardening** (`src/check.ts`): the `🧠` callout scan now strips quoted spans
+  symmetrically with the `fill this in` placeholder scan, so a PRD that *documents* the gate by
+  quoting the `🧠` marker no longer false-fails.
+
+### Fixed
+- **Docs ↔ gate parity**: the `--check` descriptions (`SKILL.md`, `references/buildability-checklist.md`,
+  `references/analysis-playbook.md`, `references/scratch-playbook.md`, the CLI `--help`) now list the
+  contract-substance failures (empty `DATA-MODEL.md` / `INTERFACES.md`, a content-less feature PRD)
+  and correctly describe an **uncovered locale as a warning**, not a non-zero-exit error. Reconciled
+  the stale "eight contract categories" references to "nine".
+
 ## [0.5.0]
 
 Make the output **buildable** — and prove it. Both fronts (reverse-engineer-from-code and
