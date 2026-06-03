@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve, join as join11 } from "path";
+import { resolve as resolve2, join as join11 } from "path";
 import { pathToFileURL } from "url";
 import { existsSync as existsSync5, statSync as statSync3 } from "fs";
 
@@ -10,7 +10,7 @@ import { basename as basename3 } from "path";
 
 // src/walk.ts
 import { readdirSync, readFileSync, statSync } from "fs";
-import { join, relative, extname, basename } from "path";
+import { join, relative, extname, basename, resolve } from "path";
 var DEFAULT_IGNORE_DIRS = /* @__PURE__ */ new Set([
   ".git",
   "node_modules",
@@ -177,6 +177,14 @@ function loadIgnore(repo) {
     return ignored;
   };
 }
+function isReconstructOutput(dir) {
+  try {
+    const head = readFileSync(join(dir, "inventory.json"), "utf8").slice(0, 4096);
+    return /"generatedWith"\s*:\s*"reconstruct@/.test(head);
+  } catch {
+    return false;
+  }
+}
 function isProbablyBinary(abs, ext) {
   if (BINARY_EXTS.has(ext)) return true;
   try {
@@ -240,6 +248,7 @@ function walk(repo, opts = {}) {
   const ignore = loadIgnore(repo);
   const includePats = compileGlobs(opts.include);
   const excludePats = compileGlobs(opts.exclude);
+  const outAbs = opts.out ? resolve(opts.out) : "";
   const files = [];
   let excludedCount = 0;
   const recurse = (dir) => {
@@ -253,6 +262,8 @@ function walk(repo, opts = {}) {
       const abs = join(dir, entry.name);
       const rel = relative(repo, abs).split("\\").join("/");
       const isDir = entry.isDirectory();
+      if (isDir && outAbs && resolve(abs) === outAbs) continue;
+      if (isDir && isReconstructOutput(abs)) continue;
       if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
       if (ignore(rel, isDir)) {
         if (!isDir) excludedCount++;
@@ -1353,7 +1364,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 }
 
 // src/types.ts
-var VERSION = "0.6.2";
+var VERSION = "0.6.3";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints) {
@@ -1383,7 +1394,8 @@ function computeUnknowns(stack, routes, hints) {
 function analyze(opts) {
   const { files, excludedCount } = walk(opts.repo, {
     include: opts.include,
-    exclude: opts.exclude
+    exclude: opts.exclude,
+    out: opts.out
   });
   const stack = detectStack(opts.repo, files);
   const dependencies = extractDependencies(opts.repo, files);
@@ -3038,9 +3050,9 @@ function parseArgs(argv) {
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
-  const plan = raw.plan ? resolve(raw.plan) : "";
+  const plan = raw.plan ? resolve2(raw.plan) : "";
   const standalone = (merge || summary) && !json && !scratch && raw.repo === void 0;
-  const repo = resolve(raw.repo ?? process.cwd());
+  const repo = resolve2(raw.repo ?? process.cwd());
   if (!standalone && !scratch && !check && (!existsSync5(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
@@ -3055,7 +3067,7 @@ function parseArgs(argv) {
     "coarse",
     "fine"
   ]);
-  const out = resolve(
+  const out = resolve2(
     raw.out ?? (standalone || check ? process.cwd() : scratch ? join11(process.cwd(), "reconstruction") : join11(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
