@@ -45,6 +45,34 @@ batch), each returning the table above, then merge. Keep the reviewer **separate
 from the author** and prompt it to look for reasons the unit is *not* buildable —
 an adversarial reviewer catches what a self-congratulating author misses.
 
+## The convergence loop — iterate to a buildable fixpoint
+
+A reconstruction is "done" when it **converges**, not when the scaffold is filled.
+Loop both layers until the tree is clean (this is `SKILL.md` step 10):
+
+```
+repeat:
+  a. enrich / fix the units
+  b. node scripts/analyze.mjs --check --out <OUT>     # Layer 1 (structure) — fix errors, repeat (b)
+  c. AI review every NEW-or-CHANGED unit (this rubric) # Layer 2 (substance)
+  d. fix every blocker (then majors) in place
+until  --check passes  AND  zero blockers across all units
+```
+
+Make it terminate on a *correct* fixpoint:
+
+- **Fresh-reviewer rule:** a finding counts as resolved only when an independent
+  reviewer (not the author) re-confirms it on the changed unit. Never self-certify.
+- **Only re-review what changed** each round — the loop should shrink, not rescan a
+  clean tree. Stop when a full round adds nothing new.
+- **Ground every fix** in source/`data/` (code) or `CONTEXT.md`/ADRs (scratch); an
+  invented fix just swaps one finding for another.
+- **Stop at zero blockers, not zero findings.** Blockers gate "buildable"; majors are
+  worth fixing; minors are optional — record what you deliberately leave unfixed.
+- **If the same finding keeps reappearing,** the contract in the architecture docs is
+  wrong, not the feature PRD — fix `INTERFACES.md` / `DATA-MODEL.md` first, then the
+  features that hang off it stop regressing.
+
 ## The nine checks
 
 1. **Story completeness.** Every actor — including the anonymous visitor, the

@@ -3,7 +3,7 @@ name: reconstruct
 description: Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec, from scratch, greenfield, build plan, new project, idea to PRD.
 license: MIT
 metadata:
-  version: 0.6.0
+  version: 0.6.1
 ---
 
 # Reconstruct: repo → reconstruction PRDs
@@ -114,6 +114,38 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      rebuild self-test. This runs *via the skill* (no API key, no `--ai` flag — the model is
      the reviewer); for a large tree, fan it out one reviewer per feature. A unit is done when
      it has **zero blockers**. Fix blockers in place, re-run `--check`, repeat until clean.
+
+10. **Run the convergence loop — don't stop at "it generated".** A reconstruction is not done
+    when the scaffold is filled; it is done when it **converges** to buildable. Iterate both
+    layers until the tree is clean — this loop is what turns "PRDs exist" into "a fresh agent
+    rebuilds the right software":
+
+    ```
+    repeat:
+      a. enrich (or fix) the units                         # write/repair the prose
+      b. node scripts/analyze.mjs --check --out <OUT>      # Layer 1: structure
+         └─ if errors → fix them → go to (b)
+      c. AI review every NEW-or-CHANGED unit               # Layer 2: substance
+         per references/ai-review-rubric.md
+      d. fix every blocker (then majors) in place
+    until  --check passes  AND  the AI review reports ZERO blockers across all units
+    ```
+
+    Rules that make the loop terminate on a *correct* fixpoint, not a false one:
+    - **A finding is resolved only when a fresh reviewer confirms it** — keep the reviewer
+      separate from the author (an adversarial reviewer prompted to *refute* buildability), and
+      after each fix **re-review the changed unit**, don't self-certify.
+    - **Only re-review what changed** each round (plus anything a fix touched downstream), so the
+      loop shrinks instead of re-scanning a clean tree.
+    - **Ground every fix in source/`data/` (code mode) or `CONTEXT.md`/ADRs (scratch mode)** — a
+      fix that invents behaviour just trades one finding for another; faithfulness is the anchor.
+    - **Stop at zero blockers, not zero findings.** Blockers gate "buildable"; majors are
+      worth fixing, minors are optional polish — record what you deliberately leave.
+    - If the loop is not shrinking (the same finding keeps reappearing), the contract in the
+      architecture docs is wrong, not the feature PRD — fix `INTERFACES.md`/`DATA-MODEL.md` first.
+
+    At scale, drive the loop with parallel agents — one finder/fixer + one independent verifier
+    per feature — and keep looping until a full review round adds nothing new.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, `references/buildability-checklist.md` for the eight contract
