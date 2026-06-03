@@ -1,15 +1,22 @@
 name: Release
 
-# Push a tag like `v0.5.0` to cut a release:
-#   - runs the full gate (typecheck / test / reproducible bundle)
-#   - generates release notes from the Conventional Commits since the previous tag
-#   - creates the GitHub release and attaches an `npm pack` tarball
+# Conventional-Commit-driven releases, fully in CI. On every push to `main`,
+# semantic-release inspects the commits since the last release and, when they
+# warrant one (feat → minor, fix → patch, `!`/BREAKING → major):
+#   - runs the full gate (typecheck / test / reproducible bundle),
+#   - computes the next version and syncs it across package.json / src/types.ts /
+#     SKILL.md / CHANGELOG.md and rebuilds the bundle (scripts/sync-version.mjs),
+#   - commits the bump back to `main` as `chore(release): <v> [skip ci]`,
+#   - tags `v<version>` and creates the GitHub release with auto notes + tarball.
+# No npm-registry publish (GitHub release only) — uses the built-in GITHUB_TOKEN.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
-  contents: write # create releases + upload assets
+  contents: write # push the bump commit + tag, create the release
+  issues: write # semantic-release comments on released issues/PRs
+  pull-requests: write
 
 jobs:
   release:
@@ -17,52 +24,26 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # full history + tags, required by git-cliff
+          fetch-depth: 0 # full history + tags, required to analyze commits since last release
+          persist-credentials: true # let @semantic-release/git push the bump commit
+
+      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Tag matches package.json version
+      - name: Gate — typecheck / test / reproducible bundle
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG="$(node -p "require('./package.json').version")"
-          if [ "$TAG" != "$PKG" ]; then
-            echo "::error::Tag v$TAG ne correspond pas à package.json ($PKG). Bump la version avant de tagger."
-            exit 1
-          fi
+          pnpm run typecheck
+          pnpm test
+          pnpm run check:build
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test
-
-      - name: Committed bundle is up to date
-        run: npm run check:build
-
-      - name: Pack tarball
-        run: npm pack # -> reconstruct-<version>.tgz
-
-      - name: Generate release notes from commits
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip header
+      - name: Release (semantic-release)
         env:
-          OUTPUT: RELEASE_NOTES.md
-
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          EXTRA=""
-          case "$GITHUB_REF_NAME" in *-*) EXTRA="--prerelease";; esac # v1.0.0-rc.1 -> prerelease
-          gh release create "$GITHUB_REF_NAME" $EXTRA \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file RELEASE_NOTES.md \
-            ./*.tgz
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec semantic-release

@@ -3,6 +3,7 @@
   "version": "0.6.3",
   "description": "Analyze any repository and generate reconstruction PRDs to rebuild a project from scratch. A skills.sh agent skill.",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "bin": {
     "reconstruct": "scripts/analyze.mjs"
   },
@@ -23,8 +24,9 @@
     "typecheck": "tsc --noEmit",
     "check:build": "tsup && git diff --exit-code -- scripts/analyze.mjs",
     "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light",
-    "demo:scratch": "node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/medic.plan.json --out /tmp/reconstruct-scratch-demo --level complex",
-    "parity": "node scripts/parity.mjs --plan tests/fixtures/scratch-plan/medic.plan.json"
+    "demo:scratch": "node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/example.plan.json --out /tmp/reconstruct-scratch-demo --level complex",
+    "parity": "node scripts/parity.mjs --plan tests/fixtures/scratch-plan/example.plan.json",
+    "release": "semantic-release"
   },
   "keywords": [
     "skills",
@@ -43,9 +45,15 @@
     "url": "https://github.com/maxgfr/reconstruct"
   },
   "devDependencies": {
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/node": "^20.14.0",
+    "semantic-release": "^24.2.0",
     "tsup": "^8.3.0",
     "typescript": "^5.5.0",
     "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

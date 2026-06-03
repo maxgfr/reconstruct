@@ -48,7 +48,7 @@ development of reconstruct itself:
 ```bash
 git clone https://github.com/maxgfr/reconstruct
 cd reconstruct
-npm install
+pnpm install
 ```
 
 ---
@@ -145,7 +145,7 @@ agent to build something from scratch, it follows the `## From scratch` procedur
 `--repo` is read. On top of the usual tree it writes `CONTEXT.md` and `docs/adr/NNNN-*.md`,
 both **if-absent** so the agent's richer versions are never clobbered, and `00-overview` links
 to them. Add `--tdd` (in any mode) to make every feature PRD and `REBUILD.md` drive the build
-**test-first** (red → green → refactor). `npm run parity` renders a plan and checks it is
+**test-first** (red → green → refactor). `pnpm run parity` renders a plan and checks it is
 buildable-by-construction (every declared entity/interface/enum/service/policy/locale is
 pre-filled); pass `-- --repo <repo>` to also assert the code path and the from-scratch path
 converge on the same tree.
@@ -269,7 +269,7 @@ Framework support has two seams; pick the one that fits — or both.
    function/decorator names. The agent loads it on demand to fill `INTERFACES.md` / `DATA-MODEL.md`.
 2. *Optional:* if a cheap, framework-agnostic signal helps the agent find the right files, add a
    candidate heuristic to [`src/detect/candidates.ts`](./src/detect/candidates.ts) (a *candidate*,
-   never asserted truth), cover it with a test, and `npm run build`.
+   never asserted truth), cover it with a test, and `pnpm run build`.
 
 **2. Add a route adapter (code) — a pluggable registry, one small PR.** When a framework has a
 clear routing convention, a deterministic adapter upgrades its routes from *candidates* to
@@ -313,12 +313,12 @@ and makes no network calls. Review `scripts/` before running on untrusted reposi
 ## Development
 
 ```bash
-npm install
-npm run build       # tsup bundles src/ -> scripts/analyze.mjs (committed, zero-dep)
-npm test            # vitest unit + integration over multi-stack fixtures
-npm run typecheck   # tsc --noEmit (strict)
-npm run check:build # rebuild and assert scripts/analyze.mjs is up to date (git diff)
-npm run demo        # run the bundle on the sample fixture into /tmp/reconstruct-demo
+pnpm install
+pnpm run build       # tsup bundles src/ -> scripts/analyze.mjs (committed, zero-dep)
+pnpm test            # vitest unit + integration over multi-stack fixtures
+pnpm run typecheck   # tsc --noEmit (strict)
+pnpm run check:build # rebuild and assert scripts/analyze.mjs is up to date (git diff)
+pnpm run demo        # run the bundle on the sample fixture into /tmp/reconstruct-demo
 ```
 
 ### Why the bundle is committed
@@ -326,8 +326,8 @@ npm run demo        # run the bundle on the sample fixture into /tmp/reconstruct
 `scripts/analyze.mjs` is produced by **tsup** ([`tsup.config.ts`](./tsup.config.ts)) — a
 single ESM file targeting Node 18+, bundled with zero runtime dependencies and a
 `#!/usr/bin/env node` shebang. It is committed so an agent sandbox can run the analyzer
-with plain `node` at skill-use time, without an `npm install` step. CI enforces that the
-committed bundle matches the source via `npm run check:build`.
+with plain `node` at skill-use time, without a `pnpm install` step. CI enforces that the
+committed bundle matches the source via `pnpm run check:build`.
 
 ---
 

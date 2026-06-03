@@ -16,28 +16,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Build is reproducible (committed bundle up to date)
-        run: npm run check:build # tsup && git diff --exit-code -- scripts/analyze.mjs
+        run: pnpm run check:build # tsup && git diff --exit-code -- scripts/analyze.mjs
 
       - name: Test
-        run: npm test
+        run: pnpm test
 
       - name: Smoke-run the committed bundle
-        run: npm run demo # node scripts/analyze.mjs on tests/fixtures/sample-app -> /tmp/reconstruct-demo
+        run: pnpm run demo # node scripts/analyze.mjs on tests/fixtures/sample-app -> /tmp/reconstruct-demo
 
       - name: Assert reconstruction output was produced
         run: test -f /tmp/reconstruct-demo/inventory.json && test -f /tmp/reconstruct-demo/REBUILD.md
 
       - name: Convergence/parity (scratch path, buildable-by-construction)
-        run: npm run parity # node scripts/parity.mjs --plan <medic fixture>; --repo omitted, no external repo needed
+        run: pnpm run parity # node scripts/parity.mjs --plan <example fixture>; --repo omitted, no external repo needed

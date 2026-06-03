@@ -29,7 +29,7 @@ The high-leverage way to extend `reconstruct` is a **stack guide**, not an adapt
    cheat-sheet with concrete file paths and real function/decorator names.
 2. If a cheap, framework-agnostic heuristic would help the agent find the right files, add
    it to `src/detect/candidates.ts` (a *candidate*, never asserted truth) and cover it with
-   a test. Run `npm run build` to refresh the committed bundle.
+   a test. Run `pnpm run build` to refresh the committed bundle.
 
 That's it — most stacks need only the markdown.
 
@@ -43,10 +43,10 @@ If you do change `src/`:
 - Run the full gate and refresh the bundle:
 
   ```bash
-  npm run typecheck
-  npm test
-  npm run build        # refresh scripts/analyze.mjs (committed, zero-dep)
-  npm run check:build  # asserts the committed bundle matches src/
+  pnpm run typecheck
+  pnpm test
+  pnpm run build        # refresh scripts/analyze.mjs (committed, zero-dep)
+  pnpm run check:build  # asserts the committed bundle matches src/
   ```
 
   CI runs all of the above on Node 24, plus a smoke run of the committed bundle.
@@ -61,30 +61,32 @@ If you do change `src/`:
 
 Use [Conventional Commits](https://www.conventionalcommits.org) — `feat:`, `fix:`,
 `perf:`, `refactor:`, `docs:`, `test:`, `ci:`, `build:`, `chore:`, optionally scoped
-(`feat(scratch): …`). Release notes are generated from these, so a clear, typed subject
-line is what users read on the GitHub release page. Non-conventional commits still ship —
-they just land under an "Other" heading.
+(`feat(scratch): …`). **The release is driven entirely by these**, so the type matters:
+`fix:` → patch, `feat:` → minor, and a `!` or a `BREAKING CHANGE:` footer → major. The
+release notes users read on GitHub are generated from the subject lines too.
 
 ## Releasing
 
-Releases are cut by **pushing a `vX.Y.Z` tag**; the [`Release`](.github/workflows/release.yml)
-workflow does the rest (gate → notes from commits → GitHub release + tarball). It is
-GitHub-only — nothing is published to npm.
+Releases are **fully automated in CI** via [semantic-release](https://semantic-release.gitbook.io).
+Just merge Conventional Commits to `main`: the [`Release`](.github/workflows/release.yml)
+workflow runs the gate, computes the next version from the commits, syncs it across
+`package.json` / `src/types.ts` / `SKILL.md` / `CHANGELOG.md` and rebuilds the bundle
+(`scripts/sync-version.mjs`), commits the bump back as `chore(release): <v> [skip ci]`, then
+tags `v<version>` and creates the GitHub release with auto notes + an `npm pack` tarball.
+
+- **No manual version bump or tag** — never edit the `version` fields or push a `v*` tag by
+  hand; semantic-release owns them.
+- **GitHub-only** — nothing is published to the npm registry (no `NPM_TOKEN` needed); it uses
+  the built-in `GITHUB_TOKEN`. To also publish to npm, add `@semantic-release/npm` to
+  `.releaserc.json` and an `NPM_TOKEN` secret.
+- **CHANGELOG** — add your human-readable entry under `## [Unreleased]`; on release the script
+  promotes it to the new `## [X.Y.Z]` heading and reopens an empty `[Unreleased]`.
+- A no-release commit set (only `docs:`/`chore:`/`test:`) ships nothing — that's expected.
+
+Run the same gate locally before pushing:
 
 ```bash
-# 1. bump the version and land the changelog entry
-#    (edit package.json "version" + move CHANGELOG Unreleased -> [X.Y.Z])
-npm run typecheck && npm test && npm run check:build   # same gate CI runs
-git commit -am "chore(release): vX.Y.Z"
-
-# 2. tag (must match package.json — the workflow asserts this) and push
-git tag vX.Y.Z
-git push origin main --tags
+pnpm run typecheck && pnpm test && pnpm run check:build   # same gate CI runs
 ```
-
-The release body is auto-generated from the Conventional Commits since the previous tag, so
-the hand-written `CHANGELOG.md` and the GitHub release notes are independent — keep the
-changelog for the curated narrative. A pre-release suffix (`vX.Y.Z-rc.1`) is marked as a
-GitHub pre-release automatically.
 
 By contributing you agree your work is licensed under the project's [MIT license](./LICENSE).
