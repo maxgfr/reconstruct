@@ -3099,23 +3099,22 @@ function orderedSections(artifacts, inv) {
   }
   return sections;
 }
-function mergeArtifacts(artifacts, inv, opts) {
+function mergeTree(artifacts, inv, opts, variant) {
   const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
   const sections = orderedSections(artifacts, inv);
   const parts = [];
-  parts.push(`# ${inv.repoName} \u2014 Reconstruction`);
+  parts.push(`# ${inv.repoName} \u2014 ${variant.heading}`);
   parts.push("");
   parts.push(metaLine(inv, opts));
   parts.push("");
-  parts.push(
-    "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree."
-  );
+  parts.push(variant.intro);
   parts.push("");
   parts.push("## Contents");
   parts.push("");
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
   for (const s of sections) {
-    const content = byPath.get(s.relPath) ?? "";
+    const raw = byPath.get(s.relPath) ?? "";
+    const content = variant.stripSource ? stripSourceMaterial(raw) : raw;
     parts.push("");
     parts.push("---");
     parts.push("");
@@ -3124,6 +3123,13 @@ function mergeArtifacts(artifacts, inv, opts) {
     parts.push(demoteHeadings(content).trimEnd());
   }
   return parts.join("\n") + "\n";
+}
+function mergeArtifacts(artifacts, inv, opts) {
+  return mergeTree(artifacts, inv, opts, {
+    heading: "Reconstruction",
+    intro: "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree.",
+    stripSource: false
+  });
 }
 function stripSourceMaterial(md) {
   const lines = md.split("\n");
@@ -3153,7 +3159,7 @@ function stripSourceMaterial(md) {
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
-function bundleFeatureSet(artifacts, inv, opts, variant) {
+function mergeFeatures(artifacts, inv, opts) {
   const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
   const have = new Set(artifacts.map((a) => a.relPath));
   const sections = [];
@@ -3162,19 +3168,20 @@ function bundleFeatureSet(artifacts, inv, opts, variant) {
     if (have.has(relPath)) sections.push({ relPath, title: f.name, anchor: `feature-${f.slug}` });
   }
   const parts = [];
-  parts.push(`# ${inv.repoName} \u2014 ${variant.heading}`);
+  parts.push(`# ${inv.repoName} \u2014 Features`);
   parts.push("");
   parts.push(metaLine(inv, opts));
   parts.push("");
-  parts.push(variant.intro);
+  parts.push(
+    "Single-file bundle of every feature PRD (the product functionality), in build order. For the full reconstruction \u2014 architecture, interfaces, data model, build order \u2014 see `RECONSTRUCTION.md`."
+  );
   parts.push("");
   parts.push("## Contents");
   parts.push("");
   if (sections.length === 0) parts.push("_No features detected._");
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
   for (const s of sections) {
-    const raw = byPath.get(s.relPath) ?? "";
-    const content = variant.stripSource ? stripSourceMaterial(raw) : raw;
+    const content = byPath.get(s.relPath) ?? "";
     parts.push("");
     parts.push("---");
     parts.push("");
@@ -3184,17 +3191,10 @@ function bundleFeatureSet(artifacts, inv, opts, variant) {
   }
   return parts.join("\n") + "\n";
 }
-function mergeFeatures(artifacts, inv, opts) {
-  return bundleFeatureSet(artifacts, inv, opts, {
-    heading: "Features",
-    intro: "Single-file bundle of every feature PRD (the product functionality), in build order. For the full reconstruction \u2014 architecture, interfaces, data model, build order \u2014 see `RECONSTRUCTION.md`.",
-    stripSource: false
-  });
-}
 function mergeSpecs(artifacts, inv, opts) {
-  return bundleFeatureSet(artifacts, inv, opts, {
-    heading: "Feature specs",
-    intro: "Single-file bundle of every feature PRD with the embedded source code (`## Source material`) stripped \u2014 the specs/requirements only, in build order. For the same PRDs *with* the source see `FEATURES.md`; for the whole reconstruction see `RECONSTRUCTION.md`.",
+  return mergeTree(artifacts, inv, opts, {
+    heading: "Specs",
+    intro: "Single-file **specification** to (re)build this project from: overview, architecture (interfaces & data model), every feature PRD, and the build order \u2014 with the embedded original source code (`## Source material`) stripped. Self-sufficient and code-free, so an agent can implement from it directly. For the same tree *with* the original source, see `RECONSTRUCTION.md`.",
     stripSource: true
   });
 }
@@ -3935,7 +3935,7 @@ Options:
   --merge              Also write RECONSTRUCTION.md (whole tree in one file)
   --summary            Also write SUMMARY.md (one-page digest)
   --features           Also write FEATURES.md (every feature PRD, nothing else)
-  --specs              Also write SPECS.md (feature PRDs, embedded source stripped)
+  --specs              Also write SPECS.md (whole spec, source code stripped \u2014 implement from this)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
   -v, --version        Show version
@@ -3953,11 +3953,11 @@ From scratch (greenfield):
 
 Bundling:
   --merge / --summary / --features / --specs during a normal run append the
-  file(s) to the output tree. RECONSTRUCTION.md is the whole tree in one file;
-  FEATURES.md is the feature PRDs only (the product functionality); SPECS.md is
-  the same feature PRDs with the embedded source code stripped (the specs, no
-  code). Used WITHOUT --repo, they run as a post-step on an existing
-  reconstruction:
+  file(s) to the output tree. RECONSTRUCTION.md is the whole tree in one file
+  (with the embedded source); SPECS.md is the same whole tree (architecture +
+  features) with the source code stripped \u2014 the self-sufficient, code-free spec
+  to hand an agent to implement from; FEATURES.md is the feature PRDs only.
+  Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
     reconstruct --merge --summary --features --specs --out <reconstruction-dir>
 
 Validation:
@@ -4156,7 +4156,7 @@ function main() {
       ...effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : [],
       ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
       ...effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
-      ...effOpts.specs ? [`  specs:    SPECS.md (feature PRDs, source stripped)`] : [],
+      ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
       `  next:     open ${join13(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
@@ -4202,7 +4202,7 @@ function main() {
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
     ...opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
-    ...opts.specs ? [`  specs:    SPECS.md (feature PRDs, source stripped)`] : [],
+    ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
     `  next:     open ${join13(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`

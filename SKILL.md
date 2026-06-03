@@ -240,10 +240,12 @@ Four optional, combinable flags collapse the multi-file tree for sharing or revi
   functionality — in build order, in one file (single H1 + linked table of
   contents, headings demoted one level). The features-only counterpart to
   `--merge`; skips the overview, architecture and build-order docs.
-- **`--specs`** → `SPECS.md`: the same feature PRDs as `--features`, but with each
-  one's `## Source material` section (the embedded source code) stripped — the
-  specs/requirements without the code. Smaller and readable when you want the
-  what, not the implementation.
+- **`--specs`** → `SPECS.md`: the **same whole tree as `--merge`** (overview,
+  architecture — interfaces & data model —, every feature PRD, build order) but
+  with each document's `## Source material` section (the embedded original source
+  code) stripped. Self-sufficient (it carries the contracts the feature PRDs
+  reference) yet code-free — the single file to hand an agent to **implement
+  from**.
 - **`--summary`** → `SUMMARY.md`: a one-page digest from the inventory (stack,
   libraries, size, features in build order, interface/data counts, locales,
   unknowns, next steps).

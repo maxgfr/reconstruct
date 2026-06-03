@@ -132,31 +132,39 @@ function orderedSections(artifacts: Artifact[], inv: Inventory): Section[] {
   return sections;
 }
 
-/**
- * Bundle the whole reconstruction tree into a single, coherent markdown
- * document: one H1 title, a metadata line, a linked table of contents, then
- * every document (overview → architecture → features → build order) with its
- * headings demoted one level so the result reads as one file.
- */
-export function mergeArtifacts(artifacts: Artifact[], inv: Inventory, opts: Options): string {
+interface MergeVariant {
+  /** Suffix after `# <repo> — ` in the bundle title. */
+  heading: string;
+  /** Intro sentence under the title. */
+  intro: string;
+  /** Strip each document's `## Source material` (embedded code) section. */
+  stripSource: boolean;
+}
+
+/** Shared core for the whole-tree bundles (`mergeArtifacts` / `mergeSpecs`). */
+function mergeTree(
+  artifacts: Artifact[],
+  inv: Inventory,
+  opts: Options,
+  variant: MergeVariant,
+): string {
   const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
   const sections = orderedSections(artifacts, inv);
 
   const parts: string[] = [];
-  parts.push(`# ${inv.repoName} — Reconstruction`);
+  parts.push(`# ${inv.repoName} — ${variant.heading}`);
   parts.push("");
   parts.push(metaLine(inv, opts));
   parts.push("");
-  parts.push(
-    "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree.",
-  );
+  parts.push(variant.intro);
   parts.push("");
   parts.push("## Contents");
   parts.push("");
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
 
   for (const s of sections) {
-    const content = byPath.get(s.relPath) ?? "";
+    const raw = byPath.get(s.relPath) ?? "";
+    const content = variant.stripSource ? stripSourceMaterial(raw) : raw;
     parts.push("");
     parts.push("---");
     parts.push("");
@@ -166,6 +174,21 @@ export function mergeArtifacts(artifacts: Artifact[], inv: Inventory, opts: Opti
   }
 
   return parts.join("\n") + "\n";
+}
+
+/**
+ * Bundle the whole reconstruction tree into a single, coherent markdown
+ * document: one H1 title, a metadata line, a linked table of contents, then
+ * every document (overview → architecture → features → build order) with its
+ * headings demoted one level so the result reads as one file.
+ */
+export function mergeArtifacts(artifacts: Artifact[], inv: Inventory, opts: Options): string {
+  return mergeTree(artifacts, inv, opts, {
+    heading: "Reconstruction",
+    intro:
+      "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree.",
+    stripSource: false,
+  });
 }
 
 /**
@@ -204,22 +227,13 @@ export function stripSourceMaterial(md: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
 
-interface FeatureBundleVariant {
-  /** Suffix after `# <repo> — ` in the bundle title. */
-  heading: string;
-  /** Intro sentence under the title. */
-  intro: string;
-  /** Strip each feature's `## Source material` (embedded code) section. */
-  stripSource: boolean;
-}
-
-/** Shared core for the feature-only bundles (`mergeFeatures` / `mergeSpecs`). */
-function bundleFeatureSet(
-  artifacts: Artifact[],
-  inv: Inventory,
-  opts: Options,
-  variant: FeatureBundleVariant,
-): string {
+/**
+ * Bundle only the feature PRDs — the product functionality — into a single
+ * markdown document, in build order, each feature's headings demoted one level
+ * so the result reads as one file. Excludes the overview, architecture, and
+ * build-order docs; for the whole tree use `mergeArtifacts` (`RECONSTRUCTION.md`).
+ */
+export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Options): string {
   const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
   const have = new Set(artifacts.map((a) => a.relPath));
   const sections: Section[] = [];
@@ -229,11 +243,14 @@ function bundleFeatureSet(
   }
 
   const parts: string[] = [];
-  parts.push(`# ${inv.repoName} — ${variant.heading}`);
+  parts.push(`# ${inv.repoName} — Features`);
   parts.push("");
   parts.push(metaLine(inv, opts));
   parts.push("");
-  parts.push(variant.intro);
+  parts.push(
+    "Single-file bundle of every feature PRD (the product functionality), in build order. " +
+      "For the full reconstruction — architecture, interfaces, data model, build order — see `RECONSTRUCTION.md`.",
+  );
   parts.push("");
   parts.push("## Contents");
   parts.push("");
@@ -241,8 +258,7 @@ function bundleFeatureSet(
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
 
   for (const s of sections) {
-    const raw = byPath.get(s.relPath) ?? "";
-    const content = variant.stripSource ? stripSourceMaterial(raw) : raw;
+    const content = byPath.get(s.relPath) ?? "";
     parts.push("");
     parts.push("---");
     parts.push("");
@@ -255,34 +271,23 @@ function bundleFeatureSet(
 }
 
 /**
- * Bundle only the feature PRDs — the product functionality — into a single
- * markdown document, in build order, each feature's headings demoted one level
- * so the result reads as one file. Excludes the overview, architecture, and
- * build-order docs; for the whole tree use `mergeArtifacts` (`RECONSTRUCTION.md`).
- */
-export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Options): string {
-  return bundleFeatureSet(artifacts, inv, opts, {
-    heading: "Features",
-    intro:
-      "Single-file bundle of every feature PRD (the product functionality), in build order. " +
-      "For the full reconstruction — architecture, interfaces, data model, build order — see `RECONSTRUCTION.md`.",
-    stripSource: false,
-  });
-}
-
-/**
- * Like `mergeFeatures`, but with each feature's `## Source material` section
- * (the embedded source code) stripped — the PRD specs without the code. Smaller
- * and readable; the counterpart to `FEATURES.md` when you want the requirements,
- * not the implementation.
+ * The implement-from spec: the whole reconstruction tree (overview, architecture
+ * — interfaces & data model —, every feature PRD, build order) bundled like
+ * `mergeArtifacts`, but with each document's `## Source material` section (the
+ * embedded original source code) stripped. Self-sufficient — it carries the data
+ * model and interface contracts the feature PRDs reference — yet code-free, so it
+ * is the file you hand an agent to (re)implement the project from. For the same
+ * tree *with* the original source, use `mergeArtifacts` (`RECONSTRUCTION.md`).
  */
 export function mergeSpecs(artifacts: Artifact[], inv: Inventory, opts: Options): string {
-  return bundleFeatureSet(artifacts, inv, opts, {
-    heading: "Feature specs",
+  return mergeTree(artifacts, inv, opts, {
+    heading: "Specs",
     intro:
-      "Single-file bundle of every feature PRD with the embedded source code (`## Source material`) " +
-      "stripped — the specs/requirements only, in build order. For the same PRDs *with* the source see " +
-      "`FEATURES.md`; for the whole reconstruction see `RECONSTRUCTION.md`.",
+      "Single-file **specification** to (re)build this project from: overview, architecture " +
+      "(interfaces & data model), every feature PRD, and the build order — with the embedded " +
+      "original source code (`## Source material`) stripped. Self-sufficient and code-free, so " +
+      "an agent can implement from it directly. For the same tree *with* the original source, " +
+      "see `RECONSTRUCTION.md`.",
     stripSource: true,
   });
 }

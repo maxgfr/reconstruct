@@ -37,9 +37,9 @@ This installs the skill into your agent (Claude Code, Cursor, Codex, …). Then 
 ```
 reconstruction/
 ├── REBUILD.md                 # master plan: build order + validation checklist
-├── RECONSTRUCTION.md          # (--merge) the whole tree bundled into one markdown
+├── RECONSTRUCTION.md          # (--merge) the whole tree in one markdown, WITH embedded source
+├── SPECS.md                   # (--specs) the whole spec, code-free — the file to implement from
 ├── FEATURES.md                # (--features) every feature PRD only, in build order
-├── SPECS.md                   # (--specs) feature PRDs with the embedded code stripped
 ├── SUMMARY.md                 # (--summary) one-page digest of the reconstruction
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
@@ -97,23 +97,30 @@ Four optional, combinable flags collapse the multi-file tree:
 
 - `--merge` → **`RECONSTRUCTION.md`**: the whole tree in one coherent markdown
   (single H1, linked table of contents, headings demoted one level; ordered
-  overview → architecture → features → build order).
+  overview → architecture → features → build order), **with the embedded original
+  source**. The complete archive.
+- `--specs` → **`SPECS.md`**: the **same whole tree** as `--merge` — overview,
+  architecture (interfaces + data model), every feature PRD, build order — but
+  with each document's `## Source material` section (the embedded original source
+  code) **stripped**. Self-sufficient (it carries the contracts the feature PRDs
+  reference) yet code-free, so it's the single file you hand an agent to
+  **(re)implement the project from**.
 - `--features` → **`FEATURES.md`**: every feature PRD only — the product
   functionality — in build order, in one file (single H1 + table of contents).
   The features-only counterpart to `--merge`.
-- `--specs` → **`SPECS.md`**: the same feature PRDs as `--features`, but with each
-  one's `## Source material` section (the embedded source code) stripped — the
-  specs/requirements without the code. Smaller and readable.
 - `--summary` → **`SUMMARY.md`**: a one-page digest from the inventory (stack,
   libraries, size, features in build order, interface/data counts, locales,
   unknowns, next steps).
 
 ```bash
 # inline: produce the tree and the bundles in one run
-node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --features --specs --summary
+node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --specs --features --summary
 
 # standalone post-step: (re)build the bundles from an existing output, no --repo
-node scripts/analyze.mjs --merge --features --specs --summary --out ./my-app/reconstruction
+node scripts/analyze.mjs --merge --specs --features --summary --out ./my-app/reconstruction
+
+# just the code-free spec to implement from, from an existing reconstruction:
+node scripts/analyze.mjs --specs --out ./my-app/reconstruction
 ```
 
 The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,

@@ -289,42 +289,75 @@ describe("stripSourceMaterial", () => {
     const md = "# Feature\n\n## Functional requirements\n1. x.\n";
     expect(stripSourceMaterial(md).trim()).toBe(md.trim());
   });
+
+  it("strips ONLY Source material — a fenced snippet in another section survives", () => {
+    const md = [
+      "# Feature",
+      "",
+      "## Interfaces & data",
+      "Input shape:",
+      "```ts",
+      "const KEPT_CONTRACT_SNIPPET = z.object({ id: z.string() });",
+      "```",
+      "",
+      "## Source material",
+      "```ts",
+      "const DROPPED_IMPLEMENTATION = 1;",
+      "```",
+      "",
+      "## Definition of done",
+      "- [ ] done",
+      "",
+    ].join("\n");
+    const out = stripSourceMaterial(md);
+    expect(out).toContain("KEPT_CONTRACT_SNIPPET"); // contract notation in a spec section is preserved
+    expect(out).not.toContain("DROPPED_IMPLEMENTATION"); // the implementation dump is removed
+    expect(out).toContain("## Definition of done");
+  });
 });
 
 describe("mergeSpecs", () => {
+  // The implement-from spec: the WHOLE tree (overview + architecture + features)
+  // with every feature's `## Source material` (embedded code) stripped.
   const arts: Artifact[] = [
-    { relPath: "00-overview/PRD.md", content: "# Overview\n\nSummary.\n" },
+    { relPath: "00-overview/PRD.md", content: "# Overview\n\nProduct summary.\n" },
+    { relPath: "architecture/ARCHITECTURE.md", content: "# Architecture\n\n## Layers\nText.\n" },
+    { relPath: "architecture/INTERFACES.md", content: "# Interfaces\n\nThe full interface surface.\n" },
+    { relPath: "architecture/DATA-MODEL.md", content: "# Data model\n\nEntities and enums.\n" },
     { relPath: "features/01-core/PRD.md", content: FEAT_WITH_SOURCE },
     {
       relPath: "features/02-auth/PRD.md",
       content: "# Auth\n\n## Functional requirements\n1. Login.\n\n## Source material\n\n```ts\nconst AUTH_SOURCE_SENTINEL = 1;\n```\n",
     },
+    { relPath: "REBUILD.md", content: "# REBUILD\n\nBuild order.\n" },
     { relPath: "inventory.json", content: "{}\n" },
   ];
   const out = mergeSpecs(arts, makeInv(), makeOpts());
 
-  it("titles itself 'Feature specs' with a single H1", () => {
+  it("titles itself 'Specs' with a single H1", () => {
     const h1s = out.split("\n").filter((l) => /^# (?!#)/.test(l));
     expect(h1s.length).toBe(1);
-    expect(h1s[0]).toMatch(/Feature specs/i);
+    expect(h1s[0]).toMatch(/— Specs$/);
   });
 
-  it("keeps the spec prose but strips every feature's embedded source code", () => {
+  it("is self-sufficient: includes the architecture (interfaces + data model) and overview", () => {
+    expect(out).toContain("## Overview"); // demoted from "# Overview"
+    expect(out).toContain("## Architecture");
+    expect(out).toContain("## Interfaces");
+    expect(out).toContain("## Data model");
+    expect(out).toContain("The full interface surface.");
+    expect(out).toContain("Entities and enums.");
+  });
+
+  it("keeps the feature spec prose but strips every feature's embedded source code", () => {
     expect(out).toContain("### Functional requirements"); // demoted from ##
     expect(out).not.toContain("SOURCE_CODE_SENTINEL");
     expect(out).not.toContain("AUTH_SOURCE_SENTINEL");
-    // The feature's "## Source material" section would demote to "### Source
-    // material" if it survived; it must not. (The intro names it in prose, so we
-    // assert on the demoted *section heading*, not the bare phrase.)
+    // A surviving "## Source material" would demote to "### Source material".
     expect(out).not.toContain("### Source material");
   });
 
-  it("points back to FEATURES.md (with code) and RECONSTRUCTION.md", () => {
-    expect(out).toContain("FEATURES.md");
+  it("points back to RECONSTRUCTION.md (the same tree with source)", () => {
     expect(out).toContain("RECONSTRUCTION.md");
-  });
-
-  it("excludes non-feature docs", () => {
-    expect(out).not.toContain("## Overview");
   });
 });

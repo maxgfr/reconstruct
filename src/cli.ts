@@ -34,7 +34,7 @@ Options:
   --merge              Also write RECONSTRUCTION.md (whole tree in one file)
   --summary            Also write SUMMARY.md (one-page digest)
   --features           Also write FEATURES.md (every feature PRD, nothing else)
-  --specs              Also write SPECS.md (feature PRDs, embedded source stripped)
+  --specs              Also write SPECS.md (whole spec, source code stripped — implement from this)
   --json               Print the inventory JSON only, write nothing
   -h, --help           Show this help
   -v, --version        Show version
@@ -52,11 +52,11 @@ From scratch (greenfield):
 
 Bundling:
   --merge / --summary / --features / --specs during a normal run append the
-  file(s) to the output tree. RECONSTRUCTION.md is the whole tree in one file;
-  FEATURES.md is the feature PRDs only (the product functionality); SPECS.md is
-  the same feature PRDs with the embedded source code stripped (the specs, no
-  code). Used WITHOUT --repo, they run as a post-step on an existing
-  reconstruction:
+  file(s) to the output tree. RECONSTRUCTION.md is the whole tree in one file
+  (with the embedded source); SPECS.md is the same whole tree (architecture +
+  features) with the source code stripped — the self-sufficient, code-free spec
+  to hand an agent to implement from; FEATURES.md is the feature PRDs only.
+  Used WITHOUT --repo, they run as a post-step on an existing reconstruction:
     reconstruct --merge --summary --features --specs --out <reconstruction-dir>
 
 Validation:
@@ -298,7 +298,7 @@ function main(): void {
       ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
       ...(effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
       ...(effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
-      ...(effOpts.specs ? [`  specs:    SPECS.md (feature PRDs, source stripped)`] : []),
+      ...(effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : []),
       ...(effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
       `  output:   ${effOpts.out}`,
       `  next:     open ${join(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
@@ -351,7 +351,7 @@ function main(): void {
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...(opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
     ...(opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
-    ...(opts.specs ? [`  specs:    SPECS.md (feature PRDs, source stripped)`] : []),
+    ...(opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : []),
     ...(opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
     `  output:   ${opts.out}`,
     `  next:     open ${join(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,

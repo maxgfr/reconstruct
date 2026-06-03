@@ -75,19 +75,23 @@ describe("bundleExisting (standalone post-step)", () => {
     rmSync(isolated, { recursive: true, force: true });
   });
 
-  it("builds SPECS.md (feature PRDs, embedded source stripped) from an existing tree", () => {
+  it("builds SPECS.md (whole spec, embedded source stripped) from an existing tree", () => {
     const opts = makeOpts({ out: dir, specs: true, standalone: true });
     writeOutput(bundleExisting(opts), opts);
 
     expect(existsSync(join(dir, "SPECS.md"))).toBe(true);
     const specsDoc = readFileSync(join(dir, "SPECS.md"), "utf8");
-    expect(specsDoc).toMatch(/# sample-app — Feature specs/);
+    expect(specsDoc).toMatch(/# sample-app — Specs/);
     expect(specsDoc).toContain("## Contents");
-    // No feature's "## Source material" section survives (it would demote to
-    // "### Source material"); the intro names it in prose, so assert the heading.
+    // Self-sufficient: carries the architecture (the implement-from contracts),
+    // not just the features.
+    expect(specsDoc).toContain("## Architecture");
+    expect(specsDoc).toMatch(/## Interface/);
+    expect(specsDoc).toMatch(/## Data model/);
+    // No feature's "## Source material" section survives (would demote to "###").
     expect(specsDoc).not.toContain("### Source material");
-    // Points to the code-carrying counterparts.
-    expect(specsDoc).toContain("FEATURES.md");
+    // Points to the source-carrying counterpart.
+    expect(specsDoc).toContain("RECONSTRUCTION.md");
     const h1s = specsDoc.split("\n").filter((l) => /^# (?!#)/.test(l));
     expect(h1s.length).toBe(1);
   });
