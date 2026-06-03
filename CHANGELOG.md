@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.10.0](https://github.com/maxgfr/reconstruct/compare/v0.9.0...v0.10.0) (2026-06-03)
+
+
+### Features
+
+* **cli:** make --specs the whole code-free spec (architecture + features) ([0d54097](https://github.com/maxgfr/reconstruct/commit/0d54097a8598784e24fa5af9fd1997dc77d6f895))
+
 # [0.9.0](https://github.com/maxgfr/reconstruct/compare/v0.8.1...v0.9.0) (2026-06-03)
 
 
