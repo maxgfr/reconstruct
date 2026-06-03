@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v6
         with:
@@ -43,3 +43,37 @@ jobs:
 
       - name: Convergence/parity (scratch path, buildable-by-construction)
         run: pnpm run parity # node scripts/parity.mjs --plan <example fixture>; --repo omitted, no external repo needed
+
+  # The shipped scripts/analyze.mjs is a dependency-free bundle that declares
+  # engines.node ">=18", but the dev toolchain (vite 8 / vitest 4) needs Node
+  # >=20.19 — so build-test above can't prove the floor. This job runs ONLY the
+  # committed bundle on Node 18, with no install, to guarantee the published
+  # ">=18" promise actually holds (a Node 20+ API sneaking into src/ would build
+  # green on Node 24 yet break for real users on 18; this catches that).
+  runtime-node-floor:
+    runs-on: ubuntu-latest
+    name: runtime (Node 18 floor, zero-dep bundle)
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 18
+
+      - name: Reverse-engineer path + bundles run on Node 18
+        run: |
+          node scripts/analyze.mjs --repo tests/fixtures/sample-app --out "$RUNNER_TEMP/r18" --merge --specs --features --summary
+          test -f "$RUNNER_TEMP/r18/inventory.json"
+          test -f "$RUNNER_TEMP/r18/REBUILD.md"
+          test -f "$RUNNER_TEMP/r18/SPECS.md"
+          test -f "$RUNNER_TEMP/r18/RECONSTRUCTION.md"
+
+      - name: Scratch (greenfield) path runs on Node 18
+        run: |
+          node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/example.plan.json --out "$RUNNER_TEMP/s18" --level complex
+          test -f "$RUNNER_TEMP/s18/REBUILD.md"
+
+      - name: Standalone bundle post-step runs on Node 18
+        run: |
+          node scripts/analyze.mjs --summary --out "$RUNNER_TEMP/r18"
+          test -f "$RUNNER_TEMP/r18/SUMMARY.md"

@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 0 # full history + tags, required to analyze commits since last release
           persist-credentials: true # let @semantic-release/git push the bump commit
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v6
         with:
