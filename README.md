@@ -9,9 +9,11 @@
 
 `reconstruct` is an [Agent Skill](https://www.skills.sh/) (the open agent-skills
 ecosystem by Vercel). It pairs a **thin deterministic scaffold** with a **thick AI
-playbook**: a bundled, dependency-free Node script extracts universal facts and *candidate
-hints*, and the AI agent that runs the skill supplies the framework-aware understanding —
-the interface surface, the data model, and the real features — for **any** stack.
+playbook**: a bundled, dependency-free Node script extracts universal facts, resolves routes
+(with their HTTP method) for the major frameworks, and surfaces *candidate hints* for
+everything else; the AI agent that runs the skill supplies the deeper framework-aware
+understanding — the full interface surface, the data model, and the real features — for
+**any** stack.
 
 > 📖 **Full documentation:** [`DOCUMENTATION.md`](./DOCUMENTATION.md) — concept, CLI
 > reference, the analyzer pipeline, how to extend it, and FAQ.
@@ -40,7 +42,7 @@ reconstruction/
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
 │   ├── ARCHITECTURE.md        # architecture + external services, cross-cutting policies, i18n message catalog
-│   ├── INTERFACES.md          # full interface surface + per-operation input/output/side-effect contracts
+│   ├── INTERFACES.md          # interface surface (method · path · kind · handler) + per-op input/output/side-effect contracts
 │   ├── DATA-MODEL.md          # entities, fields, relations, indexes + enums & domain types
 │   └── diagram.md             # mermaid module diagram
 ├── features/
@@ -200,12 +202,17 @@ the interview is never clobbered. Add `--tdd` (here or in any mode) to make ever
 3. Use `data/` (and `source/` when present) as ground truth.
 
 **Any stack.** The deterministic scaffold is universal (tree, deps, env, i18n, stack/library
-detection, plus *candidate hints* for routes/API/schema/entry points). The framework-aware
-depth — mapping the real interface surface and data model — comes from the AI playbook in
-[`SKILL.md`](./SKILL.md) + [`references/`](./references), with per-stack cheat-sheets in
+detection, plus *candidate hints* for routes/API/schema/entry points — so a stack without a
+dedicated adapter is never invisible). On top of that, **route adapters resolve the real
+routes — with their HTTP method — for eight framework families** (Next.js, Express, Flask,
+FastAPI, NestJS, Django, Rails, Go) through a small pluggable registry. The deeper
+framework-aware depth — the full interface surface and data model — comes from the AI playbook
+in [`SKILL.md`](./SKILL.md) + [`references/`](./references), with per-stack cheat-sheets in
 [`references/stack-guides/`](./references/stack-guides) (Next.js, Remix, Nuxt, SvelteKit,
 Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go, Spring Boot,
-tRPC/gRPC, GraphQL, mobile). Adding a stack is adding markdown, not code.
+tRPC/gRPC, GraphQL, mobile). Adding agent guidance for a stack is just markdown; adding a
+deterministic route adapter is a small, self-contained code PR — see
+[`references/adapters.md`](./references/adapters.md).
 
 ## Development
 
