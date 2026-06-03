@@ -49,6 +49,7 @@ export function analyze(opts: Options): Inventory {
   const { files, excludedCount } = walk(opts.repo, {
     include: opts.include,
     exclude: opts.exclude,
+    out: opts.out,
   });
   const stack = detectStack(opts.repo, files);
   const dependencies = extractDependencies(opts.repo, files);

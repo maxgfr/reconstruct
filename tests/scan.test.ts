@@ -64,6 +64,37 @@ describe("walk transparency & scoping", () => {
     expect(paths).not.toContain("a.test.ts");
     expect(excludedCount).toBeGreaterThanOrEqual(1);
   });
+
+  it("prunes prior reconstruct outputs by inventory.json signature, whatever they're named", () => {
+    const sig = JSON.stringify({ generatedWith: "reconstruct@0.6.2", repoName: "x" });
+    const r = repo((w) => {
+      w("src/app.ts", "export const x = 1;");
+      // output trees the name-based default ignore does NOT cover
+      w("reconstruction-scratch/00-overview/PRD.md", "# Overview\n");
+      w("reconstruction-scratch/inventory.json", sig);
+      w("custom-out/REBUILD.md", "# r\n");
+      w("custom-out/inventory.json", sig);
+      // a normal dir that merely has a non-reconstruct inventory.json — kept
+      w("data-pkg/inventory.json", JSON.stringify({ foo: 1 }));
+      w("data-pkg/value.ts", "1");
+    });
+    const { files } = walk(r);
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain("src/app.ts");
+    expect(paths).toContain("data-pkg/value.ts"); // not a reconstruct output → kept
+    expect(paths.some((p) => p.startsWith("reconstruction-scratch/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("custom-out/"))).toBe(false);
+  });
+
+  it("prunes this run's --out tree even before it has an inventory (first run)", () => {
+    const r = repo((w) => {
+      w("src/app.ts", "1");
+      w("fresh-out/placeholder.md", "wip"); // freshly created, no inventory.json yet
+    });
+    const { files } = walk(r, { out: join(r, "fresh-out") });
+    expect(files.some((f) => f.path.startsWith("fresh-out/"))).toBe(false);
+    expect(files.some((f) => f.path === "src/app.ts")).toBe(true);
+  });
 });
 
 describe("extractEnvVars has no silent file cap", () => {

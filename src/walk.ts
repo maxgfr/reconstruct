@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
-import { join, relative, extname, basename } from "node:path";
+import { join, relative, extname, basename, resolve } from "node:path";
 import type { FileCategory, FileInfo } from "./types.js";
 
 const DEFAULT_IGNORE_DIRS = new Set([
@@ -124,6 +124,22 @@ export function loadIgnore(repo: string): (relPath: string, isDir: boolean) => b
   };
 }
 
+/**
+ * A reconstruct output directory carries an `inventory.json` stamped
+ * `"generatedWith": "reconstruct@<ver>"`. Detecting that signature lets us prune
+ * a prior reconstruction tree by **what it is**, not its name — so re-running the
+ * analyzer never ingests its own earlier PRDs (the default `<repo>/reconstruction`,
+ * a `reconstruction-scratch`, or any custom `--out`).
+ */
+function isReconstructOutput(dir: string): boolean {
+  try {
+    const head = readFileSync(join(dir, "inventory.json"), "utf8").slice(0, 4096);
+    return /"generatedWith"\s*:\s*"reconstruct@/.test(head);
+  } catch {
+    return false;
+  }
+}
+
 function isProbablyBinary(abs: string, ext: string): boolean {
   if (BINARY_EXTS.has(ext)) return true;
   try {
@@ -226,6 +242,14 @@ export interface WalkOptions {
   include?: string[];
   /** Drop files matching any of these gitignore-style globs. */
   exclude?: string[];
+  /**
+   * Absolute path of this run's output directory. When it lives inside the repo
+   * (the default `<repo>/reconstruction`), it is pruned so the analyzer never
+   * re-scans its own prior output — regardless of the dir's name (e.g.
+   * `reconstruction-scratch` or a custom `--out`), which the name-based default
+   * ignore can't cover.
+   */
+  out?: string;
 }
 
 export interface WalkResult {
@@ -250,6 +274,7 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
   const ignore = loadIgnore(repo);
   const includePats = compileGlobs(opts.include);
   const excludePats = compileGlobs(opts.exclude);
+  const outAbs = opts.out ? resolve(opts.out) : "";
   const files: FileInfo[] = [];
   let excludedCount = 0;
 
@@ -265,6 +290,10 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
       const rel = relative(repo, abs).split("\\").join("/");
       const isDir = entry.isDirectory();
 
+      // Never re-scan this run's own output tree, whatever it's named, nor any
+      // prior reconstruct output detected by its inventory.json signature.
+      if (isDir && outAbs && resolve(abs) === outAbs) continue;
+      if (isDir && isReconstructOutput(abs)) continue;
       // Pruned directories are not counted (their contents are never enumerated).
       if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
       if (ignore(rel, isDir)) {
