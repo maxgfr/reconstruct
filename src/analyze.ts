@@ -90,7 +90,7 @@ export function analyze(opts: Options): Inventory {
     enrichWorkspaceSurface(workspaces, routes, hints, schemas);
   }
   const node = detectNodeVersion(opts.repo);
-  const features = buildFeatures(files, routes, i18n, opts.granularity);
+  const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
   const unknowns = computeUnknowns(stack, routes, hints, workspaces);
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
 

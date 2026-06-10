@@ -76,3 +76,67 @@ describe("feature granularity", () => {
     expect(features.find((f) => f.name === "Onboarding")).toBeDefined();
   });
 });
+
+// Monorepo: features group under their workspace — app workspaces split into
+// prefixed sub-features, library workspaces collapse into one feature each,
+// and the topological order keeps shared packages before their consumers.
+describe("workspace-aware feature grouping", () => {
+  const ws = (name: string, path: string, extra: object = {}) => ({ name, path, ...extra });
+  const workspaces = [
+    ws("@acme/db", "packages/db"),
+    ws("@acme/ui", "packages/ui"),
+    ws("@acme/web", "apps/web", { dependsOn: ["@acme/db", "@acme/ui"] }),
+  ];
+  const files = [
+    file("apps/web/app/dashboard/page.tsx"),
+    file("apps/web/app/billing/page.tsx"),
+    file("packages/ui/src/Button.tsx"),
+    file("packages/db/src/schema.ts", "schema"),
+    file("scripts/release.ts"),
+  ];
+  const routes = [
+    { ...route("/dashboard", "apps/web/app/dashboard/page.tsx"), workspace: "@acme/web" },
+    { ...route("/billing", "apps/web/app/billing/page.tsx"), workspace: "@acme/web" },
+  ];
+  const features = buildFeatures(files, routes, null, "coarse", workspaces);
+  const slugs = features.map((f) => f.slug);
+  const at = (re: RegExp) => slugs.findIndex((s) => re.test(s));
+
+  it("prefixes app sub-features with the workspace short name", () => {
+    expect(slugs.some((s) => /^\d{2}-web-dashboard$/.test(s))).toBe(true);
+    expect(slugs.some((s) => /^\d{2}-web-billing$/.test(s))).toBe(true);
+  });
+
+  it("collapses each library workspace into one feature", () => {
+    const db = features.find((f) => /-db$/.test(f.slug));
+    const ui = features.find((f) => /-ui$/.test(f.slug));
+    expect(db?.files).toEqual(["packages/db/src/schema.ts"]);
+    expect(ui?.files).toEqual(["packages/ui/src/Button.tsx"]);
+    expect(db?.name).toBe("DB (@acme/db)");
+  });
+
+  it("orders shared packages before the app that consumes them", () => {
+    expect(at(/-db$/)).toBeLessThan(at(/-web-/));
+    expect(at(/-ui$/)).toBeLessThan(at(/-web-/));
+  });
+
+  it("keeps files outside every workspace on the single-package path", () => {
+    const all = features.flatMap((f) => f.files);
+    expect(all).toContain("scripts/release.ts");
+  });
+
+  it("is byte-identical to the old behavior when no workspaces are passed", () => {
+    const a = buildFeatures(files, routes, null, "coarse");
+    const b = buildFeatures(files, routes, null, "coarse", []);
+    expect(b).toEqual(a);
+  });
+
+  it("falls back to full-path slugs when two workspaces share a short name", () => {
+    const colliding = [ws("@a/web", "apps/web"), ws("@b/web", "packages/web")];
+    const colFiles = [file("apps/web/src/index.ts"), file("packages/web/src/index.ts")];
+    const f = buildFeatures(colFiles, [], null, "coarse", colliding);
+    const colSlugs = f.map((x) => x.slug).join(" ");
+    expect(colSlugs).toContain("apps-web");
+    expect(colSlugs).toContain("packages-web");
+  });
+});

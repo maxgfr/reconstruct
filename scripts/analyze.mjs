@@ -878,6 +878,23 @@ function enrichWorkspaceSurface(workspaces, routes, hints, schemas) {
     if (Object.values(wsHints).some((list) => list.length > 0)) ws.hints = wsHints;
   }
 }
+function topoOrderWorkspaces(workspaces) {
+  const remaining = new Map(workspaces.map((w) => [w.name, new Set(w.dependsOn ?? [])]));
+  const order = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining.entries()].filter(([, deps]) => [...deps].every((d) => !remaining.has(d))).map(([name]) => name);
+    if (ready.length === 0) {
+      const leftover = workspaces.filter((w) => remaining.has(w.name)).map((w) => w.name);
+      order.push(...leftover);
+      break;
+    }
+    for (const name of ready.sort()) {
+      order.push(name);
+      remaining.delete(name);
+    }
+  }
+  return order;
+}
 
 // src/detect/stack.ts
 var EXT_LANGUAGE = {
@@ -2342,6 +2359,7 @@ var FOUNDATION_ORDER = [
   "locales"
 ];
 var SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
+var WS_RANK_SPAN = 100;
 var DATA_LAYER_KEYS = /* @__PURE__ */ new Set(["prisma", "drizzle", "migrations"]);
 function foundationRank(key, hasSchema) {
   const i = FOUNDATION_ORDER.indexOf(key);
@@ -2361,7 +2379,52 @@ function orderFeatures(records) {
     slug: `${String(i + 1).padStart(2, "0")}-${r.feature.slug}`
   }));
 }
-function buildFeatures(files, routes, i18n, granularity = "coarse") {
+function makeWsContext(workspaces, routes) {
+  const lastSeg2 = (p) => p.split("/").pop() ?? p;
+  const segCounts = /* @__PURE__ */ new Map();
+  for (const ws of workspaces) {
+    const seg = lastSeg2(ws.path);
+    segCounts.set(seg, (segCounts.get(seg) ?? 0) + 1);
+  }
+  const shortOf = new Map(
+    workspaces.map((ws) => {
+      const seg = lastSeg2(ws.path);
+      return [ws.path, (segCounts.get(seg) ?? 0) > 1 ? slugify(ws.path) : seg];
+    })
+  );
+  const appNames = new Set(
+    routes.map((r) => r.workspace).filter((n) => Boolean(n))
+  );
+  const topoIndex = new Map(topoOrderWorkspaces(workspaces).map((name, i) => [name, i]));
+  const dependedOn = new Set(workspaces.flatMap((ws) => ws.dependsOn ?? []));
+  return {
+    matcher: workspaceMatcher(workspaces),
+    shortOf,
+    appNames,
+    topoIndex,
+    dependedOn,
+    groups: /* @__PURE__ */ new Map()
+  };
+}
+function wsKeyFor(ctx, ws, innerPath) {
+  const short = ctx.shortOf.get(ws.path);
+  const key = ctx.appNames.has(ws.name) ? `${short}/${featureKey(innerPath)}` : `ws:${short}`;
+  if (!ctx.groups.has(key)) {
+    ctx.groups.set(key, {
+      ws,
+      ...ctx.appNames.has(ws.name) ? { inner: featureKey(innerPath) } : {}
+    });
+  }
+  return key;
+}
+function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces = []) {
+  const ctx = workspaces.length ? makeWsContext(workspaces, routes) : null;
+  const keyForFile = (path) => {
+    const ws = ctx?.matcher(path);
+    return ws ? wsKeyFor(ctx, ws, path.slice(ws.path.length + 1)) : featureKey(path);
+  };
+  const innerOf = (key) => ctx?.groups.get(key)?.inner ?? key;
+  const isLibGroup = (key) => Boolean(ctx?.groups.get(key)) && !ctx?.groups.get(key)?.inner;
   const codeGroups = /* @__PURE__ */ new Map();
   const schemaPaths = /* @__PURE__ */ new Set();
   const configFiles = [];
@@ -2373,7 +2436,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
     } else if (f.category === "doc") {
       docFiles.push(f.path);
     } else if (f.category === "code" || f.category === "test" || f.category === "style" || f.category === "schema") {
-      const key = featureKey(f.path);
+      const key = keyForFile(f.path);
       const list = codeGroups.get(key) ?? [];
       list.push(f.path);
       codeGroups.set(key, list);
@@ -2381,40 +2444,63 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
   }
   const routesByKey = /* @__PURE__ */ new Map();
   for (const r of routes) {
-    const k = routeKey(r.route);
+    const ws = ctx && r.workspace ? workspaces.find((w) => w.name === r.workspace) : void 0;
+    const k = ws && ctx ? `${ctx.shortOf.get(ws.path)}/${routeKey(r.route)}` : routeKey(r.route);
+    if (ws && ctx && !ctx.groups.has(k)) ctx.groups.set(k, { ws, inner: routeKey(r.route) });
     const list = routesByKey.get(k) ?? [];
     list.push(r);
     routesByKey.set(k, list);
   }
   const groupHasSchema = (groupFiles) => groupFiles.some((p) => schemaPaths.has(p));
-  const isFoundationGroup = (key, groupFiles) => FOUNDATION_KEYS.has(key) || groupHasSchema(groupFiles);
+  const isFoundationGroup = (key, groupFiles) => FOUNDATION_KEYS.has(innerOf(key)) || groupHasSchema(groupFiles);
   if (granularity === "coarse") {
-    const core = codeGroups.get("core") ?? [];
-    let mergedAny = false;
+    const foldTarget = (key) => {
+      const group = ctx?.groups.get(key);
+      if (!group?.inner) return "core";
+      const short = ctx?.shortOf.get(group.ws.path);
+      return `${short}/core`;
+    };
     for (const [key, groupFiles] of [...codeGroups.entries()]) {
-      if (key === "core") continue;
+      if (key === "core" || innerOf(key) === "core" || isLibGroup(key)) continue;
       const routeCount = routesByKey.get(key)?.length ?? 0;
-      const trivial = groupFiles.length === 1 && routeCount === 0 && !isFoundationGroup(key, groupFiles) && !TEST_KEYS.has(key);
+      const trivial = groupFiles.length === 1 && routeCount === 0 && !isFoundationGroup(key, groupFiles) && !TEST_KEYS.has(innerOf(key));
       if (trivial) {
-        core.push(...groupFiles);
+        const target = foldTarget(key);
+        if (target !== "core" && ctx && !ctx.groups.has(target)) {
+          const group = ctx.groups.get(key);
+          if (group) ctx.groups.set(target, { ws: group.ws, inner: "core" });
+        }
+        codeGroups.set(target, [...codeGroups.get(target) ?? [], ...groupFiles]);
         codeGroups.delete(key);
-        mergedAny = true;
       }
     }
-    if (mergedAny || codeGroups.has("core")) codeGroups.set("core", core);
   }
   const records = [];
   for (const [key, groupFiles] of codeGroups.entries()) {
     const featureRoutes = routesByKey.get(key) ?? [];
-    const name = humanize(key);
+    const wsGroup = ctx?.groups.get(key);
+    const short = wsGroup ? ctx?.shortOf.get(wsGroup.ws.path) : "";
+    const name = wsGroup ? wsGroup.inner ? `${humanize(short)} \xB7 ${humanize(wsGroup.inner)}` : humanize(short) + (wsGroup.ws.name !== short ? ` (${wsGroup.ws.name})` : "") : humanize(key);
+    const slug = wsGroup ? wsGroup.inner ? slugify(`${short}-${humanize(wsGroup.inner)}`) : slugify(short) : slugify(name);
     const routeList = featureRoutes.map((r) => r.route);
     const uniqueRoutes = [...new Set(routeList)];
-    const desc = `Groups ${groupFiles.length} file(s)` + (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") + ".";
+    const desc = `Groups ${groupFiles.length} file(s)` + (wsGroup ? ` in workspace \`${wsGroup.ws.path}\`` : "") + (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") + ".";
     const hasSchema = groupHasSchema(groupFiles);
-    const tier = TEST_KEYS.has(key) ? 2 : isFoundationGroup(key, groupFiles) ? 0 : 1;
+    const topoBase = wsGroup ? (ctx?.topoIndex.get(wsGroup.ws.name) ?? 0) * WS_RANK_SPAN : 0;
+    let tier;
+    let rank;
+    if (wsGroup && !wsGroup.inner) {
+      const isDep = ctx?.dependedOn.has(wsGroup.ws.name) ?? false;
+      tier = isDep ? 0 : 1;
+      rank = topoBase;
+    } else {
+      const structuralKey = innerOf(key);
+      tier = TEST_KEYS.has(structuralKey) ? 2 : isFoundationGroup(key, groupFiles) ? 0 : 1;
+      rank = topoBase + (tier === 0 ? foundationRank(structuralKey, hasSchema) : 0);
+    }
     records.push({
       feature: {
-        slug: slugify(name),
+        slug,
         name,
         description: desc,
         kind: "feature",
@@ -2423,7 +2509,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
       },
       key,
       tier,
-      rank: tier === 0 ? foundationRank(key, hasSchema) : 0,
+      rank,
       size: groupFiles.length
     });
   }
@@ -2538,7 +2624,7 @@ function analyze(opts) {
     enrichWorkspaceSurface(workspaces, routes, hints, schemas);
   }
   const node = detectNodeVersion(opts.repo);
-  const features = buildFeatures(files, routes, i18n, opts.granularity);
+  const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
   const unknowns = computeUnknowns(stack, routes, hints, workspaces);
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   return {
