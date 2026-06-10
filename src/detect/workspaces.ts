@@ -1,7 +1,9 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join, posix } from "node:path";
-import type { Workspace, WorkspaceKind } from "../types.js";
+import { detectStack } from "./stack.js";
+import { extractDependencies } from "../adapters/generic.js";
+import type { FileInfo, Hints, RouteInfo, StackInfo, Workspace, WorkspaceKind } from "../types.js";
 
 function readJson(path: string): Record<string, unknown> | null {
   try {
@@ -367,6 +369,109 @@ export function buildWorkspaceGraph(repo: string, workspaces: Workspace[]): void
           ? goEdges(repo, ws, byName, byPath)
           : npmEdges(repo, ws, byName);
     if (edges.length) ws.dependsOn = edges.sort();
+  }
+}
+
+/**
+ * Longest-prefix matcher: which workspace does a repo-relative path belong to?
+ * Nested workspaces resolve to the deepest one.
+ */
+export function workspaceMatcher(
+  workspaces: Workspace[],
+): (path: string) => Workspace | undefined {
+  const byDepth = [...workspaces].sort((a, b) => b.path.length - a.path.length);
+  return (path) => byDepth.find((ws) => path.startsWith(ws.path + "/"));
+}
+
+/**
+ * First attribution phase — before route detection. Gives each workspace its
+ * own stack and manifest dependencies by rebasing its files onto the workspace
+ * dir, so detectStack/extractDependencies read the workspace's own manifests.
+ */
+export function enrichWorkspaceStacks(
+  repo: string,
+  workspaces: Workspace[],
+  files: FileInfo[],
+): void {
+  const matcher = workspaceMatcher(workspaces);
+  const filesByWs = new Map<string, FileInfo[]>();
+  for (const f of files) {
+    const ws = matcher(f.path);
+    if (!ws) continue;
+    const list = filesByWs.get(ws.path);
+    if (list) list.push(f);
+    else filesByWs.set(ws.path, [f]);
+  }
+
+  for (const ws of workspaces) {
+    const wsFiles = filesByWs.get(ws.path) ?? [];
+    const prefix = ws.path + "/";
+    const rebased = wsFiles.map((f) => ({ ...f, path: f.path.slice(prefix.length) }));
+    ws.fileCount = wsFiles.length;
+    ws.stack = detectStack(join(repo, ws.path), rebased);
+    const deps = extractDependencies(join(repo, ws.path), rebased);
+    if (deps.length) {
+      ws.dependencies = deps.map((d) => ({ ...d, manifest: prefix + d.manifest }));
+    }
+  }
+}
+
+/**
+ * Union the per-workspace frameworks/libraries/package managers into the global
+ * stack. In a monorepo the root manifest rarely declares the app frameworks —
+ * without this merge a workspace Next.js app would never activate its route
+ * adapter (adapters key off the global stack).
+ */
+export function mergeWorkspaceStacks(stack: StackInfo, workspaces: Workspace[]): StackInfo {
+  const frameworks = new Set(stack.frameworks);
+  const libraries = new Set(stack.libraries);
+  const packageManagers = new Set(stack.packageManagers);
+  for (const ws of workspaces) {
+    for (const f of ws.stack?.frameworks ?? []) frameworks.add(f);
+    for (const l of ws.stack?.libraries ?? []) libraries.add(l);
+    for (const p of ws.stack?.packageManagers ?? []) packageManagers.add(p);
+  }
+  return {
+    ...stack,
+    frameworks: [...frameworks],
+    libraries: [...libraries],
+    packageManagers: [...packageManagers],
+  };
+}
+
+/**
+ * Second attribution phase — after routes/hints exist. Tags each route with the
+ * workspace its file lives in, and filters the global hints/schemas down to
+ * each workspace's subtree. The global (union) fields stay authoritative.
+ */
+export function enrichWorkspaceSurface(
+  workspaces: Workspace[],
+  routes: RouteInfo[],
+  hints: Hints,
+  schemas: string[],
+): void {
+  const matcher = workspaceMatcher(workspaces);
+  const routeCounts = new Map<string, number>();
+  for (const r of routes) {
+    const ws = matcher(r.file);
+    if (!ws) continue;
+    r.workspace = ws.name;
+    routeCounts.set(ws.path, (routeCounts.get(ws.path) ?? 0) + 1);
+  }
+
+  for (const ws of workspaces) {
+    const prefix = ws.path + "/";
+    const routeCount = routeCounts.get(ws.path) ?? 0;
+    if (routeCount) ws.routeCount = routeCount;
+    const wsSchemas = schemas.filter((s) => s.startsWith(prefix));
+    if (wsSchemas.length) ws.schemas = wsSchemas;
+    const wsHints: Hints = {
+      routeCandidates: hints.routeCandidates.filter((p) => p.startsWith(prefix)),
+      apiCandidates: hints.apiCandidates.filter((p) => p.startsWith(prefix)),
+      schemaCandidates: hints.schemaCandidates.filter((p) => p.startsWith(prefix)),
+      entryPoints: hints.entryPoints.filter((p) => p.startsWith(prefix)),
+    };
+    if (Object.values(wsHints).some((list) => list.length > 0)) ws.hints = wsHints;
   }
 }
 

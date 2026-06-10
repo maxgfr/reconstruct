@@ -1,6 +1,13 @@
 import { basename } from "node:path";
 import { walk } from "./walk.js";
-import { detectStack, detectWorkspaces, detectNodeVersion } from "./detect/stack.js";
+import { detectStack, detectNodeVersion } from "./detect/stack.js";
+import {
+  detectWorkspaces,
+  buildWorkspaceGraph,
+  enrichWorkspaceStacks,
+  mergeWorkspaceStacks,
+  enrichWorkspaceSurface,
+} from "./detect/workspaces.js";
 import { detectCandidates } from "./detect/candidates.js";
 import {
   extractDependencies,
@@ -12,15 +19,25 @@ import { detectRoutes } from "./adapters/registry.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
 import { VERSION } from "./types.js";
-import type { Hints, Inventory, Options, RouteInfo, StackInfo } from "./types.js";
+import type { Hints, Inventory, Options, RouteInfo, StackInfo, Workspace } from "./types.js";
 
 /**
  * Notes the engine could not resolve deterministically — explicit pointers that
  * send the AI agent to the right hints/playbook step instead of leaving a silent
  * gap. The agent resolves these while writing INTERFACES.md / DATA-MODEL.md.
  */
-function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints): string[] {
+function computeUnknowns(
+  stack: StackInfo,
+  routes: RouteInfo[],
+  hints: Hints,
+  workspaces: Workspace[],
+): string[] {
   const u: string[] = [];
+  if (workspaces.length > 0) {
+    u.push(
+      "Monorepo: workspaces were detected (`workspaces[*]` carries each one's stack, dependencies, hints, and `dependsOn`) — verify each workspace's role (app / package / service) and extend the dependency graph with implicit edges (HTTP calls between apps, generated clients, shared env vars); deterministic edges come from manifest declarations only.",
+    );
+  }
   if (stack.frameworks.length === 0) {
     u.push(
       "No web framework was detected from manifests — identify the stack from `stack.languages` + `dependencies`, find the entry points (`hints.entryPoints`, else the file tree), then map the interface surface manually.",
@@ -51,7 +68,15 @@ export function analyze(opts: Options): Inventory {
     exclude: opts.exclude,
     out: opts.out,
   });
-  const stack = detectStack(opts.repo, files);
+  let stack = detectStack(opts.repo, files);
+  // Workspaces come first: a monorepo's frameworks live in workspace manifests,
+  // and route adapters activate off the (merged) global stack.
+  const workspaces = detectWorkspaces(opts.repo);
+  if (workspaces.length > 0) {
+    buildWorkspaceGraph(opts.repo, workspaces);
+    enrichWorkspaceStacks(opts.repo, workspaces, files);
+    stack = mergeWorkspaceStacks(stack, workspaces);
+  }
   const dependencies = extractDependencies(opts.repo, files);
   const routes = detectRoutes(files, stack, opts.repo);
   const i18n = detectI18n(opts.repo, files);
@@ -61,10 +86,12 @@ export function analyze(opts: Options): Inventory {
   const envVars = extractEnvVars(opts.repo, files);
   const scripts = extractScripts(opts.repo);
   const hints = detectCandidates(opts.repo, files, stack);
-  const workspaces = detectWorkspaces(opts.repo);
+  if (workspaces.length > 0) {
+    enrichWorkspaceSurface(workspaces, routes, hints, schemas);
+  }
   const node = detectNodeVersion(opts.repo);
   const features = buildFeatures(files, routes, i18n, opts.granularity);
-  const unknowns = computeUnknowns(stack, routes, hints);
+  const unknowns = computeUnknowns(stack, routes, hints, workspaces);
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
 
   return {

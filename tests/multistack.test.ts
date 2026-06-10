@@ -96,14 +96,46 @@ describe("flask-api (Python / Flask / SQLAlchemy)", () => {
   });
 });
 
-// Monorepo: workspaces are enumerated for per-workspace analysis.
+// Monorepo: workspaces are enumerated AND the analysis is attributed per workspace.
 describe("monorepo (npm/yarn workspaces)", () => {
   const inv = analyze(opts("monorepo"));
+  const ws = (name: string) => (inv.workspaces ?? []).find((w) => w.name === name);
 
   it("enumerates all workspaces by package name", () => {
     const names = (inv.workspaces ?? []).map((w) => w.name);
     expect(names).toContain("@acme/web");
     expect(names).toContain("@acme/ui");
     expect(names).toContain("@acme/db");
+  });
+
+  it("builds the workspace dependency graph from manifests", () => {
+    expect(ws("@acme/web")?.dependsOn).toEqual(["@acme/db", "@acme/ui"]);
+    expect(ws("@acme/ui")?.dependsOn).toBeUndefined();
+  });
+
+  it("detects each workspace's own stack", () => {
+    expect(ws("@acme/web")?.stack?.frameworks).toContain("Next.js");
+    expect(ws("@acme/db")?.stack?.frameworks).not.toContain("Next.js");
+    expect(ws("@acme/db")?.stack?.libraries).toContain("Drizzle ORM");
+  });
+
+  it("merges workspace frameworks into the global stack so adapters activate", () => {
+    expect(inv.stack.frameworks).toContain("Next.js");
+    expect(inv.routes.length).toBeGreaterThan(0);
+  });
+
+  it("attributes routes to their workspace", () => {
+    expect(inv.routes.every((r) => r.workspace === "@acme/web")).toBe(true);
+    expect(ws("@acme/web")?.routeCount).toBe(inv.routes.length);
+    expect(ws("@acme/ui")?.routeCount).toBeUndefined();
+  });
+
+  it("attributes per-workspace dependencies with repo-relative manifests", () => {
+    expect(ws("@acme/web")?.dependencies?.[0]?.manifest).toBe("apps/web/package.json");
+    expect(Object.keys(ws("@acme/web")?.dependencies?.[0]?.runtime ?? {})).toContain("next");
+  });
+
+  it("surfaces a monorepo unknown for the agent", () => {
+    expect(inv.unknowns.some((u) => u.startsWith("Monorepo:"))).toBe(true);
   });
 });

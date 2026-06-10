@@ -99,6 +99,8 @@ export interface RouteInfo {
    * view-dispatched URLs).
    */
   method?: string;
+  /** Name of the monorepo workspace this route's file lives in, if any. */
+  workspace?: string;
 }
 
 export interface I18nInfo {
@@ -239,6 +241,18 @@ export interface Workspace {
    * is the agent's to verify.
    */
   dependsOn?: string[];
+  /** This workspace's own stack, detected from its files and manifests. */
+  stack?: StackInfo;
+  /** Dependencies declared by this workspace's own manifests (repo-relative paths). */
+  dependencies?: DependencyInfo[];
+  /** Files attributed to this workspace (longest-prefix match). */
+  fileCount?: number;
+  /** Routes attributed to this workspace (the routes carry `workspace`). */
+  routeCount?: number;
+  /** Schema files under this workspace. */
+  schemas?: string[];
+  /** Global hints filtered to this workspace's files. */
+  hints?: Hints;
 }
 
 /**
