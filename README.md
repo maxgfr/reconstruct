@@ -229,6 +229,13 @@ tRPC/gRPC, GraphQL, mobile). Adding agent guidance for a stack is just markdown;
 deterministic route adapter is a small, self-contained code PR — see
 [`references/adapters.md`](./references/adapters.md).
 
+**Monorepos too.** Workspaces are detected across ecosystems (npm/yarn/pnpm — with Lerna and
+Nx as fallbacks —, Cargo `[workspace]`, `go.work`) and the analysis is attributed per
+workspace: each entry of `inventory.workspaces` carries its own stack, dependencies, hints,
+and the manifest-derived `dependsOn` graph; features group per workspace and the build order
+follows the workspace topological order (shared packages before the apps that consume them).
+See [`references/stack-guides/monorepo.md`](./references/stack-guides/monorepo.md).
+
 ## Development
 
 ```bash

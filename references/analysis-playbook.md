@@ -138,10 +138,20 @@ product features:
 
 ## §Monorepo
 
-When `inventory.workspaces` is non-empty: identify each workspace's role (app, package,
-service). Re-run or scope the analysis per workspace (`--repo <workspace>` or
-`--include <workspace>/**`). In `ARCHITECTURE.md`, draw the dependency graph between
-workspaces; map shared packages once and reference them from each app.
+When `inventory.workspaces` is non-empty, the scaffold is already workspace-aware: each
+entry carries its own `stack`, `dependencies`, `dependsOn` (manifest-declared edges),
+`routeCount`, `schemas`, and `hints`; features are grouped per workspace and `REBUILD.md`'s
+outer tier is the workspace topological order. Your job (details in
+`references/stack-guides/monorepo.md`):
+
+1. **Verify each workspace's role** (app, package, service) and **extend the dependency
+   graph** with the implicit edges manifests can't see — HTTP calls between apps, generated
+   clients, shared databases/env/queues — in `ARCHITECTURE.md` and `diagram.md`.
+2. **Analyze per workspace with its own stack guide** (`workspaces[*].stack`, not the global
+   union), starting from that workspace's `hints`.
+3. **Map each shared package once** and reference it from the consuming apps' PRDs.
+4. **Detection missed an unconventional layout?** Identify the workspaces yourself and scope
+   re-runs (`--include '<dir>/**'`); record the finding in `ARCHITECTURE.md`.
 
 ---
 

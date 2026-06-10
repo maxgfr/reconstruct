@@ -208,8 +208,10 @@ reconstruction/
 `repoName`, `fileCount`, `totalLines`, `stack` (primary language, frameworks, and detected
 `libraries`), `features`, `routes`, `i18n`, `schemas`, `configs`, and the v0.2 additions:
 `hints` (`routeCandidates` / `apiCandidates` / `schemaCandidates` / `entryPoints`),
-`unknowns` (explicit pointers for the agent), `workspaces` (monorepo packages), `runtime`
-(e.g. required Node version), and `excludedCount`. The artifacts and the per-feature copies
+`unknowns` (explicit pointers for the agent), `workspaces` (monorepo packages — each entry
+carries its `kind` — npm/pnpm/lerna/nx/cargo/go —, its own `stack` and `dependencies`, the
+manifest-derived `dependsOn` edges, `routeCount`, `schemas`, and per-workspace `hints`),
+`runtime` (e.g. required Node version), and `excludedCount`. The artifacts and the per-feature copies
 are produced by [`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
 [`src/output.ts`](./src/output.ts).
 
@@ -227,7 +229,7 @@ walk → detect → candidates → adapters → features → prd → output
 | Stage | File(s) | Responsibility |
 | --- | --- | --- |
 | **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore` + `--include`/`--exclude`, categorize each file, and report `excludedCount`. |
-| **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts) | Rank languages; identify frameworks (JS/TS + Python/Ruby/PHP/JVM via manifests); **detect notable libraries**; find package managers; detect **monorepo workspaces** and the required **Node version**. |
+| **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts), [`src/detect/workspaces.ts`](./src/detect/workspaces.ts) | Rank languages; identify frameworks (JS/TS + Python/Ruby/PHP/JVM via manifests); **detect notable libraries**; find package managers; detect the required **Node version**; detect **monorepo workspaces** (npm/yarn/pnpm, lerna/nx fallbacks, Cargo, go.work), build the **workspace dependency graph**, and attribute stack/deps/routes/hints **per workspace**. |
 | **candidates** | [`src/detect/candidates.ts`](./src/detect/candidates.ts) | Framework-agnostic **hints**: candidate files for routes, API surface (tRPC/GraphQL/gRPC/OpenAPI), data model (ORM schemas/models), and entry points — from path + bounded content heuristics. |
 | **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, env vars, Next.js routes, and i18n (see below). |
 | **features** | [`src/features.ts`](./src/features.ts) | Group files into features (skipping route groups `(...)` / dynamic `[...]` segments), order them by **dependency tier** (foundations → feature pages → tests/docs), and apply `--granularity`. |

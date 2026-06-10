@@ -99,6 +99,8 @@ export interface RouteInfo {
    * view-dispatched URLs).
    */
   method?: string;
+  /** Name of the monorepo workspace this route's file lives in, if any. */
+  workspace?: string;
 }
 
 export interface I18nInfo {
@@ -223,10 +225,34 @@ export interface Hints {
   entryPoints: string[];
 }
 
+/** Which membership declaration a workspace was detected from. */
+export type WorkspaceKind = "npm" | "pnpm" | "lerna" | "nx" | "cargo" | "go";
+
 /** A workspace inside a monorepo. */
 export interface Workspace {
   name: string;
   path: string;
+  /** Detection source (npm/yarn `workspaces`, pnpm, lerna, nx, cargo, go.work). */
+  kind?: WorkspaceKind;
+  /**
+   * Names of sibling workspaces this one depends on, from manifest declarations
+   * (package.json deps, Cargo path/name deps, go.mod require/replace). Manifest
+   * edges only — implicit coupling (HTTP calls, generated clients, shared env)
+   * is the agent's to verify.
+   */
+  dependsOn?: string[];
+  /** This workspace's own stack, detected from its files and manifests. */
+  stack?: StackInfo;
+  /** Dependencies declared by this workspace's own manifests (repo-relative paths). */
+  dependencies?: DependencyInfo[];
+  /** Files attributed to this workspace (longest-prefix match). */
+  fileCount?: number;
+  /** Routes attributed to this workspace (the routes carry `workspace`). */
+  routeCount?: number;
+  /** Schema files under this workspace. */
+  schemas?: string[];
+  /** Global hints filtered to this workspace's files. */
+  hints?: Hints;
 }
 
 /**

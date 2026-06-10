@@ -1,4 +1,5 @@
-import type { Feature, FileInfo, Granularity, I18nInfo, RouteInfo } from "./types.js";
+import { workspaceMatcher, topoOrderWorkspaces } from "./detect/workspaces.js";
+import type { Feature, FileInfo, Granularity, I18nInfo, RouteInfo, Workspace } from "./types.js";
 
 const ROOTS = [
   "src/app/",
@@ -140,6 +141,10 @@ const FOUNDATION_ORDER = [
 
 const SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
 
+// Intra-tier rank offset per workspace topological position — wide enough that
+// every foundation rank fits inside one workspace's band.
+const WS_RANK_SPAN = 100;
+
 // Data-layer dir names that are foundations but aren't literal in FOUNDATION_ORDER;
 // they slot with the schema/data tier rather than falling to the end.
 const DATA_LAYER_KEYS = new Set(["prisma", "drizzle", "migrations"]);
@@ -186,12 +191,84 @@ export function orderFeatures(records: OrderingRecord[]): Feature[] {
   }));
 }
 
+// --- Workspace-aware grouping --------------------------------------------------
+// In a monorepo, features group under their workspace: an app workspace (it has
+// routes) splits into per-area sub-features keyed `<short>/<inner>`, a library
+// workspace collapses into one feature keyed `ws:<short>`. Files outside every
+// workspace keep the single-package behavior.
+
+interface WsGroupContext {
+  matcher: (path: string) => Workspace | undefined;
+  /** ws.path → display short name (last path segment, full-path slug on collision). */
+  shortOf: Map<string, string>;
+  /** Workspace names that own at least one route (the "apps"). */
+  appNames: Set<string>;
+  /** ws.name → position in the deps-first topological order. */
+  topoIndex: Map<string, number>;
+  /** Workspace names some sibling depends on. */
+  dependedOn: Set<string>;
+  /** group key → its workspace and (for app sub-features) inner key. */
+  groups: Map<string, { ws: Workspace; inner?: string }>;
+}
+
+function makeWsContext(workspaces: Workspace[], routes: RouteInfo[]): WsGroupContext {
+  const lastSeg = (p: string) => p.split("/").pop() ?? p;
+  const segCounts = new Map<string, number>();
+  for (const ws of workspaces) {
+    const seg = lastSeg(ws.path);
+    segCounts.set(seg, (segCounts.get(seg) ?? 0) + 1);
+  }
+  const shortOf = new Map(
+    workspaces.map((ws) => {
+      const seg = lastSeg(ws.path);
+      return [ws.path, (segCounts.get(seg) ?? 0) > 1 ? slugify(ws.path) : seg] as const;
+    }),
+  );
+  const appNames = new Set(
+    routes.map((r) => r.workspace).filter((n): n is string => Boolean(n)),
+  );
+  const topoIndex = new Map(topoOrderWorkspaces(workspaces).map((name, i) => [name, i]));
+  const dependedOn = new Set(workspaces.flatMap((ws) => ws.dependsOn ?? []));
+  return {
+    matcher: workspaceMatcher(workspaces),
+    shortOf,
+    appNames,
+    topoIndex,
+    dependedOn,
+    groups: new Map(),
+  };
+}
+
+/** The group key for a workspace file; registers the group's metadata. */
+function wsKeyFor(ctx: WsGroupContext, ws: Workspace, innerPath: string): string {
+  const short = ctx.shortOf.get(ws.path) as string;
+  const key = ctx.appNames.has(ws.name) ? `${short}/${featureKey(innerPath)}` : `ws:${short}`;
+  if (!ctx.groups.has(key)) {
+    ctx.groups.set(key, {
+      ws,
+      ...(ctx.appNames.has(ws.name) ? { inner: featureKey(innerPath) } : {}),
+    });
+  }
+  return key;
+}
+
 export function buildFeatures(
   files: FileInfo[],
   routes: RouteInfo[],
   i18n: I18nInfo | null,
   granularity: Granularity = "coarse",
+  workspaces: Workspace[] = [],
 ): Feature[] {
+  const ctx = workspaces.length ? makeWsContext(workspaces, routes) : null;
+  const keyForFile = (path: string): string => {
+    const ws = ctx?.matcher(path);
+    return ws ? wsKeyFor(ctx as WsGroupContext, ws, path.slice(ws.path.length + 1)) : featureKey(path);
+  };
+  // The structural key tier/foundation logic applies to: the inner key for app
+  // sub-features, the plain key otherwise (lib workspaces are handled apart).
+  const innerOf = (key: string): string => ctx?.groups.get(key)?.inner ?? key;
+  const isLibGroup = (key: string): boolean => Boolean(ctx?.groups.get(key)) && !ctx?.groups.get(key)?.inner;
+
   const codeGroups = new Map<string, string[]>();
   const schemaPaths = new Set<string>();
   const configFiles: string[] = [];
@@ -209,7 +286,7 @@ export function buildFeatures(
       f.category === "style" ||
       f.category === "schema"
     ) {
-      const key = featureKey(f.path);
+      const key = keyForFile(f.path);
       const list = codeGroups.get(key) ?? [];
       list.push(f.path);
       codeGroups.set(key, list);
@@ -218,7 +295,10 @@ export function buildFeatures(
 
   const routesByKey = new Map<string, RouteInfo[]>();
   for (const r of routes) {
-    const k = routeKey(r.route);
+    // A workspace owning a route is by definition an "app" workspace.
+    const ws = ctx && r.workspace ? workspaces.find((w) => w.name === r.workspace) : undefined;
+    const k = ws && ctx ? `${ctx.shortOf.get(ws.path)}/${routeKey(r.route)}` : routeKey(r.route);
+    if (ws && ctx && !ctx.groups.has(k)) ctx.groups.set(k, { ws, inner: routeKey(r.route) });
     const list = routesByKey.get(k) ?? [];
     list.push(r);
     routesByKey.set(k, list);
@@ -227,50 +307,81 @@ export function buildFeatures(
   const groupHasSchema = (groupFiles: string[]): boolean =>
     groupFiles.some((p) => schemaPaths.has(p));
   const isFoundationGroup = (key: string, groupFiles: string[]): boolean =>
-    FOUNDATION_KEYS.has(key) || groupHasSchema(groupFiles);
+    FOUNDATION_KEYS.has(innerOf(key)) || groupHasSchema(groupFiles);
 
   // Coarse granularity: fold trivial, route-less, non-foundation single-file
-  // groups into Core so a one-off util doesn't masquerade as a feature.
+  // groups into Core so a one-off util doesn't masquerade as a feature. In a
+  // monorepo an app's trivial group folds into that app's own core, and a
+  // library workspace never folds — workspace visibility is the point.
   if (granularity === "coarse") {
-    const core = codeGroups.get("core") ?? [];
-    let mergedAny = false;
+    const foldTarget = (key: string): string => {
+      const group = ctx?.groups.get(key);
+      if (!group?.inner) return "core";
+      const short = ctx?.shortOf.get(group.ws.path) as string;
+      return `${short}/core`;
+    };
     for (const [key, groupFiles] of [...codeGroups.entries()]) {
-      if (key === "core") continue;
+      if (key === "core" || innerOf(key) === "core" || isLibGroup(key)) continue;
       const routeCount = routesByKey.get(key)?.length ?? 0;
       const trivial =
         groupFiles.length === 1 &&
         routeCount === 0 &&
         !isFoundationGroup(key, groupFiles) &&
-        !TEST_KEYS.has(key);
+        !TEST_KEYS.has(innerOf(key));
       if (trivial) {
-        core.push(...groupFiles);
+        const target = foldTarget(key);
+        if (target !== "core" && ctx && !ctx.groups.has(target)) {
+          const group = ctx.groups.get(key);
+          if (group) ctx.groups.set(target, { ws: group.ws, inner: "core" });
+        }
+        codeGroups.set(target, [...(codeGroups.get(target) ?? []), ...groupFiles]);
         codeGroups.delete(key);
-        mergedAny = true;
       }
     }
-    if (mergedAny || codeGroups.has("core")) codeGroups.set("core", core);
   }
 
   const records: Record_[] = [];
 
   for (const [key, groupFiles] of codeGroups.entries()) {
     const featureRoutes = routesByKey.get(key) ?? [];
-    const name = humanize(key);
+    const wsGroup = ctx?.groups.get(key);
+    const short = wsGroup ? (ctx?.shortOf.get(wsGroup.ws.path) as string) : "";
+    const name = wsGroup
+      ? wsGroup.inner
+        ? `${humanize(short)} · ${humanize(wsGroup.inner)}`
+        : humanize(short) + (wsGroup.ws.name !== short ? ` (${wsGroup.ws.name})` : "")
+      : humanize(key);
+    const slug = wsGroup
+      ? wsGroup.inner
+        ? slugify(`${short}-${humanize(wsGroup.inner)}`)
+        : slugify(short)
+      : slugify(name);
     const routeList = featureRoutes.map((r) => r.route);
     const uniqueRoutes = [...new Set(routeList)];
     const desc =
       `Groups ${groupFiles.length} file(s)` +
+      (wsGroup ? ` in workspace \`${wsGroup.ws.path}\`` : "") +
       (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") +
       ".";
     const hasSchema = groupHasSchema(groupFiles);
-    const tier: 0 | 1 | 2 = TEST_KEYS.has(key)
-      ? 2
-      : isFoundationGroup(key, groupFiles)
-        ? 0
-        : 1;
+    // Workspace groups are rank-offset by their topological position so a
+    // workspace's features never build before the workspaces it depends on.
+    const topoBase = wsGroup ? (ctx?.topoIndex.get(wsGroup.ws.name) ?? 0) * WS_RANK_SPAN : 0;
+    let tier: 0 | 1 | 2;
+    let rank: number;
+    if (wsGroup && !wsGroup.inner) {
+      // A library workspace: a foundation when a sibling depends on it.
+      const isDep = ctx?.dependedOn.has(wsGroup.ws.name) ?? false;
+      tier = isDep ? 0 : 1;
+      rank = topoBase;
+    } else {
+      const structuralKey = innerOf(key);
+      tier = TEST_KEYS.has(structuralKey) ? 2 : isFoundationGroup(key, groupFiles) ? 0 : 1;
+      rank = topoBase + (tier === 0 ? foundationRank(structuralKey, hasSchema) : 0);
+    }
     records.push({
       feature: {
-        slug: slugify(name),
+        slug,
         name,
         description: desc,
         kind: "feature",
@@ -279,7 +390,7 @@ export function buildFeatures(
       },
       key,
       tier,
-      rank: tier === 0 ? foundationRank(key, hasSchema) : 0,
+      rank,
       size: groupFiles.length,
     });
   }

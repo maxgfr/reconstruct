@@ -367,7 +367,14 @@ function main(): void {
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "—"}`,
     `  features: ${inv.features.length} · routes: ${inv.routes.length} · locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
     `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema) · ${inv.hints.entryPoints.length} entry point(s)`,
-    ...(inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s)`] : []),
+    ...(inv.workspaces
+      ? [
+          `  monorepo: ${inv.workspaces.length} workspace(s) · ${inv.workspaces.reduce(
+            (n, w) => n + (w.dependsOn?.length ?? 0),
+            0,
+          )} dependency edge(s)`,
+        ]
+      : []),
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,

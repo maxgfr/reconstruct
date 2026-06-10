@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join13 } from "path";
+import { resolve as resolve2, join as join14 } from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { existsSync as existsSync5, statSync as statSync3, realpathSync } from "fs";
+import { existsSync as existsSync6, statSync as statSync3, realpathSync } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -313,511 +313,19 @@ function walk(repo, opts = {}) {
 }
 
 // src/detect/stack.ts
-import { readFileSync as readFileSync2, existsSync, readdirSync as readdirSync2 } from "fs";
-import { join as join2 } from "path";
-var EXT_LANGUAGE = {
-  ".ts": "TypeScript",
-  ".tsx": "TypeScript",
-  ".js": "JavaScript",
-  ".jsx": "JavaScript",
-  ".mjs": "JavaScript",
-  ".cjs": "JavaScript",
-  ".vue": "Vue",
-  ".svelte": "Svelte",
-  ".astro": "Astro",
-  ".py": "Python",
-  ".rb": "Ruby",
-  ".go": "Go",
-  ".rs": "Rust",
-  ".java": "Java",
-  ".kt": "Kotlin",
-  ".php": "PHP",
-  ".c": "C",
-  ".cc": "C++",
-  ".cpp": "C++",
-  ".cs": "C#",
-  ".swift": "Swift",
-  ".scala": "Scala",
-  ".dart": "Dart",
-  ".ex": "Elixir",
-  ".exs": "Elixir",
-  ".lua": "Lua"
-};
-var NPM_FRAMEWORKS = [
-  ["next", "Next.js"],
-  ["nuxt", "Nuxt"],
-  ["@remix-run/react", "Remix"],
-  ["react-router-dom", "React Router"],
-  ["@sveltejs/kit", "SvelteKit"],
-  ["astro", "Astro"],
-  ["@angular/core", "Angular"],
-  ["@nestjs/core", "NestJS"],
-  ["express", "Express"],
-  ["fastify", "Fastify"],
-  ["koa", "Koa"],
-  ["@hono/node-server", "Hono"],
-  ["hono", "Hono"],
-  ["@solidjs/start", "SolidStart"],
-  ["solid-start", "SolidStart"],
-  ["react", "React"],
-  ["vue", "Vue"],
-  ["svelte", "Svelte"],
-  ["solid-js", "SolidJS"],
-  // Build tooling / runtimes / shells
-  ["vite", "Vite"],
-  ["expo", "Expo"],
-  ["react-native", "React Native"],
-  ["electron", "Electron"],
-  ["@tauri-apps/api", "Tauri"],
-  ["@tauri-apps/cli", "Tauri"]
-];
-var NPM_LIBRARIES = [
-  // ORM / database
-  ["drizzle-orm", "Drizzle ORM"],
-  ["@prisma/client", "Prisma"],
-  ["prisma", "Prisma"],
-  ["typeorm", "TypeORM"],
-  ["sequelize", "Sequelize"],
-  ["mongoose", "Mongoose"],
-  ["kysely", "Kysely"],
-  ["@supabase/supabase-js", "Supabase"],
-  // Auth
-  ["next-auth", "NextAuth.js"],
-  ["@auth/core", "Auth.js"],
-  ["@clerk/nextjs", "Clerk"],
-  ["lucia", "Lucia"],
-  ["passport", "Passport"],
-  // API / data fetching layer
-  ["@trpc/", "tRPC"],
-  ["@tanstack/react-query", "TanStack Query"],
-  ["react-query", "TanStack Query"],
-  ["@apollo/client", "Apollo GraphQL"],
-  ["graphql", "GraphQL"],
-  ["swr", "SWR"],
-  // Styling / UI
-  ["tailwindcss", "Tailwind CSS"],
-  ["styled-components", "styled-components"],
-  ["@emotion/react", "Emotion"],
-  ["@mui/material", "MUI"],
-  ["@chakra-ui/react", "Chakra UI"],
-  ["@radix-ui/", "Radix UI"],
-  ["@mantine/core", "Mantine"],
-  ["bootstrap", "Bootstrap"],
-  // State management
-  ["@reduxjs/toolkit", "Redux Toolkit"],
-  ["redux", "Redux"],
-  ["zustand", "Zustand"],
-  ["jotai", "Jotai"],
-  ["recoil", "Recoil"],
-  ["mobx", "MobX"],
-  // Validation / forms
-  ["zod", "Zod"],
-  ["yup", "Yup"],
-  ["valibot", "Valibot"],
-  ["react-hook-form", "React Hook Form"],
-  ["formik", "Formik"],
-  // Testing
-  ["vitest", "Vitest"],
-  ["jest", "Jest"],
-  ["@playwright/test", "Playwright"],
-  ["playwright", "Playwright"],
-  ["cypress", "Cypress"],
-  ["@testing-library/react", "Testing Library"],
-  // i18n
-  ["next-intl", "next-intl"],
-  ["i18next", "i18next"],
-  ["react-i18next", "react-i18next"],
-  // Services / analytics / email
-  ["posthog-js", "PostHog"],
-  ["@sentry/", "Sentry"],
-  ["resend", "Resend"],
-  ["nodemailer", "Nodemailer"],
-  ["stripe", "Stripe"],
-  ["@aws-sdk/", "AWS SDK"]
-];
-var GO_FRAMEWORKS = [
-  [/github\.com\/gin-gonic\/gin/, "Gin"],
-  [/github\.com\/labstack\/echo/, "Echo"],
-  [/github\.com\/gofiber\/fiber/, "Fiber"],
-  [/github\.com\/go-chi\/chi/, "chi"],
-  [/github\.com\/gorilla\/mux/, "Gorilla"]
-];
-function detectLibraries(deps) {
-  const names = Object.keys(deps);
-  const found = /* @__PURE__ */ new Set();
-  for (const [pattern, label] of NPM_LIBRARIES) {
-    const hit = pattern.endsWith("/") ? names.some((n) => n.startsWith(pattern)) : pattern in deps;
-    if (hit) found.add(label);
-  }
-  return [...found];
-}
-function readJson(path) {
-  try {
-    return JSON.parse(readFileSync2(path, "utf8"));
-  } catch {
-    return null;
-  }
-}
-function detectStack(repo, files) {
-  const counts = /* @__PURE__ */ new Map();
-  for (const f of files) {
-    const lang = EXT_LANGUAGE[f.ext];
-    if (lang) counts.set(lang, (counts.get(lang) ?? 0) + 1);
-  }
-  const languages = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([lang]) => lang);
-  const frameworks = /* @__PURE__ */ new Set();
-  const packageManagers = /* @__PURE__ */ new Set();
-  let libraries = [];
-  let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
-  const hasPkg = existsSync(join2(repo, "package.json"));
-  const pkg = readJson(join2(repo, "package.json"));
-  if (pkg) {
-    const allDeps = {
-      ...pkg.dependencies ?? {},
-      ...pkg.devDependencies ?? {}
-    };
-    for (const [dep, label] of NPM_FRAMEWORKS) {
-      if (dep in allDeps) frameworks.add(label);
-    }
-    libraries = detectLibraries(allDeps);
-    if ("typescript" in allDeps) hasTypeScript = true;
-  }
-  const hasJsManifest = hasPkg || ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some(
-    (f) => existsSync(join2(repo, f))
-  );
-  if (hasJsManifest) {
-    if (existsSync(join2(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
-    else if (existsSync(join2(repo, "yarn.lock"))) packageManagers.add("yarn");
-    else if (existsSync(join2(repo, "bun.lockb")) || existsSync(join2(repo, "bun.lock")))
-      packageManagers.add("bun");
-    else packageManagers.add("npm");
-  }
-  if (existsSync(join2(repo, "requirements.txt")) || existsSync(join2(repo, "pyproject.toml"))) {
-    packageManagers.add("pip");
-    const py = safeRead(join2(repo, "requirements.txt")) + safeRead(join2(repo, "pyproject.toml"));
-    if (/\bdjango\b/i.test(py)) frameworks.add("Django");
-    if (/\bflask\b/i.test(py)) frameworks.add("Flask");
-    if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
-  }
-  if (existsSync(join2(repo, "pubspec.yaml"))) {
-    packageManagers.add("pub");
-    const pubspec = safeRead(join2(repo, "pubspec.yaml"));
-    if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
-      frameworks.add("Flutter");
-    }
-  }
-  if (existsSync(join2(repo, "Cargo.toml"))) packageManagers.add("cargo");
-  if (existsSync(join2(repo, "go.mod"))) {
-    packageManagers.add("go modules");
-    const gomod = safeRead(join2(repo, "go.mod"));
-    for (const [pattern, label] of GO_FRAMEWORKS) {
-      if (pattern.test(gomod)) frameworks.add(label);
-    }
-  }
-  if (existsSync(join2(repo, "Gemfile"))) {
-    packageManagers.add("bundler");
-    if (/\brails\b/i.test(safeRead(join2(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
-    if (/\bsinatra\b/i.test(safeRead(join2(repo, "Gemfile")))) frameworks.add("Sinatra");
-  }
-  if (existsSync(join2(repo, "composer.json"))) {
-    packageManagers.add("composer");
-    const composer = safeRead(join2(repo, "composer.json"));
-    if (/laravel\/framework/.test(composer)) frameworks.add("Laravel");
-    if (/symfony\/framework-bundle/.test(composer)) frameworks.add("Symfony");
-  }
-  if (existsSync(join2(repo, "pom.xml"))) {
-    packageManagers.add("maven");
-    if (/spring-boot/.test(safeRead(join2(repo, "pom.xml")))) frameworks.add("Spring Boot");
-  }
-  for (const gradle of ["build.gradle", "build.gradle.kts"]) {
-    if (existsSync(join2(repo, gradle))) {
-      packageManagers.add("gradle");
-      if (/spring-boot/.test(safeRead(join2(repo, gradle)))) frameworks.add("Spring Boot");
-    }
-  }
-  return {
-    languages,
-    primaryLanguage: languages[0] ?? "Unknown",
-    frameworks: [...frameworks],
-    libraries,
-    packageManagers: [...packageManagers],
-    hasTypeScript
-  };
-}
-function safeRead(path) {
-  try {
-    return readFileSync2(path, "utf8");
-  } catch {
-    return "";
-  }
-}
-function addWorkspace(repo, relDir, found) {
-  const norm = relDir.split("\\").join("/").replace(/\/+$/, "");
-  if (found.has(norm)) return;
-  const pkg = readJson(join2(repo, norm, "package.json"));
-  if (!pkg) return;
-  const name = typeof pkg.name === "string" && pkg.name ? pkg.name : norm;
-  found.set(norm, { name, path: norm });
-}
-var WS_SKIP_DIRS = /* @__PURE__ */ new Set([".git", "node_modules", ".turbo", "dist", "build", ".next"]);
-function collectWorkspacesRecursive(repo, relBase, found, depth) {
-  if (depth > 5) return;
-  let entries;
-  try {
-    entries = readdirSync2(join2(repo, relBase), { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const ent of entries) {
-    if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
-    const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
-    addWorkspace(repo, sub, found);
-    collectWorkspacesRecursive(repo, sub, found, depth + 1);
-  }
-}
-function detectWorkspaces(repo) {
-  const patterns = [];
-  const pkg = readJson(join2(repo, "package.json"));
-  if (pkg) {
-    const ws = pkg.workspaces;
-    if (Array.isArray(ws)) {
-      patterns.push(...ws.filter((x) => typeof x === "string"));
-    } else if (ws && typeof ws === "object" && Array.isArray(ws.packages)) {
-      patterns.push(
-        ...ws.packages.filter((x) => typeof x === "string")
-      );
-    }
-  }
-  const pnpm = safeRead(join2(repo, "pnpm-workspace.yaml"));
-  let inPackages = false;
-  for (const line of pnpm.split(/\r?\n/)) {
-    if (/^\S/.test(line)) {
-      inPackages = /^packages\s*:/.test(line);
-      continue;
-    }
-    if (!inPackages) continue;
-    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/);
-    if (m) patterns.push(m[1].trim());
-  }
-  if (patterns.length === 0) return [];
-  const found = /* @__PURE__ */ new Map();
-  for (const raw of patterns) {
-    const pat = raw.replace(/\/+$/, "");
-    if (pat.endsWith("/**")) {
-      collectWorkspacesRecursive(repo, pat.slice(0, -3), found, 0);
-    } else if (pat.endsWith("/*")) {
-      const base = pat.slice(0, -2);
-      try {
-        for (const ent of readdirSync2(join2(repo, base), { withFileTypes: true })) {
-          if (ent.isDirectory()) addWorkspace(repo, join2(base, ent.name), found);
-        }
-      } catch {
-      }
-    } else {
-      addWorkspace(repo, pat, found);
-    }
-  }
-  return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
-}
-function detectNodeVersion(repo) {
-  const pkg = readJson(join2(repo, "package.json"));
-  const engines = pkg?.engines;
-  if (engines && typeof engines === "object") {
-    const node = engines.node;
-    if (typeof node === "string") return node;
-  }
-  return void 0;
-}
+import { readFileSync as readFileSync4, existsSync as existsSync2 } from "fs";
+import { join as join4 } from "path";
 
-// src/detect/candidates.ts
-import { readFileSync as readFileSync3 } from "fs";
-import { join as join3 } from "path";
-var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".py",
-  ".rb",
-  ".go",
-  ".java",
-  ".kt",
-  ".php",
-  ".rs",
-  ".cs",
-  ".ex",
-  ".exs",
-  ".graphql",
-  ".gql",
-  ".proto"
-]);
-var ROUTE_DIRS = [
-  "routes",
-  "controllers",
-  "handlers",
-  "endpoints",
-  "views",
-  "pages",
-  "api"
-];
-var API_DIRS = ["trpc", "resolvers", "graphql"];
-var SCHEMA_DIRS = ["models", "entities", "migrations"];
-var ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
-var ROUTE_FILE_NAMES = /* @__PURE__ */ new Set(["routes.rb"]);
-var ROUTE_CONTENT_RE = new RegExp(
-  [
-    // method-call routers (JS/TS/Go/Python): app.get(, router.post(, r.GET(, bp.put(
-    String.raw`\b(?:app|router|route|api|blueprint|fastify|server|mux|r|bp|blp)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(`,
-    // any receiver registering a net/http handler: mux.HandleFunc(, http.Handle(
-    String.raw`\.handle(?:func)?\s*\(`,
-    // decorator frameworks: Spring (@GetMapping/@RequestMapping/@Controller), NestJS
-    String.raw`@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b`,
-    // Python decorator routes: @app.route, @bp.get, @router.post …
-    String.raw`@(?:app|router|blueprint|api|bp|blp)\.(?:route|get|post|put|delete|patch)\b`,
-    // Laravel: Route::get(, Route::resource(, Route::group(
-    String.raw`Route::(?:get|post|put|patch|delete|resource|apiResource|group|match|any)\b`,
-    // Flask functional / class-based / flask-restful registration
-    String.raw`\.add_url_rule\s*\(`,
-    String.raw`\badd_resource\s*\(`,
-    String.raw`\bclass\s+\w+\s*\(\s*(?:\w+\.)?(?:Resource|MethodView)\b`,
-    String.raw`=\s*Blueprint\s*\(`,
-    // Django: urlpatterns table, re_path(, DRF router.register(/DefaultRouter
-    String.raw`\burlpatterns\b`,
-    String.raw`\bre_path\s*\(`,
-    String.raw`routers\.(?:Default|Simple)Router\b`,
-    String.raw`\.register\s*\(\s*r?["']`,
-    // Rails DSL (covers config/routes.rb and any drawn routes file)
-    String.raw`Rails\.application\.routes\.draw\b`,
-    // Rust: axum Router::new().route(, actix web::resource/scope/get(
-    String.raw`Router::new\b`,
-    String.raw`\.route\s*\(`,
-    String.raw`web::(?:resource|scope|get|post|put|delete|patch)\s*\(`
-  ].join("|"),
-  "i"
-);
-var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
-var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
-var MAX_CONTENT_SCAN_BYTES = 2e6;
-function segmentsOf(path) {
-  return path.toLowerCase().split("/");
-}
-function inDir(path, names) {
-  const segs = segmentsOf(path);
-  return names.some((n) => segs.includes(n));
-}
-function baseName(path) {
-  return path.split("/").pop() ?? "";
-}
-function safeRead2(repo, rel) {
-  try {
-    return readFileSync3(join3(repo, rel), "utf8");
-  } catch {
-    return "";
-  }
-}
-function detectCandidates(repo, files, stack) {
-  void stack;
-  const routeCandidates = /* @__PURE__ */ new Set();
-  const apiCandidates = /* @__PURE__ */ new Set();
-  const schemaCandidates = /* @__PURE__ */ new Set();
-  for (const f of files) {
-    if (f.binary || f.size === 0) continue;
-    const p = f.path;
-    const lower = p.toLowerCase();
-    const base = baseName(lower);
-    const ext = f.ext;
-    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base) || ROUTE_FILE_NAMES.has(base)) {
-      routeCandidates.add(p);
-    }
-    if (ext === ".graphql" || ext === ".gql" || ext === ".proto") apiCandidates.add(p);
-    if ((ext === ".json" || ext === ".yaml" || ext === ".yml") && /openapi|swagger/.test(base)) {
-      apiCandidates.add(p);
-    }
-    if (inDir(lower, API_DIRS)) apiCandidates.add(p);
-    if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
-    if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
-    if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
-      const src = safeRead2(repo, p);
-      if (!src) continue;
-      if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
-      if (API_CONTENT_RE.test(src)) apiCandidates.add(p);
-      if (SCHEMA_CONTENT_RE.test(src)) schemaCandidates.add(p);
-    }
-  }
-  return {
-    routeCandidates: [...routeCandidates].sort(),
-    apiCandidates: [...apiCandidates].sort(),
-    schemaCandidates: [...schemaCandidates].sort(),
-    entryPoints: detectEntryPoints(repo, files)
-  };
-}
-var CONVENTIONAL_ENTRIES = [
-  // JS/TS
-  "src/index.ts",
-  "src/index.js",
-  "src/index.tsx",
-  "src/main.ts",
-  "src/main.tsx",
-  "src/main.js",
-  "index.ts",
-  "index.js",
-  "src/server.ts",
-  "src/server.js",
-  "server.ts",
-  "server.js",
-  "app/layout.tsx",
-  "src/app/layout.tsx",
-  // Python
-  "manage.py",
-  "main.py",
-  "app.py",
-  "wsgi.py",
-  "asgi.py",
-  "src/main.py",
-  "__main__.py",
-  // Go
-  "main.go",
-  "cmd/main.go",
-  // Ruby
-  "config.ru",
-  "bin/rails",
-  // Rust
-  "src/main.rs",
-  // Dart / Flutter
-  "lib/main.dart"
-];
-function detectEntryPoints(repo, files) {
-  const entries = /* @__PURE__ */ new Set();
-  try {
-    const pkg = JSON.parse(readFileSync3(join3(repo, "package.json"), "utf8"));
-    for (const key of ["main", "module"]) {
-      const v = pkg[key];
-      if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
-    }
-    if (pkg.bin && typeof pkg.bin === "object") {
-      for (const v of Object.values(pkg.bin)) {
-        if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
-      }
-    } else if (typeof pkg.bin === "string") {
-      entries.add(pkg.bin.replace(/^\.\//, ""));
-    }
-  } catch {
-  }
-  const present = new Set(files.map((f) => f.path));
-  for (const c of CONVENTIONAL_ENTRIES) {
-    if (present.has(c)) entries.add(c);
-  }
-  return [...entries].sort();
-}
+// src/detect/workspaces.ts
+import { readFileSync as readFileSync3, existsSync, readdirSync as readdirSync2 } from "fs";
+import { join as join3, posix } from "path";
 
 // src/adapters/generic.ts
-import { readFileSync as readFileSync4 } from "fs";
-import { join as join4 } from "path";
+import { readFileSync as readFileSync2 } from "fs";
+import { join as join2 } from "path";
 function read(repo, rel) {
   try {
-    return readFileSync4(join4(repo, rel), "utf8");
+    return readFileSync2(join2(repo, rel), "utf8");
   } catch {
     return null;
   }
@@ -1029,9 +537,798 @@ function collectByCategory(files, category) {
   return files.filter((f) => f.category === category).map((f) => f.path);
 }
 
-// src/adapters/nextjs.ts
+// src/detect/workspaces.ts
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync3(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function safeRead(path) {
+  try {
+    return readFileSync3(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+function readCargoName(dir) {
+  const toml = safeRead(join3(dir, "Cargo.toml"));
+  if (!toml) return null;
+  const pkg = tomlSectionBody(toml, "package");
+  const m = pkg?.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+  return m ? m[1] : "";
+}
+function readGoModule(dir) {
+  const gomod = safeRead(join3(dir, "go.mod"));
+  if (!gomod) return null;
+  const m = gomod.match(/^module\s+(\S+)/m);
+  return m ? m[1] : "";
+}
+function addWorkspace(repo, relDir, found, kind) {
+  const norm = relDir.split("\\").join("/").replace(/^\.\//, "").replace(/\/+$/, "");
+  if (!norm || norm === "." || found.has(norm)) return;
+  let name;
+  if (kind === "cargo") {
+    name = readCargoName(join3(repo, norm));
+  } else if (kind === "go") {
+    name = readGoModule(join3(repo, norm));
+  } else {
+    const pkg = readJson(join3(repo, norm, "package.json"));
+    if (pkg) {
+      name = typeof pkg.name === "string" && pkg.name ? pkg.name : "";
+    } else if (kind === "nx" && existsSync(join3(repo, norm, "project.json"))) {
+      const proj = readJson(join3(repo, norm, "project.json"));
+      name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
+    } else {
+      name = null;
+    }
+  }
+  if (name === null) return;
+  found.set(norm, { name: name || norm, path: norm, kind });
+}
+var WS_SKIP_DIRS = /* @__PURE__ */ new Set([".git", "node_modules", ".turbo", "dist", "build", ".next"]);
+function collectWorkspacesRecursive(repo, relBase, found, kind, depth) {
+  if (depth > 5) return;
+  let entries;
+  try {
+    entries = readdirSync2(join3(repo, relBase), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
+    const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
+    addWorkspace(repo, sub, found, kind);
+    collectWorkspacesRecursive(repo, sub, found, kind, depth + 1);
+  }
+}
+function expandPattern(repo, raw, found, kind) {
+  const pat = raw.replace(/\/+$/, "");
+  if (pat.endsWith("/**")) {
+    collectWorkspacesRecursive(repo, pat.slice(0, -3), found, kind, 0);
+  } else if (pat.endsWith("/*")) {
+    const base = pat.slice(0, -2);
+    try {
+      for (const ent of readdirSync2(join3(repo, base), { withFileTypes: true })) {
+        if (ent.isDirectory()) addWorkspace(repo, join3(base, ent.name), found, kind);
+      }
+    } catch {
+    }
+  } else {
+    addWorkspace(repo, pat, found, kind);
+  }
+}
+function globToRegExp(pat) {
+  let re = "";
+  for (let i = 0; i < pat.length; i++) {
+    const c = pat[i];
+    if (c === "*") {
+      if (pat[i + 1] === "*") {
+        re += ".*";
+        i++;
+        if (pat[i + 1] === "/") i++;
+      } else {
+        re += "[^/]*";
+      }
+    } else if ("\\^$.|?+()[]{}".includes(c)) {
+      re += "\\" + c;
+    } else {
+      re += c;
+    }
+  }
+  return new RegExp(`^${re}($|/)`);
+}
+function npmFamilyPatterns(repo) {
+  const positives = [];
+  const negations = [];
+  const push = (raw, kind) => {
+    const t = raw.trim();
+    if (!t) return;
+    if (t.startsWith("!")) negations.push(t.slice(1));
+    else positives.push({ pattern: t, kind });
+  };
+  const pkg = readJson(join3(repo, "package.json"));
+  if (pkg) {
+    const ws = pkg.workspaces;
+    if (Array.isArray(ws)) {
+      for (const x of ws) if (typeof x === "string") push(x, "npm");
+    } else if (ws && typeof ws === "object" && Array.isArray(ws.packages)) {
+      for (const x of ws.packages) {
+        if (typeof x === "string") push(x, "npm");
+      }
+    }
+  }
+  const pnpm = safeRead(join3(repo, "pnpm-workspace.yaml"));
+  let inPackages = false;
+  for (const line of pnpm.split(/\r?\n/)) {
+    if (/^\S/.test(line)) {
+      inPackages = /^packages\s*:/.test(line);
+      continue;
+    }
+    if (!inPackages) continue;
+    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/);
+    if (m) push(m[1].trim(), "pnpm");
+  }
+  return { positives, negations };
+}
+function fallbackNpmPatterns(repo) {
+  const lerna = readJson(join3(repo, "lerna.json"));
+  if (lerna && Array.isArray(lerna.packages)) {
+    return lerna.packages.filter((x) => typeof x === "string").map((pattern) => ({ pattern, kind: "lerna" }));
+  }
+  const nx = readJson(join3(repo, "nx.json"));
+  if (nx) {
+    const layout = nx.workspaceLayout ?? {};
+    const appsDir = typeof layout.appsDir === "string" ? layout.appsDir : "apps";
+    const libsDir = typeof layout.libsDir === "string" ? layout.libsDir : "libs";
+    return [.../* @__PURE__ */ new Set([appsDir, libsDir])].map((dir) => ({
+      pattern: `${dir}/*`,
+      kind: "nx"
+    }));
+  }
+  return [];
+}
+function tomlSectionBody(toml, section) {
+  const re = new RegExp(`^\\[${section}\\]\\s*$([\\s\\S]*?)(?=^\\[|$(?![\\s\\S]))`, "m");
+  const m = toml.match(re);
+  return m ? m[1] : null;
+}
+function tomlStringArray(body, key) {
+  const m = body.match(new RegExp(`${key}\\s*=\\s*\\[([^\\]]*)\\]`));
+  if (!m) return [];
+  return m[1].split(/\r?\n/).map((line) => line.replace(/#.*$/, "")).join("\n").split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+}
+function detectCargoWorkspaces(repo, found) {
+  const toml = safeRead(join3(repo, "Cargo.toml"));
+  if (!toml) return;
+  const body = tomlSectionBody(toml, "workspace");
+  if (!body) return;
+  const members = tomlStringArray(body, "members");
+  if (members.length === 0) return;
+  const excludes = tomlStringArray(body, "exclude").map(globToRegExp);
+  const candidates = /* @__PURE__ */ new Map();
+  for (const pat of members) expandPattern(repo, pat, candidates, "cargo");
+  for (const ws of candidates.values()) {
+    if (excludes.some((re) => re.test(ws.path))) continue;
+    if (!found.has(ws.path)) found.set(ws.path, ws);
+  }
+}
+function detectGoWorkspaces(repo, found) {
+  const gowork = safeRead(join3(repo, "go.work"));
+  if (!gowork) return;
+  const dirs = [];
+  for (const block of gowork.matchAll(/^use\s*\(([\s\S]*?)\)/gm)) {
+    for (const line of block[1].split(/\r?\n/)) {
+      const t = line.replace(/\/\/.*$/, "").trim();
+      if (t) dirs.push(t);
+    }
+  }
+  for (const m of gowork.matchAll(/^use\s+([^\s(]+)/gm)) {
+    dirs.push(m[1]);
+  }
+  for (const dir of dirs) {
+    if (dir === "." || dir === "./") continue;
+    addWorkspace(repo, dir, found, "go");
+  }
+}
+function detectWorkspaces(repo) {
+  const found = /* @__PURE__ */ new Map();
+  const { positives, negations } = npmFamilyPatterns(repo);
+  const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo);
+  if (npmPatterns.length) {
+    const candidates = /* @__PURE__ */ new Map();
+    for (const { pattern, kind } of npmPatterns) expandPattern(repo, pattern, candidates, kind);
+    const negRes = negations.map(globToRegExp);
+    for (const ws of candidates.values()) {
+      if (negRes.some((re) => re.test(ws.path))) continue;
+      found.set(ws.path, ws);
+    }
+  }
+  detectCargoWorkspaces(repo, found);
+  detectGoWorkspaces(repo, found);
+  return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+function resolveDepPath(wsPath, rel) {
+  return posix.normalize(posix.join(wsPath, rel)).replace(/\/+$/, "");
+}
+function npmEdges(repo, ws, byName) {
+  const pkg = readJson(join3(repo, ws.path, "package.json"));
+  if (!pkg) return [];
+  const edges = /* @__PURE__ */ new Set();
+  for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
+    const deps = pkg[field];
+    if (!deps || typeof deps !== "object") continue;
+    for (const dep of Object.keys(deps)) {
+      if (dep !== ws.name && byName.has(dep)) edges.add(dep);
+    }
+  }
+  return [...edges];
+}
+function cargoEdges(repo, ws, byName, byPath) {
+  const toml = safeRead(join3(repo, ws.path, "Cargo.toml"));
+  if (!toml) return [];
+  const edges = /* @__PURE__ */ new Set();
+  for (const section of ["dependencies", "dev-dependencies", "build-dependencies"]) {
+    const body = tomlSectionBody(toml, section);
+    if (!body) continue;
+    for (const line of body.split(/\r?\n/)) {
+      const kv = line.match(/^\s*([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
+      if (!kv) continue;
+      const dep = kv[1];
+      const value = kv[2];
+      if (dep !== ws.name && byName.has(dep)) {
+        edges.add(dep);
+        continue;
+      }
+      const pathDep = value.match(/path\s*=\s*["']([^"']+)["']/);
+      if (pathDep) {
+        const target = byPath.get(resolveDepPath(ws.path, pathDep[1]));
+        if (target && target !== ws.name) edges.add(target);
+      }
+    }
+  }
+  return [...edges];
+}
+function goEdges(repo, ws, byName, byPath) {
+  const gomod = safeRead(join3(repo, ws.path, "go.mod"));
+  if (!gomod) return [];
+  const edges = /* @__PURE__ */ new Set();
+  for (const m of gomod.matchAll(/^\s*(?:require\s+)?([^\s/(][^\s]*)\s+v[^\s]+/gm)) {
+    const dep = m[1];
+    if (dep !== ws.name && byName.has(dep)) edges.add(dep);
+  }
+  for (const m of gomod.matchAll(/^\s*(?:replace\s+)?(\S+)(?:\s+\S+)?\s*=>\s*(\.\.?\/\S+)/gm)) {
+    const target = byPath.get(resolveDepPath(ws.path, m[2]));
+    if (target && target !== ws.name) edges.add(target);
+  }
+  return [...edges];
+}
+function buildWorkspaceGraph(repo, workspaces) {
+  const byName = new Set(workspaces.map((w) => w.name));
+  const byPath = new Map(workspaces.map((w) => [w.path, w.name]));
+  for (const ws of workspaces) {
+    const edges = ws.kind === "cargo" ? cargoEdges(repo, ws, byName, byPath) : ws.kind === "go" ? goEdges(repo, ws, byName, byPath) : npmEdges(repo, ws, byName);
+    if (edges.length) ws.dependsOn = edges.sort();
+  }
+}
+function workspaceMatcher(workspaces) {
+  const byDepth = [...workspaces].sort((a, b) => b.path.length - a.path.length);
+  return (path) => byDepth.find((ws) => path.startsWith(ws.path + "/"));
+}
+function enrichWorkspaceStacks(repo, workspaces, files) {
+  const matcher = workspaceMatcher(workspaces);
+  const filesByWs = /* @__PURE__ */ new Map();
+  for (const f of files) {
+    const ws = matcher(f.path);
+    if (!ws) continue;
+    const list = filesByWs.get(ws.path);
+    if (list) list.push(f);
+    else filesByWs.set(ws.path, [f]);
+  }
+  for (const ws of workspaces) {
+    const wsFiles = filesByWs.get(ws.path) ?? [];
+    const prefix = ws.path + "/";
+    const rebased = wsFiles.map((f) => ({ ...f, path: f.path.slice(prefix.length) }));
+    ws.fileCount = wsFiles.length;
+    ws.stack = detectStack(join3(repo, ws.path), rebased);
+    const deps = extractDependencies(join3(repo, ws.path), rebased);
+    if (deps.length) {
+      ws.dependencies = deps.map((d) => ({ ...d, manifest: prefix + d.manifest }));
+    }
+  }
+}
+function mergeWorkspaceStacks(stack, workspaces) {
+  const frameworks = new Set(stack.frameworks);
+  const libraries = new Set(stack.libraries);
+  const packageManagers = new Set(stack.packageManagers);
+  for (const ws of workspaces) {
+    for (const f of ws.stack?.frameworks ?? []) frameworks.add(f);
+    for (const l of ws.stack?.libraries ?? []) libraries.add(l);
+    for (const p of ws.stack?.packageManagers ?? []) packageManagers.add(p);
+  }
+  return {
+    ...stack,
+    frameworks: [...frameworks],
+    libraries: [...libraries],
+    packageManagers: [...packageManagers]
+  };
+}
+function enrichWorkspaceSurface(workspaces, routes, hints, schemas) {
+  const matcher = workspaceMatcher(workspaces);
+  const routeCounts = /* @__PURE__ */ new Map();
+  for (const r of routes) {
+    const ws = matcher(r.file);
+    if (!ws) continue;
+    r.workspace = ws.name;
+    routeCounts.set(ws.path, (routeCounts.get(ws.path) ?? 0) + 1);
+  }
+  for (const ws of workspaces) {
+    const prefix = ws.path + "/";
+    const routeCount = routeCounts.get(ws.path) ?? 0;
+    if (routeCount) ws.routeCount = routeCount;
+    const wsSchemas = schemas.filter((s) => s.startsWith(prefix));
+    if (wsSchemas.length) ws.schemas = wsSchemas;
+    const wsHints = {
+      routeCandidates: hints.routeCandidates.filter((p) => p.startsWith(prefix)),
+      apiCandidates: hints.apiCandidates.filter((p) => p.startsWith(prefix)),
+      schemaCandidates: hints.schemaCandidates.filter((p) => p.startsWith(prefix)),
+      entryPoints: hints.entryPoints.filter((p) => p.startsWith(prefix))
+    };
+    if (Object.values(wsHints).some((list) => list.length > 0)) ws.hints = wsHints;
+  }
+}
+function topoOrderWorkspaces(workspaces) {
+  const remaining = new Map(workspaces.map((w) => [w.name, new Set(w.dependsOn ?? [])]));
+  const order = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining.entries()].filter(([, deps]) => [...deps].every((d) => !remaining.has(d))).map(([name]) => name);
+    if (ready.length === 0) {
+      const leftover = workspaces.filter((w) => remaining.has(w.name)).map((w) => w.name);
+      order.push(...leftover);
+      break;
+    }
+    for (const name of ready.sort()) {
+      order.push(name);
+      remaining.delete(name);
+    }
+  }
+  return order;
+}
+
+// src/detect/stack.ts
+var EXT_LANGUAGE = {
+  ".ts": "TypeScript",
+  ".tsx": "TypeScript",
+  ".js": "JavaScript",
+  ".jsx": "JavaScript",
+  ".mjs": "JavaScript",
+  ".cjs": "JavaScript",
+  ".vue": "Vue",
+  ".svelte": "Svelte",
+  ".astro": "Astro",
+  ".py": "Python",
+  ".rb": "Ruby",
+  ".go": "Go",
+  ".rs": "Rust",
+  ".java": "Java",
+  ".kt": "Kotlin",
+  ".php": "PHP",
+  ".c": "C",
+  ".cc": "C++",
+  ".cpp": "C++",
+  ".cs": "C#",
+  ".swift": "Swift",
+  ".scala": "Scala",
+  ".dart": "Dart",
+  ".ex": "Elixir",
+  ".exs": "Elixir",
+  ".lua": "Lua"
+};
+var NPM_FRAMEWORKS = [
+  ["next", "Next.js"],
+  ["nuxt", "Nuxt"],
+  ["@remix-run/react", "Remix"],
+  ["react-router-dom", "React Router"],
+  ["@sveltejs/kit", "SvelteKit"],
+  ["astro", "Astro"],
+  ["@angular/core", "Angular"],
+  ["@nestjs/core", "NestJS"],
+  ["express", "Express"],
+  ["fastify", "Fastify"],
+  ["koa", "Koa"],
+  ["@hono/node-server", "Hono"],
+  ["hono", "Hono"],
+  ["@solidjs/start", "SolidStart"],
+  ["solid-start", "SolidStart"],
+  ["react", "React"],
+  ["vue", "Vue"],
+  ["svelte", "Svelte"],
+  ["solid-js", "SolidJS"],
+  // Build tooling / runtimes / shells
+  ["vite", "Vite"],
+  ["expo", "Expo"],
+  ["react-native", "React Native"],
+  ["electron", "Electron"],
+  ["@tauri-apps/api", "Tauri"],
+  ["@tauri-apps/cli", "Tauri"]
+];
+var NPM_LIBRARIES = [
+  // ORM / database
+  ["drizzle-orm", "Drizzle ORM"],
+  ["@prisma/client", "Prisma"],
+  ["prisma", "Prisma"],
+  ["typeorm", "TypeORM"],
+  ["sequelize", "Sequelize"],
+  ["mongoose", "Mongoose"],
+  ["kysely", "Kysely"],
+  ["@supabase/supabase-js", "Supabase"],
+  // Auth
+  ["next-auth", "NextAuth.js"],
+  ["@auth/core", "Auth.js"],
+  ["@clerk/nextjs", "Clerk"],
+  ["lucia", "Lucia"],
+  ["passport", "Passport"],
+  // API / data fetching layer
+  ["@trpc/", "tRPC"],
+  ["@tanstack/react-query", "TanStack Query"],
+  ["react-query", "TanStack Query"],
+  ["@apollo/client", "Apollo GraphQL"],
+  ["graphql", "GraphQL"],
+  ["swr", "SWR"],
+  // Styling / UI
+  ["tailwindcss", "Tailwind CSS"],
+  ["styled-components", "styled-components"],
+  ["@emotion/react", "Emotion"],
+  ["@mui/material", "MUI"],
+  ["@chakra-ui/react", "Chakra UI"],
+  ["@radix-ui/", "Radix UI"],
+  ["@mantine/core", "Mantine"],
+  ["bootstrap", "Bootstrap"],
+  // State management
+  ["@reduxjs/toolkit", "Redux Toolkit"],
+  ["redux", "Redux"],
+  ["zustand", "Zustand"],
+  ["jotai", "Jotai"],
+  ["recoil", "Recoil"],
+  ["mobx", "MobX"],
+  // Validation / forms
+  ["zod", "Zod"],
+  ["yup", "Yup"],
+  ["valibot", "Valibot"],
+  ["react-hook-form", "React Hook Form"],
+  ["formik", "Formik"],
+  // Testing
+  ["vitest", "Vitest"],
+  ["jest", "Jest"],
+  ["@playwright/test", "Playwright"],
+  ["playwright", "Playwright"],
+  ["cypress", "Cypress"],
+  ["@testing-library/react", "Testing Library"],
+  // i18n
+  ["next-intl", "next-intl"],
+  ["i18next", "i18next"],
+  ["react-i18next", "react-i18next"],
+  // Services / analytics / email
+  ["posthog-js", "PostHog"],
+  ["@sentry/", "Sentry"],
+  ["resend", "Resend"],
+  ["nodemailer", "Nodemailer"],
+  ["stripe", "Stripe"],
+  ["@aws-sdk/", "AWS SDK"]
+];
+var GO_FRAMEWORKS = [
+  [/github\.com\/gin-gonic\/gin/, "Gin"],
+  [/github\.com\/labstack\/echo/, "Echo"],
+  [/github\.com\/gofiber\/fiber/, "Fiber"],
+  [/github\.com\/go-chi\/chi/, "chi"],
+  [/github\.com\/gorilla\/mux/, "Gorilla"]
+];
+function detectLibraries(deps) {
+  const names = Object.keys(deps);
+  const found = /* @__PURE__ */ new Set();
+  for (const [pattern, label] of NPM_LIBRARIES) {
+    const hit = pattern.endsWith("/") ? names.some((n) => n.startsWith(pattern)) : pattern in deps;
+    if (hit) found.add(label);
+  }
+  return [...found];
+}
+function readJson2(path) {
+  try {
+    return JSON.parse(readFileSync4(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function detectStack(repo, files) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const f of files) {
+    const lang = EXT_LANGUAGE[f.ext];
+    if (lang) counts.set(lang, (counts.get(lang) ?? 0) + 1);
+  }
+  const languages = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([lang]) => lang);
+  const frameworks = /* @__PURE__ */ new Set();
+  const packageManagers = /* @__PURE__ */ new Set();
+  let libraries = [];
+  let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
+  const hasPkg = existsSync2(join4(repo, "package.json"));
+  const pkg = readJson2(join4(repo, "package.json"));
+  if (pkg) {
+    const allDeps = {
+      ...pkg.dependencies ?? {},
+      ...pkg.devDependencies ?? {}
+    };
+    for (const [dep, label] of NPM_FRAMEWORKS) {
+      if (dep in allDeps) frameworks.add(label);
+    }
+    libraries = detectLibraries(allDeps);
+    if ("typescript" in allDeps) hasTypeScript = true;
+  }
+  const hasJsManifest = hasPkg || ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some(
+    (f) => existsSync2(join4(repo, f))
+  );
+  if (hasJsManifest) {
+    if (existsSync2(join4(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
+    else if (existsSync2(join4(repo, "yarn.lock"))) packageManagers.add("yarn");
+    else if (existsSync2(join4(repo, "bun.lockb")) || existsSync2(join4(repo, "bun.lock")))
+      packageManagers.add("bun");
+    else packageManagers.add("npm");
+  }
+  if (existsSync2(join4(repo, "requirements.txt")) || existsSync2(join4(repo, "pyproject.toml"))) {
+    packageManagers.add("pip");
+    const py = safeRead2(join4(repo, "requirements.txt")) + safeRead2(join4(repo, "pyproject.toml"));
+    if (/\bdjango\b/i.test(py)) frameworks.add("Django");
+    if (/\bflask\b/i.test(py)) frameworks.add("Flask");
+    if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
+  }
+  if (existsSync2(join4(repo, "pubspec.yaml"))) {
+    packageManagers.add("pub");
+    const pubspec = safeRead2(join4(repo, "pubspec.yaml"));
+    if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
+      frameworks.add("Flutter");
+    }
+  }
+  if (existsSync2(join4(repo, "Cargo.toml"))) packageManagers.add("cargo");
+  if (existsSync2(join4(repo, "go.mod"))) {
+    packageManagers.add("go modules");
+    const gomod = safeRead2(join4(repo, "go.mod"));
+    for (const [pattern, label] of GO_FRAMEWORKS) {
+      if (pattern.test(gomod)) frameworks.add(label);
+    }
+  }
+  if (existsSync2(join4(repo, "Gemfile"))) {
+    packageManagers.add("bundler");
+    if (/\brails\b/i.test(safeRead2(join4(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
+    if (/\bsinatra\b/i.test(safeRead2(join4(repo, "Gemfile")))) frameworks.add("Sinatra");
+  }
+  if (existsSync2(join4(repo, "composer.json"))) {
+    packageManagers.add("composer");
+    const composer = safeRead2(join4(repo, "composer.json"));
+    if (/laravel\/framework/.test(composer)) frameworks.add("Laravel");
+    if (/symfony\/framework-bundle/.test(composer)) frameworks.add("Symfony");
+  }
+  if (existsSync2(join4(repo, "pom.xml"))) {
+    packageManagers.add("maven");
+    if (/spring-boot/.test(safeRead2(join4(repo, "pom.xml")))) frameworks.add("Spring Boot");
+  }
+  for (const gradle of ["build.gradle", "build.gradle.kts"]) {
+    if (existsSync2(join4(repo, gradle))) {
+      packageManagers.add("gradle");
+      if (/spring-boot/.test(safeRead2(join4(repo, gradle)))) frameworks.add("Spring Boot");
+    }
+  }
+  return {
+    languages,
+    primaryLanguage: languages[0] ?? "Unknown",
+    frameworks: [...frameworks],
+    libraries,
+    packageManagers: [...packageManagers],
+    hasTypeScript
+  };
+}
+function safeRead2(path) {
+  try {
+    return readFileSync4(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+function detectNodeVersion(repo) {
+  const pkg = readJson2(join4(repo, "package.json"));
+  const engines = pkg?.engines;
+  if (engines && typeof engines === "object") {
+    const node = engines.node;
+    if (typeof node === "string") return node;
+  }
+  return void 0;
+}
+
+// src/detect/candidates.ts
 import { readFileSync as readFileSync5 } from "fs";
 import { join as join5 } from "path";
+var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".rb",
+  ".go",
+  ".java",
+  ".kt",
+  ".php",
+  ".rs",
+  ".cs",
+  ".ex",
+  ".exs",
+  ".graphql",
+  ".gql",
+  ".proto"
+]);
+var ROUTE_DIRS = [
+  "routes",
+  "controllers",
+  "handlers",
+  "endpoints",
+  "views",
+  "pages",
+  "api"
+];
+var API_DIRS = ["trpc", "resolvers", "graphql"];
+var SCHEMA_DIRS = ["models", "entities", "migrations"];
+var ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
+var ROUTE_FILE_NAMES = /* @__PURE__ */ new Set(["routes.rb"]);
+var ROUTE_CONTENT_RE = new RegExp(
+  [
+    // method-call routers (JS/TS/Go/Python): app.get(, router.post(, r.GET(, bp.put(
+    String.raw`\b(?:app|router|route|api|blueprint|fastify|server|mux|r|bp|blp)\.(?:get|post|put|patch|delete|all|use|route|handle|handlefunc)\s*\(`,
+    // any receiver registering a net/http handler: mux.HandleFunc(, http.Handle(
+    String.raw`\.handle(?:func)?\s*\(`,
+    // decorator frameworks: Spring (@GetMapping/@RequestMapping/@Controller), NestJS
+    String.raw`@(?:Get|Post|Put|Patch|Delete|Controller|RequestMapping|(?:Get|Post|Put|Delete|Patch)Mapping)\b`,
+    // Python decorator routes: @app.route, @bp.get, @router.post …
+    String.raw`@(?:app|router|blueprint|api|bp|blp)\.(?:route|get|post|put|delete|patch)\b`,
+    // Laravel: Route::get(, Route::resource(, Route::group(
+    String.raw`Route::(?:get|post|put|patch|delete|resource|apiResource|group|match|any)\b`,
+    // Flask functional / class-based / flask-restful registration
+    String.raw`\.add_url_rule\s*\(`,
+    String.raw`\badd_resource\s*\(`,
+    String.raw`\bclass\s+\w+\s*\(\s*(?:\w+\.)?(?:Resource|MethodView)\b`,
+    String.raw`=\s*Blueprint\s*\(`,
+    // Django: urlpatterns table, re_path(, DRF router.register(/DefaultRouter
+    String.raw`\burlpatterns\b`,
+    String.raw`\bre_path\s*\(`,
+    String.raw`routers\.(?:Default|Simple)Router\b`,
+    String.raw`\.register\s*\(\s*r?["']`,
+    // Rails DSL (covers config/routes.rb and any drawn routes file)
+    String.raw`Rails\.application\.routes\.draw\b`,
+    // Rust: axum Router::new().route(, actix web::resource/scope/get(
+    String.raw`Router::new\b`,
+    String.raw`\.route\s*\(`,
+    String.raw`web::(?:resource|scope|get|post|put|delete|patch)\s*\(`
+  ].join("|"),
+  "i"
+);
+var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
+var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
+var MAX_CONTENT_SCAN_BYTES = 2e6;
+function segmentsOf(path) {
+  return path.toLowerCase().split("/");
+}
+function inDir(path, names) {
+  const segs = segmentsOf(path);
+  return names.some((n) => segs.includes(n));
+}
+function baseName(path) {
+  return path.split("/").pop() ?? "";
+}
+function safeRead3(repo, rel) {
+  try {
+    return readFileSync5(join5(repo, rel), "utf8");
+  } catch {
+    return "";
+  }
+}
+function detectCandidates(repo, files, stack) {
+  void stack;
+  const routeCandidates = /* @__PURE__ */ new Set();
+  const apiCandidates = /* @__PURE__ */ new Set();
+  const schemaCandidates = /* @__PURE__ */ new Set();
+  for (const f of files) {
+    if (f.binary || f.size === 0) continue;
+    const p = f.path;
+    const lower = p.toLowerCase();
+    const base = baseName(lower);
+    const ext = f.ext;
+    if (inDir(lower, ROUTE_DIRS) || ROUTE_FILE_RE.test(base) || ROUTE_FILE_NAMES.has(base)) {
+      routeCandidates.add(p);
+    }
+    if (ext === ".graphql" || ext === ".gql" || ext === ".proto") apiCandidates.add(p);
+    if ((ext === ".json" || ext === ".yaml" || ext === ".yml") && /openapi|swagger/.test(base)) {
+      apiCandidates.add(p);
+    }
+    if (inDir(lower, API_DIRS)) apiCandidates.add(p);
+    if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
+    if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
+    if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
+      const src = safeRead3(repo, p);
+      if (!src) continue;
+      if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
+      if (API_CONTENT_RE.test(src)) apiCandidates.add(p);
+      if (SCHEMA_CONTENT_RE.test(src)) schemaCandidates.add(p);
+    }
+  }
+  return {
+    routeCandidates: [...routeCandidates].sort(),
+    apiCandidates: [...apiCandidates].sort(),
+    schemaCandidates: [...schemaCandidates].sort(),
+    entryPoints: detectEntryPoints(repo, files)
+  };
+}
+var CONVENTIONAL_ENTRIES = [
+  // JS/TS
+  "src/index.ts",
+  "src/index.js",
+  "src/index.tsx",
+  "src/main.ts",
+  "src/main.tsx",
+  "src/main.js",
+  "index.ts",
+  "index.js",
+  "src/server.ts",
+  "src/server.js",
+  "server.ts",
+  "server.js",
+  "app/layout.tsx",
+  "src/app/layout.tsx",
+  // Python
+  "manage.py",
+  "main.py",
+  "app.py",
+  "wsgi.py",
+  "asgi.py",
+  "src/main.py",
+  "__main__.py",
+  // Go
+  "main.go",
+  "cmd/main.go",
+  // Ruby
+  "config.ru",
+  "bin/rails",
+  // Rust
+  "src/main.rs",
+  // Dart / Flutter
+  "lib/main.dart"
+];
+function detectEntryPoints(repo, files) {
+  const entries = /* @__PURE__ */ new Set();
+  try {
+    const pkg = JSON.parse(readFileSync5(join5(repo, "package.json"), "utf8"));
+    for (const key of ["main", "module"]) {
+      const v = pkg[key];
+      if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
+    }
+    if (pkg.bin && typeof pkg.bin === "object") {
+      for (const v of Object.values(pkg.bin)) {
+        if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
+      }
+    } else if (typeof pkg.bin === "string") {
+      entries.add(pkg.bin.replace(/^\.\//, ""));
+    }
+  } catch {
+  }
+  const present = new Set(files.map((f) => f.path));
+  for (const c of CONVENTIONAL_ENTRIES) {
+    if (present.has(c)) entries.add(c);
+  }
+  return [...entries].sort();
+}
+
+// src/adapters/nextjs.ts
+import { readFileSync as readFileSync6 } from "fs";
+import { join as join6 } from "path";
 var CODE_PAGE_EXTS = /* @__PURE__ */ new Set([".tsx", ".ts", ".jsx", ".js"]);
 var PAGES_SPECIAL = /* @__PURE__ */ new Set(["_app", "_document", "_error", "middleware"]);
 var HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -1061,7 +1358,7 @@ function afterDir(path, dir) {
 function routeMethods(repo, file) {
   let src;
   try {
-    src = readFileSync5(join5(repo, file), "utf8");
+    src = readFileSync6(join6(repo, file), "utf8");
   } catch {
     return [];
   }
@@ -1124,15 +1421,15 @@ var nextjsAdapter = {
 };
 
 // src/adapters/util.ts
-import { readFileSync as readFileSync6 } from "fs";
-import { join as join6 } from "path";
+import { readFileSync as readFileSync7 } from "fs";
+import { join as join7 } from "path";
 function readSources(files, repo, exts) {
   const set = new Set(exts);
   const out = /* @__PURE__ */ new Map();
   for (const f of files) {
     if (!set.has(f.ext)) continue;
     try {
-      out.set(f.path, readFileSync6(join6(repo, f.path), "utf8"));
+      out.set(f.path, readFileSync7(join7(repo, f.path), "utf8"));
     } catch {
     }
   }
@@ -1836,8 +2133,8 @@ function detectRoutes(files, stack, repo) {
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync7 } from "fs";
-import { join as join7, basename as basename2, extname as extname2 } from "path";
+import { readFileSync as readFileSync8 } from "fs";
+import { join as join8, basename as basename2, extname as extname2 } from "path";
 var LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
 var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
 function countJsonLeaves(value) {
@@ -1862,7 +2159,7 @@ function localeOf(path) {
 }
 function keysIn(repo, f) {
   try {
-    const raw = readFileSync7(join7(repo, f.path), "utf8");
+    const raw = readFileSync8(join8(repo, f.path), "utf8");
     if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
     return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
   } catch {
@@ -2062,6 +2359,7 @@ var FOUNDATION_ORDER = [
   "locales"
 ];
 var SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
+var WS_RANK_SPAN = 100;
 var DATA_LAYER_KEYS = /* @__PURE__ */ new Set(["prisma", "drizzle", "migrations"]);
 function foundationRank(key, hasSchema) {
   const i = FOUNDATION_ORDER.indexOf(key);
@@ -2081,7 +2379,52 @@ function orderFeatures(records) {
     slug: `${String(i + 1).padStart(2, "0")}-${r.feature.slug}`
   }));
 }
-function buildFeatures(files, routes, i18n, granularity = "coarse") {
+function makeWsContext(workspaces, routes) {
+  const lastSeg2 = (p) => p.split("/").pop() ?? p;
+  const segCounts = /* @__PURE__ */ new Map();
+  for (const ws of workspaces) {
+    const seg = lastSeg2(ws.path);
+    segCounts.set(seg, (segCounts.get(seg) ?? 0) + 1);
+  }
+  const shortOf = new Map(
+    workspaces.map((ws) => {
+      const seg = lastSeg2(ws.path);
+      return [ws.path, (segCounts.get(seg) ?? 0) > 1 ? slugify(ws.path) : seg];
+    })
+  );
+  const appNames = new Set(
+    routes.map((r) => r.workspace).filter((n) => Boolean(n))
+  );
+  const topoIndex = new Map(topoOrderWorkspaces(workspaces).map((name, i) => [name, i]));
+  const dependedOn = new Set(workspaces.flatMap((ws) => ws.dependsOn ?? []));
+  return {
+    matcher: workspaceMatcher(workspaces),
+    shortOf,
+    appNames,
+    topoIndex,
+    dependedOn,
+    groups: /* @__PURE__ */ new Map()
+  };
+}
+function wsKeyFor(ctx, ws, innerPath) {
+  const short = ctx.shortOf.get(ws.path);
+  const key = ctx.appNames.has(ws.name) ? `${short}/${featureKey(innerPath)}` : `ws:${short}`;
+  if (!ctx.groups.has(key)) {
+    ctx.groups.set(key, {
+      ws,
+      ...ctx.appNames.has(ws.name) ? { inner: featureKey(innerPath) } : {}
+    });
+  }
+  return key;
+}
+function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces = []) {
+  const ctx = workspaces.length ? makeWsContext(workspaces, routes) : null;
+  const keyForFile = (path) => {
+    const ws = ctx?.matcher(path);
+    return ws ? wsKeyFor(ctx, ws, path.slice(ws.path.length + 1)) : featureKey(path);
+  };
+  const innerOf = (key) => ctx?.groups.get(key)?.inner ?? key;
+  const isLibGroup = (key) => Boolean(ctx?.groups.get(key)) && !ctx?.groups.get(key)?.inner;
   const codeGroups = /* @__PURE__ */ new Map();
   const schemaPaths = /* @__PURE__ */ new Set();
   const configFiles = [];
@@ -2093,7 +2436,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
     } else if (f.category === "doc") {
       docFiles.push(f.path);
     } else if (f.category === "code" || f.category === "test" || f.category === "style" || f.category === "schema") {
-      const key = featureKey(f.path);
+      const key = keyForFile(f.path);
       const list = codeGroups.get(key) ?? [];
       list.push(f.path);
       codeGroups.set(key, list);
@@ -2101,40 +2444,63 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
   }
   const routesByKey = /* @__PURE__ */ new Map();
   for (const r of routes) {
-    const k = routeKey(r.route);
+    const ws = ctx && r.workspace ? workspaces.find((w) => w.name === r.workspace) : void 0;
+    const k = ws && ctx ? `${ctx.shortOf.get(ws.path)}/${routeKey(r.route)}` : routeKey(r.route);
+    if (ws && ctx && !ctx.groups.has(k)) ctx.groups.set(k, { ws, inner: routeKey(r.route) });
     const list = routesByKey.get(k) ?? [];
     list.push(r);
     routesByKey.set(k, list);
   }
   const groupHasSchema = (groupFiles) => groupFiles.some((p) => schemaPaths.has(p));
-  const isFoundationGroup = (key, groupFiles) => FOUNDATION_KEYS.has(key) || groupHasSchema(groupFiles);
+  const isFoundationGroup = (key, groupFiles) => FOUNDATION_KEYS.has(innerOf(key)) || groupHasSchema(groupFiles);
   if (granularity === "coarse") {
-    const core = codeGroups.get("core") ?? [];
-    let mergedAny = false;
+    const foldTarget = (key) => {
+      const group = ctx?.groups.get(key);
+      if (!group?.inner) return "core";
+      const short = ctx?.shortOf.get(group.ws.path);
+      return `${short}/core`;
+    };
     for (const [key, groupFiles] of [...codeGroups.entries()]) {
-      if (key === "core") continue;
+      if (key === "core" || innerOf(key) === "core" || isLibGroup(key)) continue;
       const routeCount = routesByKey.get(key)?.length ?? 0;
-      const trivial = groupFiles.length === 1 && routeCount === 0 && !isFoundationGroup(key, groupFiles) && !TEST_KEYS.has(key);
+      const trivial = groupFiles.length === 1 && routeCount === 0 && !isFoundationGroup(key, groupFiles) && !TEST_KEYS.has(innerOf(key));
       if (trivial) {
-        core.push(...groupFiles);
+        const target = foldTarget(key);
+        if (target !== "core" && ctx && !ctx.groups.has(target)) {
+          const group = ctx.groups.get(key);
+          if (group) ctx.groups.set(target, { ws: group.ws, inner: "core" });
+        }
+        codeGroups.set(target, [...codeGroups.get(target) ?? [], ...groupFiles]);
         codeGroups.delete(key);
-        mergedAny = true;
       }
     }
-    if (mergedAny || codeGroups.has("core")) codeGroups.set("core", core);
   }
   const records = [];
   for (const [key, groupFiles] of codeGroups.entries()) {
     const featureRoutes = routesByKey.get(key) ?? [];
-    const name = humanize(key);
+    const wsGroup = ctx?.groups.get(key);
+    const short = wsGroup ? ctx?.shortOf.get(wsGroup.ws.path) : "";
+    const name = wsGroup ? wsGroup.inner ? `${humanize(short)} \xB7 ${humanize(wsGroup.inner)}` : humanize(short) + (wsGroup.ws.name !== short ? ` (${wsGroup.ws.name})` : "") : humanize(key);
+    const slug = wsGroup ? wsGroup.inner ? slugify(`${short}-${humanize(wsGroup.inner)}`) : slugify(short) : slugify(name);
     const routeList = featureRoutes.map((r) => r.route);
     const uniqueRoutes = [...new Set(routeList)];
-    const desc = `Groups ${groupFiles.length} file(s)` + (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") + ".";
+    const desc = `Groups ${groupFiles.length} file(s)` + (wsGroup ? ` in workspace \`${wsGroup.ws.path}\`` : "") + (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") + ".";
     const hasSchema = groupHasSchema(groupFiles);
-    const tier = TEST_KEYS.has(key) ? 2 : isFoundationGroup(key, groupFiles) ? 0 : 1;
+    const topoBase = wsGroup ? (ctx?.topoIndex.get(wsGroup.ws.name) ?? 0) * WS_RANK_SPAN : 0;
+    let tier;
+    let rank;
+    if (wsGroup && !wsGroup.inner) {
+      const isDep = ctx?.dependedOn.has(wsGroup.ws.name) ?? false;
+      tier = isDep ? 0 : 1;
+      rank = topoBase;
+    } else {
+      const structuralKey = innerOf(key);
+      tier = TEST_KEYS.has(structuralKey) ? 2 : isFoundationGroup(key, groupFiles) ? 0 : 1;
+      rank = topoBase + (tier === 0 ? foundationRank(structuralKey, hasSchema) : 0);
+    }
     records.push({
       feature: {
-        slug: slugify(name),
+        slug,
         name,
         description: desc,
         kind: "feature",
@@ -2143,7 +2509,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
       },
       key,
       tier,
-      rank: tier === 0 ? foundationRank(key, hasSchema) : 0,
+      rank,
       size: groupFiles.length
     });
   }
@@ -2203,8 +2569,13 @@ function buildFeatures(files, routes, i18n, granularity = "coarse") {
 var VERSION = "0.10.2";
 
 // src/analyze.ts
-function computeUnknowns(stack, routes, hints) {
+function computeUnknowns(stack, routes, hints, workspaces) {
   const u = [];
+  if (workspaces.length > 0) {
+    u.push(
+      "Monorepo: workspaces were detected (`workspaces[*]` carries each one's stack, dependencies, hints, and `dependsOn`) \u2014 verify each workspace's role (app / package / service) and extend the dependency graph with implicit edges (HTTP calls between apps, generated clients, shared env vars); deterministic edges come from manifest declarations only."
+    );
+  }
   if (stack.frameworks.length === 0) {
     u.push(
       "No web framework was detected from manifests \u2014 identify the stack from `stack.languages` + `dependencies`, find the entry points (`hints.entryPoints`, else the file tree), then map the interface surface manually."
@@ -2233,7 +2604,13 @@ function analyze(opts) {
     exclude: opts.exclude,
     out: opts.out
   });
-  const stack = detectStack(opts.repo, files);
+  let stack = detectStack(opts.repo, files);
+  const workspaces = detectWorkspaces(opts.repo);
+  if (workspaces.length > 0) {
+    buildWorkspaceGraph(opts.repo, workspaces);
+    enrichWorkspaceStacks(opts.repo, workspaces, files);
+    stack = mergeWorkspaceStacks(stack, workspaces);
+  }
   const dependencies = extractDependencies(opts.repo, files);
   const routes = detectRoutes(files, stack, opts.repo);
   const i18n = detectI18n(opts.repo, files);
@@ -2243,10 +2620,12 @@ function analyze(opts) {
   const envVars = extractEnvVars(opts.repo, files);
   const scripts = extractScripts(opts.repo);
   const hints = detectCandidates(opts.repo, files, stack);
-  const workspaces = detectWorkspaces(opts.repo);
+  if (workspaces.length > 0) {
+    enrichWorkspaceSurface(workspaces, routes, hints, schemas);
+  }
   const node = detectNodeVersion(opts.repo);
-  const features = buildFeatures(files, routes, i18n, opts.granularity);
-  const unknowns = computeUnknowns(stack, routes, hints);
+  const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
+  const unknowns = computeUnknowns(stack, routes, hints, workspaces);
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   return {
     generatedWith: `reconstruct@${VERSION}`,
@@ -2279,7 +2658,7 @@ function analyze(opts) {
 }
 
 // src/prd/render.ts
-import { join as join9 } from "path";
+import { join as join10 } from "path";
 
 // src/prd/templates.ts
 function agentNote(body) {
@@ -2498,6 +2877,26 @@ function overviewPrd(inv, opts) {
   }
   return out.join("\n");
 }
+function workspacesBlock(workspaces) {
+  const rows = workspaces.map((w) => {
+    const stack = [
+      ...w.stack?.frameworks ?? [],
+      ...w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "\u2014"]
+    ].join(", ");
+    return `| \`${w.name}\` | \`${w.path}/\` | ${w.kind ?? "\u2014"} | ${stack || "\u2014"} | ${w.dependsOn?.map((d) => `\`${d}\``).join(", ") || "\u2014"} | ${w.routeCount ?? 0} |`;
+  });
+  return [
+    "## Workspaces",
+    "",
+    "| Workspace | Path | Kind | Stack | Depends on | Routes |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rows,
+    "",
+    agentNote(
+      "Verify each workspace's role (app / package / service) and **extend the dependency graph**: the `Depends on` column carries manifest-declared edges only \u2014 add the implicit ones (HTTP calls between apps, generated clients, shared env vars, queues) and draw the result in `diagram.md`. Map each shared package once and reference it from the apps that consume it."
+    )
+  ].join("\n");
+}
 function architectureDoc(inv, opts) {
   const isScratch = opts.mode === "scratch";
   const topDirs = [
@@ -2519,6 +2918,7 @@ function architectureDoc(inv, opts) {
     (topDirs.map((d) => `- \`${d}/\``).join("\n") || "_Flat layout (no subdirectories)._") + (rootFiles.length ? `
 - root files: ${rootFiles.map((f) => `\`${f}\``).join(", ")}` : ""),
     "",
+    ...inv.workspaces?.length ? [workspacesBlock(inv.workspaces), ""] : [],
     "## Dependencies",
     "",
     deps || "_No dependency manifests found._",
@@ -2720,6 +3120,24 @@ function diagramDoc(inv) {
   const nodes = inv.features.map((f, i) => `  F${i}["${f.name}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
   const edges = inv.features.filter((f) => f.kind === "feature").map((f, i) => inv.i18n ? `  F${i} --> DATA` : "").filter(Boolean).join("\n");
+  const workspaceGraph = inv.workspaces?.length ? [
+    "",
+    "## Workspace graph",
+    "",
+    "Manifest-declared dependencies between workspaces (verify and extend with implicit edges).",
+    "",
+    "```mermaid",
+    "graph TD",
+    ...inv.workspaces.map((w, i) => `  W${i}["${w.name}"]`),
+    ...inv.workspaces.flatMap(
+      (w, i) => (w.dependsOn ?? []).map((dep) => {
+        const j = inv.workspaces?.findIndex((x) => x.name === dep) ?? -1;
+        return j >= 0 ? `  W${i} --> W${j}` : "";
+      })
+    ).filter(Boolean),
+    "```",
+    ""
+  ] : [""];
   return [
     "# Module diagram",
     "",
@@ -2729,7 +3147,7 @@ function diagramDoc(inv) {
     dataNode,
     edges,
     "```",
-    ""
+    ...workspaceGraph
   ].join("\n");
 }
 function featurePrd(inv, feature, opts, sourceMarkdown) {
@@ -2897,7 +3315,7 @@ function rebuildDoc(inv, opts) {
     "",
     "## Build order",
     "",
-    "Ordered by dependency tier \u2014 foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last.",
+    "Ordered by dependency tier \u2014 foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last." + (inv.workspaces?.length ? " The outer tier is the workspace topological order: shared packages build before the apps that consume them." : ""),
     "",
     order || "_No features._",
     "",
@@ -2913,8 +3331,8 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync8 } from "fs";
-import { join as join8 } from "path";
+import { readFileSync as readFileSync9 } from "fs";
+import { join as join9 } from "path";
 var FENCE_LANG = {
   ".ts": "ts",
   ".tsx": "tsx",
@@ -2962,7 +3380,7 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body;
     try {
-      body = readFileSync8(join8(opts.repo, rel), "utf8");
+      body = readFileSync9(join9(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
@@ -2989,8 +3407,8 @@ function mirrorSection(feature, opts) {
   ];
   for (const rel of feature.files) {
     copies.push({
-      from: join8(opts.repo, rel),
-      to: join8(opts.out, "source", feature.slug, rel)
+      from: join9(opts.repo, rel),
+      to: join9(opts.out, "source", feature.slug, rel)
     });
     lines.push(`- [\`${rel}\`](../../source/${feature.slug}/${rel})`);
   }
@@ -3217,7 +3635,10 @@ function summarize(inv, opts) {
     lines.push(`- **Locales:** ${inv.i18n.locales.join(", ")} (${inv.i18n.locales.length})`);
   }
   lines.push(`- **Routes:** ${inv.routes.length} \xB7 **Features:** ${inv.features.length}`);
-  if (inv.workspaces?.length) lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s)`);
+  if (inv.workspaces?.length) {
+    const names = inv.workspaces.map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` \u2192 ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`).join(" \xB7 ");
+    lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s) \u2014 ${names}`);
+  }
   lines.push("");
   lines.push("## Features (build order)");
   if (inv.features.length === 0) {
@@ -3271,7 +3692,7 @@ function render(inv, opts) {
   }
   const dataCopy = (paths, sub) => {
     for (const rel of paths) {
-      copies.push({ from: join9(opts.repo, rel), to: join9(opts.out, "data", sub, rel) });
+      copies.push({ from: join10(opts.repo, rel), to: join10(opts.out, "data", sub, rel) });
     }
   };
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
@@ -3293,16 +3714,16 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { mkdirSync, writeFileSync, copyFileSync, existsSync as existsSync2 } from "fs";
-import { dirname, join as join10 } from "path";
+import { mkdirSync, writeFileSync, copyFileSync, existsSync as existsSync3 } from "fs";
+import { dirname, join as join11 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
-    const dest = join10(opts.out, a.relPath);
+    const dest = join11(opts.out, a.relPath);
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
   }
   for (const c of result.copies) {
-    if (!existsSync2(c.from)) continue;
+    if (!existsSync3(c.from)) continue;
     mkdirSync(dirname(c.to), { recursive: true });
     try {
       copyFileSync(c.from, c.to);
@@ -3313,8 +3734,8 @@ function writeOutput(result, opts) {
 function writeArtifactsIfAbsent(artifacts, outDir) {
   const written = [];
   for (const a of artifacts) {
-    const dest = join10(outDir, a.relPath);
-    if (existsSync2(dest)) continue;
+    const dest = join11(outDir, a.relPath);
+    if (existsSync3(dest)) continue;
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, a.content, "utf8");
     written.push(a.relPath);
@@ -3323,20 +3744,20 @@ function writeArtifactsIfAbsent(artifacts, outDir) {
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync9, existsSync as existsSync3 } from "fs";
-import { join as join11, relative as relative2, sep } from "path";
+import { readdirSync as readdirSync3, readFileSync as readFileSync10, existsSync as existsSync4 } from "fs";
+import { join as join12, relative as relative2, sep } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
   const out = [];
   const walk2 = (abs) => {
     for (const entry of readdirSync3(abs, { withFileTypes: true })) {
-      const child = join11(abs, entry.name);
+      const child = join12(abs, entry.name);
       const rel = relative2(dir, child).split(sep).join("/");
       if (entry.isDirectory()) {
         if (GROUND_TRUTH_DIRS.has(rel)) continue;
         walk2(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out.push({ relPath: rel, content: readFileSync9(child, "utf8") });
+        out.push({ relPath: rel, content: readFileSync10(child, "utf8") });
       }
     }
   };
@@ -3345,13 +3766,13 @@ function readMarkdownTree(dir) {
 }
 function bundleExisting(opts) {
   const dir = opts.out;
-  const invPath = join11(dir, "inventory.json");
-  if (!existsSync3(invPath)) {
+  const invPath = join12(dir, "inventory.json");
+  if (!existsSync4(invPath)) {
     throw new Error(
       `no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`
     );
   }
-  const inv = JSON.parse(readFileSync9(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync10(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -3362,11 +3783,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync10 } from "fs";
+import { readFileSync as readFileSync11 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync10(path, "utf8");
+    raw = readFileSync11(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -3677,8 +4098,8 @@ ${body}
 }
 
 // src/check.ts
-import { existsSync as existsSync4, readFileSync as readFileSync11, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
-import { join as join12, relative as relative3 } from "path";
+import { existsSync as existsSync5, readFileSync as readFileSync12, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
+import { join as join13, relative as relative3 } from "path";
 var REQUIRED_DOCS = [
   "REBUILD.md",
   "00-overview/PRD.md",
@@ -3701,7 +4122,7 @@ function collectMarkdown(dir, base = dir) {
     return out;
   }
   for (const name of entries) {
-    const full = join12(dir, name);
+    const full = join13(dir, name);
     let st;
     try {
       st = statSync2(full);
@@ -3712,7 +4133,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name)) continue;
       out.push(...collectMarkdown(full, base));
     } else if (name.endsWith(".md")) {
-      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync11(full, "utf8") });
+      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync12(full, "utf8") });
     }
   }
   return out;
@@ -3726,7 +4147,7 @@ function fileNames(dir) {
     return out;
   }
   for (const name of entries) {
-    const full = join12(dir, name);
+    const full = join13(dir, name);
     let st;
     try {
       st = statSync2(full);
@@ -3741,8 +4162,8 @@ function fileNames(dir) {
 function checkOutput(outDir) {
   const errors = [];
   const warnings = [];
-  const invPath = join12(outDir, "inventory.json");
-  if (!existsSync4(invPath)) {
+  const invPath = join13(outDir, "inventory.json");
+  if (!existsSync5(invPath)) {
     errors.push(
       `no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`
     );
@@ -3750,7 +4171,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync11(invPath, "utf8"));
+    inv = JSON.parse(readFileSync12(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -3822,8 +4243,8 @@ function checkOutput(outDir) {
     );
   }
   if (inv.i18n && inv.i18n.locales?.length) {
-    const transDir = join12(outDir, "data", "translations");
-    const names = existsSync4(transDir) ? fileNames(transDir) : [];
+    const transDir = join13(outDir, "data", "translations");
+    const names = existsSync5(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
     for (const loc of inv.i18n.locales) {
       const inFiles = names.some((n) => n.includes(loc));
@@ -4084,7 +4505,7 @@ function parseArgs(argv) {
   const plan = raw.plan ? resolve2(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve2(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && (!existsSync5(repo) || !statSync3(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && (!existsSync6(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
@@ -4099,7 +4520,7 @@ function parseArgs(argv) {
     "fine"
   ]);
   const out = resolve2(
-    raw.out ?? (standalone || check ? process.cwd() : scratch ? join13(process.cwd(), "reconstruction") : join13(repo, "reconstruction"))
+    raw.out ?? (standalone || check ? process.cwd() : scratch ? join14(process.cwd(), "reconstruction") : join14(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -4174,7 +4595,7 @@ function main() {
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join13(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join14(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -4211,7 +4632,12 @@ function main() {
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`,
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
     `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
-    ...inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s)`] : [],
+    ...inv.workspaces ? [
+      `  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce(
+        (n, w) => n + (w.dependsOn?.length ?? 0),
+        0
+      )} dependency edge(s)`
+    ] : [],
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
@@ -4220,7 +4646,7 @@ function main() {
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join13(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join14(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

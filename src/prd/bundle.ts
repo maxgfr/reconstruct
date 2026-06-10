@@ -319,7 +319,12 @@ export function summarize(inv: Inventory, opts: Options): string {
     lines.push(`- **Locales:** ${inv.i18n.locales.join(", ")} (${inv.i18n.locales.length})`);
   }
   lines.push(`- **Routes:** ${inv.routes.length} · **Features:** ${inv.features.length}`);
-  if (inv.workspaces?.length) lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s)`);
+  if (inv.workspaces?.length) {
+    const names = inv.workspaces
+      .map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` → ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`)
+      .join(" · ");
+    lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s) — ${names}`);
+  }
   lines.push("");
 
   lines.push("## Features (build order)");

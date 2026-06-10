@@ -259,6 +259,29 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
   return out.join("\n");
 }
 
+function workspacesBlock(workspaces: NonNullable<Inventory["workspaces"]>): string {
+  const rows = workspaces.map((w) => {
+    const stack = [
+      ...(w.stack?.frameworks ?? []),
+      ...(w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "—"]),
+    ].join(", ");
+    return `| \`${w.name}\` | \`${w.path}/\` | ${w.kind ?? "—"} | ${stack || "—"} | ${
+      w.dependsOn?.map((d) => `\`${d}\``).join(", ") || "—"
+    } | ${w.routeCount ?? 0} |`;
+  });
+  return [
+    "## Workspaces",
+    "",
+    "| Workspace | Path | Kind | Stack | Depends on | Routes |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rows,
+    "",
+    agentNote(
+      "Verify each workspace's role (app / package / service) and **extend the dependency graph**: the `Depends on` column carries manifest-declared edges only — add the implicit ones (HTTP calls between apps, generated clients, shared env vars, queues) and draw the result in `diagram.md`. Map each shared package once and reference it from the apps that consume it.",
+    ),
+  ].join("\n");
+}
+
 export function architectureDoc(inv: Inventory, opts: Options): string {
   const isScratch = opts.mode === "scratch";
   const topDirs = [
@@ -283,6 +306,7 @@ export function architectureDoc(inv: Inventory, opts: Options): string {
     (topDirs.map((d) => `- \`${d}/\``).join("\n") || "_Flat layout (no subdirectories)._") +
       (rootFiles.length ? `\n- root files: ${rootFiles.map((f) => `\`${f}\``).join(", ")}` : ""),
     "",
+    ...(inv.workspaces?.length ? [workspacesBlock(inv.workspaces), ""] : []),
     "## Dependencies",
     "",
     deps || "_No dependency manifests found._",
@@ -525,6 +549,27 @@ export function diagramDoc(inv: Inventory): string {
     .filter(Boolean)
     .join("\n");
 
+  const workspaceGraph = inv.workspaces?.length
+    ? [
+        "",
+        "## Workspace graph",
+        "",
+        "Manifest-declared dependencies between workspaces (verify and extend with implicit edges).",
+        "",
+        "```mermaid",
+        "graph TD",
+        ...inv.workspaces.map((w, i) => `  W${i}["${w.name}"]`),
+        ...inv.workspaces.flatMap((w, i) =>
+          (w.dependsOn ?? []).map((dep) => {
+            const j = inv.workspaces?.findIndex((x) => x.name === dep) ?? -1;
+            return j >= 0 ? `  W${i} --> W${j}` : "";
+          }),
+        ).filter(Boolean),
+        "```",
+        "",
+      ]
+    : [""];
+
   return [
     "# Module diagram",
     "",
@@ -534,7 +579,7 @@ export function diagramDoc(inv: Inventory): string {
     dataNode,
     edges,
     "```",
-    "",
+    ...workspaceGraph,
   ].join("\n");
 }
 
@@ -770,7 +815,10 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
     "",
     "## Build order",
     "",
-    "Ordered by dependency tier — foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last.",
+    "Ordered by dependency tier — foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last." +
+      (inv.workspaces?.length
+        ? " The outer tier is the workspace topological order: shared packages build before the apps that consume them."
+        : ""),
     "",
     order || "_No features._",
     "",

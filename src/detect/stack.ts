@@ -1,7 +1,6 @@
-import { readFileSync, existsSync, readdirSync } from "node:fs";
-import type { Dirent } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { FileInfo, StackInfo, Workspace } from "../types.js";
+import type { FileInfo, StackInfo } from "../types.js";
 
 const EXT_LANGUAGE: Record<string, string> = {
   ".ts": "TypeScript",
@@ -270,96 +269,8 @@ function safeRead(path: string): string {
   }
 }
 
-function addWorkspace(repo: string, relDir: string, found: Map<string, Workspace>): void {
-  const norm = relDir.split("\\").join("/").replace(/\/+$/, "");
-  if (found.has(norm)) return;
-  const pkg = readJson(join(repo, norm, "package.json"));
-  if (!pkg) return;
-  const name = typeof pkg.name === "string" && pkg.name ? pkg.name : norm;
-  found.set(norm, { name, path: norm });
-}
-
-const WS_SKIP_DIRS = new Set([".git", "node_modules", ".turbo", "dist", "build", ".next"]);
-
-/** Recursively collect package-bearing dirs under a `/**` glob base (depth-bounded). */
-function collectWorkspacesRecursive(
-  repo: string,
-  relBase: string,
-  found: Map<string, Workspace>,
-  depth: number,
-): void {
-  if (depth > 5) return;
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(join(repo, relBase), { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const ent of entries) {
-    if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
-    const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
-    addWorkspace(repo, sub, found);
-    collectWorkspacesRecursive(repo, sub, found, depth + 1);
-  }
-}
-
-/**
- * Detect monorepo workspaces from package.json `workspaces`, pnpm-workspace.yaml.
- * A trailing `/*` glob is expanded one directory level. Returns [] for a
- * single-package repo.
- */
-export function detectWorkspaces(repo: string): Workspace[] {
-  const patterns: string[] = [];
-
-  const pkg = readJson(join(repo, "package.json"));
-  if (pkg) {
-    const ws = pkg.workspaces;
-    if (Array.isArray(ws)) {
-      patterns.push(...ws.filter((x): x is string => typeof x === "string"));
-    } else if (ws && typeof ws === "object" && Array.isArray((ws as { packages?: unknown }).packages)) {
-      patterns.push(
-        ...((ws as { packages: unknown[] }).packages.filter((x): x is string => typeof x === "string")),
-      );
-    }
-  }
-
-  // pnpm-workspace.yaml: collect list items only under the top-level `packages:` key,
-  // tolerating inline `# comments`.
-  const pnpm = safeRead(join(repo, "pnpm-workspace.yaml"));
-  let inPackages = false;
-  for (const line of pnpm.split(/\r?\n/)) {
-    if (/^\S/.test(line)) {
-      inPackages = /^packages\s*:/.test(line);
-      continue;
-    }
-    if (!inPackages) continue;
-    const m = line.match(/^\s*-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/);
-    if (m) patterns.push((m[1] as string).trim());
-  }
-
-  if (patterns.length === 0) return [];
-
-  const found = new Map<string, Workspace>();
-  for (const raw of patterns) {
-    const pat = raw.replace(/\/+$/, ""); // normalize a trailing slash
-    if (pat.endsWith("/**")) {
-      collectWorkspacesRecursive(repo, pat.slice(0, -3), found, 0);
-    } else if (pat.endsWith("/*")) {
-      const base = pat.slice(0, -2);
-      try {
-        for (const ent of readdirSync(join(repo, base), { withFileTypes: true })) {
-          if (ent.isDirectory()) addWorkspace(repo, join(base, ent.name), found);
-        }
-      } catch {
-        /* glob base missing */
-      }
-    } else {
-      addWorkspace(repo, pat, found);
-    }
-  }
-
-  return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
-}
+// Workspace detection lives in ./workspaces.js; re-exported here for compatibility.
+export { detectWorkspaces } from "./workspaces.js";
 
 /** Required Node version from package.json `engines.node`, if declared. */
 export function detectNodeVersion(repo: string): string | undefined {

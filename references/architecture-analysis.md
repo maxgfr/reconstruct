@@ -17,7 +17,7 @@ carries the stack-agnostic method and the per-paradigm recipes.
 - **State & side effects:** caches, queues, external services, env vars (`inventory.envVars`).
 - **i18n:** locales and how translations load (`data/translations/`).
 - **Cross-cutting:** auth, logging, error handling, config (see playbook §Cross-cutting).
-- **Monorepo:** if `inventory.workspaces` is set, draw the workspace dependency graph.
+- **Monorepo:** if `inventory.workspaces` is set, the workspace table and graph are pre-rendered — verify them and extend `dependsOn` with implicit edges (HTTP calls, generated clients, shared env).
 
 ## Preserve mode
 Document the structure as it is. Capture the directory layout, framework conventions, and any

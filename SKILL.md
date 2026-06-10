@@ -53,8 +53,13 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 
 3. **Identify the stack & load its guide.** Read `inventory.stack`. If a
    `references/stack-guides/<stack>.md` matches, read it; otherwise use the generic method
-   in `references/analysis-playbook.md`. For monorepos (`inventory.workspaces`), analyze
-   per workspace.
+   in `references/analysis-playbook.md`. For monorepos (`inventory.workspaces` — each entry
+   carries its own `stack`, `dependencies`, `dependsOn`, `routeCount`, and `hints`), read
+   `references/stack-guides/monorepo.md` and load the matching stack guide *per workspace*;
+   verify the manifest-derived `dependsOn` graph and extend it with implicit edges. If the
+   engine detected no workspaces but the layout looks like a monorepo (several apps/services
+   with their own manifests), identify the workspaces yourself and scope re-runs with
+   `--include '<dir>/**'`.
 
 4. **Map the interface surface** → fill **`architecture/INTERFACES.md`**. Enumerate *every*
    HTTP route, endpoint, tRPC/gRPC procedure, GraphQL operation, CLI command, and job —
