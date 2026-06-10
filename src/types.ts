@@ -444,4 +444,4 @@ export interface RenderResult {
   copies: CopyOp[];
 }
 
-export const VERSION = "0.10.2";
+export const VERSION = "0.11.0";
