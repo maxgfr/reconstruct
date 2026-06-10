@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { analyze } from "../src/analyze.js";
+import { architectureDoc, diagramDoc, rebuildDoc } from "../src/prd/templates.js";
+import { summarize } from "../src/prd/bundle.js";
 import type { Options } from "../src/types.js";
 
 function opts(fixture: string): Options {
@@ -137,5 +139,51 @@ describe("monorepo (npm/yarn workspaces)", () => {
 
   it("surfaces a monorepo unknown for the agent", () => {
     expect(inv.unknowns.some((u) => u.startsWith("Monorepo:"))).toBe(true);
+  });
+
+  it("groups features by workspace with shared packages first", () => {
+    const slugs = inv.features.map((f) => f.slug);
+    const at = (re: RegExp) => slugs.findIndex((s) => re.test(s));
+    expect(at(/-db$/)).toBeGreaterThanOrEqual(0);
+    expect(at(/-web-/)).toBeGreaterThanOrEqual(0);
+    expect(at(/-db$/)).toBeLessThan(at(/-web-/));
+    expect(at(/-ui$/)).toBeLessThan(at(/-web-/));
+  });
+});
+
+// Workspace-aware rendering: ARCHITECTURE table, diagram graph, REBUILD blurb, summary.
+describe("monorepo rendering", () => {
+  const monoOpts = opts("monorepo");
+  const inv = analyze(monoOpts);
+  const soloInv = analyze(opts("sample-app"));
+
+  it("renders the workspace table into ARCHITECTURE.md", () => {
+    const doc = architectureDoc(inv, monoOpts);
+    expect(doc).toContain("## Workspaces");
+    expect(doc).toContain("| Workspace | Path | Kind | Stack | Depends on | Routes |");
+    expect(doc).toMatch(/\| `@acme\/web` \| `apps\/web\/` \| npm \| .*Next\.js.* \| `@acme\/db`, `@acme\/ui` \| \d+ \|/);
+  });
+
+  it("renders the workspace graph into diagram.md", () => {
+    const doc = diagramDoc(inv);
+    expect(doc).toContain("## Workspace graph");
+    expect(doc).toMatch(/W\d+\["@acme\/web"\]/);
+    expect(doc).toMatch(/W\d+ --> W\d+/);
+  });
+
+  it("mentions the workspace topological order in REBUILD.md", () => {
+    expect(rebuildDoc(inv, monoOpts)).toContain("workspace topological order");
+  });
+
+  it("lists workspaces and their edges in the summary", () => {
+    const doc = summarize(inv, monoOpts);
+    expect(doc).toContain("**Monorepo:** 3 workspace(s)");
+    expect(doc).toContain("`@acme/web` → `@acme/db`, `@acme/ui`");
+  });
+
+  it("renders none of the workspace sections for a single-package repo", () => {
+    expect(architectureDoc(soloInv, opts("sample-app"))).not.toContain("## Workspaces");
+    expect(diagramDoc(soloInv)).not.toContain("## Workspace graph");
+    expect(rebuildDoc(soloInv, opts("sample-app"))).not.toContain("workspace topological order");
   });
 });

@@ -2877,6 +2877,26 @@ function overviewPrd(inv, opts) {
   }
   return out.join("\n");
 }
+function workspacesBlock(workspaces) {
+  const rows = workspaces.map((w) => {
+    const stack = [
+      ...w.stack?.frameworks ?? [],
+      ...w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "\u2014"]
+    ].join(", ");
+    return `| \`${w.name}\` | \`${w.path}/\` | ${w.kind ?? "\u2014"} | ${stack || "\u2014"} | ${w.dependsOn?.map((d) => `\`${d}\``).join(", ") || "\u2014"} | ${w.routeCount ?? 0} |`;
+  });
+  return [
+    "## Workspaces",
+    "",
+    "| Workspace | Path | Kind | Stack | Depends on | Routes |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rows,
+    "",
+    agentNote(
+      "Verify each workspace's role (app / package / service) and **extend the dependency graph**: the `Depends on` column carries manifest-declared edges only \u2014 add the implicit ones (HTTP calls between apps, generated clients, shared env vars, queues) and draw the result in `diagram.md`. Map each shared package once and reference it from the apps that consume it."
+    )
+  ].join("\n");
+}
 function architectureDoc(inv, opts) {
   const isScratch = opts.mode === "scratch";
   const topDirs = [
@@ -2898,6 +2918,7 @@ function architectureDoc(inv, opts) {
     (topDirs.map((d) => `- \`${d}/\``).join("\n") || "_Flat layout (no subdirectories)._") + (rootFiles.length ? `
 - root files: ${rootFiles.map((f) => `\`${f}\``).join(", ")}` : ""),
     "",
+    ...inv.workspaces?.length ? [workspacesBlock(inv.workspaces), ""] : [],
     "## Dependencies",
     "",
     deps || "_No dependency manifests found._",
@@ -3099,6 +3120,24 @@ function diagramDoc(inv) {
   const nodes = inv.features.map((f, i) => `  F${i}["${f.name}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
   const edges = inv.features.filter((f) => f.kind === "feature").map((f, i) => inv.i18n ? `  F${i} --> DATA` : "").filter(Boolean).join("\n");
+  const workspaceGraph = inv.workspaces?.length ? [
+    "",
+    "## Workspace graph",
+    "",
+    "Manifest-declared dependencies between workspaces (verify and extend with implicit edges).",
+    "",
+    "```mermaid",
+    "graph TD",
+    ...inv.workspaces.map((w, i) => `  W${i}["${w.name}"]`),
+    ...inv.workspaces.flatMap(
+      (w, i) => (w.dependsOn ?? []).map((dep) => {
+        const j = inv.workspaces?.findIndex((x) => x.name === dep) ?? -1;
+        return j >= 0 ? `  W${i} --> W${j}` : "";
+      })
+    ).filter(Boolean),
+    "```",
+    ""
+  ] : [""];
   return [
     "# Module diagram",
     "",
@@ -3108,7 +3147,7 @@ function diagramDoc(inv) {
     dataNode,
     edges,
     "```",
-    ""
+    ...workspaceGraph
   ].join("\n");
 }
 function featurePrd(inv, feature, opts, sourceMarkdown) {
@@ -3276,7 +3315,7 @@ function rebuildDoc(inv, opts) {
     "",
     "## Build order",
     "",
-    "Ordered by dependency tier \u2014 foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last.",
+    "Ordered by dependency tier \u2014 foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last." + (inv.workspaces?.length ? " The outer tier is the workspace topological order: shared packages build before the apps that consume them." : ""),
     "",
     order || "_No features._",
     "",
@@ -3596,7 +3635,10 @@ function summarize(inv, opts) {
     lines.push(`- **Locales:** ${inv.i18n.locales.join(", ")} (${inv.i18n.locales.length})`);
   }
   lines.push(`- **Routes:** ${inv.routes.length} \xB7 **Features:** ${inv.features.length}`);
-  if (inv.workspaces?.length) lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s)`);
+  if (inv.workspaces?.length) {
+    const names = inv.workspaces.map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` \u2192 ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`).join(" \xB7 ");
+    lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s) \u2014 ${names}`);
+  }
   lines.push("");
   lines.push("## Features (build order)");
   if (inv.features.length === 0) {
