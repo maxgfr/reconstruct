@@ -1,0 +1,9 @@
+[workspace]
+members = [
+  "crates/*", # every crate
+]
+exclude = ["crates/legacy"]
+resolver = "2"
+
+[workspace.dependencies]
+serde = "1"

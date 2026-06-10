@@ -187,3 +187,54 @@ describe("monorepo rendering", () => {
     expect(rebuildDoc(soloInv, opts("sample-app"))).not.toContain("workspace topological order");
   });
 });
+
+// Cargo workspace monorepo: members expanded, exclude honored, path deps → edges.
+describe("cargo-workspace (Rust monorepo)", () => {
+  const inv = analyze(opts("cargo-workspace"));
+  const ws = (name: string) => (inv.workspaces ?? []).find((w) => w.name === name);
+
+  it("enumerates members with kind cargo and honors exclude", () => {
+    expect((inv.workspaces ?? []).map((w) => `${w.kind}:${w.name}`)).toEqual([
+      "cargo:acme-cli",
+      "cargo:acme-core",
+    ]);
+  });
+
+  it("derives the edge from the path dependency", () => {
+    expect(ws("acme-cli")?.dependsOn).toEqual(["acme-core"]);
+  });
+
+  it("detects each crate's stack as Rust/cargo", () => {
+    expect(ws("acme-cli")?.stack?.primaryLanguage).toBe("Rust");
+    expect(ws("acme-cli")?.stack?.packageManagers).toContain("cargo");
+  });
+
+  it("builds the shared crate before its consumer", () => {
+    const slugs = inv.features.map((f) => f.slug);
+    const at = (re: RegExp) => slugs.findIndex((s) => re.test(s));
+    expect(at(/-core$/)).toBeGreaterThanOrEqual(0);
+    expect(at(/-core$/)).toBeLessThan(at(/-cli$/));
+  });
+});
+
+// go.work monorepo: use directives, module names, replace → edges.
+describe("go-work (Go monorepo)", () => {
+  const inv = analyze(opts("go-work"));
+  const ws = (name: string) => (inv.workspaces ?? []).find((w) => w.name === name);
+
+  it("enumerates modules with kind go, named from go.mod", () => {
+    expect((inv.workspaces ?? []).map((w) => `${w.kind}:${w.name}`)).toEqual([
+      "go:example.com/shared",
+      "go:example.com/api",
+    ]);
+  });
+
+  it("derives the edge from require/replace", () => {
+    expect(ws("example.com/api")?.dependsOn).toEqual(["example.com/shared"]);
+  });
+
+  it("detects each module's stack as Go", () => {
+    expect(ws("example.com/api")?.stack?.primaryLanguage).toBe("Go");
+    expect(ws("example.com/api")?.stack?.packageManagers).toContain("go modules");
+  });
+});
