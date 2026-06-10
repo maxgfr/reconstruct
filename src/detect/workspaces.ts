@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type { Workspace, WorkspaceKind } from "../types.js";
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -286,4 +286,112 @@ export function detectWorkspaces(repo: string): Workspace[] {
   detectGoWorkspaces(repo, found);
 
   return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** A workspace-relative dep path resolved to a repo-relative POSIX path. */
+function resolveDepPath(wsPath: string, rel: string): string {
+  return posix.normalize(posix.join(wsPath, rel)).replace(/\/+$/, "");
+}
+
+/** Sibling-workspace edges declared in an npm-family manifest. */
+function npmEdges(repo: string, ws: Workspace, byName: Set<string>): string[] {
+  const pkg = readJson(join(repo, ws.path, "package.json"));
+  if (!pkg) return [];
+  const edges = new Set<string>();
+  for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
+    const deps = pkg[field];
+    if (!deps || typeof deps !== "object") continue;
+    for (const dep of Object.keys(deps as Record<string, unknown>)) {
+      if (dep !== ws.name && byName.has(dep)) edges.add(dep);
+    }
+  }
+  return [...edges];
+}
+
+/** Sibling-workspace edges in a member's Cargo.toml (name or `path = "../x"` deps). */
+function cargoEdges(repo: string, ws: Workspace, byName: Set<string>, byPath: Map<string, string>): string[] {
+  const toml = safeRead(join(repo, ws.path, "Cargo.toml"));
+  if (!toml) return [];
+  const edges = new Set<string>();
+  for (const section of ["dependencies", "dev-dependencies", "build-dependencies"]) {
+    const body = tomlSectionBody(toml, section);
+    if (!body) continue;
+    for (const line of body.split(/\r?\n/)) {
+      const kv = line.match(/^\s*([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
+      if (!kv) continue;
+      const dep = kv[1] as string;
+      const value = kv[2] as string;
+      if (dep !== ws.name && byName.has(dep)) {
+        edges.add(dep);
+        continue;
+      }
+      const pathDep = value.match(/path\s*=\s*["']([^"']+)["']/);
+      if (pathDep) {
+        const target = byPath.get(resolveDepPath(ws.path, pathDep[1] as string));
+        if (target && target !== ws.name) edges.add(target);
+      }
+    }
+  }
+  return [...edges];
+}
+
+/** Sibling-workspace edges in a module's go.mod (require of a sibling, or replace => ../x). */
+function goEdges(repo: string, ws: Workspace, byName: Set<string>, byPath: Map<string, string>): string[] {
+  const gomod = safeRead(join(repo, ws.path, "go.mod"));
+  if (!gomod) return [];
+  const edges = new Set<string>();
+  for (const m of gomod.matchAll(/^\s*(?:require\s+)?([^\s/(][^\s]*)\s+v[^\s]+/gm)) {
+    const dep = m[1] as string;
+    if (dep !== ws.name && byName.has(dep)) edges.add(dep);
+  }
+  for (const m of gomod.matchAll(/^\s*(?:replace\s+)?(\S+)(?:\s+\S+)?\s*=>\s*(\.\.?\/\S+)/gm)) {
+    const target = byPath.get(resolveDepPath(ws.path, m[2] as string));
+    if (target && target !== ws.name) edges.add(target);
+  }
+  return [...edges];
+}
+
+/**
+ * Fill each workspace's `dependsOn` with the sibling workspaces its manifest
+ * declares a dependency on. Edges come from manifests only; implicit coupling
+ * is left to the agent.
+ */
+export function buildWorkspaceGraph(repo: string, workspaces: Workspace[]): void {
+  const byName = new Set(workspaces.map((w) => w.name));
+  const byPath = new Map(workspaces.map((w) => [w.path, w.name]));
+  for (const ws of workspaces) {
+    const edges =
+      ws.kind === "cargo"
+        ? cargoEdges(repo, ws, byName, byPath)
+        : ws.kind === "go"
+          ? goEdges(repo, ws, byName, byPath)
+          : npmEdges(repo, ws, byName);
+    if (edges.length) ws.dependsOn = edges.sort();
+  }
+}
+
+/**
+ * Workspace names in dependency-first topological order (Kahn). On a cycle —
+ * legal with npm devDependencies — the remaining nodes are appended in path
+ * order, so the result is always complete and deterministic.
+ */
+export function topoOrderWorkspaces(workspaces: Workspace[]): string[] {
+  const remaining = new Map(workspaces.map((w) => [w.name, new Set(w.dependsOn ?? [])]));
+  const order: string[] = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining.entries()]
+      .filter(([, deps]) => [...deps].every((d) => !remaining.has(d)))
+      .map(([name]) => name);
+    if (ready.length === 0) {
+      // Cycle: fall back to path order for whatever is left.
+      const leftover = workspaces.filter((w) => remaining.has(w.name)).map((w) => w.name);
+      order.push(...leftover);
+      break;
+    }
+    for (const name of ready.sort()) {
+      order.push(name);
+      remaining.delete(name);
+    }
+  }
+  return order;
 }

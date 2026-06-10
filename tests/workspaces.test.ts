@@ -2,7 +2,11 @@ import { describe, it, expect, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { detectWorkspaces } from "../src/detect/workspaces.js";
+import {
+  detectWorkspaces,
+  buildWorkspaceGraph,
+  topoOrderWorkspaces,
+} from "../src/detect/workspaces.js";
 
 function makeRepo(write: (w: (rel: string, content: string) => void) => void): string {
   const repo = mkdtempSync(join(tmpdir(), "recon-ws-"));
@@ -163,6 +167,74 @@ describe("detectWorkspaces — go.work", () => {
     expect(detectWorkspaces(r)).toEqual([
       { name: "example.com/tools", path: "tools", kind: "go" },
     ]);
+  });
+});
+
+describe("buildWorkspaceGraph", () => {
+  it("derives npm edges from dependency names", () => {
+    const r = repo((w) => {
+      w("package.json", JSON.stringify({ workspaces: ["apps/*", "packages/*"] }));
+      w(
+        "apps/web/package.json",
+        JSON.stringify({ name: "@acme/web", dependencies: { "@acme/ui": "workspace:*", react: "^18" } }),
+      );
+      w("packages/ui/package.json", JSON.stringify({ name: "@acme/ui" }));
+    });
+    const ws = detectWorkspaces(r);
+    buildWorkspaceGraph(r, ws);
+    const web = ws.find((x) => x.name === "@acme/web");
+    expect(web?.dependsOn).toEqual(["@acme/ui"]);
+    expect(ws.find((x) => x.name === "@acme/ui")?.dependsOn).toBeUndefined();
+  });
+
+  it("derives cargo edges from path dependencies", () => {
+    const r = repo((w) => {
+      w("Cargo.toml", '[workspace]\nmembers = ["crates/cli", "crates/core"]\n');
+      w(
+        "crates/cli/Cargo.toml",
+        '[package]\nname = "acme-cli"\n\n[dependencies]\nacme-core = { path = "../core" }\nserde = "1"\n',
+      );
+      w("crates/core/Cargo.toml", '[package]\nname = "acme-core"\n');
+    });
+    const ws = detectWorkspaces(r);
+    buildWorkspaceGraph(r, ws);
+    expect(ws.find((x) => x.name === "acme-cli")?.dependsOn).toEqual(["acme-core"]);
+  });
+
+  it("derives go edges from require and replace directives", () => {
+    const r = repo((w) => {
+      w("go.work", "use (\n\t./services/api\n\t./pkg/shared\n)\n");
+      w(
+        "services/api/go.mod",
+        [
+          "module example.com/api",
+          "",
+          "require example.com/shared v0.0.0",
+          "",
+          "replace example.com/shared => ../../pkg/shared",
+        ].join("\n"),
+      );
+      w("pkg/shared/go.mod", "module example.com/shared\n");
+    });
+    const ws = detectWorkspaces(r);
+    buildWorkspaceGraph(r, ws);
+    expect(ws.find((x) => x.name === "example.com/api")?.dependsOn).toEqual([
+      "example.com/shared",
+    ]);
+  });
+});
+
+describe("topoOrderWorkspaces", () => {
+  const ws = (name: string, dependsOn?: string[]) => ({ name, path: name, dependsOn });
+
+  it("orders dependencies before their dependents", () => {
+    const order = topoOrderWorkspaces([ws("web", ["ui", "db"]), ws("ui", ["db"]), ws("db")]);
+    expect(order).toEqual(["db", "ui", "web"]);
+  });
+
+  it("falls back deterministically on a cycle", () => {
+    const order = topoOrderWorkspaces([ws("a", ["b"]), ws("b", ["a"]), ws("c")]);
+    expect(order).toEqual(["c", "a", "b"]);
   });
 });
 

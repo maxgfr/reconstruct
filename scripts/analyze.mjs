@@ -318,7 +318,7 @@ import { join as join3 } from "path";
 
 // src/detect/workspaces.ts
 import { readFileSync as readFileSync2, existsSync, readdirSync as readdirSync2 } from "fs";
-import { join as join2 } from "path";
+import { join as join2, posix } from "path";
 function readJson(path) {
   try {
     return JSON.parse(readFileSync2(path, "utf8"));

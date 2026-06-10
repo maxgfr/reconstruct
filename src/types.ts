@@ -232,6 +232,13 @@ export interface Workspace {
   path: string;
   /** Detection source (npm/yarn `workspaces`, pnpm, lerna, nx, cargo, go.work). */
   kind?: WorkspaceKind;
+  /**
+   * Names of sibling workspaces this one depends on, from manifest declarations
+   * (package.json deps, Cargo path/name deps, go.mod require/replace). Manifest
+   * edges only — implicit coupling (HTTP calls, generated clients, shared env)
+   * is the agent's to verify.
+   */
+  dependsOn?: string[];
 }
 
 /**
