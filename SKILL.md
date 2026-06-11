@@ -50,6 +50,8 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, the **`architecture/INTERFACES.md`**
    and **`architecture/DATA-MODEL.md`** skeletons, and each `features/<slug>/PRD.md`.
    Treat `routes`/`i18n` and everything under `hints` as **candidates to verify**, not truth.
+   If `inventory.warnings` is present (a malformed manifest, a workspace dependency cycle),
+   detection degraded there — verify those areas by hand before trusting the empty defaults.
 
 3. **Identify the stack & load its guide.** Read `inventory.stack`. If a
    `references/stack-guides/<stack>.md` matches, read it; otherwise use the generic method
@@ -60,6 +62,15 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    engine detected no workspaces but the layout looks like a monorepo (several apps/services
    with their own manifests), identify the workspaces yourself and scope re-runs with
    `--include '<dir>/**'`.
+
+   For a deep dive into one workspace, re-run the analyzer scoped to it:
+   `node scripts/analyze.mjs --repo <REPO> --include '<workspace-dir>/**' --out <OUT>-<workspace>`.
+   Implicit edges to hunt for (manifest edges miss them): HTTP base-URLs pointing at a sibling
+   app, queue/event topics one workspace publishes and another consumes, env vars consumed by
+   two or more workspaces, and generated API clients. Cross-check the finished graph against
+   `architecture/diagram.md` and `REBUILD.md`'s tier order — and heed the analyzer's
+   `workspace dependency cycle` warning: a cycle demotes the build order to path order, so
+   break it (or document the bootstrap order) in `REBUILD.md`.
 
 4. **Map the interface surface** → fill **`architecture/INTERFACES.md`**. Enumerate *every*
    HTTP route, endpoint, tRPC/gRPC procedure, GraphQL operation, CLI command, and job —
@@ -84,7 +95,12 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 6. **Group features semantically — and keep them small.** Turn the path-based skeleton into real
    product features; rename and merge truly trivial ones, but **prefer many focused features over
    a few broad ones**: if a unit carries more than ~5–7 user stories or touches more than ~3
-   entities, **split it**. Every distinct capability earns its own PRD. Link each feature to its
+   entities, **split it**. Concrete signals — **split** when a unit serves two disjoint actor
+   sets (admin vs end-user), when its route clusters share no interface rows or entities, when
+   its halves could ship independently in either order, or when its honest name needs an "and".
+   **Merge** a unit into its neighbor (or Core) when it has a single story with no entity or
+   route of its own, or is pure glue (re-exports, wiring); config-only groups fold into
+   project-setup. Every distinct capability earns its own PRD. Link each feature to its
    interfaces, data, and components. See the playbook (§Features).
 
 7. **Turn every `features/<slug>/PRD.md` into a complete PRD.** Each one ships with a fixed spine —
@@ -168,15 +184,21 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
     residual findings — at which point fix the upstream architecture contract those findings
     share, or, if a finding is a faithful property of the original (a real bug you're preserving),
     record it explicitly rather than looping on it. Bound the rounds (e.g. ≤ 5) so a pathological
-    unit can't spin forever. **Report once, at the end** — the final `--check` result, the
-    zero-blocker confirmation, and anything you deliberately left (majors/minors, preserved
-    quirks). The user should relaunch nothing; one skill invocation goes scaffold → buildable.
+    unit can't spin forever — and **at the bound, do not stop silently**: write every remaining
+    blocker into `REBUILD.md` under a `## Known gaps / unresolved blockers` list (owning unit,
+    the finding, what was tried) and surface that list to the user in your final report. The
+    escalation ladder is: re-edit the unit → fix the shared architecture contract → record and
+    report; never keep looping in place. **Report once, at the end** — the final `--check`
+    result, the zero-blocker confirmation (or the known-gaps list), and anything you
+    deliberately left (majors/minors, preserved quirks). The user should relaunch nothing; one
+    skill invocation goes scaffold → buildable.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, `references/buildability-checklist.md` for the nine contract
 categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
-review, and `references/architecture-analysis.md` / `references/rebuild-instructions.md` / the
-PRD templates for the reasoning checklists.
+review, and `references/architecture-analysis.md` / `references/rebuild-instructions.md` /
+`references/prd-complex-template.md` / `references/prd-light-template.md` for the reasoning
+checklists.
 
 ## Everything is a PRD — dig until done
 

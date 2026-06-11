@@ -209,7 +209,9 @@ reconstruction/
 `libraries`), `features`, `routes`, `i18n`, `schemas`, `configs`, and the v0.2 additions:
 `hints` (`routeCandidates` / `apiCandidates` / `schemaCandidates` / `realtimeCandidates` /
 `authCandidates` / `entryPoints`),
-`unknowns` (explicit pointers for the agent), `workspaces` (monorepo packages — each entry
+`unknowns` (explicit pointers for the agent), `warnings` (non-fatal degradations: a manifest
+that exists but does not parse, a workspace dependency cycle — omitted when empty),
+`workspaces` (monorepo packages — each entry
 carries its `kind` — npm/pnpm/lerna/nx/cargo/go —, its own `stack` and `dependencies`, the
 manifest-derived `dependsOn` edges, `routeCount`, `schemas`, and per-workspace `hints`),
 `runtime` (e.g. required Node version), and `excludedCount`. The artifacts and the per-feature copies
