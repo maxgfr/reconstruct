@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.12.0](https://github.com/maxgfr/reconstruct/compare/v0.11.0...v0.12.0) (2026-06-11)
+
+
+### Bug Fixes
+
+* **detect:** recognize .mts/.cts in extension maps (walk, stack, adapters, candidates) ([8386322](https://github.com/maxgfr/reconstruct/commit/83863223c5fc6595efdd16d1fd4456cc78dfa86e))
+* **walk:** include file symlinks and explicitly skip directory symlinks (loop-safe) ([6426401](https://github.com/maxgfr/reconstruct/commit/64264011c509805a130f6bf4c59708be17014248))
+
+
+### Features
+
+* **adapters:** add Fastify route adapter ([3e58e23](https://github.com/maxgfr/reconstruct/commit/3e58e23159453461c4e577e2bb03760095017b0a))
+* **adapters:** add Hono route adapter ([a9f155d](https://github.com/maxgfr/reconstruct/commit/a9f155d5eb5d60deb15cfd559a2ff528fd87a4b7))
+* **analyze:** warn on malformed manifests and workspace dependency cycles ([3cd3ba2](https://github.com/maxgfr/reconstruct/commit/3cd3ba2ab84471e656ba9f9013e2bb190475790f))
+* **hints:** surface websocket/realtime and auth/middleware candidates ([2c3b11b](https://github.com/maxgfr/reconstruct/commit/2c3b11b0e1f0a7f20659e2ea6539bb973f7842df))
+
 # [0.11.0](https://github.com/maxgfr/reconstruct/compare/v0.10.2...v0.11.0) (2026-06-10)
 
 
