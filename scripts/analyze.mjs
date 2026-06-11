@@ -264,6 +264,19 @@ function walk(repo, opts = {}) {
       const abs = join(dir, entry.name);
       const rel = relative(repo, abs).split("\\").join("/");
       const isDir = entry.isDirectory();
+      let isFile = entry.isFile();
+      if (entry.isSymbolicLink()) {
+        let targetIsFile = false;
+        try {
+          targetIsFile = statSync(abs).isFile();
+        } catch {
+        }
+        if (!targetIsFile) {
+          excludedCount++;
+          continue;
+        }
+        isFile = true;
+      }
       if (isDir && outAbs && resolve(abs) === outAbs) continue;
       if (isDir && isReconstructOutput(abs)) continue;
       if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
@@ -276,7 +289,7 @@ function walk(repo, opts = {}) {
         recurse(abs);
         continue;
       }
-      if (!entry.isFile()) continue;
+      if (!isFile) continue;
       if (DEFAULT_IGNORE_FILES.has(entry.name)) {
         excludedCount++;
         continue;

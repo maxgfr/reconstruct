@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { walk } from "../src/walk.js";
@@ -94,6 +94,34 @@ describe("walk transparency & scoping", () => {
     const { files } = walk(r, { out: join(r, "fresh-out") });
     expect(files.some((f) => f.path.startsWith("fresh-out/"))).toBe(false);
     expect(files.some((f) => f.path === "src/app.ts")).toBe(true);
+  });
+});
+
+describe("walk symlink handling", () => {
+  it("includes a file symlink like a regular file", () => {
+    const r = repo((w) => w("real/config.ts", "export const x = 1;"));
+    symlinkSync(join(r, "real/config.ts"), join(r, "linked.ts"));
+    const { files } = walk(r);
+    const linked = files.find((f) => f.path === "linked.ts");
+    expect(linked).toBeDefined();
+    expect(linked?.category).toBe("code");
+    expect(linked?.lines).toBe(1);
+  });
+
+  it("terminates on a self-referential directory-symlink loop and counts the skip", () => {
+    const r = repo((w) => w("src/app.ts", "1"));
+    symlinkSync(join(r, "src"), join(r, "src/loop")); // src/loop → src
+    const { files, excludedCount } = walk(r);
+    expect(files.map((f) => f.path)).toEqual(["src/app.ts"]);
+    expect(excludedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("skips a broken symlink and counts it", () => {
+    const r = repo((w) => w("a.ts", "1"));
+    symlinkSync(join(r, "does-not-exist.ts"), join(r, "dangling.ts"));
+    const { files, excludedCount } = walk(r);
+    expect(files.map((f) => f.path)).toEqual(["a.ts"]);
+    expect(excludedCount).toBeGreaterThanOrEqual(1);
   });
 });
 

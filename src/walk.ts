@@ -292,6 +292,24 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
       const abs = join(dir, entry.name);
       const rel = relative(repo, abs).split("\\").join("/");
       const isDir = entry.isDirectory();
+      // Symlinks: a link to a file is real content — include it like any
+      // file. A link to a directory is never followed (following could loop
+      // or escape the repo; not descending keeps the walk loop-safe by
+      // construction). Broken links are skipped. Both are counted.
+      let isFile = entry.isFile();
+      if (entry.isSymbolicLink()) {
+        let targetIsFile = false;
+        try {
+          targetIsFile = statSync(abs).isFile(); // follows the link
+        } catch {
+          /* broken link */
+        }
+        if (!targetIsFile) {
+          excludedCount++;
+          continue;
+        }
+        isFile = true;
+      }
 
       // Never re-scan this run's own output tree, whatever it's named, nor any
       // prior reconstruct output detected by its inventory.json signature.
@@ -312,7 +330,7 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
         recurse(abs);
         continue;
       }
-      if (!entry.isFile()) continue;
+      if (!isFile) continue;
 
       if (DEFAULT_IGNORE_FILES.has(entry.name)) {
         excludedCount++;
