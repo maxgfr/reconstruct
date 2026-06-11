@@ -29,7 +29,7 @@ export interface RouteAdapter {
   so you can read source for decorator-/convention-based frameworks. Read with the
   shared `readSources(files, repo, exts)` helper in `src/adapters/util.ts`.
 - Return routes **in any order** — the registry merges, de-dupes, and sorts.
-- `RouteInfo` = `{ route: string; file: string; kind: "page" | "api" | "layout" | "component" }`.
+- `RouteInfo` = `{ route: string; file: string; kind: "page" | "api" | "layout" | "component"; method?: string }`.
   Use `joinRoute(...segments)` (from `util.ts`) to compose and normalize paths.
 
 ## How dispatch works
@@ -53,6 +53,7 @@ Express API) — their routes merge.
 | `fastapi` | FastAPI      | `@app.<method>` + `APIRouter`: `include_router(prefix) + APIRouter(prefix) + path` across modules |
 | `nestjs`  | NestJS       | `@Controller(base)` + method decorators `@Get(sub)` → `/base/sub` |
 | `express` | Express      | `app.<method>` absolute; `router.<method>` prefixed by the cross-file `app.use("/mount", router)` |
+| `fastify` | Fastify      | `app.<method>` + `route({ method, url })`; plugin routes prefixed by the cross-file `register(plugin, { prefix })`, composed transitively |
 | `django`  | Django       | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules |
 | `rails`   | Ruby on Rails| `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes via `do`/`end` nesting |
 | `go`      | Gin, Echo, chi, Fiber | `<router>.GET("/x")` (both `GET`/`Get` casings) prefixed by `<child> := <parent>.Group("/p")` chains, resolved transitively |
@@ -104,8 +105,8 @@ whose routes are `get "/x" do … end` blocks in a Ruby file.
    block in `tests/adapters.test.ts` asserting the resolved routes. Write the test
    first (red), then make it pass (green).
 
-5. **Rebuild the bundle:** `npm run build` (regenerates `scripts/analyze.mjs`),
-   then `npm test && npm run check:build`.
+5. **Rebuild the bundle:** `pnpm build` (regenerates `scripts/analyze.mjs`),
+   then `pnpm test && pnpm run check:build`.
 
 That's the whole PR. The deterministic scaffold stays universal; the adapter just
 upgrades one framework's routes from *candidates* to *resolved*.
@@ -116,8 +117,11 @@ upgrades one framework's routes from *candidates* to *resolved*.
   (dynamic registration, runtime config), emit the local path + handler file and
   let the candidate/agent layer fill the rest. A wrong route is worse than a
   partial one.
-- **No method dimension.** `RouteInfo` has no HTTP method, so `GET`/`POST` on the
-  same path collapse to one route (the registry de-dupes). Method-level contracts
-  are the agent's job in `INTERFACES.md`.
+- **Method is part of the identity.** Set `RouteInfo.method` when the framework
+  declares a verb (`GET`, `POST`, … — `*` for any/all): the registry de-dupes on
+  method+kind+route+file, so `GET /items` and `POST /items` survive as two
+  operations. Omit `method` for verb-agnostic routing (file-based pages,
+  view-dispatched URLs); the full I/O contract stays the agent's job in
+  `INTERFACES.md`.
 - **`kind`:** API frameworks emit `"api"`; server-rendered routes emit `"page"`
   (e.g. Flask handlers that `render_template`).

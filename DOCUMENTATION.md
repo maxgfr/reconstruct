@@ -231,7 +231,7 @@ walk → detect → candidates → adapters → features → prd → output
 | **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore` + `--include`/`--exclude`, categorize each file, and report `excludedCount`. |
 | **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts), [`src/detect/workspaces.ts`](./src/detect/workspaces.ts) | Rank languages; identify frameworks (JS/TS + Python/Ruby/PHP/JVM via manifests); **detect notable libraries**; find package managers; detect the required **Node version**; detect **monorepo workspaces** (npm/yarn/pnpm, lerna/nx fallbacks, Cargo, go.work), build the **workspace dependency graph**, and attribute stack/deps/routes/hints **per workspace**. |
 | **candidates** | [`src/detect/candidates.ts`](./src/detect/candidates.ts) | Framework-agnostic **hints**: candidate files for routes, API surface (tRPC/GraphQL/gRPC/OpenAPI), data model (ORM schemas/models), and entry points — from path + bounded content heuristics. |
-| **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, env vars, Next.js routes, and i18n (see below). |
+| **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, env vars, framework routes, and i18n (see below). |
 | **features** | [`src/features.ts`](./src/features.ts) | Group files into features (skipping route groups `(...)` / dynamic `[...]` segments), order them by **dependency tier** (foundations → feature pages → tests/docs), and apply `--granularity`. |
 | **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts — including the `INTERFACES.md` / `DATA-MODEL.md` skeletons — and decide which real files to copy/embed/describe. |
 | **output** | [`src/output.ts`](./src/output.ts) | Write artifacts and copy ground-truth files to `--out`. |
@@ -249,10 +249,14 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 | FastAPI | [`src/adapters/fastapi.ts`](./src/adapters/fastapi.ts) | `@app.<method>` + `APIRouter`: `include_router(prefix)` + `APIRouter(prefix)` + decorator path across modules. |
 | NestJS | [`src/adapters/nestjs.ts`](./src/adapters/nestjs.ts) | `@Controller(base)` + method decorators (`@Get(sub)`) → `/base/sub`. |
 | Express | [`src/adapters/express.ts`](./src/adapters/express.ts) | `app.<method>` absolute; `router.<method>` prefixed by the cross-file `app.use("/mount", router)`. |
+| Fastify | [`src/adapters/fastify.ts`](./src/adapters/fastify.ts) | `app.<method>` + `route({ method, url })`; plugin routes prefixed by the cross-file `register(plugin, { prefix })`, composed transitively. |
+| Django | [`src/adapters/django.ts`](./src/adapters/django.ts) | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules. |
+| Rails | [`src/adapters/rails.ts`](./src/adapters/rails.ts) | `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes. |
+| Go | [`src/adapters/go.ts`](./src/adapters/go.ts) | Gin/Echo/chi/Fiber `<router>.GET("/x")` prefixed by `.Group("/p")` chains, resolved transitively. |
 | i18n | [`src/adapters/i18n.ts`](./src/adapters/i18n.ts) | Locale detection and per-file translation-key counting. |
 
-Several web frameworks resolve routes **deterministically** (Next.js, Flask, FastAPI, NestJS,
-Express); every other stack's interface surface and data model are mapped by the **AI playbook**
+Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Flask,
+FastAPI, NestJS, Django, Rails, Go); every other stack's interface surface and data model are mapped by the **AI playbook**
 from the candidate hints — see [`references/analysis-playbook.md`](./references/analysis-playbook.md)
 and the per-stack cheat-sheets in [`references/stack-guides/`](./references/stack-guides). The two
 layers are **complementary**: an adapter gives a resolved head-start where a framework has a clear

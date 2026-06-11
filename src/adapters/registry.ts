@@ -5,6 +5,7 @@ import { flaskAdapter } from "./flask.js";
 import { fastapiAdapter } from "./fastapi.js";
 import { nestjsAdapter } from "./nestjs.js";
 import { expressAdapter } from "./express.js";
+import { fastifyAdapter } from "./fastify.js";
 import { djangoAdapter } from "./django.js";
 import { railsAdapter } from "./rails.js";
 import { goAdapter } from "./go.js";
@@ -20,6 +21,7 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
   fastapiAdapter,
   nestjsAdapter,
   expressAdapter,
+  fastifyAdapter,
   djangoAdapter,
   railsAdapter,
   goAdapter,

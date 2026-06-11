@@ -104,6 +104,44 @@ describe("express adapter", () => {
   });
 });
 
+describe("fastify adapter", () => {
+  const inv = analyze(opts("fastify-app"));
+
+  it("detects Fastify", () => {
+    expect(inv.stack.frameworks).toContain("Fastify");
+  });
+
+  it("resolves app-level verb routes with their method", () => {
+    expect(hasRoute(inv.routes, "/health", "api", "index.js")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/health")?.method).toBe("GET");
+  });
+
+  it("resolves app-level route({ method, url }) declarations", () => {
+    expect(hasRoute(inv.routes, "/version", "api", "index.js")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/version")?.method).toBe("GET");
+  });
+
+  it("prefixes plugin routes with their register() prefix (cross-file)", () => {
+    // register(require("./routes/users"), { prefix: "/api/users" }) + fastify.get("/")
+    expect(hasRoute(inv.routes, "/api/users", "api", "routes/users.js")).toBe(true);
+    const methods = inv.routes
+      .filter((r) => r.route === "/api/users")
+      .map((r) => r.method)
+      .sort();
+    expect(methods).toEqual(["GET", "POST"]);
+  });
+
+  it("expands a route({ method: [...] }) array into one route per verb", () => {
+    const byId = inv.routes.filter((r) => r.route === "/api/users/:id");
+    expect(byId.map((r) => r.method).sort()).toEqual(["DELETE", "GET"]);
+  });
+
+  it("resolves an arrow-function plugin mounted under its own prefix", () => {
+    expect(hasRoute(inv.routes, "/admin/cache", "api", "routes/admin.js")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/admin/cache")?.method).toBe("DELETE");
+  });
+});
+
 describe("django adapter", () => {
   const inv = analyze(opts("django-app"));
 

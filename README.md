@@ -219,8 +219,8 @@ the interview is never clobbered. Add `--tdd` (here or in any mode) to make ever
 **Any stack.** The deterministic scaffold is universal (tree, deps, env, i18n, stack/library
 detection, plus *candidate hints* for routes/API/schema/entry points — so a stack without a
 dedicated adapter is never invisible). On top of that, **route adapters resolve the real
-routes — with their HTTP method — for eight framework families** (Next.js, Express, Flask,
-FastAPI, NestJS, Django, Rails, Go) through a small pluggable registry. The deeper
+routes — with their HTTP method — for nine framework families** (Next.js, Express, Fastify,
+Flask, FastAPI, NestJS, Django, Rails, Go) through a small pluggable registry. The deeper
 framework-aware depth — the full interface surface and data model — comes from the AI playbook
 in [`SKILL.md`](./SKILL.md) + [`references/`](./references), with per-stack cheat-sheets in
 [`references/stack-guides/`](./references/stack-guides) (Next.js, Remix, Nuxt, SvelteKit,

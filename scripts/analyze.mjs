@@ -1833,6 +1833,133 @@ var expressAdapter = {
   }
 };
 
+// src/adapters/fastify.ts
+var SRC_EXTS2 = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
+var APP_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*(?:require\(\s*["'`]fastify["'`]\s*\)|[Ff]astify)\s*\(/g;
+var REQUIRE_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var IMPORT_RE2 = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
+var REGISTER_RE2 = /(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
+var PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
+var ROUTE_RE2 = /(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+var ROUTE_OBJ_RE = /(\w+)\.route\(\s*\{/g;
+var URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
+var METHOD_RE2 = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
+function methodOf3(verb) {
+  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
+}
+function dirOf2(p) {
+  const i = p.lastIndexOf("/");
+  return i === -1 ? "" : p.slice(0, i);
+}
+function resolveModule2(fromFile, spec, sources) {
+  const segs = [];
+  for (const s of `${dirOf2(fromFile)}/${spec}`.split("/")) {
+    if (s === "" || s === ".") continue;
+    if (s === "..") segs.pop();
+    else segs.push(s);
+  }
+  const base = segs.join("/");
+  for (const cand of [base, ...SRC_EXTS2.map((e) => base + e), ...SRC_EXTS2.map((e) => `${base}/index${e}`)]) {
+    if (sources.has(cand)) return cand;
+  }
+  return null;
+}
+function pluginParam(src) {
+  const direct = src.match(/module\.exports\s*=\s*(?:async\s+)?function\s*\w*\s*\(\s*(\w+)/) ?? src.match(/module\.exports\s*=\s*(?:async\s*)?\(\s*(\w+)/) ?? src.match(/export\s+default\s+(?:async\s+)?function\s*\w*\s*\(\s*(\w+)/) ?? src.match(/export\s+default\s+(?:async\s*)?\(\s*(\w+)/);
+  if (direct) return direct[1];
+  const named = src.match(/(?:module\.exports\s*=|export\s+default)\s*(\w+)\s*;?\s*$/m);
+  if (named) {
+    const name = named[1];
+    const fn = src.match(new RegExp(`function\\s+${name}\\s*\\(\\s*(\\w+)`)) ?? src.match(new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?\\(\\s*(\\w+)`));
+    if (fn) return fn[1];
+  }
+  return null;
+}
+function localVars2(src, re) {
+  return new Set([...src.matchAll(re)].map((m) => m[1]));
+}
+var fastifyAdapter = {
+  id: "fastify",
+  frameworks: ["Fastify"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, SRC_EXTS2);
+    const appVarsByFile = /* @__PURE__ */ new Map();
+    const pluginParamByFile = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      appVarsByFile.set(path, localVars2(src, APP_RE2));
+      const param = pluginParam(src);
+      if (param) pluginParamByFile.set(path, param);
+    }
+    const edges = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const receivers = new Set(appVarsByFile.get(path));
+      const param = pluginParamByFile.get(path);
+      if (param) receivers.add(param);
+      const moduleOf = /* @__PURE__ */ new Map();
+      for (const m of src.matchAll(REQUIRE_RE2)) moduleOf.set(m[1], m[2]);
+      for (const m of src.matchAll(IMPORT_RE2)) moduleOf.set(m[1], m[2]);
+      for (const m of src.matchAll(REGISTER_RE2)) {
+        if (!receivers.has(m[1])) continue;
+        const spec = m[2] ?? moduleOf.get(m[3]);
+        if (!spec) continue;
+        const target = resolveModule2(path, spec, sources);
+        if (!target) continue;
+        const prefix = (m[4] ?? "").match(PREFIX_RE)?.[1] ?? "";
+        const list = edges.get(path);
+        if (list) list.push({ target, prefix });
+        else edges.set(path, [{ target, prefix }]);
+      }
+    }
+    const mountByFile = /* @__PURE__ */ new Map();
+    const queue = [...sources.keys()].filter((p) => (appVarsByFile.get(p)?.size ?? 0) > 0).sort().map((p) => ({ file: p, mount: "" }));
+    while (queue.length > 0) {
+      const { file, mount } = queue.shift();
+      for (const { target, prefix } of edges.get(file) ?? []) {
+        if (mountByFile.has(target)) continue;
+        const next = mount === "" && prefix === "" ? "" : joinRoute(mount, prefix);
+        mountByFile.set(target, next);
+        queue.push({ file: target, mount: next });
+      }
+    }
+    const routes = [];
+    for (const [path, src] of sources) {
+      const appVars = appVarsByFile.get(path) ?? /* @__PURE__ */ new Set();
+      const param = pluginParamByFile.get(path);
+      const prefixFor = (obj) => {
+        if (appVars.has(obj)) return "";
+        if (obj === param) return mountByFile.get(path) ?? "";
+        return null;
+      };
+      for (const m of src.matchAll(ROUTE_RE2)) {
+        const prefix = prefixFor(m[1]);
+        if (prefix === null) continue;
+        routes.push({
+          route: joinRoute(prefix, m[3]),
+          file: path,
+          kind: "api",
+          method: methodOf3(m[2])
+        });
+      }
+      for (const m of src.matchAll(ROUTE_OBJ_RE)) {
+        const prefix = prefixFor(m[1]);
+        if (prefix === null) continue;
+        const slice = src.slice(m.index ?? 0, (m.index ?? 0) + 400);
+        const url = slice.match(URL_RE)?.[1];
+        if (url === void 0) continue;
+        const route = joinRoute(prefix, url);
+        const methodM = slice.match(METHOD_RE2);
+        const verbs = methodM?.[1] ? [methodM[1]] : (methodM?.[2] ?? "").split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
+        if (verbs.length) {
+          for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf3(v) });
+        } else {
+          routes.push({ route, file: path, kind: "api" });
+        }
+      }
+    }
+    return routes;
+  }
+};
+
 // src/adapters/django.ts
 var ENTRY_RE = /\b(path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*([\w.]+)/g;
 var INCLUDE_RE2 = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*["']([^"']*)["']/g;
@@ -2040,7 +2167,7 @@ var GROUP_RE = /(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
 var ROUTE_OPEN_RE = /(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
 var MOUNT_RE2 = /(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
 var STD_VERBS = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/;
-function methodOf3(verb) {
+function methodOf4(verb) {
   const up = verb.toUpperCase();
   return up === "ANY" || up === "ALL" ? "*" : up;
 }
@@ -2093,7 +2220,7 @@ var goAdapter = {
           route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
           file: path,
           kind: "api",
-          method: methodOf3(m[2])
+          method: methodOf4(m[2])
         });
       }
       for (const m of src.matchAll(HANDLE_VERB_RE)) {
@@ -2103,7 +2230,7 @@ var goAdapter = {
           route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
           file: path,
           kind: "api",
-          method: methodOf3(m[2])
+          method: methodOf4(m[2])
         });
       }
       for (const m of src.matchAll(HANDLEFUNC_RE)) {
@@ -2144,6 +2271,7 @@ var ROUTE_ADAPTERS = [
   fastapiAdapter,
   nestjsAdapter,
   expressAdapter,
+  fastifyAdapter,
   djangoAdapter,
   railsAdapter,
   goAdapter
@@ -3079,7 +3207,7 @@ function interfacesDoc(inv, opts) {
     "",
     metaBlock(inv, opts),
     agentNote(
-      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
+      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Fastify, Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
     ),
     "",
     "## Resolved routes (deterministic \u2014 verify against source)",
