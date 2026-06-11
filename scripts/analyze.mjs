@@ -1471,6 +1471,24 @@ function readSources(files, repo, exts) {
   }
   return out;
 }
+var JS_SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
+function dirOf(p) {
+  const i = p.lastIndexOf("/");
+  return i === -1 ? "" : p.slice(0, i);
+}
+function resolveModule(fromFile, spec, sources, exts = JS_SRC_EXTS) {
+  const segs = [];
+  for (const s of `${dirOf(fromFile)}/${spec}`.split("/")) {
+    if (s === "" || s === ".") continue;
+    if (s === "..") segs.pop();
+    else segs.push(s);
+  }
+  const base = segs.join("/");
+  for (const cand of [base, ...exts.map((e) => base + e), ...exts.map((e) => `${base}/index${e}`)]) {
+    if (sources.has(cand)) return cand;
+  }
+  return null;
+}
 function moduleName(path) {
   return path.replace(/\.py$/, "").replace(/\/__init__$/, "").split("/").join(".");
 }
@@ -1738,7 +1756,6 @@ var nestjsAdapter = {
 };
 
 // src/adapters/express.ts
-var SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
 var APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
 var ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]express["'`]\s*\)\.)?Router\(\)/g;
 var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
@@ -1750,23 +1767,6 @@ var CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all)\s*\(/g;
 function methodOf2(verb) {
   return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
 }
-function dirOf(p) {
-  const i = p.lastIndexOf("/");
-  return i === -1 ? "" : p.slice(0, i);
-}
-function resolveModule(fromFile, spec, sources) {
-  const segs = [];
-  for (const s of `${dirOf(fromFile)}/${spec}`.split("/")) {
-    if (s === "" || s === ".") continue;
-    if (s === "..") segs.pop();
-    else segs.push(s);
-  }
-  const base = segs.join("/");
-  for (const cand of [base, ...SRC_EXTS.map((e) => base + e), ...SRC_EXTS.map((e) => `${base}/index${e}`)]) {
-    if (sources.has(cand)) return cand;
-  }
-  return null;
-}
 function localVars(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
 }
@@ -1774,7 +1774,7 @@ var expressAdapter = {
   id: "express",
   frameworks: ["Express"],
   detectRoutes(files, repo) {
-    const sources = readSources(files, repo, SRC_EXTS);
+    const sources = readSources(files, repo, JS_SRC_EXTS);
     const mountByFile = /* @__PURE__ */ new Map();
     const mountByLocalVar = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
@@ -1834,7 +1834,6 @@ var expressAdapter = {
 };
 
 // src/adapters/fastify.ts
-var SRC_EXTS2 = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
 var APP_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*(?:require\(\s*["'`]fastify["'`]\s*\)|[Ff]astify)\s*\(/g;
 var REQUIRE_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE2 = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
@@ -1846,23 +1845,6 @@ var URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
 var METHOD_RE2 = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 function methodOf3(verb) {
   return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
-function dirOf2(p) {
-  const i = p.lastIndexOf("/");
-  return i === -1 ? "" : p.slice(0, i);
-}
-function resolveModule2(fromFile, spec, sources) {
-  const segs = [];
-  for (const s of `${dirOf2(fromFile)}/${spec}`.split("/")) {
-    if (s === "" || s === ".") continue;
-    if (s === "..") segs.pop();
-    else segs.push(s);
-  }
-  const base = segs.join("/");
-  for (const cand of [base, ...SRC_EXTS2.map((e) => base + e), ...SRC_EXTS2.map((e) => `${base}/index${e}`)]) {
-    if (sources.has(cand)) return cand;
-  }
-  return null;
 }
 function pluginParam(src) {
   const direct = src.match(/module\.exports\s*=\s*(?:async\s+)?function\s*\w*\s*\(\s*(\w+)/) ?? src.match(/module\.exports\s*=\s*(?:async\s*)?\(\s*(\w+)/) ?? src.match(/export\s+default\s+(?:async\s+)?function\s*\w*\s*\(\s*(\w+)/) ?? src.match(/export\s+default\s+(?:async\s*)?\(\s*(\w+)/);
@@ -1882,7 +1864,7 @@ var fastifyAdapter = {
   id: "fastify",
   frameworks: ["Fastify"],
   detectRoutes(files, repo) {
-    const sources = readSources(files, repo, SRC_EXTS2);
+    const sources = readSources(files, repo, JS_SRC_EXTS);
     const appVarsByFile = /* @__PURE__ */ new Map();
     const pluginParamByFile = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
@@ -1902,7 +1884,7 @@ var fastifyAdapter = {
         if (!receivers.has(m[1])) continue;
         const spec = m[2] ?? moduleOf.get(m[3]);
         if (!spec) continue;
-        const target = resolveModule2(path, spec, sources);
+        const target = resolveModule(path, spec, sources);
         if (!target) continue;
         const prefix = (m[4] ?? "").match(PREFIX_RE)?.[1] ?? "";
         const list = edges.get(path);
@@ -1954,6 +1936,109 @@ var fastifyAdapter = {
         } else {
           routes.push({ route, file: path, kind: "api" });
         }
+      }
+    }
+    return routes;
+  }
+};
+
+// src/adapters/hono.ts
+var APP_RE3 = /(?:const|let|var)\s+(\w+)\s*=\s*new\s+Hono\s*(?:<[^>]*>)?\s*\([^)]*\)(?:\s*\.basePath\(\s*["'`]([^"'`]*)["'`]\s*\))?/g;
+var BASEPATH_RE = /(\w+)\.basePath\(\s*["'`]([^"'`]*)["'`]/g;
+var REQUIRE_RE3 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var IMPORT_RE3 = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
+var ROUTE_RE3 = /(\w+)\.(get|post|put|delete|patch|options|all)\(\s*["'`]([^"'`]*)["'`]/g;
+var ON_RE = /(\w+)\.on\(\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])\s*,\s*["'`]([^"'`]*)["'`]/g;
+var MOUNT_RE = /(\w+)\.route\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)\s*\)/g;
+var EXPORT_RE = /(?:export\s+default|module\.exports\s*=)\s+(\w+)\s*;?/;
+function methodOf4(verb) {
+  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
+}
+var honoAdapter = {
+  id: "hono",
+  frameworks: ["Hono"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, JS_SRC_EXTS);
+    const appVarsByFile = /* @__PURE__ */ new Map();
+    const basePathByVar = /* @__PURE__ */ new Map();
+    const exportedByFile = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const vars = /* @__PURE__ */ new Set();
+      for (const m of src.matchAll(APP_RE3)) {
+        vars.add(m[1]);
+        if (m[2]) basePathByVar.set(`${path}::${m[1]}`, m[2]);
+      }
+      for (const m of src.matchAll(BASEPATH_RE)) {
+        if (vars.has(m[1])) basePathByVar.set(`${path}::${m[1]}`, m[2]);
+      }
+      appVarsByFile.set(path, vars);
+      const exp = src.match(EXPORT_RE);
+      if (exp && vars.has(exp[1])) exportedByFile.set(path, exp[1]);
+    }
+    const baseOf = (path, v) => basePathByVar.get(`${path}::${v}`) ?? "";
+    const mountByLocalVar = /* @__PURE__ */ new Map();
+    const edges = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const vars = appVarsByFile.get(path) ?? /* @__PURE__ */ new Set();
+      const moduleOf = /* @__PURE__ */ new Map();
+      for (const m of src.matchAll(REQUIRE_RE3)) moduleOf.set(m[1], m[2]);
+      for (const m of src.matchAll(IMPORT_RE3)) moduleOf.set(m[1], m[2]);
+      for (const m of src.matchAll(MOUNT_RE)) {
+        const receiver = m[1];
+        if (!vars.has(receiver)) continue;
+        const prefix = joinRoute(baseOf(path, receiver), m[2]);
+        const mounted = m[3];
+        const spec = moduleOf.get(mounted);
+        if (spec) {
+          const target = resolveModule(path, spec, sources);
+          if (!target) continue;
+          const list = edges.get(path);
+          if (list) list.push({ target, prefix });
+          else edges.set(path, [{ target, prefix }]);
+        } else if (vars.has(mounted)) {
+          mountByLocalVar.set(`${path}::${mounted}`, prefix);
+        }
+      }
+    }
+    const targets = new Set([...edges.values()].flat().map((e) => e.target));
+    const mountByFile = /* @__PURE__ */ new Map();
+    const queue = [...sources.keys()].filter((p) => !targets.has(p)).sort().map((p) => ({ file: p, mount: "" }));
+    while (queue.length > 0) {
+      const { file, mount } = queue.shift();
+      for (const { target, prefix } of edges.get(file) ?? []) {
+        if (mountByFile.has(target)) continue;
+        const next = mount === "" ? prefix : joinRoute(mount, prefix);
+        mountByFile.set(target, next);
+        queue.push({ file: target, mount: next });
+      }
+    }
+    const routes = [];
+    for (const [path, src] of sources) {
+      const vars = appVarsByFile.get(path) ?? /* @__PURE__ */ new Set();
+      if (vars.size === 0) continue;
+      const exported = exportedByFile.get(path);
+      const prefixFor = (v) => {
+        if (!vars.has(v)) return null;
+        const mount = mountByLocalVar.get(`${path}::${v}`) ?? (v === exported ? mountByFile.get(path) ?? "" : "");
+        const base = baseOf(path, v);
+        return mount === "" && base === "" ? "" : joinRoute(mount, base);
+      };
+      for (const m of src.matchAll(ROUTE_RE3)) {
+        const prefix = prefixFor(m[1]);
+        if (prefix === null) continue;
+        routes.push({
+          route: joinRoute(prefix, m[3]),
+          file: path,
+          kind: "api",
+          method: methodOf4(m[2])
+        });
+      }
+      for (const m of src.matchAll(ON_RE)) {
+        const prefix = prefixFor(m[1]);
+        if (prefix === null) continue;
+        const route = joinRoute(prefix, m[4]);
+        const verbs = m[2] ? [m[2]] : m[3].split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
+        for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf4(v) });
       }
     }
     return routes;
@@ -2052,7 +2137,7 @@ var RESOURCES_RE = /\b(resources|resource)\s+:(\w+)([^\n]*)/g;
 var NAMESPACE_RE = /^namespace\s+:?(\w+)/;
 var SCOPE_STR_RE = /^scope\s+["']([^"']+)["']/;
 var SCOPE_PATH_RE = /^scope\b[^#\n]*\bpath:\s*["']([^"']+)["']/;
-var MOUNT_RE = /\bmount\s+[\w:]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
+var MOUNT_RE2 = /\bmount\s+[\w:]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
 var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
 var MEMBER_RE = /^member\b/;
 var COLLECTION_RE = /^collection\b/;
@@ -2132,7 +2217,7 @@ var railsAdapter = {
             }
           }
         }
-        const mount = line.match(MOUNT_RE);
+        const mount = line.match(MOUNT_RE2);
         if (mount) emit(joinRoute(...nestPrefix(frames.length), mount[1]), void 0, "api");
         if (/^end\b/.test(line)) {
           frames.pop();
@@ -2165,9 +2250,9 @@ var HANDLEFUNC_RE = /(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
 var METHODS_CHAIN_RE = /\.Methods\(\s*([^)]*)\)/;
 var GROUP_RE = /(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
 var ROUTE_OPEN_RE = /(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
-var MOUNT_RE2 = /(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
+var MOUNT_RE3 = /(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
 var STD_VERBS = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/;
-function methodOf4(verb) {
+function methodOf5(verb) {
   const up = verb.toUpperCase();
   return up === "ANY" || up === "ALL" ? "*" : up;
 }
@@ -2220,7 +2305,7 @@ var goAdapter = {
           route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
           file: path,
           kind: "api",
-          method: methodOf4(m[2])
+          method: methodOf5(m[2])
         });
       }
       for (const m of src.matchAll(HANDLE_VERB_RE)) {
@@ -2230,7 +2315,7 @@ var goAdapter = {
           route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
           file: path,
           kind: "api",
-          method: methodOf4(m[2])
+          method: methodOf5(m[2])
         });
       }
       for (const m of src.matchAll(HANDLEFUNC_RE)) {
@@ -2250,7 +2335,7 @@ var goAdapter = {
           routes.push({ route, file: path, kind: "api" });
         }
       }
-      for (const m of src.matchAll(MOUNT_RE2)) {
+      for (const m of src.matchAll(MOUNT_RE3)) {
         const seg = m[2];
         if (!seg.startsWith("/")) continue;
         routes.push({
@@ -2272,6 +2357,7 @@ var ROUTE_ADAPTERS = [
   nestjsAdapter,
   expressAdapter,
   fastifyAdapter,
+  honoAdapter,
   djangoAdapter,
   railsAdapter,
   goAdapter
@@ -3207,7 +3293,7 @@ function interfacesDoc(inv, opts) {
     "",
     metaBlock(inv, opts),
     agentNote(
-      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Fastify, Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
+      "Enumerate **every** interface this project exposes \u2014 HTTP routes, REST/JSON endpoints, tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Fastify, Hono, Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the candidate files below** and follow `references/analysis-playbook.md` (\xA7Interface surface) plus the matching guide in `references/stack-guides/`. Fill the target table with one row per operation."
     ),
     "",
     "## Resolved routes (deterministic \u2014 verify against source)",

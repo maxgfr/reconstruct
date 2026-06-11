@@ -54,9 +54,17 @@ Express API) — their routes merge.
 | `nestjs`  | NestJS       | `@Controller(base)` + method decorators `@Get(sub)` → `/base/sub` |
 | `express` | Express      | `app.<method>` absolute; `router.<method>` prefixed by the cross-file `app.use("/mount", router)` |
 | `fastify` | Fastify      | `app.<method>` + `route({ method, url })`; plugin routes prefixed by the cross-file `register(plugin, { prefix })`, composed transitively |
+| `hono`    | Hono         | `app.<method>` + `app.on(verb, path)`, prefixed by `.basePath()`; sub-apps mounted with `app.route("/p", sub)` resolved across files, composed transitively |
 | `django`  | Django       | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules |
 | `rails`   | Ruby on Rails| `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes via `do`/`end` nesting |
 | `go`      | Gin, Echo, chi, Fiber | `<router>.GET("/x")` (both `GET`/`Get` casings) prefixed by `<child> := <parent>.Group("/p")` chains, resolved transitively |
+
+**Deliberately deferred** (covered by the candidate hints + their stack guide
+instead): **Laravel** — being honest about `Route::resource`/controller routes
+needs controller-class resolution, and `references/stack-guides/laravel.md` +
+the route-content heuristics already surface `routes/*.php`; **Axum** — the
+`Router::new().route(…).nest(…)` chains built across functions defeat
+regex-level resolution, and a wrong route is worse than a candidate.
 
 ## Add an adapter — worked example (Sinatra, a good first PR)
 

@@ -1,8 +1,7 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { joinRoute, readSources } from "./util.js";
+import { JS_SRC_EXTS as SRC_EXTS, joinRoute, readSources, resolveModule } from "./util.js";
 
-const SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
 // `const app = Fastify()` / `fastify()` / `require("fastify")()`.
 const APP_RE =
   /(?:const|let|var)\s+(\w+)\s*=\s*(?:require\(\s*["'`]fastify["'`]\s*\)|[Ff]astify)\s*\(/g;
@@ -23,26 +22,6 @@ const METHOD_RE = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 
 function methodOf(verb: string): string {
   return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
-
-function dirOf(p: string): string {
-  const i = p.lastIndexOf("/");
-  return i === -1 ? "" : p.slice(0, i);
-}
-
-/** Resolve a relative import/require spec to a file present in `sources`. */
-function resolveModule(fromFile: string, spec: string, sources: Map<string, string>): string | null {
-  const segs: string[] = [];
-  for (const s of `${dirOf(fromFile)}/${spec}`.split("/")) {
-    if (s === "" || s === ".") continue;
-    if (s === "..") segs.pop();
-    else segs.push(s);
-  }
-  const base = segs.join("/");
-  for (const cand of [base, ...SRC_EXTS.map((e) => base + e), ...SRC_EXTS.map((e) => `${base}/index${e}`)]) {
-    if (sources.has(cand)) return cand;
-  }
-  return null;
 }
 
 /**

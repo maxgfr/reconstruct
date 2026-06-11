@@ -6,6 +6,7 @@ import { fastapiAdapter } from "./fastapi.js";
 import { nestjsAdapter } from "./nestjs.js";
 import { expressAdapter } from "./express.js";
 import { fastifyAdapter } from "./fastify.js";
+import { honoAdapter } from "./hono.js";
 import { djangoAdapter } from "./django.js";
 import { railsAdapter } from "./rails.js";
 import { goAdapter } from "./go.js";
@@ -22,6 +23,7 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
   nestjsAdapter,
   expressAdapter,
   fastifyAdapter,
+  honoAdapter,
   djangoAdapter,
   railsAdapter,
   goAdapter,

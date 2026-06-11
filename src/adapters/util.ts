@@ -17,6 +17,34 @@ export function readSources(files: FileInfo[], repo: string, exts: string[]): Ma
   return out;
 }
 
+/** JS/TS source extensions the JS-family route adapters read. */
+export const JS_SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
+
+function dirOf(p: string): string {
+  const i = p.lastIndexOf("/");
+  return i === -1 ? "" : p.slice(0, i);
+}
+
+/** Resolve a relative import/require spec to a file present in `sources`. */
+export function resolveModule(
+  fromFile: string,
+  spec: string,
+  sources: Map<string, string>,
+  exts: string[] = JS_SRC_EXTS,
+): string | null {
+  const segs: string[] = [];
+  for (const s of `${dirOf(fromFile)}/${spec}`.split("/")) {
+    if (s === "" || s === ".") continue;
+    if (s === "..") segs.pop();
+    else segs.push(s);
+  }
+  const base = segs.join("/");
+  for (const cand of [base, ...exts.map((e) => base + e), ...exts.map((e) => `${base}/index${e}`)]) {
+    if (sources.has(cand)) return cand;
+  }
+  return null;
+}
+
 /** "routes/users.py" -> "routes.users" so an import path matches a file. */
 export function moduleName(path: string): string {
   return path.replace(/\.py$/, "").replace(/\/__init__$/, "").split("/").join(".");

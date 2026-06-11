@@ -142,6 +142,35 @@ describe("fastify adapter", () => {
   });
 });
 
+describe("hono adapter", () => {
+  const inv = analyze(opts("hono-app"));
+
+  it("detects Hono", () => {
+    expect(inv.stack.frameworks).toContain("Hono");
+  });
+
+  it("prefixes app-level routes with the chained basePath()", () => {
+    expect(hasRoute(inv.routes, "/api/health", "api", "src/index.ts")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/api/health")?.method).toBe("GET");
+  });
+
+  it("resolves on(verb, path) declarations with their custom verb", () => {
+    expect(hasRoute(inv.routes, "/api/cache", "api", "src/index.ts")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/api/cache")?.method).toBe("PURGE");
+  });
+
+  it("composes basePath + route() mount for a cross-file sub-app", () => {
+    // basePath("/api") + app.route("/users", users) + users.get("/")
+    expect(hasRoute(inv.routes, "/api/users", "api", "src/users.ts")).toBe(true);
+    const methods = inv.routes
+      .filter((r) => r.route === "/api/users")
+      .map((r) => r.method)
+      .sort();
+    expect(methods).toEqual(["GET", "POST"]);
+    expect(hasRoute(inv.routes, "/api/users/:id", "api", "src/users.ts")).toBe(true);
+  });
+});
+
 describe("django adapter", () => {
   const inv = analyze(opts("django-app"));
 

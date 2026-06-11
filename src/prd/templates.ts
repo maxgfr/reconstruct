@@ -444,7 +444,7 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
       "Enumerate **every** interface this project exposes — HTTP routes, REST/JSON endpoints, " +
         "tRPC/gRPC procedures, GraphQL operations, CLI commands, scheduled jobs, queues, and webhooks. " +
         "The deterministic engine resolves routes for the supported frameworks (Next.js, Express, Fastify, " +
-        "Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the " +
+        "Hono, Flask, FastAPI, NestJS, Django, Rails, Go); for everything else, **read the " +
         "candidate files below** and follow `references/analysis-playbook.md` (§Interface surface) plus the " +
         "matching guide in `references/stack-guides/`. Fill the target table with one row per operation.",
     ),

@@ -250,13 +250,14 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 | NestJS | [`src/adapters/nestjs.ts`](./src/adapters/nestjs.ts) | `@Controller(base)` + method decorators (`@Get(sub)`) → `/base/sub`. |
 | Express | [`src/adapters/express.ts`](./src/adapters/express.ts) | `app.<method>` absolute; `router.<method>` prefixed by the cross-file `app.use("/mount", router)`. |
 | Fastify | [`src/adapters/fastify.ts`](./src/adapters/fastify.ts) | `app.<method>` + `route({ method, url })`; plugin routes prefixed by the cross-file `register(plugin, { prefix })`, composed transitively. |
+| Hono | [`src/adapters/hono.ts`](./src/adapters/hono.ts) | `app.<method>` + `app.on(verb, path)`, prefixed by `.basePath()`; `app.route("/p", sub)` mounts resolved across files, composed transitively. |
 | Django | [`src/adapters/django.ts`](./src/adapters/django.ts) | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules. |
 | Rails | [`src/adapters/rails.ts`](./src/adapters/rails.ts) | `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes. |
 | Go | [`src/adapters/go.ts`](./src/adapters/go.ts) | Gin/Echo/chi/Fiber `<router>.GET("/x")` prefixed by `.Group("/p")` chains, resolved transitively. |
 | i18n | [`src/adapters/i18n.ts`](./src/adapters/i18n.ts) | Locale detection and per-file translation-key counting. |
 
-Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Flask,
-FastAPI, NestJS, Django, Rails, Go); every other stack's interface surface and data model are mapped by the **AI playbook**
+Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Hono,
+Flask, FastAPI, NestJS, Django, Rails, Go); every other stack's interface surface and data model are mapped by the **AI playbook**
 from the candidate hints — see [`references/analysis-playbook.md`](./references/analysis-playbook.md)
 and the per-stack cheat-sheets in [`references/stack-guides/`](./references/stack-guides). The two
 layers are **complementary**: an adapter gives a resolved head-start where a framework has a clear
