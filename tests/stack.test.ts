@@ -27,6 +27,16 @@ function repo(write: (w: (rel: string, content: string) => void) => void): strin
 }
 afterAll(() => repos.forEach((r) => rmSync(r, { recursive: true, force: true })));
 
+describe("detectStack — module-flavored TypeScript extensions", () => {
+  it("ranks .mts/.cts as TypeScript and flips hasTypeScript", () => {
+    const r = repo((w) => w("package.json", JSON.stringify({ name: "x" })));
+    const stack = detectStack(r, [fi("src/loader.mts", ".mts"), fi("src/legacy.cts", ".cts")]);
+    expect(stack.languages).toEqual(["TypeScript"]);
+    expect(stack.primaryLanguage).toBe("TypeScript");
+    expect(stack.hasTypeScript).toBe(true);
+  });
+});
+
 describe("detectStack — extended framework catalogue", () => {
   it("detects Vite, Expo, Electron, and Tauri from npm deps", () => {
     const r = repo((w) =>

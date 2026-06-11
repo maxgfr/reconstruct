@@ -97,6 +97,19 @@ describe("walk transparency & scoping", () => {
   });
 });
 
+describe("walk file categorization", () => {
+  it("categorizes .mts/.cts as code", () => {
+    const r = repo((w) => {
+      w("src/loader.mts", "export {};");
+      w("src/legacy.cts", "module.exports = {};");
+    });
+    const { files } = walk(r);
+    const byPath = new Map(files.map((f) => [f.path, f.category]));
+    expect(byPath.get("src/loader.mts")).toBe("code");
+    expect(byPath.get("src/legacy.cts")).toBe("code");
+  });
+});
+
 describe("walk symlink handling", () => {
   it("includes a file symlink like a regular file", () => {
     const r = repo((w) => w("real/config.ts", "export const x = 1;"));

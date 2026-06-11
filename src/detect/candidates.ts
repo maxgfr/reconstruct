@@ -7,7 +7,7 @@ import type { FileInfo, Hints, StackInfo } from "../types.js";
 // agent at the files most likely to declare one, across any stack.
 
 const CONTENT_SCAN_EXTS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+  ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
   ".py", ".rb", ".go", ".java", ".kt", ".php", ".rs", ".cs", ".ex", ".exs",
   ".graphql", ".gql", ".proto",
 ]);

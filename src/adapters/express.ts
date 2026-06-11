@@ -2,7 +2,7 @@ import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
 import { joinRoute, readSources } from "./util.js";
 
-const SRC_EXTS = [".js", ".ts", ".mjs", ".cjs"];
+const SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
 const APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
 // `const r = express.Router()` / `Router()` / `require("express").Router()`.
 const ROUTER_RE =

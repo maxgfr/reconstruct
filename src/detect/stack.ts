@@ -6,6 +6,8 @@ import type { FileInfo, StackInfo } from "../types.js";
 const EXT_LANGUAGE: Record<string, string> = {
   ".ts": "TypeScript",
   ".tsx": "TypeScript",
+  ".mts": "TypeScript",
+  ".cts": "TypeScript",
   ".js": "JavaScript",
   ".jsx": "JavaScript",
   ".mjs": "JavaScript",
@@ -174,7 +176,7 @@ export function detectStack(
   const frameworks = new Set<string>();
   const packageManagers = new Set<string>();
   let libraries: string[] = [];
-  let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
+  let hasTypeScript = files.some((f) => EXT_LANGUAGE[f.ext] === "TypeScript");
 
   // JS/TS ecosystem.
   const hasPkg = existsSync(join(repo, "package.json"));

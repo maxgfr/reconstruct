@@ -86,6 +86,8 @@ var BINARY_EXTS = /* @__PURE__ */ new Set([
 var CODE_EXTS = /* @__PURE__ */ new Set([
   ".ts",
   ".tsx",
+  ".mts",
+  ".cts",
   ".js",
   ".jsx",
   ".mjs",
@@ -944,6 +946,8 @@ function topoOrderWorkspaces(workspaces) {
 var EXT_LANGUAGE = {
   ".ts": "TypeScript",
   ".tsx": "TypeScript",
+  ".mts": "TypeScript",
+  ".cts": "TypeScript",
   ".js": "JavaScript",
   ".jsx": "JavaScript",
   ".mjs": "JavaScript",
@@ -1087,7 +1091,7 @@ function detectStack(repo, files, warnings, labelBase = "") {
   const frameworks = /* @__PURE__ */ new Set();
   const packageManagers = /* @__PURE__ */ new Set();
   let libraries = [];
-  let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
+  let hasTypeScript = files.some((f) => EXT_LANGUAGE[f.ext] === "TypeScript");
   const hasPkg = existsSync2(join4(repo, "package.json"));
   const pkg = readJsonManifest(join4(repo, "package.json"), labelBase + "package.json", warnings);
   if (pkg) {
@@ -1179,6 +1183,8 @@ import { join as join5 } from "path";
 var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
   ".ts",
   ".tsx",
+  ".mts",
+  ".cts",
   ".js",
   ".jsx",
   ".mjs",
@@ -1732,7 +1738,7 @@ var nestjsAdapter = {
 };
 
 // src/adapters/express.ts
-var SRC_EXTS = [".js", ".ts", ".mjs", ".cjs"];
+var SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
 var APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
 var ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]express["'`]\s*\)\.)?Router\(\)/g;
 var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;

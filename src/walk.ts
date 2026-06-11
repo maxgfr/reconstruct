@@ -48,7 +48,7 @@ const BINARY_EXTS = new Set([
 ]);
 
 const CODE_EXTS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+  ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
   ".py", ".rb", ".go", ".rs", ".java", ".kt", ".kts", ".php", ".c", ".cc",
   ".cpp", ".h", ".hpp", ".cs", ".swift", ".scala", ".clj", ".ex", ".exs",
   ".dart", ".lua", ".sh", ".bash", ".zig", ".elm",
