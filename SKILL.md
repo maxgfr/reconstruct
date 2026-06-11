@@ -65,7 +65,10 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    HTTP route, endpoint, tRPC/gRPC procedure, GraphQL operation, CLI command, and job —
    method · path/operation · handler file. Start from `hints.routeCandidates`/`apiCandidates`,
    then **read the source** to confirm. Cover the stack's real paradigm, not just file-based
-   routing. For each operation capture the **contract**: exact input shape, output shape,
+   routing. `hints.realtimeCandidates` points at WebSocket/SSE surfaces (enumerate their
+   channels, events, and message shapes — they rarely appear in route tables);
+   `hints.authCandidates` points at the guards/middleware that carry each operation's auth
+   rule. For each operation capture the **contract**: exact input shape, output shape,
    auth rule, and side effects (which entities it writes, transactional or not). See
    `references/analysis-playbook.md` (§Interface surface, §Contracts & buildability).
 

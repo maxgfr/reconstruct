@@ -2,6 +2,10 @@ const fastify = require("fastify")({ logger: true });
 
 fastify.get("/health", async () => ({ ok: true }));
 
+fastify.get("/live", { websocket: true }, (connection) => {
+  connection.socket.on("message", () => {});
+});
+
 fastify.route({
   method: "GET",
   url: "/version",

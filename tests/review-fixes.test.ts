@@ -124,7 +124,7 @@ describe("templates: well-formed fill-in tables (review #13)", () => {
       generatedWith: "reconstruct@test", repoName: "x",
       stack: STACK, fileCount: 0, totalLines: 0, files: [], dependencies: [],
       routes: [], i18n: null, schemas: [], configs: [], docs: [], envVars: [], scripts: {},
-      features: [], hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], entryPoints: [] },
+      features: [], hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], entryPoints: [] },
       unknowns: [], excludedCount: 0,
     };
   }
@@ -133,5 +133,22 @@ describe("templates: well-formed fill-in tables (review #13)", () => {
   it("separates the table delimiter row from the trailing note with a blank line", () => {
     expect(interfacesDoc(inv(), opts)).toMatch(/\| --- \|[^\n]*\n\n_/);
     expect(dataModelDoc(inv(), opts)).toMatch(/\| --- \|[^\n]*\n\n_/);
+  });
+
+  it("renders realtime and auth candidate sections, stable when empty", () => {
+    const md = interfacesDoc(inv(), opts);
+    expect(md).toContain("## Realtime / WebSocket candidates (verify)");
+    expect(md).toContain("_No realtime/WebSocket signals detected._");
+    expect(md).toContain("## Auth / middleware candidates (verify)");
+    expect(md).toMatch(/_No auth\/middleware signals detected/);
+  });
+
+  it("lists realtime and auth candidates when the hints carry them", () => {
+    const enriched = inv();
+    enriched.hints.realtimeCandidates = ["src/events.gateway.ts"];
+    enriched.hints.authCandidates = ["src/auth/guard.ts"];
+    const md = interfacesDoc(enriched, opts);
+    expect(md).toContain("src/events.gateway.ts");
+    expect(md).toContain("src/auth/guard.ts");
   });
 });

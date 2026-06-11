@@ -102,6 +102,11 @@ describe("express adapter", () => {
     expect(hasRoute(inv.routes, "/api/users", "api", "routes/users.js")).toBe(true);
     expect(hasRoute(inv.routes, "/api/users/:id", "api", "routes/users.js")).toBe(true);
   });
+
+  it("resolves an express-ws app.ws() route with method WS", () => {
+    expect(hasRoute(inv.routes, "/live", "api", "index.js")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/live")?.method).toBe("WS");
+  });
 });
 
 describe("fastify adapter", () => {
@@ -139,6 +144,11 @@ describe("fastify adapter", () => {
   it("resolves an arrow-function plugin mounted under its own prefix", () => {
     expect(hasRoute(inv.routes, "/admin/cache", "api", "routes/admin.js")).toBe(true);
     expect(inv.routes.find((r) => r.route === "/admin/cache")?.method).toBe("DELETE");
+  });
+
+  it("marks a { websocket: true } route as WS, not GET", () => {
+    expect(hasRoute(inv.routes, "/live", "api", "index.js")).toBe(true);
+    expect(inv.routes.find((r) => r.route === "/live")?.method).toBe("WS");
   });
 });
 

@@ -221,6 +221,10 @@ export interface Hints {
   apiCandidates: string[];
   /** Files that likely define the data model: ORM models/entities/schema/migrations. */
   schemaCandidates: string[];
+  /** Files with realtime signals: WebSocket servers/gateways, socket.io, SSE. */
+  realtimeCandidates: string[];
+  /** Files with auth/middleware signals: guards, auth middleware, session/token plumbing. */
+  authCandidates: string[];
   /** Best-effort program entry points (any ecosystem). */
   entryPoints: string[];
 }

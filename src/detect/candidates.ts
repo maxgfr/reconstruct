@@ -71,6 +71,40 @@ const ROUTE_CONTENT_RE = new RegExp(
 const API_CONTENT_RE =
   /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
 
+// Realtime signals: WebSocket servers/gateways, socket.io, ActionCable, SSE.
+// A realtime surface rarely shows up in HTTP route tables, so these files are
+// surfaced separately for the agent to enumerate channels/events from.
+const REALTIME_CONTENT_RE = new RegExp(
+  [
+    String.raw`@WebSocketGateway|@SubscribeMessage`, // NestJS gateways
+    String.raw`new\s+WebSocketServer|new\s+WebSocket\.Server`, // ws
+    String.raw`socket\.io|\bio\.on\(\s*["']connection`,
+    String.raw`\bwebsocket\s*:\s*true`, // fastify route option
+    String.raw`upgradeWebSocket`, // hono
+    String.raw`@\w+\.websocket\b|websockets\.serve|WebsocketConsumer`, // FastAPI / websockets / Django Channels
+    String.raw`ActionCable|ApplicationCable`, // rails
+    String.raw`text/event-stream`, // SSE
+  ].join("|"),
+);
+
+// Auth/middleware signals: guard decorators, auth middleware registration,
+// session/token plumbing. They tell the agent which operations carry an auth
+// rule that must land in the INTERFACES.md Auth column — not that one exists.
+const AUTH_CONTENT_RE = new RegExp(
+  [
+    String.raw`@UseGuards|\bpassport\.`, // NestJS / Express
+    String.raw`app\.use\(\s*\w*[aA]uth`, // app.use(auth...), app.use(requireAuth...)
+    String.raw`\brequireAuth\b|\bwithAuth\b|\bverifyToken\b|\bjwt\.(?:sign|verify)\b`,
+    String.raw`getServerSession|getToken\(`, // next-auth
+    String.raw`\bpreHandler\b`, // fastify hook (often auth)
+    String.raw`@login_required|@permission_required|@permission_classes|permission_classes\s*=`, // Django/Flask
+    String.raw`\bbefore_request\b`, // flask middleware
+    String.raw`HTTPBearer|OAuth2PasswordBearer`, // FastAPI security
+    String.raw`before_action\s+:authenticate|authenticate_user!`, // rails
+    String.raw`\[Authorize|@PreAuthorize|@Secured\b`, // ASP.NET / Spring
+  ].join("|"),
+);
+
 // Note: the `^[ \t]*model[ \t]+...` alternative uses bounded *horizontal* whitespace
 // (not `\s`) so it cannot backtrack across newlines on whitespace-heavy files.
 const SCHEMA_CONTENT_RE =
@@ -108,6 +142,8 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
   const routeCandidates = new Set<string>();
   const apiCandidates = new Set<string>();
   const schemaCandidates = new Set<string>();
+  const realtimeCandidates = new Set<string>();
+  const authCandidates = new Set<string>();
 
   for (const f of files) {
     if (f.binary || f.size === 0) continue; // empty files (e.g. package markers) declare nothing
@@ -135,6 +171,8 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
       if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
       if (API_CONTENT_RE.test(src)) apiCandidates.add(p);
       if (SCHEMA_CONTENT_RE.test(src)) schemaCandidates.add(p);
+      if (REALTIME_CONTENT_RE.test(src)) realtimeCandidates.add(p);
+      if (AUTH_CONTENT_RE.test(src)) authCandidates.add(p);
     }
   }
 
@@ -142,6 +180,8 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
     routeCandidates: [...routeCandidates].sort(),
     apiCandidates: [...apiCandidates].sort(),
     schemaCandidates: [...schemaCandidates].sort(),
+    realtimeCandidates: [...realtimeCandidates].sort(),
+    authCandidates: [...authCandidates].sort(),
     entryPoints: detectEntryPoints(repo, files),
   };
 }

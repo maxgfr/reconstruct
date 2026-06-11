@@ -9,12 +9,13 @@ const ROUTER_RE =
 const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 const USE_RE = /(\w+)\.use\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)/g;
-const ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+// `ws` is express-ws's verb — it declares a WebSocket route (method "WS").
+const ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all|ws)\(\s*["'`]([^"'`]*)["'`]/g;
 // `router.route("/x").get(h).post(h)` — match the path; the chained verbs are
 // scanned from the rest of the statement (handler args can nest parens, so a
 // balanced-paren capture is unreliable).
 const ROUTE_CHAIN_RE = /(\w+)\.route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
-const CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all)\s*\(/g;
+const CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all|ws)\s*\(/g;
 
 function methodOf(verb: string): string {
   return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();

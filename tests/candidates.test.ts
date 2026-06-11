@@ -43,6 +43,12 @@ beforeAll(() => {
   w("manage.py", "#!/usr/bin/env python\nimport sys");
   w("src/index.ts", "console.log('hi')");
   w("routes/__init__.py", ""); // empty package marker — must not be a candidate
+  w(
+    "src/events.gateway.ts",
+    `@WebSocketGateway({ cors: true })\nexport class EventsGateway {\n  @SubscribeMessage("message")\n  handle() {}\n}`,
+  );
+  w("app/profile.py", `@login_required\ndef profile():\n    return render(request)`);
+  w("src/middleware.js", `app.use(passport.initialize());\napp.use(passport.session());`);
 
   files.push(
     fi("package.json", "config", ".json"),
@@ -54,6 +60,9 @@ beforeAll(() => {
     fi("manage.py", "code", ".py"),
     fi("src/index.ts"),
     { path: "routes/__init__.py", ext: ".py", size: 0, lines: 0, category: "other", binary: false },
+    fi("src/events.gateway.ts"),
+    fi("app/profile.py", "code", ".py"),
+    fi("src/middleware.js", "code", ".js"),
   );
 });
 
@@ -89,6 +98,24 @@ describe("detectCandidates", () => {
   it("ignores empty files even inside a routing dir", () => {
     const h = detectCandidates(repo, files, STACK);
     expect(h.routeCandidates).not.toContain("routes/__init__.py");
+  });
+
+  it("flags a WebSocket gateway as a realtime candidate (content signal)", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.realtimeCandidates).toContain("src/events.gateway.ts");
+    expect(h.realtimeCandidates).not.toContain("src/index.ts");
+  });
+
+  it("flags auth decorators and auth middleware as auth candidates", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.authCandidates).toContain("app/profile.py"); // @login_required
+    expect(h.authCandidates).toContain("src/middleware.js"); // passport.
+  });
+
+  it("does not flag a plain route file as realtime or auth", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.realtimeCandidates).not.toContain("src/app/api/users/route.ts");
+    expect(h.authCandidates).not.toContain("src/app/api/users/route.ts");
   });
 });
 

@@ -207,7 +207,8 @@ reconstruction/
 `inventory.json` is the structured backbone every PRD is rendered from: it includes
 `repoName`, `fileCount`, `totalLines`, `stack` (primary language, frameworks, and detected
 `libraries`), `features`, `routes`, `i18n`, `schemas`, `configs`, and the v0.2 additions:
-`hints` (`routeCandidates` / `apiCandidates` / `schemaCandidates` / `entryPoints`),
+`hints` (`routeCandidates` / `apiCandidates` / `schemaCandidates` / `realtimeCandidates` /
+`authCandidates` / `entryPoints`),
 `unknowns` (explicit pointers for the agent), `workspaces` (monorepo packages — each entry
 carries its `kind` — npm/pnpm/lerna/nx/cargo/go —, its own `stack` and `dependencies`, the
 manifest-derived `dependsOn` edges, `routeCount`, `schemas`, and per-workspace `hints`),

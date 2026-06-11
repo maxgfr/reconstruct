@@ -59,6 +59,16 @@ function computeUnknowns(
       "The data model is not structured by the engine — extract entities, fields, types, and relations from `hints.schemaCandidates` into `architecture/DATA-MODEL.md`.",
     );
   }
+  if (hints.realtimeCandidates.length > 0) {
+    u.push(
+      "Realtime/WebSocket signals were found — enumerate the channels, events, and message shapes from `hints.realtimeCandidates` in `architecture/INTERFACES.md`; they rarely appear in HTTP route tables.",
+    );
+  }
+  if (hints.authCandidates.length > 0) {
+    u.push(
+      "Auth/middleware signals were found — read `hints.authCandidates` and record the auth rule per operation in the `architecture/INTERFACES.md` interface table's Auth column.",
+    );
+  }
   return u;
 }
 

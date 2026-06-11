@@ -129,11 +129,15 @@ export const fastifyAdapter: RouteAdapter = {
       for (const m of src.matchAll(ROUTE_RE)) {
         const prefix = prefixFor(m[1] as string);
         if (prefix === null) continue;
+        // `app.get("/live", { websocket: true }, h)` (@fastify/websocket) is a
+        // WebSocket route, not an HTTP GET — check the options right after the path.
+        const tail = src.slice((m.index ?? 0) + (m[0] as string).length).slice(0, 200);
+        const isWs = /^\s*,\s*\{[^}]*\bwebsocket\s*:\s*true/.test(tail);
         routes.push({
           route: joinRoute(prefix, m[3] as string),
           file: path,
           kind: "api",
-          method: methodOf(m[2] as string),
+          method: isWs ? "WS" : methodOf(m[2] as string),
         });
       }
       for (const m of src.matchAll(ROUTE_OBJ_RE)) {
@@ -143,6 +147,10 @@ export const fastifyAdapter: RouteAdapter = {
         const url = slice.match(URL_RE)?.[1];
         if (url === undefined) continue;
         const route = joinRoute(prefix, url);
+        if (/\bwebsocket\s*:\s*true/.test(slice)) {
+          routes.push({ route, file: path, kind: "api", method: "WS" });
+          continue;
+        }
         const methodM = slice.match(METHOD_RE);
         const verbs = methodM?.[1]
           ? [methodM[1]]

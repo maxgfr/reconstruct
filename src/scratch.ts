@@ -174,7 +174,7 @@ export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
     envVars: plan.envVars ?? [],
     scripts: {},
     features: planFeatures(plan.features),
-    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], entryPoints: [] },
+    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], entryPoints: [] },
     unknowns: [],
     excludedCount: 0,
     product: {

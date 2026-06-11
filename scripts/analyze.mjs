@@ -919,6 +919,8 @@ function enrichWorkspaceSurface(workspaces, routes, hints, schemas) {
       routeCandidates: hints.routeCandidates.filter((p) => p.startsWith(prefix)),
       apiCandidates: hints.apiCandidates.filter((p) => p.startsWith(prefix)),
       schemaCandidates: hints.schemaCandidates.filter((p) => p.startsWith(prefix)),
+      realtimeCandidates: hints.realtimeCandidates.filter((p) => p.startsWith(prefix)),
+      authCandidates: hints.authCandidates.filter((p) => p.startsWith(prefix)),
       entryPoints: hints.entryPoints.filter((p) => p.startsWith(prefix))
     };
     if (Object.values(wsHints).some((list) => list.length > 0)) ws.hints = wsHints;
@@ -1248,6 +1250,48 @@ var ROUTE_CONTENT_RE = new RegExp(
   "i"
 );
 var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
+var REALTIME_CONTENT_RE = new RegExp(
+  [
+    String.raw`@WebSocketGateway|@SubscribeMessage`,
+    // NestJS gateways
+    String.raw`new\s+WebSocketServer|new\s+WebSocket\.Server`,
+    // ws
+    String.raw`socket\.io|\bio\.on\(\s*["']connection`,
+    String.raw`\bwebsocket\s*:\s*true`,
+    // fastify route option
+    String.raw`upgradeWebSocket`,
+    // hono
+    String.raw`@\w+\.websocket\b|websockets\.serve|WebsocketConsumer`,
+    // FastAPI / websockets / Django Channels
+    String.raw`ActionCable|ApplicationCable`,
+    // rails
+    String.raw`text/event-stream`
+    // SSE
+  ].join("|")
+);
+var AUTH_CONTENT_RE = new RegExp(
+  [
+    String.raw`@UseGuards|\bpassport\.`,
+    // NestJS / Express
+    String.raw`app\.use\(\s*\w*[aA]uth`,
+    // app.use(auth...), app.use(requireAuth...)
+    String.raw`\brequireAuth\b|\bwithAuth\b|\bverifyToken\b|\bjwt\.(?:sign|verify)\b`,
+    String.raw`getServerSession|getToken\(`,
+    // next-auth
+    String.raw`\bpreHandler\b`,
+    // fastify hook (often auth)
+    String.raw`@login_required|@permission_required|@permission_classes|permission_classes\s*=`,
+    // Django/Flask
+    String.raw`\bbefore_request\b`,
+    // flask middleware
+    String.raw`HTTPBearer|OAuth2PasswordBearer`,
+    // FastAPI security
+    String.raw`before_action\s+:authenticate|authenticate_user!`,
+    // rails
+    String.raw`\[Authorize|@PreAuthorize|@Secured\b`
+    // ASP.NET / Spring
+  ].join("|")
+);
 var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
 var MAX_CONTENT_SCAN_BYTES = 2e6;
 function segmentsOf(path) {
@@ -1272,6 +1316,8 @@ function detectCandidates(repo, files, stack) {
   const routeCandidates = /* @__PURE__ */ new Set();
   const apiCandidates = /* @__PURE__ */ new Set();
   const schemaCandidates = /* @__PURE__ */ new Set();
+  const realtimeCandidates = /* @__PURE__ */ new Set();
+  const authCandidates = /* @__PURE__ */ new Set();
   for (const f of files) {
     if (f.binary || f.size === 0) continue;
     const p = f.path;
@@ -1294,12 +1340,16 @@ function detectCandidates(repo, files, stack) {
       if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
       if (API_CONTENT_RE.test(src)) apiCandidates.add(p);
       if (SCHEMA_CONTENT_RE.test(src)) schemaCandidates.add(p);
+      if (REALTIME_CONTENT_RE.test(src)) realtimeCandidates.add(p);
+      if (AUTH_CONTENT_RE.test(src)) authCandidates.add(p);
     }
   }
   return {
     routeCandidates: [...routeCandidates].sort(),
     apiCandidates: [...apiCandidates].sort(),
     schemaCandidates: [...schemaCandidates].sort(),
+    realtimeCandidates: [...realtimeCandidates].sort(),
+    authCandidates: [...authCandidates].sort(),
     entryPoints: detectEntryPoints(repo, files)
   };
 }
@@ -1761,9 +1811,9 @@ var ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]e
 var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 var USE_RE = /(\w+)\.use\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)/g;
-var ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+var ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|all|ws)\(\s*["'`]([^"'`]*)["'`]/g;
 var ROUTE_CHAIN_RE = /(\w+)\.route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
-var CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all)\s*\(/g;
+var CHAIN_VERB_RE = /\.\s*(get|post|put|delete|patch|all|ws)\s*\(/g;
 function methodOf2(verb) {
   return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
 }
@@ -1915,11 +1965,13 @@ var fastifyAdapter = {
       for (const m of src.matchAll(ROUTE_RE2)) {
         const prefix = prefixFor(m[1]);
         if (prefix === null) continue;
+        const tail = src.slice((m.index ?? 0) + m[0].length).slice(0, 200);
+        const isWs = /^\s*,\s*\{[^}]*\bwebsocket\s*:\s*true/.test(tail);
         routes.push({
           route: joinRoute(prefix, m[3]),
           file: path,
           kind: "api",
-          method: methodOf3(m[2])
+          method: isWs ? "WS" : methodOf3(m[2])
         });
       }
       for (const m of src.matchAll(ROUTE_OBJ_RE)) {
@@ -1929,6 +1981,10 @@ var fastifyAdapter = {
         const url = slice.match(URL_RE)?.[1];
         if (url === void 0) continue;
         const route = joinRoute(prefix, url);
+        if (/\bwebsocket\s*:\s*true/.test(slice)) {
+          routes.push({ route, file: path, kind: "api", method: "WS" });
+          continue;
+        }
         const methodM = slice.match(METHOD_RE2);
         const verbs = methodM?.[1] ? [methodM[1]] : (methodM?.[2] ?? "").split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
         if (verbs.length) {
@@ -2846,6 +2902,16 @@ function computeUnknowns(stack, routes, hints, workspaces) {
       "The data model is not structured by the engine \u2014 extract entities, fields, types, and relations from `hints.schemaCandidates` into `architecture/DATA-MODEL.md`."
     );
   }
+  if (hints.realtimeCandidates.length > 0) {
+    u.push(
+      "Realtime/WebSocket signals were found \u2014 enumerate the channels, events, and message shapes from `hints.realtimeCandidates` in `architecture/INTERFACES.md`; they rarely appear in HTTP route tables."
+    );
+  }
+  if (hints.authCandidates.length > 0) {
+    u.push(
+      "Auth/middleware signals were found \u2014 read `hints.authCandidates` and record the auth rule per operation in the `architecture/INTERFACES.md` interface table's Auth column."
+    );
+  }
   return u;
 }
 function analyze(opts) {
@@ -3307,6 +3373,20 @@ function interfacesDoc(inv, opts) {
     "## API surface candidates (tRPC / GraphQL / gRPC / OpenAPI)",
     "",
     listOrNone(inv.hints.apiCandidates, "_No RPC/GraphQL/OpenAPI candidates detected._"),
+    "",
+    "## Realtime / WebSocket candidates (verify)",
+    "",
+    listOrNone(
+      inv.hints.realtimeCandidates,
+      "_No realtime/WebSocket signals detected._"
+    ),
+    "",
+    "## Auth / middleware candidates (verify)",
+    "",
+    listOrNone(
+      inv.hints.authCandidates,
+      "_No auth/middleware signals detected \u2014 still record the auth rule per operation below._"
+    ),
     "",
     "## Interface table (fill this in)",
     "",
@@ -4178,7 +4258,7 @@ function planToInventory(plan, opts) {
     envVars: plan.envVars ?? [],
     scripts: {},
     features: planFeatures(plan.features),
-    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], entryPoints: [] },
+    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], entryPoints: [] },
     unknowns: [],
     excludedCount: 0,
     product: {
@@ -4884,13 +4964,13 @@ function main() {
   }
   const result = render(inv, opts);
   writeOutput(result, opts);
-  const hintTotal = inv.hints.routeCandidates.length + inv.hints.apiCandidates.length + inv.hints.schemaCandidates.length;
+  const hintTotal = inv.hints.routeCandidates.length + inv.hints.apiCandidates.length + inv.hints.schemaCandidates.length + inv.hints.realtimeCandidates.length + inv.hints.authCandidates.length;
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
     `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " \xB7 " + inv.stack.frameworks.join(", ") : ""}`,
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`,
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
-    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
+    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
     ...inv.workspaces ? [
       `  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce(
         (n, w) => n + (w.dependsOn?.length ?? 0),

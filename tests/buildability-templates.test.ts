@@ -170,6 +170,7 @@ describe("INTERFACES.md — operation contracts", () => {
     expect(md).toContain("{ userId: string }");
     expect(md).toContain("send welcome email");
   });
+
 });
 
 describe("feature PRD — write contracts & hardened DoD", () => {
