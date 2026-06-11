@@ -1,25 +1,10 @@
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join, posix } from "node:path";
 import { detectStack } from "./stack.js";
+import { readJsonManifest, safeRead } from "./manifest.js";
 import { extractDependencies } from "../adapters/generic.js";
 import type { FileInfo, Hints, RouteInfo, StackInfo, Workspace, WorkspaceKind } from "../types.js";
-
-function readJson(path: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function safeRead(path: string): string {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return "";
-  }
-}
 
 /** Workspace name from a member's `Cargo.toml` `[package] name`; null if no manifest. */
 function readCargoName(dir: string): string | null {
@@ -43,6 +28,7 @@ function addWorkspace(
   relDir: string,
   found: Map<string, Workspace>,
   kind: WorkspaceKind,
+  warnings?: string[],
 ): void {
   const norm = relDir.split("\\").join("/").replace(/^\.\//, "").replace(/\/+$/, "");
   if (!norm || norm === "." || found.has(norm)) return;
@@ -51,16 +37,16 @@ function addWorkspace(
     name = readCargoName(join(repo, norm));
   } else if (kind === "go") {
     name = readGoModule(join(repo, norm));
+  } else if (existsSync(join(repo, norm, "package.json"))) {
+    // A malformed member manifest still marks a workspace (the dir was declared
+    // a member); it falls back to the path name and the warning surfaces it.
+    const pkg = readJsonManifest(join(repo, norm, "package.json"), `${norm}/package.json`, warnings);
+    name = pkg && typeof pkg.name === "string" && pkg.name ? pkg.name : "";
+  } else if (kind === "nx" && existsSync(join(repo, norm, "project.json"))) {
+    const proj = readJsonManifest(join(repo, norm, "project.json"), `${norm}/project.json`, warnings);
+    name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
   } else {
-    const pkg = readJson(join(repo, norm, "package.json"));
-    if (pkg) {
-      name = typeof pkg.name === "string" && pkg.name ? pkg.name : "";
-    } else if (kind === "nx" && existsSync(join(repo, norm, "project.json"))) {
-      const proj = readJson(join(repo, norm, "project.json"));
-      name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
-    } else {
-      name = null;
-    }
+    name = null;
   }
   if (name === null) return; // no manifest → not a workspace
   found.set(norm, { name: name || norm, path: norm, kind });
@@ -75,6 +61,7 @@ function collectWorkspacesRecursive(
   found: Map<string, Workspace>,
   kind: WorkspaceKind,
   depth: number,
+  warnings?: string[],
 ): void {
   if (depth > 5) return;
   let entries: Dirent[];
@@ -86,8 +73,8 @@ function collectWorkspacesRecursive(
   for (const ent of entries) {
     if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
     const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
-    addWorkspace(repo, sub, found, kind);
-    collectWorkspacesRecursive(repo, sub, found, kind, depth + 1);
+    addWorkspace(repo, sub, found, kind, warnings);
+    collectWorkspacesRecursive(repo, sub, found, kind, depth + 1, warnings);
   }
 }
 
@@ -97,21 +84,22 @@ function expandPattern(
   raw: string,
   found: Map<string, Workspace>,
   kind: WorkspaceKind,
+  warnings?: string[],
 ): void {
   const pat = raw.replace(/\/+$/, ""); // normalize a trailing slash
   if (pat.endsWith("/**")) {
-    collectWorkspacesRecursive(repo, pat.slice(0, -3), found, kind, 0);
+    collectWorkspacesRecursive(repo, pat.slice(0, -3), found, kind, 0, warnings);
   } else if (pat.endsWith("/*")) {
     const base = pat.slice(0, -2);
     try {
       for (const ent of readdirSync(join(repo, base), { withFileTypes: true })) {
-        if (ent.isDirectory()) addWorkspace(repo, join(base, ent.name), found, kind);
+        if (ent.isDirectory()) addWorkspace(repo, join(base, ent.name), found, kind, warnings);
       }
     } catch {
       /* glob base missing */
     }
   } else {
-    addWorkspace(repo, pat, found, kind);
+    addWorkspace(repo, pat, found, kind, warnings);
   }
 }
 
@@ -138,7 +126,10 @@ function globToRegExp(pat: string): RegExp {
 }
 
 /** npm/yarn `workspaces` + pnpm-workspace.yaml patterns (positives and `!` negations). */
-function npmFamilyPatterns(repo: string): {
+function npmFamilyPatterns(
+  repo: string,
+  warnings?: string[],
+): {
   positives: Array<{ pattern: string; kind: WorkspaceKind }>;
   negations: string[];
 } {
@@ -151,7 +142,7 @@ function npmFamilyPatterns(repo: string): {
     else positives.push({ pattern: t, kind });
   };
 
-  const pkg = readJson(join(repo, "package.json"));
+  const pkg = readJsonManifest(join(repo, "package.json"), "package.json", warnings);
   if (pkg) {
     const ws = pkg.workspaces;
     if (Array.isArray(ws)) {
@@ -181,14 +172,17 @@ function npmFamilyPatterns(repo: string): {
 }
 
 /** lerna.json `packages` / nx.json layout — fallbacks when package.json declares none. */
-function fallbackNpmPatterns(repo: string): Array<{ pattern: string; kind: WorkspaceKind }> {
-  const lerna = readJson(join(repo, "lerna.json"));
+function fallbackNpmPatterns(
+  repo: string,
+  warnings?: string[],
+): Array<{ pattern: string; kind: WorkspaceKind }> {
+  const lerna = readJsonManifest(join(repo, "lerna.json"), "lerna.json", warnings);
   if (lerna && Array.isArray(lerna.packages)) {
     return lerna.packages
       .filter((x): x is string => typeof x === "string")
       .map((pattern) => ({ pattern, kind: "lerna" as WorkspaceKind }));
   }
-  const nx = readJson(join(repo, "nx.json"));
+  const nx = readJsonManifest(join(repo, "nx.json"), "nx.json", warnings);
   if (nx) {
     const layout = (nx.workspaceLayout ?? {}) as Record<string, unknown>;
     const appsDir = typeof layout.appsDir === "string" ? layout.appsDir : "apps";
@@ -267,15 +261,16 @@ function detectGoWorkspaces(repo: string, found: Map<string, Workspace>): void {
  * go.work `use` directives. A trailing `/*` glob is expanded one directory
  * level, `/**` recursively. Returns [] for a single-package repo.
  */
-export function detectWorkspaces(repo: string): Workspace[] {
+export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[] {
   const found = new Map<string, Workspace>();
 
   // JS/TS family: npm/yarn/pnpm declarations, else lerna/nx as fallback signals.
-  const { positives, negations } = npmFamilyPatterns(repo);
-  const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo);
+  const { positives, negations } = npmFamilyPatterns(repo, warnings);
+  const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo, warnings);
   if (npmPatterns.length) {
     const candidates = new Map<string, Workspace>();
-    for (const { pattern, kind } of npmPatterns) expandPattern(repo, pattern, candidates, kind);
+    for (const { pattern, kind } of npmPatterns)
+      expandPattern(repo, pattern, candidates, kind, warnings);
     const negRes = negations.map(globToRegExp);
     for (const ws of candidates.values()) {
       if (negRes.some((re) => re.test(ws.path))) continue;
@@ -296,8 +291,12 @@ function resolveDepPath(wsPath: string, rel: string): string {
 }
 
 /** Sibling-workspace edges declared in an npm-family manifest. */
-function npmEdges(repo: string, ws: Workspace, byName: Set<string>): string[] {
-  const pkg = readJson(join(repo, ws.path, "package.json"));
+function npmEdges(repo: string, ws: Workspace, byName: Set<string>, warnings?: string[]): string[] {
+  const pkg = readJsonManifest(
+    join(repo, ws.path, "package.json"),
+    `${ws.path}/package.json`,
+    warnings,
+  );
   if (!pkg) return [];
   const edges = new Set<string>();
   for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
@@ -358,7 +357,11 @@ function goEdges(repo: string, ws: Workspace, byName: Set<string>, byPath: Map<s
  * declares a dependency on. Edges come from manifests only; implicit coupling
  * is left to the agent.
  */
-export function buildWorkspaceGraph(repo: string, workspaces: Workspace[]): void {
+export function buildWorkspaceGraph(
+  repo: string,
+  workspaces: Workspace[],
+  warnings?: string[],
+): void {
   const byName = new Set(workspaces.map((w) => w.name));
   const byPath = new Map(workspaces.map((w) => [w.path, w.name]));
   for (const ws of workspaces) {
@@ -367,9 +370,44 @@ export function buildWorkspaceGraph(repo: string, workspaces: Workspace[]): void
         ? cargoEdges(repo, ws, byName, byPath)
         : ws.kind === "go"
           ? goEdges(repo, ws, byName, byPath)
-          : npmEdges(repo, ws, byName);
+          : npmEdges(repo, ws, byName, warnings);
     if (edges.length) ws.dependsOn = edges.sort();
   }
+}
+
+/**
+ * First dependency cycle in the workspace graph (DFS over `dependsOn`, nodes
+ * and edges visited in sorted order, so the result is deterministic). Returns
+ * the cycle as a closed path (`["a", "b", "a"]`), or null. A cycle is legal —
+ * npm devDependencies routinely create one — but the build order then falls
+ * back to path order, which the agent should hear about, not discover.
+ */
+export function findWorkspaceCycle(workspaces: Workspace[]): string[] | null {
+  const deps = new Map(workspaces.map((w) => [w.name, [...(w.dependsOn ?? [])].sort()]));
+  const state = new Map<string, "visiting" | "done">();
+  const stack: string[] = [];
+  const visit = (name: string): string[] | null => {
+    state.set(name, "visiting");
+    stack.push(name);
+    for (const dep of deps.get(name) ?? []) {
+      if (!deps.has(dep)) continue;
+      if (state.get(dep) === "visiting") return [...stack.slice(stack.indexOf(dep)), dep];
+      if (!state.has(dep)) {
+        const found = visit(dep);
+        if (found) return found;
+      }
+    }
+    stack.pop();
+    state.set(name, "done");
+    return null;
+  };
+  for (const name of [...deps.keys()].sort()) {
+    if (!state.has(name)) {
+      const found = visit(name);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 /**
@@ -392,6 +430,7 @@ export function enrichWorkspaceStacks(
   repo: string,
   workspaces: Workspace[],
   files: FileInfo[],
+  warnings?: string[],
 ): void {
   const matcher = workspaceMatcher(workspaces);
   const filesByWs = new Map<string, FileInfo[]>();
@@ -408,8 +447,8 @@ export function enrichWorkspaceStacks(
     const prefix = ws.path + "/";
     const rebased = wsFiles.map((f) => ({ ...f, path: f.path.slice(prefix.length) }));
     ws.fileCount = wsFiles.length;
-    ws.stack = detectStack(join(repo, ws.path), rebased);
-    const deps = extractDependencies(join(repo, ws.path), rebased);
+    ws.stack = detectStack(join(repo, ws.path), rebased, warnings, prefix);
+    const deps = extractDependencies(join(repo, ws.path), rebased, warnings, prefix);
     if (deps.length) {
       ws.dependencies = deps.map((d) => ({ ...d, manifest: prefix + d.manifest }));
     }

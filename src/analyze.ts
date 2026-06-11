@@ -7,6 +7,7 @@ import {
   enrichWorkspaceStacks,
   mergeWorkspaceStacks,
   enrichWorkspaceSurface,
+  findWorkspaceCycle,
 } from "./detect/workspaces.js";
 import { detectCandidates } from "./detect/candidates.js";
 import {
@@ -68,30 +69,40 @@ export function analyze(opts: Options): Inventory {
     exclude: opts.exclude,
     out: opts.out,
   });
-  let stack = detectStack(opts.repo, files);
+  // Non-fatal degradations (malformed manifests, dependency cycles) collect
+  // here; deduped+sorted below so repeat reads of one broken file warn once.
+  const warnings: string[] = [];
+  let stack = detectStack(opts.repo, files, warnings);
   // Workspaces come first: a monorepo's frameworks live in workspace manifests,
   // and route adapters activate off the (merged) global stack.
-  const workspaces = detectWorkspaces(opts.repo);
+  const workspaces = detectWorkspaces(opts.repo, warnings);
   if (workspaces.length > 0) {
-    buildWorkspaceGraph(opts.repo, workspaces);
-    enrichWorkspaceStacks(opts.repo, workspaces, files);
+    buildWorkspaceGraph(opts.repo, workspaces, warnings);
+    enrichWorkspaceStacks(opts.repo, workspaces, files, warnings);
     stack = mergeWorkspaceStacks(stack, workspaces);
+    const cycle = findWorkspaceCycle(workspaces);
+    if (cycle) {
+      warnings.push(
+        `workspace dependency cycle: ${cycle.join(" → ")} — the build order falls back to path order for these workspaces`,
+      );
+    }
   }
-  const dependencies = extractDependencies(opts.repo, files);
+  const dependencies = extractDependencies(opts.repo, files, warnings);
   const routes = detectRoutes(files, stack, opts.repo);
   const i18n = detectI18n(opts.repo, files);
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");
   const docs = collectByCategory(files, "doc");
   const envVars = extractEnvVars(opts.repo, files);
-  const scripts = extractScripts(opts.repo);
+  const scripts = extractScripts(opts.repo, warnings);
   const hints = detectCandidates(opts.repo, files, stack);
   if (workspaces.length > 0) {
     enrichWorkspaceSurface(workspaces, routes, hints, schemas);
   }
-  const node = detectNodeVersion(opts.repo);
+  const node = detectNodeVersion(opts.repo, warnings);
   const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
   const unknowns = computeUnknowns(stack, routes, hints, workspaces);
+  const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
 
   return {
@@ -118,6 +129,7 @@ export function analyze(opts: Options): Inventory {
     features,
     hints,
     unknowns,
+    ...(uniqueWarnings.length ? { warnings: uniqueWarnings } : {}),
     ...(workspaces.length ? { workspaces } : {}),
     ...(node ? { runtime: { node } } : {}),
     excludedCount,

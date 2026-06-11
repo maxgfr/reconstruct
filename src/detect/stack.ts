@@ -1,5 +1,6 @@
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonManifest, safeRead } from "./manifest.js";
 import type { FileInfo, StackInfo } from "../types.js";
 
 const EXT_LANGUAGE: Record<string, string> = {
@@ -150,15 +151,16 @@ export function detectLibraries(deps: Record<string, string>): string[] {
   return [...found];
 }
 
-function readJson(path: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-export function detectStack(repo: string, files: FileInfo[]): StackInfo {
+/**
+ * `labelBase` prefixes manifest paths in warnings (e.g. a workspace dir), so a
+ * malformed `apps/web/package.json` is reported as such, not as the root's.
+ */
+export function detectStack(
+  repo: string,
+  files: FileInfo[],
+  warnings?: string[],
+  labelBase = "",
+): StackInfo {
   // Languages ranked by file count.
   const counts = new Map<string, number>();
   for (const f of files) {
@@ -176,7 +178,7 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
 
   // JS/TS ecosystem.
   const hasPkg = existsSync(join(repo, "package.json"));
-  const pkg = readJson(join(repo, "package.json"));
+  const pkg = readJsonManifest(join(repo, "package.json"), labelBase + "package.json", warnings);
   if (pkg) {
     const allDeps = {
       ...((pkg.dependencies as Record<string, string>) ?? {}),
@@ -261,20 +263,12 @@ export function detectStack(repo: string, files: FileInfo[]): StackInfo {
   };
 }
 
-function safeRead(path: string): string {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return "";
-  }
-}
-
 // Workspace detection lives in ./workspaces.js; re-exported here for compatibility.
 export { detectWorkspaces } from "./workspaces.js";
 
 /** Required Node version from package.json `engines.node`, if declared. */
-export function detectNodeVersion(repo: string): string | undefined {
-  const pkg = readJson(join(repo, "package.json"));
+export function detectNodeVersion(repo: string, warnings?: string[]): string | undefined {
+  const pkg = readJsonManifest(join(repo, "package.json"), "package.json", warnings);
   const engines = pkg?.engines;
   if (engines && typeof engines === "object") {
     const node = (engines as Record<string, unknown>).node;

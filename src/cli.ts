@@ -376,6 +376,12 @@ function main(): void {
         ]
       : []),
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
+    ...(inv.warnings?.length
+      ? [
+          `  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`,
+          ...inv.warnings.map((w) => `    ⚠ ${w}`),
+        ]
+      : []),
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...(opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),

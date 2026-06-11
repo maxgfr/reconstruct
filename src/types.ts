@@ -316,6 +316,13 @@ export interface Inventory {
   hints: Hints;
   /** Things the engine could not determine and the agent must investigate. */
   unknowns: string[];
+  /**
+   * Non-fatal analysis warnings — a manifest that exists but does not parse, a
+   * workspace dependency cycle. Detection degraded gracefully but the agent
+   * should verify the affected area instead of trusting an empty default.
+   * Omitted when there are none.
+   */
+  warnings?: string[];
   /** Detected monorepo workspaces, if any. */
   workspaces?: Workspace[];
   /** Detected runtime constraints (e.g. required Node version). */

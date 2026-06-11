@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonManifest } from "../detect/manifest.js";
 import type { DependencyInfo, FileInfo } from "../types.js";
 
 function read(repo: string, rel: string): string | null {
@@ -19,25 +20,25 @@ function asStringMap(value: unknown): Record<string, string> {
   return out;
 }
 
-export function extractDependencies(repo: string, files: FileInfo[]): DependencyInfo[] {
+export function extractDependencies(
+  repo: string,
+  files: FileInfo[],
+  warnings?: string[],
+  labelBase = "",
+): DependencyInfo[] {
   const result: DependencyInfo[] = [];
   const present = new Set(files.map((f) => f.path));
 
   // npm / package.json
   if (present.has("package.json")) {
-    const raw = read(repo, "package.json");
-    if (raw) {
-      try {
-        const pkg = JSON.parse(raw) as Record<string, unknown>;
-        result.push({
-          manager: "npm",
-          manifest: "package.json",
-          runtime: asStringMap(pkg.dependencies),
-          dev: asStringMap(pkg.devDependencies),
-        });
-      } catch {
-        /* ignore malformed */
-      }
+    const pkg = readJsonManifest(join(repo, "package.json"), labelBase + "package.json", warnings);
+    if (pkg) {
+      result.push({
+        manager: "npm",
+        manifest: "package.json",
+        runtime: asStringMap(pkg.dependencies),
+        dev: asStringMap(pkg.devDependencies),
+      });
     }
   }
 
@@ -91,19 +92,18 @@ export function extractDependencies(repo: string, files: FileInfo[]): Dependency
 
   // composer / composer.json
   if (present.has("composer.json")) {
-    const raw = read(repo, "composer.json");
-    if (raw) {
-      try {
-        const composer = JSON.parse(raw) as Record<string, unknown>;
-        result.push({
-          manager: "composer",
-          manifest: "composer.json",
-          runtime: asStringMap(composer.require),
-          dev: asStringMap(composer["require-dev"]),
-        });
-      } catch {
-        /* ignore */
-      }
+    const composer = readJsonManifest(
+      join(repo, "composer.json"),
+      labelBase + "composer.json",
+      warnings,
+    );
+    if (composer) {
+      result.push({
+        manager: "composer",
+        manifest: "composer.json",
+        runtime: asStringMap(composer.require),
+        dev: asStringMap(composer["require-dev"]),
+      });
     }
   }
 
@@ -210,15 +210,9 @@ function parseTomlSection(toml: string, section: string): Record<string, string>
   return out;
 }
 
-export function extractScripts(repo: string): Record<string, string> {
-  const raw = read(repo, "package.json");
-  if (!raw) return {};
-  try {
-    const pkg = JSON.parse(raw) as Record<string, unknown>;
-    return asStringMap(pkg.scripts);
-  } catch {
-    return {};
-  }
+export function extractScripts(repo: string, warnings?: string[]): Record<string, string> {
+  const pkg = readJsonManifest(join(repo, "package.json"), "package.json", warnings);
+  return pkg ? asStringMap(pkg.scripts) : {};
 }
 
 export function extractEnvVars(repo: string, files: FileInfo[]): string[] {

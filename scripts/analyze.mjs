@@ -313,19 +313,44 @@ function walk(repo, opts = {}) {
 }
 
 // src/detect/stack.ts
-import { readFileSync as readFileSync4, existsSync as existsSync2 } from "fs";
+import { existsSync as existsSync2 } from "fs";
 import { join as join4 } from "path";
 
+// src/detect/manifest.ts
+import { readFileSync as readFileSync2 } from "fs";
+function readJsonManifest(absPath, relLabel, warnings) {
+  let raw;
+  try {
+    raw = readFileSync2(absPath, "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    const reason = String(e.message ?? e).split("\n")[0];
+    warnings?.push(`malformed ${relLabel}: ${reason} \u2014 falling back to empty defaults`);
+    return null;
+  }
+}
+function safeRead(path) {
+  try {
+    return readFileSync2(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 // src/detect/workspaces.ts
-import { readFileSync as readFileSync3, existsSync, readdirSync as readdirSync2 } from "fs";
+import { existsSync, readdirSync as readdirSync2 } from "fs";
 import { join as join3, posix } from "path";
 
 // src/adapters/generic.ts
-import { readFileSync as readFileSync2 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { join as join2 } from "path";
 function read(repo, rel) {
   try {
-    return readFileSync2(join2(repo, rel), "utf8");
+    return readFileSync3(join2(repo, rel), "utf8");
   } catch {
     return null;
   }
@@ -338,22 +363,18 @@ function asStringMap(value) {
   }
   return out;
 }
-function extractDependencies(repo, files) {
+function extractDependencies(repo, files, warnings, labelBase = "") {
   const result = [];
   const present = new Set(files.map((f) => f.path));
   if (present.has("package.json")) {
-    const raw = read(repo, "package.json");
-    if (raw) {
-      try {
-        const pkg = JSON.parse(raw);
-        result.push({
-          manager: "npm",
-          manifest: "package.json",
-          runtime: asStringMap(pkg.dependencies),
-          dev: asStringMap(pkg.devDependencies)
-        });
-      } catch {
-      }
+    const pkg = readJsonManifest(join2(repo, "package.json"), labelBase + "package.json", warnings);
+    if (pkg) {
+      result.push({
+        manager: "npm",
+        manifest: "package.json",
+        runtime: asStringMap(pkg.dependencies),
+        dev: asStringMap(pkg.devDependencies)
+      });
     }
   }
   if (present.has("requirements.txt")) {
@@ -397,18 +418,18 @@ function extractDependencies(repo, files) {
     result.push({ manager: "go modules", manifest: "go.mod", runtime, dev: {} });
   }
   if (present.has("composer.json")) {
-    const raw = read(repo, "composer.json");
-    if (raw) {
-      try {
-        const composer = JSON.parse(raw);
-        result.push({
-          manager: "composer",
-          manifest: "composer.json",
-          runtime: asStringMap(composer.require),
-          dev: asStringMap(composer["require-dev"])
-        });
-      } catch {
-      }
+    const composer = readJsonManifest(
+      join2(repo, "composer.json"),
+      labelBase + "composer.json",
+      warnings
+    );
+    if (composer) {
+      result.push({
+        manager: "composer",
+        manifest: "composer.json",
+        runtime: asStringMap(composer.require),
+        dev: asStringMap(composer["require-dev"])
+      });
     }
   }
   if (present.has("Gemfile")) {
@@ -497,15 +518,9 @@ function parseTomlSection(toml, section) {
   }
   return out;
 }
-function extractScripts(repo) {
-  const raw = read(repo, "package.json");
-  if (!raw) return {};
-  try {
-    const pkg = JSON.parse(raw);
-    return asStringMap(pkg.scripts);
-  } catch {
-    return {};
-  }
+function extractScripts(repo, warnings) {
+  const pkg = readJsonManifest(join2(repo, "package.json"), "package.json", warnings);
+  return pkg ? asStringMap(pkg.scripts) : {};
 }
 function extractEnvVars(repo, files) {
   const names = /* @__PURE__ */ new Set();
@@ -538,20 +553,6 @@ function collectByCategory(files, category) {
 }
 
 // src/detect/workspaces.ts
-function readJson(path) {
-  try {
-    return JSON.parse(readFileSync3(path, "utf8"));
-  } catch {
-    return null;
-  }
-}
-function safeRead(path) {
-  try {
-    return readFileSync3(path, "utf8");
-  } catch {
-    return "";
-  }
-}
 function readCargoName(dir) {
   const toml = safeRead(join3(dir, "Cargo.toml"));
   if (!toml) return null;
@@ -565,7 +566,7 @@ function readGoModule(dir) {
   const m = gomod.match(/^module\s+(\S+)/m);
   return m ? m[1] : "";
 }
-function addWorkspace(repo, relDir, found, kind) {
+function addWorkspace(repo, relDir, found, kind, warnings) {
   const norm = relDir.split("\\").join("/").replace(/^\.\//, "").replace(/\/+$/, "");
   if (!norm || norm === "." || found.has(norm)) return;
   let name;
@@ -573,22 +574,20 @@ function addWorkspace(repo, relDir, found, kind) {
     name = readCargoName(join3(repo, norm));
   } else if (kind === "go") {
     name = readGoModule(join3(repo, norm));
+  } else if (existsSync(join3(repo, norm, "package.json"))) {
+    const pkg = readJsonManifest(join3(repo, norm, "package.json"), `${norm}/package.json`, warnings);
+    name = pkg && typeof pkg.name === "string" && pkg.name ? pkg.name : "";
+  } else if (kind === "nx" && existsSync(join3(repo, norm, "project.json"))) {
+    const proj = readJsonManifest(join3(repo, norm, "project.json"), `${norm}/project.json`, warnings);
+    name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
   } else {
-    const pkg = readJson(join3(repo, norm, "package.json"));
-    if (pkg) {
-      name = typeof pkg.name === "string" && pkg.name ? pkg.name : "";
-    } else if (kind === "nx" && existsSync(join3(repo, norm, "project.json"))) {
-      const proj = readJson(join3(repo, norm, "project.json"));
-      name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
-    } else {
-      name = null;
-    }
+    name = null;
   }
   if (name === null) return;
   found.set(norm, { name: name || norm, path: norm, kind });
 }
 var WS_SKIP_DIRS = /* @__PURE__ */ new Set([".git", "node_modules", ".turbo", "dist", "build", ".next"]);
-function collectWorkspacesRecursive(repo, relBase, found, kind, depth) {
+function collectWorkspacesRecursive(repo, relBase, found, kind, depth, warnings) {
   if (depth > 5) return;
   let entries;
   try {
@@ -599,24 +598,24 @@ function collectWorkspacesRecursive(repo, relBase, found, kind, depth) {
   for (const ent of entries) {
     if (!ent.isDirectory() || WS_SKIP_DIRS.has(ent.name)) continue;
     const sub = relBase ? `${relBase}/${ent.name}` : ent.name;
-    addWorkspace(repo, sub, found, kind);
-    collectWorkspacesRecursive(repo, sub, found, kind, depth + 1);
+    addWorkspace(repo, sub, found, kind, warnings);
+    collectWorkspacesRecursive(repo, sub, found, kind, depth + 1, warnings);
   }
 }
-function expandPattern(repo, raw, found, kind) {
+function expandPattern(repo, raw, found, kind, warnings) {
   const pat = raw.replace(/\/+$/, "");
   if (pat.endsWith("/**")) {
-    collectWorkspacesRecursive(repo, pat.slice(0, -3), found, kind, 0);
+    collectWorkspacesRecursive(repo, pat.slice(0, -3), found, kind, 0, warnings);
   } else if (pat.endsWith("/*")) {
     const base = pat.slice(0, -2);
     try {
       for (const ent of readdirSync2(join3(repo, base), { withFileTypes: true })) {
-        if (ent.isDirectory()) addWorkspace(repo, join3(base, ent.name), found, kind);
+        if (ent.isDirectory()) addWorkspace(repo, join3(base, ent.name), found, kind, warnings);
       }
     } catch {
     }
   } else {
-    addWorkspace(repo, pat, found, kind);
+    addWorkspace(repo, pat, found, kind, warnings);
   }
 }
 function globToRegExp(pat) {
@@ -639,7 +638,7 @@ function globToRegExp(pat) {
   }
   return new RegExp(`^${re}($|/)`);
 }
-function npmFamilyPatterns(repo) {
+function npmFamilyPatterns(repo, warnings) {
   const positives = [];
   const negations = [];
   const push = (raw, kind) => {
@@ -648,7 +647,7 @@ function npmFamilyPatterns(repo) {
     if (t.startsWith("!")) negations.push(t.slice(1));
     else positives.push({ pattern: t, kind });
   };
-  const pkg = readJson(join3(repo, "package.json"));
+  const pkg = readJsonManifest(join3(repo, "package.json"), "package.json", warnings);
   if (pkg) {
     const ws = pkg.workspaces;
     if (Array.isArray(ws)) {
@@ -672,12 +671,12 @@ function npmFamilyPatterns(repo) {
   }
   return { positives, negations };
 }
-function fallbackNpmPatterns(repo) {
-  const lerna = readJson(join3(repo, "lerna.json"));
+function fallbackNpmPatterns(repo, warnings) {
+  const lerna = readJsonManifest(join3(repo, "lerna.json"), "lerna.json", warnings);
   if (lerna && Array.isArray(lerna.packages)) {
     return lerna.packages.filter((x) => typeof x === "string").map((pattern) => ({ pattern, kind: "lerna" }));
   }
-  const nx = readJson(join3(repo, "nx.json"));
+  const nx = readJsonManifest(join3(repo, "nx.json"), "nx.json", warnings);
   if (nx) {
     const layout = nx.workspaceLayout ?? {};
     const appsDir = typeof layout.appsDir === "string" ? layout.appsDir : "apps";
@@ -732,13 +731,14 @@ function detectGoWorkspaces(repo, found) {
     addWorkspace(repo, dir, found, "go");
   }
 }
-function detectWorkspaces(repo) {
+function detectWorkspaces(repo, warnings) {
   const found = /* @__PURE__ */ new Map();
-  const { positives, negations } = npmFamilyPatterns(repo);
-  const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo);
+  const { positives, negations } = npmFamilyPatterns(repo, warnings);
+  const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo, warnings);
   if (npmPatterns.length) {
     const candidates = /* @__PURE__ */ new Map();
-    for (const { pattern, kind } of npmPatterns) expandPattern(repo, pattern, candidates, kind);
+    for (const { pattern, kind } of npmPatterns)
+      expandPattern(repo, pattern, candidates, kind, warnings);
     const negRes = negations.map(globToRegExp);
     for (const ws of candidates.values()) {
       if (negRes.some((re) => re.test(ws.path))) continue;
@@ -752,8 +752,12 @@ function detectWorkspaces(repo) {
 function resolveDepPath(wsPath, rel) {
   return posix.normalize(posix.join(wsPath, rel)).replace(/\/+$/, "");
 }
-function npmEdges(repo, ws, byName) {
-  const pkg = readJson(join3(repo, ws.path, "package.json"));
+function npmEdges(repo, ws, byName, warnings) {
+  const pkg = readJsonManifest(
+    join3(repo, ws.path, "package.json"),
+    `${ws.path}/package.json`,
+    warnings
+  );
   if (!pkg) return [];
   const edges = /* @__PURE__ */ new Set();
   for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
@@ -804,19 +808,46 @@ function goEdges(repo, ws, byName, byPath) {
   }
   return [...edges];
 }
-function buildWorkspaceGraph(repo, workspaces) {
+function buildWorkspaceGraph(repo, workspaces, warnings) {
   const byName = new Set(workspaces.map((w) => w.name));
   const byPath = new Map(workspaces.map((w) => [w.path, w.name]));
   for (const ws of workspaces) {
-    const edges = ws.kind === "cargo" ? cargoEdges(repo, ws, byName, byPath) : ws.kind === "go" ? goEdges(repo, ws, byName, byPath) : npmEdges(repo, ws, byName);
+    const edges = ws.kind === "cargo" ? cargoEdges(repo, ws, byName, byPath) : ws.kind === "go" ? goEdges(repo, ws, byName, byPath) : npmEdges(repo, ws, byName, warnings);
     if (edges.length) ws.dependsOn = edges.sort();
   }
+}
+function findWorkspaceCycle(workspaces) {
+  const deps = new Map(workspaces.map((w) => [w.name, [...w.dependsOn ?? []].sort()]));
+  const state = /* @__PURE__ */ new Map();
+  const stack = [];
+  const visit = (name) => {
+    state.set(name, "visiting");
+    stack.push(name);
+    for (const dep of deps.get(name) ?? []) {
+      if (!deps.has(dep)) continue;
+      if (state.get(dep) === "visiting") return [...stack.slice(stack.indexOf(dep)), dep];
+      if (!state.has(dep)) {
+        const found = visit(dep);
+        if (found) return found;
+      }
+    }
+    stack.pop();
+    state.set(name, "done");
+    return null;
+  };
+  for (const name of [...deps.keys()].sort()) {
+    if (!state.has(name)) {
+      const found = visit(name);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 function workspaceMatcher(workspaces) {
   const byDepth = [...workspaces].sort((a, b) => b.path.length - a.path.length);
   return (path) => byDepth.find((ws) => path.startsWith(ws.path + "/"));
 }
-function enrichWorkspaceStacks(repo, workspaces, files) {
+function enrichWorkspaceStacks(repo, workspaces, files, warnings) {
   const matcher = workspaceMatcher(workspaces);
   const filesByWs = /* @__PURE__ */ new Map();
   for (const f of files) {
@@ -831,8 +862,8 @@ function enrichWorkspaceStacks(repo, workspaces, files) {
     const prefix = ws.path + "/";
     const rebased = wsFiles.map((f) => ({ ...f, path: f.path.slice(prefix.length) }));
     ws.fileCount = wsFiles.length;
-    ws.stack = detectStack(join3(repo, ws.path), rebased);
-    const deps = extractDependencies(join3(repo, ws.path), rebased);
+    ws.stack = detectStack(join3(repo, ws.path), rebased, warnings, prefix);
+    const deps = extractDependencies(join3(repo, ws.path), rebased, warnings, prefix);
     if (deps.length) {
       ws.dependencies = deps.map((d) => ({ ...d, manifest: prefix + d.manifest }));
     }
@@ -1033,14 +1064,7 @@ function detectLibraries(deps) {
   }
   return [...found];
 }
-function readJson2(path) {
-  try {
-    return JSON.parse(readFileSync4(path, "utf8"));
-  } catch {
-    return null;
-  }
-}
-function detectStack(repo, files) {
+function detectStack(repo, files, warnings, labelBase = "") {
   const counts = /* @__PURE__ */ new Map();
   for (const f of files) {
     const lang = EXT_LANGUAGE[f.ext];
@@ -1052,7 +1076,7 @@ function detectStack(repo, files) {
   let libraries = [];
   let hasTypeScript = files.some((f) => f.ext === ".ts" || f.ext === ".tsx");
   const hasPkg = existsSync2(join4(repo, "package.json"));
-  const pkg = readJson2(join4(repo, "package.json"));
+  const pkg = readJsonManifest(join4(repo, "package.json"), labelBase + "package.json", warnings);
   if (pkg) {
     const allDeps = {
       ...pkg.dependencies ?? {},
@@ -1076,14 +1100,14 @@ function detectStack(repo, files) {
   }
   if (existsSync2(join4(repo, "requirements.txt")) || existsSync2(join4(repo, "pyproject.toml"))) {
     packageManagers.add("pip");
-    const py = safeRead2(join4(repo, "requirements.txt")) + safeRead2(join4(repo, "pyproject.toml"));
+    const py = safeRead(join4(repo, "requirements.txt")) + safeRead(join4(repo, "pyproject.toml"));
     if (/\bdjango\b/i.test(py)) frameworks.add("Django");
     if (/\bflask\b/i.test(py)) frameworks.add("Flask");
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
   }
   if (existsSync2(join4(repo, "pubspec.yaml"))) {
     packageManagers.add("pub");
-    const pubspec = safeRead2(join4(repo, "pubspec.yaml"));
+    const pubspec = safeRead(join4(repo, "pubspec.yaml"));
     if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
       frameworks.add("Flutter");
     }
@@ -1091,30 +1115,30 @@ function detectStack(repo, files) {
   if (existsSync2(join4(repo, "Cargo.toml"))) packageManagers.add("cargo");
   if (existsSync2(join4(repo, "go.mod"))) {
     packageManagers.add("go modules");
-    const gomod = safeRead2(join4(repo, "go.mod"));
+    const gomod = safeRead(join4(repo, "go.mod"));
     for (const [pattern, label] of GO_FRAMEWORKS) {
       if (pattern.test(gomod)) frameworks.add(label);
     }
   }
   if (existsSync2(join4(repo, "Gemfile"))) {
     packageManagers.add("bundler");
-    if (/\brails\b/i.test(safeRead2(join4(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
-    if (/\bsinatra\b/i.test(safeRead2(join4(repo, "Gemfile")))) frameworks.add("Sinatra");
+    if (/\brails\b/i.test(safeRead(join4(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
+    if (/\bsinatra\b/i.test(safeRead(join4(repo, "Gemfile")))) frameworks.add("Sinatra");
   }
   if (existsSync2(join4(repo, "composer.json"))) {
     packageManagers.add("composer");
-    const composer = safeRead2(join4(repo, "composer.json"));
+    const composer = safeRead(join4(repo, "composer.json"));
     if (/laravel\/framework/.test(composer)) frameworks.add("Laravel");
     if (/symfony\/framework-bundle/.test(composer)) frameworks.add("Symfony");
   }
   if (existsSync2(join4(repo, "pom.xml"))) {
     packageManagers.add("maven");
-    if (/spring-boot/.test(safeRead2(join4(repo, "pom.xml")))) frameworks.add("Spring Boot");
+    if (/spring-boot/.test(safeRead(join4(repo, "pom.xml")))) frameworks.add("Spring Boot");
   }
   for (const gradle of ["build.gradle", "build.gradle.kts"]) {
     if (existsSync2(join4(repo, gradle))) {
       packageManagers.add("gradle");
-      if (/spring-boot/.test(safeRead2(join4(repo, gradle)))) frameworks.add("Spring Boot");
+      if (/spring-boot/.test(safeRead(join4(repo, gradle)))) frameworks.add("Spring Boot");
     }
   }
   return {
@@ -1126,15 +1150,8 @@ function detectStack(repo, files) {
     hasTypeScript
   };
 }
-function safeRead2(path) {
-  try {
-    return readFileSync4(path, "utf8");
-  } catch {
-    return "";
-  }
-}
-function detectNodeVersion(repo) {
-  const pkg = readJson2(join4(repo, "package.json"));
+function detectNodeVersion(repo, warnings) {
+  const pkg = readJsonManifest(join4(repo, "package.json"), "package.json", warnings);
   const engines = pkg?.engines;
   if (engines && typeof engines === "object") {
     const node = engines.node;
@@ -1144,7 +1161,7 @@ function detectNodeVersion(repo) {
 }
 
 // src/detect/candidates.ts
-import { readFileSync as readFileSync5 } from "fs";
+import { readFileSync as readFileSync4 } from "fs";
 import { join as join5 } from "path";
 var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
   ".ts",
@@ -1224,9 +1241,9 @@ function inDir(path, names) {
 function baseName(path) {
   return path.split("/").pop() ?? "";
 }
-function safeRead3(repo, rel) {
+function safeRead2(repo, rel) {
   try {
-    return readFileSync5(join5(repo, rel), "utf8");
+    return readFileSync4(join5(repo, rel), "utf8");
   } catch {
     return "";
   }
@@ -1253,7 +1270,7 @@ function detectCandidates(repo, files, stack) {
     if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
     if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
     if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
-      const src = safeRead3(repo, p);
+      const src = safeRead2(repo, p);
       if (!src) continue;
       if (ROUTE_CONTENT_RE.test(src)) routeCandidates.add(p);
       if (API_CONTENT_RE.test(src)) apiCandidates.add(p);
@@ -1305,7 +1322,7 @@ var CONVENTIONAL_ENTRIES = [
 function detectEntryPoints(repo, files) {
   const entries = /* @__PURE__ */ new Set();
   try {
-    const pkg = JSON.parse(readFileSync5(join5(repo, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync4(join5(repo, "package.json"), "utf8"));
     for (const key of ["main", "module"]) {
       const v = pkg[key];
       if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
@@ -1327,7 +1344,7 @@ function detectEntryPoints(repo, files) {
 }
 
 // src/adapters/nextjs.ts
-import { readFileSync as readFileSync6 } from "fs";
+import { readFileSync as readFileSync5 } from "fs";
 import { join as join6 } from "path";
 var CODE_PAGE_EXTS = /* @__PURE__ */ new Set([".tsx", ".ts", ".jsx", ".js"]);
 var PAGES_SPECIAL = /* @__PURE__ */ new Set(["_app", "_document", "_error", "middleware"]);
@@ -1358,7 +1375,7 @@ function afterDir(path, dir) {
 function routeMethods(repo, file) {
   let src;
   try {
-    src = readFileSync6(join6(repo, file), "utf8");
+    src = readFileSync5(join6(repo, file), "utf8");
   } catch {
     return [];
   }
@@ -1421,7 +1438,7 @@ var nextjsAdapter = {
 };
 
 // src/adapters/util.ts
-import { readFileSync as readFileSync7 } from "fs";
+import { readFileSync as readFileSync6 } from "fs";
 import { join as join7 } from "path";
 function readSources(files, repo, exts) {
   const set = new Set(exts);
@@ -1429,7 +1446,7 @@ function readSources(files, repo, exts) {
   for (const f of files) {
     if (!set.has(f.ext)) continue;
     try {
-      out.set(f.path, readFileSync7(join7(repo, f.path), "utf8"));
+      out.set(f.path, readFileSync6(join7(repo, f.path), "utf8"));
     } catch {
     }
   }
@@ -2133,7 +2150,7 @@ function detectRoutes(files, stack, repo) {
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync8 } from "fs";
+import { readFileSync as readFileSync7 } from "fs";
 import { join as join8, basename as basename2, extname as extname2 } from "path";
 var LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
 var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
@@ -2159,7 +2176,7 @@ function localeOf(path) {
 }
 function keysIn(repo, f) {
   try {
-    const raw = readFileSync8(join8(repo, f.path), "utf8");
+    const raw = readFileSync7(join8(repo, f.path), "utf8");
     if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
     return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
   } catch {
@@ -2604,28 +2621,36 @@ function analyze(opts) {
     exclude: opts.exclude,
     out: opts.out
   });
-  let stack = detectStack(opts.repo, files);
-  const workspaces = detectWorkspaces(opts.repo);
+  const warnings = [];
+  let stack = detectStack(opts.repo, files, warnings);
+  const workspaces = detectWorkspaces(opts.repo, warnings);
   if (workspaces.length > 0) {
-    buildWorkspaceGraph(opts.repo, workspaces);
-    enrichWorkspaceStacks(opts.repo, workspaces, files);
+    buildWorkspaceGraph(opts.repo, workspaces, warnings);
+    enrichWorkspaceStacks(opts.repo, workspaces, files, warnings);
     stack = mergeWorkspaceStacks(stack, workspaces);
+    const cycle = findWorkspaceCycle(workspaces);
+    if (cycle) {
+      warnings.push(
+        `workspace dependency cycle: ${cycle.join(" \u2192 ")} \u2014 the build order falls back to path order for these workspaces`
+      );
+    }
   }
-  const dependencies = extractDependencies(opts.repo, files);
+  const dependencies = extractDependencies(opts.repo, files, warnings);
   const routes = detectRoutes(files, stack, opts.repo);
   const i18n = detectI18n(opts.repo, files);
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");
   const docs = collectByCategory(files, "doc");
   const envVars = extractEnvVars(opts.repo, files);
-  const scripts = extractScripts(opts.repo);
+  const scripts = extractScripts(opts.repo, warnings);
   const hints = detectCandidates(opts.repo, files, stack);
   if (workspaces.length > 0) {
     enrichWorkspaceSurface(workspaces, routes, hints, schemas);
   }
-  const node = detectNodeVersion(opts.repo);
+  const node = detectNodeVersion(opts.repo, warnings);
   const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
   const unknowns = computeUnknowns(stack, routes, hints, workspaces);
+  const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   return {
     generatedWith: `reconstruct@${VERSION}`,
@@ -2651,6 +2676,7 @@ function analyze(opts) {
     features,
     hints,
     unknowns,
+    ...uniqueWarnings.length ? { warnings: uniqueWarnings } : {},
     ...workspaces.length ? { workspaces } : {},
     ...node ? { runtime: { node } } : {},
     excludedCount
@@ -3331,7 +3357,7 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync9 } from "fs";
+import { readFileSync as readFileSync8 } from "fs";
 import { join as join9 } from "path";
 var FENCE_LANG = {
   ".ts": "ts",
@@ -3380,7 +3406,7 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body;
     try {
-      body = readFileSync9(join9(opts.repo, rel), "utf8");
+      body = readFileSync8(join9(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
@@ -3744,7 +3770,7 @@ function writeArtifactsIfAbsent(artifacts, outDir) {
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync10, existsSync as existsSync4 } from "fs";
+import { readdirSync as readdirSync3, readFileSync as readFileSync9, existsSync as existsSync4 } from "fs";
 import { join as join12, relative as relative2, sep } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
@@ -3757,7 +3783,7 @@ function readMarkdownTree(dir) {
         if (GROUND_TRUTH_DIRS.has(rel)) continue;
         walk2(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out.push({ relPath: rel, content: readFileSync10(child, "utf8") });
+        out.push({ relPath: rel, content: readFileSync9(child, "utf8") });
       }
     }
   };
@@ -3772,7 +3798,7 @@ function bundleExisting(opts) {
       `no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`
     );
   }
-  const inv = JSON.parse(readFileSync10(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync9(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -3783,11 +3809,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync11 } from "fs";
+import { readFileSync as readFileSync10 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync11(path, "utf8");
+    raw = readFileSync10(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -4098,7 +4124,7 @@ ${body}
 }
 
 // src/check.ts
-import { existsSync as existsSync5, readFileSync as readFileSync12, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync11, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
 import { join as join13, relative as relative3 } from "path";
 var REQUIRED_DOCS = [
   "REBUILD.md",
@@ -4133,7 +4159,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name)) continue;
       out.push(...collectMarkdown(full, base));
     } else if (name.endsWith(".md")) {
-      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync12(full, "utf8") });
+      out.push({ rel: relative3(base, full).split("\\").join("/"), content: readFileSync11(full, "utf8") });
     }
   }
   return out;
@@ -4171,7 +4197,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync12(invPath, "utf8"));
+    inv = JSON.parse(readFileSync11(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -4639,6 +4665,10 @@ function main() {
       )} dependency edge(s)`
     ] : [],
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
+    ...inv.warnings?.length ? [
+      `  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`,
+      ...inv.warnings.map((w) => `    \u26A0 ${w}`)
+    ] : [],
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
