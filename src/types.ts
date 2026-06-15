@@ -55,6 +55,12 @@ export interface Options {
    * Set by `--check`; reads no repo.
    */
   check: boolean;
+  /** Requirement-support verification: write the worklist (`--verify`). */
+  verify?: boolean;
+  /** Path to an agent-filled verdicts file to apply (`--verify --apply <p>`). */
+  apply?: string;
+  /** Fold VERIFY.json into `--check` (fails on refuted/unsupported). `--semantic`. */
+  semantic?: boolean;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */
@@ -453,6 +459,48 @@ export interface CopyOp {
 export interface RenderResult {
   artifacts: Artifact[];
   copies: CopyOp[];
+}
+
+// ---------------------------------------------------------------------------
+// Requirement-support verification (`--verify` / `--check --semantic`). The
+// structural `--check` proves the tree is well-formed; it never proves each PRD
+// requirement actually TRACES to the original source. `--verify` pairs every
+// requirement with the feature's captured evidence; an agent adjudicates whether
+// it is grounded (supported), partial, not found (unsupported = invented), or
+// contradicted (refuted); `--check --semantic` then fails on a refuted/
+// unsupported requirement. Additive — the structural gate is unchanged.
+// ---------------------------------------------------------------------------
+export type VerdictKind = "supported" | "partial" | "refuted" | "unsupported";
+
+export interface ClaimEvidencePair {
+  claimId: string; // "C1", "C2", …
+  claim: string; // the requirement text (capped)
+  feature: string; // the feature slug it came from
+  evidenceRef: string; // the best-matched captured evidence (source file / route / entity)
+  digest: string; // the candidate evidence for this requirement
+}
+
+export interface Verdict extends ClaimEvidencePair {
+  verdict: VerdictKind;
+  note: string;
+}
+
+export interface VerifyResult {
+  ok: boolean;
+  pairs: number;
+  adjudicated: number;
+  supported: number;
+  partial: number;
+  refuted: number;
+  unsupported: number;
+  failures: { claimId: string; evidenceRef: string; verdict: VerdictKind; note: string }[];
+  unadjudicated: string[];
+  verdicts?: Verdict[];
+}
+
+export interface VerifyWorklist {
+  run: string;
+  pairs: ClaimEvidencePair[];
 }
 
 export const VERSION = "0.12.0";

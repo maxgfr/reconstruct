@@ -7,6 +7,7 @@ import { writeOutput, writeArtifactsIfAbsent } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
 import { checkOutput, formatCheckReport } from "./check.js";
+import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./verify.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -28,6 +29,9 @@ Options:
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
   --check              Validate an existing --out tree for buildability, then exit
+  --verify             Write a requirement→source verification worklist for --out
+  --apply <path>       Apply an agent-filled verdicts file (use with --verify)
+  --semantic           Fold VERIFY.json into --check (fail on unsupported requirements)
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -109,6 +113,7 @@ const VALUE_FLAGS = new Set([
   "max-embed-bytes",
   "include",
   "exclude",
+  "apply",
 ]);
 
 export function parseArgs(argv: string[]): Options {
@@ -123,6 +128,8 @@ export function parseArgs(argv: string[]): Options {
   let scratch = false;
   let tdd = false;
   let check = false;
+  let verify = false;
+  let semantic = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -164,6 +171,14 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--check") {
       check = true;
+      continue;
+    }
+    if (arg === "--verify") {
+      verify = true;
+      continue;
+    }
+    if (arg === "--semantic") {
+      semantic = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -209,7 +224,7 @@ export function parseArgs(argv: string[]): Options {
   const repo = resolve(raw.repo ?? process.cwd());
   // Scratch reads no repo; standalone and --check read an existing output dir —
   // all three skip the repo-exists check.
-  if (!standalone && !scratch && !check && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && !verify && (!existsSync(repo) || !statSync(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
@@ -230,7 +245,7 @@ export function parseArgs(argv: string[]): Options {
   ]);
   const out = resolve(
     raw.out ??
-      (standalone || check
+      (standalone || check || verify
         ? process.cwd()
         : scratch
           ? join(process.cwd(), "reconstruction")
@@ -261,15 +276,35 @@ export function parseArgs(argv: string[]): Options {
     plan,
     tdd,
     check,
+    verify,
+    apply: raw.apply ?? "",
+    semantic,
   };
 }
 
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
 
+  // Requirement-support verification: write the worklist, or apply verdicts.
+  if (opts.verify) {
+    if (opts.apply) {
+      const r = applyVerdicts(opts.out, resolve(opts.apply));
+      process.stdout.write(formatVerifyReport(r) + "\n");
+      if (!r.ok) process.exit(1);
+      return;
+    }
+    const wl = runVerify(opts.out);
+    process.stderr.write(
+      `reconstruct: ${wl.pairs.length} requirement↔evidence pair(s) → ${opts.out}/VERIFY.md & VERIFY.todo.json\n` +
+        `  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}\n`,
+    );
+    return;
+  }
+
   // Validation mode: statically check an already-generated tree for buildability.
   if (opts.check) {
     const result = checkOutput(opts.out);
+    if (opts.semantic) foldSemantic(opts.out, result);
     process.stdout.write(formatCheckReport(result, opts.out) + "\n");
     if (result.errors.length) process.exit(1);
     return;

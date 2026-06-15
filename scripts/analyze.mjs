@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join14 } from "path";
+import { resolve as resolve2, join as join15 } from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { existsSync as existsSync6, statSync as statSync3, realpathSync } from "fs";
+import { existsSync as existsSync7, statSync as statSync3, realpathSync } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -4670,6 +4670,200 @@ function formatCheckReport(r, outDir) {
   return lines.join("\n");
 }
 
+// src/verify.ts
+import { existsSync as existsSync6, readFileSync as readFileSync12, writeFileSync as writeFileSync2 } from "fs";
+import { join as join14 } from "path";
+var VERIFY_MAX = 60;
+var VALID = ["supported", "partial", "refuted", "unsupported"];
+var CLAIM_SECTIONS = /* @__PURE__ */ new Set(["## Functional requirements", "## Acceptance criteria"]);
+var STOP = new Set(
+  "the a an is are be to of in on for and or with via from this that it its as at by into using used user users system when then given so each via must should can will every".split(
+    " "
+  )
+);
+function tokens(s) {
+  return s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2 && !STOP.has(t));
+}
+function overlap(query, hay) {
+  let n = 0;
+  for (const t of new Set(query)) if (hay.has(t)) n++;
+  return n;
+}
+function requirements(prd) {
+  const out = [];
+  let inSection = false;
+  for (const raw of prd.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^##\s/.test(line)) {
+      inSection = CLAIM_SECTIONS.has(line);
+      continue;
+    }
+    if (!inSection) continue;
+    const m = /^(?:[-*+]|\d+\.)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const text = m[1].replace(/^\[[ xX]\]\s*/, "").trim();
+    if (!text || text.startsWith("\u{1F9E0}") || /fill this in/i.test(text)) continue;
+    if (tokens(text).length < 2) continue;
+    out.push(text);
+  }
+  return out;
+}
+function featureEvidence(f) {
+  const out = [];
+  for (const file of f.files ?? []) out.push({ ref: file, text: String(file) });
+  for (const r of f.routes ?? []) {
+    const sig = [r?.method, r?.path].filter(Boolean).join(" ") || (typeof r === "string" ? r : JSON.stringify(r));
+    out.push({ ref: `route ${sig}`, text: sig });
+  }
+  for (const i of f.interfaces ?? []) out.push({ ref: `interface ${i}`, text: String(i) });
+  for (const e of f.entities ?? []) out.push({ ref: `entity ${e}`, text: String(e) });
+  return out;
+}
+function runVerify(outDir, opts = {}) {
+  const inv = JSON.parse(readFileSync12(join14(outDir, "inventory.json"), "utf8"));
+  const pairs = [];
+  let n = 0;
+  for (const f of inv.features ?? []) {
+    const prdPath = join14(outDir, "features", f.slug, "PRD.md");
+    if (!existsSync6(prdPath)) continue;
+    const reqs = requirements(readFileSync12(prdPath, "utf8"));
+    const ev = featureEvidence(f);
+    const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
+    for (const req of reqs) {
+      n++;
+      const qt = tokens(req);
+      const ranked = evTok.map(({ e, hay }) => ({ e, s: overlap(qt, hay) })).sort((a, b) => b.s - a.s);
+      const top = ranked.filter((x, i) => i === 0 || x.s > 0).slice(0, 3);
+      const best = top[0];
+      const evidenceRef = best && best.s > 0 ? best.e.ref : ev.length ? `feature ${f.slug}` : `feature ${f.slug} (no captured evidence)`;
+      const digest = (top.some((x) => x.s > 0) ? top.filter((x) => x.s > 0) : ranked.slice(0, 4)).map((x) => x.e.ref).join(" \xB7 ").slice(0, 600) || f.description || f.name;
+      pairs.push({
+        claimId: `C${n}`,
+        claim: req.slice(0, 400),
+        feature: f.slug,
+        evidenceRef,
+        digest,
+        score: best ? best.s : 0
+      });
+    }
+  }
+  const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
+  const kept = pairs.length > max ? pairs.slice().sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId)).slice(0, max) : pairs;
+  const worklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
+  const todo = {
+    run: outDir,
+    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" }))
+  };
+  writeFileSync2(join14(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync2(join14(outDir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  return worklist;
+}
+function renderWorklistMd(wl, total, kept) {
+  const out = [];
+  out.push(`# Requirement verification worklist`);
+  out.push("");
+  out.push(
+    `For each requirement, open the cited source evidence and judge whether the requirement **traces to the original code** (faithful inference) or was invented. In \`VERIFY.todo.json\`, set each \`verdict\` to supported \xB7 partial \xB7 refuted \xB7 unsupported (+ a short \`note\`), save it (e.g. as \`verdicts.json\`), then run \`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`
+  );
+  if (kept < total) out.push(`
+_Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched evidence._`);
+  out.push("");
+  for (const p of wl.pairs) {
+    out.push(`## ${p.claimId} \xB7 ${p.feature} \u2192 ${p.evidenceRef}`);
+    out.push(`**Requirement:** ${p.claim}`);
+    out.push(`**Captured evidence:** ${p.digest}`);
+    out.push(`**Verdict:** _____ \xB7 **Note:** _____`);
+    out.push("");
+  }
+  return out.join("\n");
+}
+function applyVerdicts(outDir, verdictsPath) {
+  const raw = JSON.parse(readFileSync12(verdictsPath, "utf8"));
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const verdicts = [];
+  for (const v of list) {
+    if (!v || typeof v.claimId !== "string") continue;
+    const verdict = VALID.includes(v.verdict) ? v.verdict : void 0;
+    verdicts.push({
+      claimId: v.claimId,
+      claim: typeof v.claim === "string" ? v.claim : "",
+      feature: typeof v.feature === "string" ? v.feature : "",
+      evidenceRef: typeof v.evidenceRef === "string" ? v.evidenceRef : "",
+      digest: typeof v.digest === "string" ? v.digest : "",
+      verdict,
+      note: typeof v.note === "string" ? v.note : ""
+    });
+  }
+  const result = reduceVerdicts(verdicts);
+  writeFileSync2(join14(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  return result;
+}
+function reduceVerdicts(verdicts) {
+  const counts = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
+  for (const v of verdicts) if (v.verdict && counts[v.verdict] !== void 0) counts[v.verdict]++;
+  const failures = [];
+  const unadjudicated = [];
+  for (const v of verdicts) {
+    if (!v.verdict) {
+      unadjudicated.push(v.claimId);
+      continue;
+    }
+    if (v.verdict === "refuted" || v.verdict === "unsupported") {
+      failures.push({ claimId: v.claimId, evidenceRef: v.evidenceRef, verdict: v.verdict, note: v.note });
+    }
+  }
+  return {
+    ok: failures.length === 0,
+    pairs: verdicts.length,
+    adjudicated: verdicts.filter((v) => !!v.verdict).length,
+    supported: counts.supported,
+    partial: counts.partial,
+    refuted: counts.refuted,
+    unsupported: counts.unsupported,
+    failures,
+    unadjudicated
+  };
+}
+function foldSemantic(outDir, check) {
+  const p = join14(outDir, "VERIFY.json");
+  if (!existsSync6(p)) {
+    check.warnings.push(
+      "--semantic: no VERIFY.json \u2014 run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped."
+    );
+    return;
+  }
+  try {
+    const sem = JSON.parse(readFileSync12(p, "utf8"));
+    if (!sem.ok) {
+      check.errors.push(
+        `semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`
+      );
+    }
+    if (sem.unadjudicated?.length) {
+      check.warnings.push(`${sem.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
+    }
+  } catch (e) {
+    check.warnings.push(`--semantic: VERIFY.json is unreadable (${e.message})`);
+  }
+}
+function formatVerifyReport(r) {
+  const lines = [];
+  lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
+  lines.push(
+    `  supported: ${r.supported} \xB7 partial: ${r.partial} \xB7 refuted: ${r.refuted} \xB7 unsupported: ${r.unsupported}`
+  );
+  for (const f of r.failures.slice(0, 12)) {
+    lines.push(`  \u2717 ${f.claimId} (${f.evidenceRef}): ${f.verdict}${f.note ? " \u2014 " + f.note : ""}`);
+  }
+  if (r.unadjudicated.length) {
+    lines.push(`  \u26A0 ${r.unadjudicated.length} requirement(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
+  }
+  lines.push(
+    r.ok ? `  \u2713 every requirement traces to the original source` : `  \u2717 some requirements are refuted or unsupported (invented)`
+  );
+  return lines.join("\n");
+}
+
 // src/cli.ts
 var HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -4689,6 +4883,9 @@ Options:
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
   --check              Validate an existing --out tree for buildability, then exit
+  --verify             Write a requirement\u2192source verification worklist for --out
+  --apply <path>       Apply an agent-filled verdicts file (use with --verify)
+  --semantic           Fold VERIFY.json into --check (fail on unsupported requirements)
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -4758,7 +4955,8 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "plan",
   "max-embed-bytes",
   "include",
-  "exclude"
+  "exclude",
+  "apply"
 ]);
 function parseArgs(argv) {
   const raw = {};
@@ -4772,6 +4970,8 @@ function parseArgs(argv) {
   let scratch = false;
   let tdd = false;
   let check = false;
+  let verify = false;
+  let semantic = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
@@ -4814,6 +5014,14 @@ function parseArgs(argv) {
       check = true;
       continue;
     }
+    if (arg === "--verify") {
+      verify = true;
+      continue;
+    }
+    if (arg === "--semantic") {
+      semantic = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
@@ -4844,7 +5052,7 @@ function parseArgs(argv) {
   const plan = raw.plan ? resolve2(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve2(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && (!existsSync6(repo) || !statSync3(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && !verify && (!existsSync7(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
@@ -4859,7 +5067,7 @@ function parseArgs(argv) {
     "fine"
   ]);
   const out = resolve2(
-    raw.out ?? (standalone || check ? process.cwd() : scratch ? join14(process.cwd(), "reconstruction") : join14(repo, "reconstruction"))
+    raw.out ?? (standalone || check || verify ? process.cwd() : scratch ? join15(process.cwd(), "reconstruction") : join15(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -4884,13 +5092,32 @@ function parseArgs(argv) {
     scratch,
     plan,
     tdd,
-    check
+    check,
+    verify,
+    apply: raw.apply ?? "",
+    semantic
   };
 }
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.verify) {
+    if (opts.apply) {
+      const r = applyVerdicts(opts.out, resolve2(opts.apply));
+      process.stdout.write(formatVerifyReport(r) + "\n");
+      if (!r.ok) process.exit(1);
+      return;
+    }
+    const wl = runVerify(opts.out);
+    process.stderr.write(
+      `reconstruct: ${wl.pairs.length} requirement\u2194evidence pair(s) \u2192 ${opts.out}/VERIFY.md & VERIFY.todo.json
+  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}
+`
+    );
+    return;
+  }
   if (opts.check) {
     const result2 = checkOutput(opts.out);
+    if (opts.semantic) foldSemantic(opts.out, result2);
     process.stdout.write(formatCheckReport(result2, opts.out) + "\n");
     if (result2.errors.length) process.exit(1);
     return;
@@ -4934,7 +5161,7 @@ function main() {
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join14(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join15(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -4989,7 +5216,7 @@ function main() {
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join14(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join15(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }
