@@ -503,4 +503,4 @@ export interface VerifyWorklist {
   pairs: ClaimEvidencePair[];
 }
 
-export const VERSION = "0.12.0";
+export const VERSION = "1.0.0";

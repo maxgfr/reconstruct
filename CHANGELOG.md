@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.0.0](https://github.com/maxgfr/reconstruct/compare/v0.12.0...v1.0.0) (2026-06-15)
+
+
+### Features
+
+* requirement-support verification gate ([#10](https://github.com/maxgfr/reconstruct/issues/10)) ([09a3333](https://github.com/maxgfr/reconstruct/commit/09a33333b2de0a66beed3a54f32ed6c526b55eb3))
+
+
+### BREAKING CHANGES
+
+* the verified-buildable bar is the stable 1.0 contract — promotes reconstruct to v1.0.0.
+
 # [0.12.0](https://github.com/maxgfr/reconstruct/compare/v0.11.0...v0.12.0) (2026-06-11)
 
 
