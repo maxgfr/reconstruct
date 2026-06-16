@@ -163,6 +163,24 @@ enum fidelity, cross-doc consistency, faithfulness, i18n, and the rebuild self-t
 every **blocker** in place. Layer 1 is fast and CI-friendly; layer 2 is where a smart model
 earns its keep.
 
+The layer-2 review is itself orchestrated by a **review ledger** so it terminates instead of
+looping by feel. `--review` writes a per-feature worklist (`REVIEW.todo.json`), flagging only
+the units whose content hash changed since the last round; an agent fans out one reviewer per
+flagged unit plus one **independent verifier** per blocker, then `--review --apply
+findings.json` reduces the structured findings to `REVIEW.json` (`ok`, `residual`,
+`noProgress`/`staleRounds`):
+
+```bash
+node scripts/analyze.mjs --review --out ./my-app/reconstruction
+node scripts/analyze.mjs --review --apply findings.json --out ./my-app/reconstruction
+```
+
+`--check --semantic` folds both semantic gates into the structural one — `VERIFY.json`
+(requirements that don't trace to source) and `REVIEW.json` (unresolved blockers) — additively,
+never relaxing `--check`. For larger trees the enrichment and the review/fix loop both fan out
+across subagents; the protocol (map-reduce + the ledger) is in
+[`references/orchestration.md`](./references/orchestration.md).
+
 ## From scratch (greenfield)
 
 No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your agent:

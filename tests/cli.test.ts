@@ -102,6 +102,27 @@ describe("parseArgs: --tdd flag", () => {
   });
 });
 
+describe("parseArgs: --review / --verify validation flags", () => {
+  it("defaults review and verify off", () => {
+    const o = parseArgs(["--repo", REPO]);
+    expect(o.review).toBe(false);
+    expect(o.verify).toBe(false);
+  });
+
+  it("sets --review as a boolean and reads an existing --out without a repo", () => {
+    const o = parseArgs(["--review", "--out", "/tmp/some-recon"]);
+    expect(o.review).toBe(true);
+    expect(o.standalone).toBe(false);
+    expect(o.out).toBe(resolve("/tmp/some-recon"));
+  });
+
+  it("routes --review --apply to a findings file path", () => {
+    const o = parseArgs(["--review", "--apply", "findings.json", "--out", "/tmp/some-recon"]);
+    expect(o.review).toBe(true);
+    expect(o.apply).toBe("findings.json");
+  });
+});
+
 describe("parseArgs: strict flag validation", () => {
   // parseArgs reports usage errors via fail() → process.exit(1). Trap the exit
   // (and silence the message) so the failing branch is observable as a throw.
@@ -134,6 +155,17 @@ describe("parseArgs: strict flag validation", () => {
 
   it("still reports a missing value for a known value flag", () => {
     expectFail(["--repo"], /missing value for --repo/);
+  });
+
+  it("rejects combining the mutually-exclusive validation actions", () => {
+    expectFail(["--verify", "--review", "--out", "/tmp/x"], /mutually exclusive/);
+    expectFail(["--check", "--review", "--out", "/tmp/x"], /mutually exclusive/);
+    expectFail(["--check", "--verify", "--out", "/tmp/x"], /mutually exclusive/);
+  });
+
+  it("still allows the action modifiers (--check --semantic, --review --apply)", () => {
+    expect(parseArgs(["--check", "--semantic", "--out", "/tmp/x"]).semantic).toBe(true);
+    expect(parseArgs(["--review", "--apply", "f.json", "--out", "/tmp/x"]).review).toBe(true);
   });
 
   it("accepts every known value flag (including = form) and routes globs", () => {

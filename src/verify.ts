@@ -80,7 +80,18 @@ function featureEvidence(f: any): Ev[] {
 // JUDGEMENT is the agent's. Capped at maxVerify. Writes VERIFY.todo.json +
 // VERIFY.md.
 export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): VerifyWorklist {
-  const inv = JSON.parse(readFileSync(join(outDir, "inventory.json"), "utf8")) as Inventory;
+  let invRaw: string;
+  try {
+    invRaw = readFileSync(join(outDir, "inventory.json"), "utf8");
+  } catch {
+    throw new Error(`no inventory.json in ${outDir} — not a reconstruction output (run the analyzer first)`);
+  }
+  let inv: Inventory;
+  try {
+    inv = JSON.parse(invRaw) as Inventory;
+  } catch (e) {
+    throw new Error(`inventory.json is not valid JSON: ${(e as Error).message}`);
+  }
   const pairs: (ClaimEvidencePair & { score: number })[] = [];
   let n = 0;
   for (const f of inv.features ?? []) {

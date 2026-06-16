@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join15 } from "path";
+import { resolve as resolve2, join as join16 } from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { existsSync as existsSync7, statSync as statSync3, realpathSync } from "fs";
+import { existsSync as existsSync8, statSync as statSync3, realpathSync } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -4720,7 +4720,18 @@ function featureEvidence(f) {
   return out;
 }
 function runVerify(outDir, opts = {}) {
-  const inv = JSON.parse(readFileSync12(join14(outDir, "inventory.json"), "utf8"));
+  let invRaw;
+  try {
+    invRaw = readFileSync12(join14(outDir, "inventory.json"), "utf8");
+  } catch {
+    throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
+  }
+  let inv;
+  try {
+    inv = JSON.parse(invRaw);
+  } catch (e) {
+    throw new Error(`inventory.json is not valid JSON: ${e.message}`);
+  }
   const pairs = [];
   let n = 0;
   for (const f of inv.features ?? []) {
@@ -4864,6 +4875,307 @@ function formatVerifyReport(r) {
   return lines.join("\n");
 }
 
+// src/review.ts
+import { createHash } from "crypto";
+import { existsSync as existsSync7, readFileSync as readFileSync13, writeFileSync as writeFileSync3 } from "fs";
+import { join as join15 } from "path";
+var ARCH_DOCS = [
+  "architecture/INTERFACES.md",
+  "architecture/DATA-MODEL.md",
+  "architecture/ARCHITECTURE.md"
+];
+var SEVERITIES = ["blocker", "major", "minor"];
+var CATEGORIES = [
+  "stories",
+  "requirements",
+  "acceptance",
+  "write-contract",
+  "enum",
+  "consistency",
+  "faithfulness",
+  "i18n",
+  "rebuild-test"
+];
+function sha256(s) {
+  return createHash("sha256").update(s).digest("hex");
+}
+function readIfExists(path) {
+  try {
+    return readFileSync13(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+function archHash(outDir) {
+  return sha256(ARCH_DOCS.map((rel) => `# ${rel}
+` + readIfExists(join15(outDir, rel))).join("\n"));
+}
+function normalizeProblem(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function findingId(f) {
+  return `${f.feature}:${f.category}:${sha256(normalizeProblem(f.problem)).slice(0, 8)}`;
+}
+function runReview(outDir) {
+  const inv = readInventory(outDir);
+  const prior = readPrior(outDir);
+  const round = (prior?.round ?? 0) + 1;
+  const arch = archHash(outDir);
+  const archChanged = prior ? prior.archHash !== arch : true;
+  const units = [];
+  const changedSet = [];
+  for (const f of inv.features ?? []) {
+    const prdPath = join15(outDir, "features", f.slug, "PRD.md");
+    if (!existsSync7(prdPath)) continue;
+    const prdHash = sha256(readFileSync13(prdPath, "utf8"));
+    const priorHash = prior?.units.get(f.slug);
+    const changed = priorHash !== void 0 && priorHash !== prdHash;
+    const isNew = prior !== null && priorHash === void 0;
+    const needsReview = prior === null || archChanged || changed || isNew;
+    if (needsReview) changedSet.push(f.slug);
+    units.push({ feature: f.slug, prdHash, archHash: arch, needsReview, findings: [] });
+  }
+  const worklist = { run: outDir, round, changedSet, units };
+  writeFileSync3(join15(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
+  writeFileSync3(join15(outDir, "REVIEW.md"), renderWorklistMd2(worklist));
+  return worklist;
+}
+function readInventory(outDir) {
+  let raw;
+  try {
+    raw = readFileSync13(join15(outDir, "inventory.json"), "utf8");
+  } catch {
+    throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`inventory.json is not valid JSON: ${e.message}`);
+  }
+}
+function readPrior(outDir) {
+  const reviewPath = join15(outDir, "REVIEW.json");
+  if (!existsSync7(reviewPath)) return null;
+  let rev;
+  try {
+    rev = JSON.parse(readFileSync13(reviewPath, "utf8"));
+  } catch {
+    return null;
+  }
+  const units = /* @__PURE__ */ new Map();
+  let priorArch = "";
+  if (rev.baseline && Array.isArray(rev.baseline.features)) {
+    priorArch = rev.baseline.archHash ?? "";
+    for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
+  } else {
+    try {
+      const todo = JSON.parse(readFileSync13(join15(outDir, "REVIEW.todo.json"), "utf8"));
+      for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
+      priorArch = todo.units?.[0]?.archHash ?? "";
+    } catch {
+    }
+  }
+  return {
+    round: rev.round ?? 0,
+    staleRounds: rev.staleRounds ?? 0,
+    residual: rev.residual ?? [],
+    archHash: priorArch,
+    units
+  };
+}
+function renderWorklistMd2(wl) {
+  const out = [];
+  const due = wl.units.filter((u) => u.needsReview);
+  out.push(`# AI buildability review worklist \u2014 round ${wl.round}`);
+  out.push("");
+  out.push(
+    `Review the ${due.length} feature(s) flagged below against the nine checks in \`references/ai-review-rubric.md\` (story completeness, requirement testability, real Given/When/Then, write-contract satisfiability, enum fidelity, cross-doc consistency, faithfulness, i18n, the rebuild self-test). For each, read the PRD plus the architecture docs it references and the embedded source. Keep the reviewer **separate from the author** and prompt it to find reasons the unit is *not* buildable.`
+  );
+  out.push("");
+  out.push(
+    `Emit each finding as \`{ feature, severity (blocker|major|minor), category, problem, fix }\`. Have an **independent verifier** set \`verdict\` to \`confirmed\` or \`refuted\` per blocker (a refuted blocker does not gate). Save the findings (e.g. as \`findings.json\`, shape \`{ "findings": [...] }\`), then run \`node scripts/analyze.mjs --review --apply findings.json --out <dir>\`.`
+  );
+  out.push("");
+  if (wl.changedSet.length && wl.round > 1) {
+    out.push(`_Changed since last round: ${wl.changedSet.join(", ")}._`);
+    out.push("");
+  }
+  for (const u of wl.units) {
+    out.push(`## ${u.feature}${u.needsReview ? "" : " \u2014 _unchanged, skip_"}`);
+    out.push(`PRD: \`features/${u.feature}/PRD.md\``);
+    out.push("");
+  }
+  return out.join("\n");
+}
+var VALID_SEVERITY = new Set(SEVERITIES);
+var VALID_CATEGORY = new Set(CATEGORIES);
+function normalizeFindings(raw) {
+  let list = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (Array.isArray(raw?.findings)) list = raw.findings;
+  else if (Array.isArray(raw?.units)) {
+    for (const u of raw.units) {
+      for (const f of u?.findings ?? []) list.push({ feature: f.feature ?? u.feature, ...f });
+    }
+  }
+  const out = [];
+  for (const f of list) {
+    if (!f || typeof f.feature !== "string") continue;
+    if (!VALID_SEVERITY.has(f.severity)) continue;
+    const category = VALID_CATEGORY.has(f.category) ? f.category : "rebuild-test";
+    const finding = {
+      feature: f.feature,
+      severity: f.severity,
+      category,
+      problem: typeof f.problem === "string" ? f.problem : "",
+      fix: typeof f.fix === "string" ? f.fix : "",
+      verdict: f.verdict === "confirmed" || f.verdict === "refuted" ? f.verdict : null,
+      verifierNote: typeof f.verifierNote === "string" ? f.verifierNote : ""
+    };
+    finding.id = typeof f.id === "string" && f.id ? f.id : findingId(finding);
+    out.push(finding);
+  }
+  return out;
+}
+function gates(f) {
+  return f.severity === "blocker" && f.verdict !== "refuted";
+}
+function reduceFindings(findings, ctx) {
+  let majors = 0;
+  let minors = 0;
+  for (const f of findings) {
+    if (f.severity === "major") majors++;
+    else if (f.severity === "minor") minors++;
+  }
+  const touched = /* @__PURE__ */ new Set([...ctx.reviewedFeatures, ...findings.map((f) => f.feature)]);
+  const known = new Set(ctx.currentFeatures);
+  const fresh = findings.filter(gates).map((f) => ({
+    id: f.id ?? findingId(f),
+    feature: f.feature,
+    category: f.category,
+    problem: f.problem,
+    fix: f.fix
+  }));
+  const carried = ctx.priorFailures.filter(
+    (pf) => !touched.has(pf.feature) && (known.size === 0 || known.has(pf.feature))
+  );
+  const byId = /* @__PURE__ */ new Map();
+  for (const f of carried) byId.set(f.id, f);
+  for (const f of fresh) byId.set(f.id, f);
+  const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const failures = [...byId.values()].sort((a, b) => cmp(a.id, b.id));
+  const residual = failures.map((f) => f.id);
+  const priorResidual = [...new Set(ctx.priorFailures.map((f) => f.id))].sort(cmp);
+  const sameAsPrior = residual.length > 0 && residual.length === priorResidual.length && residual.every((id, i) => id === priorResidual[i]);
+  const noProgress = sameAsPrior;
+  const staleRounds = noProgress ? ctx.priorStale + 1 : 0;
+  return {
+    ok: residual.length === 0,
+    round: ctx.round,
+    units: ctx.units,
+    reviewed: ctx.reviewedFeatures.length,
+    blockers: failures.length,
+    majors,
+    minors,
+    changedSet: ctx.changedSet,
+    residual,
+    noProgress,
+    staleRounds,
+    failures,
+    findings
+  };
+}
+function applyFindings(outDir, findingsPath) {
+  const findings = normalizeFindings(JSON.parse(readFileSync13(findingsPath, "utf8")));
+  let round;
+  let changedSet = [];
+  let units = 0;
+  let reviewedFeatures = [];
+  let currentFeatures = [];
+  let baseline;
+  try {
+    const todo = JSON.parse(readFileSync13(join15(outDir, "REVIEW.todo.json"), "utf8"));
+    round = todo.round;
+    changedSet = todo.changedSet ?? [];
+    units = todo.units?.length ?? 0;
+    reviewedFeatures = (todo.units ?? []).filter((u) => u.needsReview).map((u) => u.feature);
+    currentFeatures = (todo.units ?? []).map((u) => u.feature);
+    baseline = {
+      archHash: todo.units?.[0]?.archHash ?? "",
+      features: (todo.units ?? []).map((u) => ({ feature: u.feature, prdHash: u.prdHash }))
+    };
+  } catch {
+  }
+  let priorFailures = [];
+  let priorStale = 0;
+  let priorRound = 0;
+  const reviewPath = join15(outDir, "REVIEW.json");
+  if (existsSync7(reviewPath)) {
+    try {
+      const prev = JSON.parse(readFileSync13(reviewPath, "utf8"));
+      priorFailures = prev.failures ?? [];
+      priorStale = prev.staleRounds ?? 0;
+      priorRound = prev.round ?? 0;
+    } catch {
+    }
+  }
+  const result = reduceFindings(findings, {
+    round: round ?? priorRound + 1,
+    // fall back to prior+1 if the worklist is gone
+    changedSet,
+    units,
+    reviewedFeatures,
+    currentFeatures,
+    priorFailures,
+    priorStale
+  });
+  if (baseline) result.baseline = baseline;
+  writeFileSync3(reviewPath, JSON.stringify(result, null, 2));
+  return result;
+}
+function foldReview(outDir, check) {
+  const p = join15(outDir, "REVIEW.json");
+  if (!existsSync7(p)) {
+    check.warnings.push(
+      "--semantic: no REVIEW.json \u2014 run `--review` then `--review --apply <findings.json>` first; review gate skipped."
+    );
+    return;
+  }
+  try {
+    const rev = JSON.parse(readFileSync13(p, "utf8"));
+    if (!rev.ok) {
+      check.errors.push(
+        `AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`
+      );
+    }
+    if (rev.noProgress) {
+      check.warnings.push(
+        `review made no progress for ${rev.staleRounds} round(s) on the same ${rev.residual.length} blocker(s) \u2014 fix the shared architecture contract or record them as known gaps`
+      );
+    }
+  } catch (e) {
+    check.warnings.push(`--semantic: REVIEW.json is unreadable (${e.message})`);
+  }
+}
+function formatReviewReport(r) {
+  const lines = [];
+  lines.push(
+    `reconstruct --review: round ${r.round} \xB7 ${r.reviewed}/${r.units} unit(s) reviewed \xB7 ${r.blockers} blocker(s) \xB7 ${r.majors} major(s) \xB7 ${r.minors} minor(s)`
+  );
+  for (const f of r.failures.slice(0, 12)) {
+    lines.push(`  \u2717 ${f.feature} [${f.category}]: ${f.problem}${f.fix ? " \u2014 fix: " + f.fix : ""}`);
+  }
+  if (r.noProgress) {
+    lines.push(
+      `  \u26A0 no progress for ${r.staleRounds} round(s) on the same blocker(s) \u2014 fix the upstream architecture contract or record as known gaps`
+    );
+  }
+  lines.push(
+    r.ok ? `  \u2713 zero unresolved blockers \u2014 the tree passes the AI buildability review` : `  \u2717 ${r.residual.length} blocker(s) gate buildability \u2014 fix in place, re-review the changed units, repeat`
+  );
+  return lines.join("\n");
+}
+
 // src/cli.ts
 var HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -4884,8 +5196,9 @@ Options:
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
   --check              Validate an existing --out tree for buildability, then exit
   --verify             Write a requirement\u2192source verification worklist for --out
-  --apply <path>       Apply an agent-filled verdicts file (use with --verify)
-  --semantic           Fold VERIFY.json into --check (fail on unsupported requirements)
+  --review             Write the AI buildability review worklist for --out
+  --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
+  --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -4926,6 +5239,18 @@ Validation:
   checks feature\u2192entity/operation reference integrity. An uncovered locale is
   reported as a warning. Run it before calling a reconstruction done:
     reconstruct --check --out <reconstruction-dir>
+
+  --review drives the AI buildability review (the semantic layer --check can't
+  judge). It writes a per-feature worklist (REVIEW.todo.json/REVIEW.md), flagging
+  only the features that changed since the last round. An agent fans out one
+  reviewer per flagged feature + one independent verifier per blocker, fills the
+  findings, then applies them \u2014 the engine reduces them to a pass / no-progress
+  signal so the convergence loop terminates (see references/orchestration.md):
+    reconstruct --review --out <dir>
+    reconstruct --review --apply findings.json --out <dir>
+  --check --semantic folds VERIFY.json (refuted/unsupported requirements) and
+  REVIEW.json (unresolved blockers) into the gate \u2014 additive, never a relaxation.
+  --check, --verify and --review are mutually exclusive (run one at a time).
 `;
 function fail(message) {
   process.stderr.write(`reconstruct: ${message}
@@ -4971,6 +5296,7 @@ function parseArgs(argv) {
   let tdd = false;
   let check = false;
   let verify = false;
+  let review = false;
   let semantic = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -5018,6 +5344,10 @@ function parseArgs(argv) {
       verify = true;
       continue;
     }
+    if (arg === "--review") {
+      review = true;
+      continue;
+    }
     if (arg === "--semantic") {
       semantic = true;
       continue;
@@ -5046,13 +5376,17 @@ function parseArgs(argv) {
     }
     fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
+  const actions = [check, verify, review].filter(Boolean).length;
+  if (actions > 1) {
+    fail(`--check, --verify and --review are mutually exclusive \u2014 run one at a time`);
+  }
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
   const plan = raw.plan ? resolve2(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve2(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && (!existsSync7(repo) || !statSync3(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && !verify && !review && (!existsSync8(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
@@ -5067,7 +5401,7 @@ function parseArgs(argv) {
     "fine"
   ]);
   const out = resolve2(
-    raw.out ?? (standalone || check || verify ? process.cwd() : scratch ? join15(process.cwd(), "reconstruction") : join15(repo, "reconstruction"))
+    raw.out ?? (standalone || check || verify || review ? process.cwd() : scratch ? join16(process.cwd(), "reconstruction") : join16(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -5094,6 +5428,7 @@ function parseArgs(argv) {
     tdd,
     check,
     verify,
+    review,
     apply: raw.apply ?? "",
     semantic
   };
@@ -5101,23 +5436,50 @@ function parseArgs(argv) {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.verify) {
-    if (opts.apply) {
-      const r = applyVerdicts(opts.out, resolve2(opts.apply));
-      process.stdout.write(formatVerifyReport(r) + "\n");
-      if (!r.ok) process.exit(1);
-      return;
-    }
-    const wl = runVerify(opts.out);
-    process.stderr.write(
-      `reconstruct: ${wl.pairs.length} requirement\u2194evidence pair(s) \u2192 ${opts.out}/VERIFY.md & VERIFY.todo.json
+    try {
+      if (opts.apply) {
+        const r = applyVerdicts(opts.out, resolve2(opts.apply));
+        process.stdout.write(formatVerifyReport(r) + "\n");
+        if (!r.ok) process.exit(1);
+        return;
+      }
+      const wl = runVerify(opts.out);
+      process.stderr.write(
+        `reconstruct: ${wl.pairs.length} requirement\u2194evidence pair(s) \u2192 ${opts.out}/VERIFY.md & VERIFY.todo.json
   adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}
 `
-    );
-    return;
+      );
+      return;
+    } catch (e) {
+      fail(e.message);
+    }
+  }
+  if (opts.review) {
+    try {
+      if (opts.apply) {
+        const r = applyFindings(opts.out, resolve2(opts.apply));
+        process.stdout.write(formatReviewReport(r) + "\n");
+        if (!r.ok) process.exit(1);
+        return;
+      }
+      const wl = runReview(opts.out);
+      const due = wl.units.filter((u) => u.needsReview).length;
+      process.stderr.write(
+        `reconstruct: review round ${wl.round} \u2014 ${due}/${wl.units.length} unit(s) to review \u2192 ${opts.out}/REVIEW.md & REVIEW.todo.json
+  review each flagged unit (+ verify each blocker), save findings.json, then: node scripts/analyze.mjs --review --apply findings.json --out ${opts.out}
+`
+      );
+      return;
+    } catch (e) {
+      fail(e.message);
+    }
   }
   if (opts.check) {
     const result2 = checkOutput(opts.out);
-    if (opts.semantic) foldSemantic(opts.out, result2);
+    if (opts.semantic) {
+      foldSemantic(opts.out, result2);
+      foldReview(opts.out, result2);
+    }
     process.stdout.write(formatCheckReport(result2, opts.out) + "\n");
     if (result2.errors.length) process.exit(1);
     return;
@@ -5161,7 +5523,7 @@ function main() {
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join15(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join16(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -5216,7 +5578,7 @@ function main() {
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join15(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join16(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

@@ -28,6 +28,13 @@ understanding. A markdown playbook that teaches the agent *where to look* scales
 on top of it, a pluggable registry of route adapters resolves routes deterministically where a
 framework has a clear convention (see [Adapters](#adapters)).
 
+The same boundary governs **validation**. The gates (`--check`, `--verify`, `--review`) are
+deterministic — they generate worklists, hash what changed, and reduce results to a pass/fail
+signal — while the *judgement* they fold in (does this requirement trace to source? is this PRD
+actually buildable?) stays the agent's. That lets the review/fix loop fan out across subagents
+and still terminate on a real fixpoint; the protocol is in
+[`references/orchestration.md`](./references/orchestration.md).
+
 ---
 
 ## Installation
@@ -96,6 +103,10 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md). |
 | `--tdd` | flag | off | Emit test-first build guidance into the PRDs/`REBUILD.md` (each unit built red → green → refactor). Works in any mode. |
 | `--check` | flag | off | Validate an existing `--out` tree for buildability and exit non-zero on failures (unresolved `🧠`/placeholders, a feature referencing an undocumented entity/operation, a feature PRD missing its spine, an uncovered locale). Reads no repo. See [`references/buildability-checklist.md`](./references/buildability-checklist.md). |
+| `--verify` | flag | off | Write a requirement→source verification worklist (`VERIFY.todo.json`/`VERIFY.md`) for an existing `--out`: each PRD requirement paired with its captured evidence for an agent to adjudicate (supported/partial/refuted/unsupported). With `--apply`, reduces the filled verdicts to `VERIFY.json`. Reads no repo. |
+| `--review` | flag | off | Write the AI buildability-review worklist (`REVIEW.todo.json`/`REVIEW.md`) for an existing `--out`: one per-feature unit, content-hashed so only changed units are flagged `needsReview`. With `--apply`, reduces agent-filled findings to `REVIEW.json` (`ok`/`residual`/`noProgress`/`staleRounds`). The deterministic ledger that makes the review/fix loop terminate — see [`references/orchestration.md`](./references/orchestration.md). Reads no repo. |
+| `--apply <path>` | path | — | Apply an agent-filled verdicts/findings file: pair with `--verify` (verdicts → `VERIFY.json`) or `--review` (findings → `REVIEW.json`). |
+| `--semantic` | flag | off | With `--check`, fold the semantic gates into the structural one: `VERIFY.json` (refuted/unsupported requirements) and `REVIEW.json` (unresolved blockers). Strictly additive — never relaxes `--check`. |
 | `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--exclude <glob>` | gitignore-style glob | — | Skip files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--max-embed-bytes N` | integer > 0 | `16000` | Max bytes embedded per file when `fidelity=embed`. |

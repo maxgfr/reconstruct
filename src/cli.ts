@@ -8,6 +8,7 @@ import { bundleExisting } from "./postprocess.js";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
 import { checkOutput, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./verify.js";
+import { runReview, applyFindings, foldReview, formatReviewReport } from "./review.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -30,8 +31,9 @@ Options:
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
   --check              Validate an existing --out tree for buildability, then exit
   --verify             Write a requirement→source verification worklist for --out
-  --apply <path>       Apply an agent-filled verdicts file (use with --verify)
-  --semantic           Fold VERIFY.json into --check (fail on unsupported requirements)
+  --review             Write the AI buildability review worklist for --out
+  --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
+  --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -72,6 +74,18 @@ Validation:
   checks feature→entity/operation reference integrity. An uncovered locale is
   reported as a warning. Run it before calling a reconstruction done:
     reconstruct --check --out <reconstruction-dir>
+
+  --review drives the AI buildability review (the semantic layer --check can't
+  judge). It writes a per-feature worklist (REVIEW.todo.json/REVIEW.md), flagging
+  only the features that changed since the last round. An agent fans out one
+  reviewer per flagged feature + one independent verifier per blocker, fills the
+  findings, then applies them — the engine reduces them to a pass / no-progress
+  signal so the convergence loop terminates (see references/orchestration.md):
+    reconstruct --review --out <dir>
+    reconstruct --review --apply findings.json --out <dir>
+  --check --semantic folds VERIFY.json (refuted/unsupported requirements) and
+  REVIEW.json (unresolved blockers) into the gate — additive, never a relaxation.
+  --check, --verify and --review are mutually exclusive (run one at a time).
 `;
 
 function fail(message: string): never {
@@ -129,6 +143,7 @@ export function parseArgs(argv: string[]): Options {
   let tdd = false;
   let check = false;
   let verify = false;
+  let review = false;
   let semantic = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -177,6 +192,10 @@ export function parseArgs(argv: string[]): Options {
       verify = true;
       continue;
     }
+    if (arg === "--review") {
+      review = true;
+      continue;
+    }
     if (arg === "--semantic") {
       semantic = true;
       continue;
@@ -208,6 +227,17 @@ export function parseArgs(argv: string[]): Options {
     fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
 
+  // The three validation actions are mutually exclusive: main() dispatches them in
+  // a fixed order, so combining them silently runs one and drops the rest (e.g.
+  // `--verify --review --apply` would adjudicate review findings as verify verdicts
+  // and print a false green; `--check --review` would skip the check entirely).
+  // Reject the combination instead of picking a winner. (`--semantic` modifies
+  // `--check`; `--apply` modifies `--verify`/`--review` — those are not actions.)
+  const actions = [check, verify, review].filter(Boolean).length;
+  if (actions > 1) {
+    fail(`--check, --verify and --review are mutually exclusive — run one at a time`);
+  }
+
   // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle
   // post-step. Validate up front so the rest of the resolution can assume it.
   if (scratch && raw.plan === undefined) {
@@ -224,7 +254,14 @@ export function parseArgs(argv: string[]): Options {
   const repo = resolve(raw.repo ?? process.cwd());
   // Scratch reads no repo; standalone and --check read an existing output dir —
   // all three skip the repo-exists check.
-  if (!standalone && !scratch && !check && !verify && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  if (
+    !standalone &&
+    !scratch &&
+    !check &&
+    !verify &&
+    !review &&
+    (!existsSync(repo) || !statSync(repo).isDirectory())
+  ) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
@@ -245,7 +282,7 @@ export function parseArgs(argv: string[]): Options {
   ]);
   const out = resolve(
     raw.out ??
-      (standalone || check || verify
+      (standalone || check || verify || review
         ? process.cwd()
         : scratch
           ? join(process.cwd(), "reconstruction")
@@ -277,6 +314,7 @@ export function parseArgs(argv: string[]): Options {
     tdd,
     check,
     verify,
+    review,
     apply: raw.apply ?? "",
     semantic,
   };
@@ -287,24 +325,52 @@ function main(): void {
 
   // Requirement-support verification: write the worklist, or apply verdicts.
   if (opts.verify) {
-    if (opts.apply) {
-      const r = applyVerdicts(opts.out, resolve(opts.apply));
-      process.stdout.write(formatVerifyReport(r) + "\n");
-      if (!r.ok) process.exit(1);
+    try {
+      if (opts.apply) {
+        const r = applyVerdicts(opts.out, resolve(opts.apply));
+        process.stdout.write(formatVerifyReport(r) + "\n");
+        if (!r.ok) process.exit(1);
+        return;
+      }
+      const wl = runVerify(opts.out);
+      process.stderr.write(
+        `reconstruct: ${wl.pairs.length} requirement↔evidence pair(s) → ${opts.out}/VERIFY.md & VERIFY.todo.json\n` +
+          `  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}\n`,
+      );
       return;
+    } catch (e) {
+      fail((e as Error).message);
     }
-    const wl = runVerify(opts.out);
-    process.stderr.write(
-      `reconstruct: ${wl.pairs.length} requirement↔evidence pair(s) → ${opts.out}/VERIFY.md & VERIFY.todo.json\n` +
-        `  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}\n`,
-    );
-    return;
+  }
+
+  // AI buildability review: write the per-feature worklist, or reduce findings.
+  if (opts.review) {
+    try {
+      if (opts.apply) {
+        const r = applyFindings(opts.out, resolve(opts.apply));
+        process.stdout.write(formatReviewReport(r) + "\n");
+        if (!r.ok) process.exit(1);
+        return;
+      }
+      const wl = runReview(opts.out);
+      const due = wl.units.filter((u) => u.needsReview).length;
+      process.stderr.write(
+        `reconstruct: review round ${wl.round} — ${due}/${wl.units.length} unit(s) to review → ${opts.out}/REVIEW.md & REVIEW.todo.json\n` +
+          `  review each flagged unit (+ verify each blocker), save findings.json, then: node scripts/analyze.mjs --review --apply findings.json --out ${opts.out}\n`,
+      );
+      return;
+    } catch (e) {
+      fail((e as Error).message);
+    }
   }
 
   // Validation mode: statically check an already-generated tree for buildability.
   if (opts.check) {
     const result = checkOutput(opts.out);
-    if (opts.semantic) foldSemantic(opts.out, result);
+    if (opts.semantic) {
+      foldSemantic(opts.out, result);
+      foldReview(opts.out, result);
+    }
     process.stdout.write(formatCheckReport(result, opts.out) + "\n");
     if (result.errors.length) process.exit(1);
     return;

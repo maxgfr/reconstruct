@@ -112,6 +112,12 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    means the unit is **not done**. Also write the product summary in `00-overview/PRD.md` and
    cross-reference `INTERFACES.md`/`DATA-MODEL.md`.
 
+   At scale, run steps 4–7 as the map-reduce in `references/orchestration.md`: one drafting agent
+   per feature (each reads its `files` + `hints` and proposes interface/entity rows), then a single
+   **reduce** that merges those proposals into the canonical `INTERFACES.md`/`DATA-MODEL.md` —
+   deduping and reconciling conflicts against source — so the parallel drafts never race on the
+   shared docs.
+
 8. **Finalize `REBUILD.md`:** confirm the dependency-tiered build order and validation
    checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
    by one, using `data/` and `source/` as ground truth).
@@ -142,8 +148,11 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      testable requirements, real Given/When/Then (incl. failure paths), satisfiable write
      contracts, enum fidelity, cross-doc consistency, faithfulness, i18n, and the decisive
      rebuild self-test. This runs *via the skill* (no API key, no `--ai` flag — the model is
-     the reviewer); for a large tree, fan it out one reviewer per feature. A unit is done when
-     it has **zero blockers**. Fix blockers in place, re-run `--check`, repeat until clean.
+     the reviewer). `node scripts/analyze.mjs --review --out <OUT>` writes the per-feature
+     worklist (flagging only changed units); fan out one reviewer per flagged unit + one
+     independent verifier per blocker, then `--review --apply findings.json` reduces them to
+     `REVIEW.json`. A unit is done when it has **zero blockers**. Fix blockers in place, re-run
+     `--check`, repeat until clean. See `references/orchestration.md` for the fan-out protocol.
 
 10. **Run the convergence loop — autonomously, to completion.** A reconstruction is not done
     when the scaffold is filled; it is done when it **converges** to buildable. **You own this
@@ -154,51 +163,60 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
     agent rebuilds the right software":
 
     ```
+    round = 1
     repeat:
-      a. enrich (or fix) the units                         # write/repair the prose
-      b. node scripts/analyze.mjs --check --out <OUT>      # Layer 1: structure
-         └─ if errors → fix them → go to (b)
-      c. AI review every NEW-or-CHANGED unit               # Layer 2: substance
-         per references/ai-review-rubric.md
-      d. fix every blocker (then majors) in place
-    until  --check passes  AND  the AI review reports ZERO blockers across all units
+      a. enrich (or fix) the changed units                 # write/repair the prose
+      b. node scripts/analyze.mjs --check   --out <OUT>    # Layer 1: structure — fix errors, repeat (b)
+      c. node scripts/analyze.mjs --review  --out <OUT>    # Layer 2 worklist: flags only what CHANGED
+      d. review each flagged unit + verify each blocker    # per references/ai-review-rubric.md
+         → save findings.json (one finder/unit, one independent verifier/blocker)
+      e. node scripts/analyze.mjs --review --apply findings.json --out <OUT>   # reduce → REVIEW.json
+    until  REVIEW.json.ok            (--check passes AND zero gating blockers)
+       or  REVIEW.json.staleRounds >= 2     or     round > 5
     ```
+
+    The review ledger makes the loop terminate on a *correct* fixpoint without guesswork:
+    `--review` content-hashes every unit so each round re-reviews **only what changed**;
+    `--review --apply` reduces the findings to `REVIEW.json` — `ok` (zero unrefuted blockers),
+    `residual` (the gating blockers, by stable id), and `noProgress`/`staleRounds` (the same
+    blockers survived a fix round). The fan-out mechanics (finder/verifier roles, the finding
+    schema, the enrichment map-reduce) live in **`references/orchestration.md`**.
 
     Rules that make the loop terminate on a *correct* fixpoint, not a false one:
     - **A finding is resolved only when a fresh reviewer confirms it** — keep the reviewer
-      separate from the author (an adversarial reviewer prompted to *refute* buildability), and
-      after each fix **re-review the changed unit**, don't self-certify.
-    - **Only re-review what changed** each round (plus anything a fix touched downstream), so the
-      loop shrinks instead of re-scanning a clean tree.
+      separate from the author (an adversarial verifier prompted to *refute* buildability sets each
+      blocker's `verdict`; a `refuted` blocker drops out of `REVIEW.json.residual`). Don't self-certify.
+    - **Only re-review what changed:** `--review` content-hashes each unit and flags `needsReview`,
+      so the loop shrinks instead of re-scanning a clean tree. Review exactly the flagged units.
     - **Ground every fix in source/`data/` (code mode) or `CONTEXT.md`/ADRs (scratch mode)** — a
       fix that invents behaviour just trades one finding for another; faithfulness is the anchor.
-    - **Stop at zero blockers, not zero findings.** Blockers gate "buildable"; majors are
+    - **Stop at zero blockers, not zero findings.** `REVIEW.json.ok` gates "buildable"; majors are
       worth fixing, minors are optional polish — record what you deliberately leave.
-    - If the loop is not shrinking (the same finding keeps reappearing), the contract in the
-      architecture docs is wrong, not the feature PRD — fix `INTERFACES.md`/`DATA-MODEL.md` first.
+    - If the loop is not shrinking (`REVIEW.json.noProgress` — the same `residual` ids recur), the
+      contract in the architecture docs is wrong, not the feature PRD — fix `INTERFACES.md`/
+      `DATA-MODEL.md` first; the features that hang off it stop regressing.
 
-    At scale, drive the loop with parallel agents — one finder/fixer + one independent verifier
-    per feature — and keep looping until a full review round adds nothing new. **Terminate
-    deterministically:** stop when `--check` passes and a whole review round yields zero
-    blockers (the fixpoint), or when two consecutive rounds make no progress on the *same*
-    residual findings — at which point fix the upstream architecture contract those findings
-    share, or, if a finding is a faithful property of the original (a real bug you're preserving),
-    record it explicitly rather than looping on it. Bound the rounds (e.g. ≤ 5) so a pathological
-    unit can't spin forever — and **at the bound, do not stop silently**: write every remaining
-    blocker into `REBUILD.md` under a `## Known gaps / unresolved blockers` list (owning unit,
-    the finding, what was tried) and surface that list to the user in your final report. The
-    escalation ladder is: re-edit the unit → fix the shared architecture contract → record and
-    report; never keep looping in place. **Report once, at the end** — the final `--check`
-    result, the zero-blocker confirmation (or the known-gaps list), and anything you
-    deliberately left (majors/minors, preserved quirks). The user should relaunch nothing; one
-    skill invocation goes scaffold → buildable.
+    At scale, drive the loop as a fan-out — one finder + one independent verifier per changed
+    feature — per **`references/orchestration.md`** (which also covers the parallel map-reduce
+    *enrichment*). **Terminate on the ledger, not by feel:** stop at `REVIEW.json.ok` (the
+    fixpoint), or when `staleRounds >= 2` (two rounds stuck on the same blockers) or after ≤ 5
+    rounds. When you stop **not** at `ok`, do not stop silently: the escalation ladder is re-edit
+    the unit → fix the shared architecture contract those blockers share → **record and report** —
+    write every remaining `REVIEW.json.failures` entry into `REBUILD.md` under a `## Known gaps /
+    unresolved blockers` list (owning unit, the finding, what was tried) and surface it to the
+    user. If a residual blocker is a faithful property of the original (a real bug you're
+    preserving), record it rather than looping on it. **Report once, at the end** — the final
+    `--check`/`REVIEW.json` result, the zero-blocker confirmation (or the known-gaps list), and
+    anything you deliberately left. The user should relaunch nothing; one skill invocation goes
+    scaffold → buildable.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
 for per-stack cheat-sheets, `references/buildability-checklist.md` for the nine contract
 categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
-review, and `references/architecture-analysis.md` / `references/rebuild-instructions.md` /
-`references/prd-complex-template.md` / `references/prd-light-template.md` for the reasoning
-checklists.
+review, `references/orchestration.md` for fanning the enrichment and review/fix loop out across
+subagents (the map-reduce + the `--review` ledger), and `references/architecture-analysis.md` /
+`references/rebuild-instructions.md` / `references/prd-complex-template.md` /
+`references/prd-light-template.md` for the reasoning checklists.
 
 ## Everything is a PRD — dig until done
 

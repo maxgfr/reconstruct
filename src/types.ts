@@ -57,9 +57,17 @@ export interface Options {
   check: boolean;
   /** Requirement-support verification: write the worklist (`--verify`). */
   verify?: boolean;
-  /** Path to an agent-filled verdicts file to apply (`--verify --apply <p>`). */
+  /**
+   * AI buildability review ledger: write the per-feature review worklist
+   * (`--review`), or reduce agent-filled findings (`--review --apply <p>`).
+   */
+  review?: boolean;
+  /** Path to an agent-filled verdicts/findings file to apply (`--verify`/`--review --apply <p>`). */
   apply?: string;
-  /** Fold VERIFY.json into `--check` (fails on refuted/unsupported). `--semantic`. */
+  /**
+   * Fold the semantic gates into `--check`: VERIFY.json (refuted/unsupported
+   * requirements) and REVIEW.json (unresolved buildability blockers). `--semantic`.
+   */
   semantic?: boolean;
 }
 
@@ -501,6 +509,113 @@ export interface VerifyResult {
 export interface VerifyWorklist {
   run: string;
   pairs: ClaimEvidencePair[];
+}
+
+// ---------------------------------------------------------------------------
+// AI buildability review ledger (`--review` / `--check --semantic`). The
+// structural `--check` proves the tree is well-formed; `--verify` proves each
+// requirement traces to source. Neither judges whether the prose is actually
+// *buildable* — that is the nine-check AI review (`references/ai-review-rubric.md`).
+// The review ledger turns that review into a deterministic, terminating loop:
+// `--review` emits a per-feature worklist (content-hashed, so it can tell what
+// changed); an agent fans out one finder per changed feature + one independent
+// verifier per blocker and fills the findings; `--review --apply` reduces them to
+// a pass / changed-set / no-progress signal so the convergence loop stops on a
+// correct fixpoint. Determinism (hashing, change-tracking, reduction) lives here;
+// the JUDGEMENT (the findings) is the agent's. Additive — folds into
+// `--check --semantic`, never relaxing the structural gate.
+// ---------------------------------------------------------------------------
+export type ReviewSeverity = "blocker" | "major" | "minor";
+
+/** The nine rubric/contract categories a finding can belong to. */
+export type ReviewCategory =
+  | "stories"
+  | "requirements"
+  | "acceptance"
+  | "write-contract"
+  | "enum"
+  | "consistency"
+  | "faithfulness"
+  | "i18n"
+  | "rebuild-test";
+
+/** One reviewer finding against a feature PRD — one row of the rubric table. */
+export interface ReviewFinding {
+  /**
+   * Stable id `feature:category:hash(problem)` — assigned by the engine so the
+   * SAME finding keeps its id across rounds, which is what makes "the same
+   * residual findings" (no-progress) measurable. Agents may omit it.
+   */
+  id?: string;
+  feature: string;
+  severity: ReviewSeverity;
+  category: ReviewCategory;
+  problem: string;
+  fix: string;
+  /**
+   * Adjudication by an INDEPENDENT verifier (never the finder/author): a blocker
+   * gates buildability unless a verifier `refuted` it as a false positive. Left
+   * null/omitted means "not yet verified" — still gates, conservatively.
+   */
+  verdict?: "confirmed" | "refuted" | null;
+  verifierNote?: string;
+}
+
+/** One feature's slot in the review worklist. */
+export interface ReviewUnit {
+  /** Feature slug, e.g. "06-public-directory". */
+  feature: string;
+  /** sha256 of this feature's `PRD.md` — detects per-feature change. */
+  prdHash: string;
+  /** sha256 of the shared architecture docs (INTERFACES + DATA-MODEL + ARCHITECTURE). */
+  archHash: string;
+  /**
+   * True on the first round, or when this feature's `prdHash` or the shared
+   * `archHash` changed since the last `REVIEW.json` — the "only re-review what
+   * changed" signal. The agent reviews only the units flagged here.
+   */
+  needsReview: boolean;
+  /** Reviewer findings — empty in the worklist; the agent fills them. */
+  findings: ReviewFinding[];
+}
+
+export interface ReviewWorklist {
+  run: string;
+  /** The round this worklist prepares (prior round + 1). */
+  round: number;
+  /** Features changed since the previous round (all of them on the first round). */
+  changedSet: string[];
+  units: ReviewUnit[];
+}
+
+export interface ReviewResult {
+  /** True when no gating (unrefuted) blocker remains — the buildable fixpoint. */
+  ok: boolean;
+  round: number;
+  units: number;
+  /** Units flagged `needsReview` this round. */
+  reviewed: number;
+  blockers: number;
+  majors: number;
+  minors: number;
+  /** Features whose PRD changed since the previous round (or all, on an arch change). */
+  changedSet: string[];
+  /** Sorted ids of the gating (unrefuted) blockers this round. */
+  residual: string[];
+  /** True when this round's residual id set equals the previous round's (and is non-empty). */
+  noProgress: boolean;
+  /** Consecutive no-progress rounds — the convergence loop bound (stop at >= 2). */
+  staleRounds: number;
+  failures: { id: string; feature: string; category: ReviewCategory; problem: string; fix: string }[];
+  findings?: ReviewFinding[];
+  /**
+   * The content-hash baseline this round *adjudicated* — the anchor the next
+   * `--review` diffs against. Persisting it in REVIEW.json (which only `--apply`
+   * updates) rather than re-reading REVIEW.todo.json (which every `--review`
+   * overwrites) makes change-tracking idempotent: running `--review` repeatedly
+   * without applying never masks a pending change.
+   */
+  baseline?: { archHash: string; features: { feature: string; prdHash: string }[] };
 }
 
 export const VERSION = "1.0.0";
