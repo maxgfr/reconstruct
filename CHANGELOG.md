@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.1.0](https://github.com/maxgfr/reconstruct/compare/v1.0.0...v1.1.0) (2026-06-16)
+
+
+### Features
+
+* **review:** add review ledger to make the AI buildability loop converge ([d0c7d2e](https://github.com/maxgfr/reconstruct/commit/d0c7d2e0a487cb8b85b48f27edc59f6c625b02c4))
+
 # [1.0.0](https://github.com/maxgfr/reconstruct/compare/v0.12.0...v1.0.0) (2026-06-15)
 
 
