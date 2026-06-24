@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.2.1](https://github.com/maxgfr/reconstruct/compare/v1.2.0...v1.2.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* **prd:** close design-system coherence gaps found in review ([83a2693](https://github.com/maxgfr/reconstruct/commit/83a26931cbd5a932b5c07a7fad6b0b554964c94f))
+
 # [1.2.0](https://github.com/maxgfr/reconstruct/compare/v1.1.0...v1.2.0) (2026-06-24)
 
 

@@ -726,4 +726,4 @@ export interface ReviewResult {
   baseline?: { archHash: string; features: { feature: string; prdHash: string }[] };
 }
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.2.1";
