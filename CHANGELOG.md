@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.2.0](https://github.com/maxgfr/reconstruct/compare/v1.1.0...v1.2.0) (2026-06-24)
+
+
+### Features
+
+* **prd:** capture the design system as a contract document ([f12fe75](https://github.com/maxgfr/reconstruct/commit/f12fe7570febb634490314706b4c464a3d6d97a2))
+
 # [1.1.0](https://github.com/maxgfr/reconstruct/compare/v1.0.0...v1.1.0) (2026-06-16)
 
 
