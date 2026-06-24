@@ -219,7 +219,7 @@ export function checkOutput(outDir: string): CheckResult {
       warnings.push(
         "architecture/DESIGN-SYSTEM.md is missing but UI was detected — capture the visual contract (tokens, theming, typography, components, a11y).",
       );
-    } else if (!declaresDesignSystem(stripMetaTable(ds.content))) {
+    } else if (!declaresDesignSystem(stripSection(stripMetaTable(ds.content), "Design-system source files"))) {
       warnings.push(
         "architecture/DESIGN-SYSTEM.md captures no tokens/components — fill the design-system contract for a faithful visual rebuild.",
       );
@@ -297,6 +297,24 @@ function stripMetaTable(doc: string): string {
       continue;
     }
     out.push(lines[i] as string);
+  }
+  return out.join("\n");
+}
+
+/**
+ * Remove a named `## <heading>` section (its heading + body up to the next level
+ * 1–2 heading). Used so the design-system "## Design-system source files" listing
+ * — bare candidate-file bullets, which carry no captured contract — can't make
+ * `declaresDesignSystem` read an otherwise-empty doc as filled.
+ */
+function stripSection(doc: string, heading: string): string {
+  const re = new RegExp(`^##\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  const lines = doc.split(/\r?\n/);
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    if (/^#{1,2}\s/.test(line)) skipping = re.test(line);
+    if (!skipping) out.push(line);
   }
   return out.join("\n");
 }

@@ -80,4 +80,24 @@ describe("hasUI", () => {
   it("is true when a designSystem block is present", () => {
     expect(hasUI(baseInv({ designSystem: { brand: "Calm, minimal" } }))).toBe(true);
   });
+
+  it("is true for a UI framework even with no styling library or designSystem block", () => {
+    // The scratch-path gap: a greenfield Next.js plan has empty files/routes/hints
+    // and no styling lib, yet is unambiguously a UI product.
+    const inv = baseInv();
+    inv.stack.frameworks = ["Next.js"];
+    expect(hasUI(inv)).toBe(true);
+    const react = baseInv();
+    react.stack.frameworks = ["React"];
+    expect(hasUI(react)).toBe(true);
+  });
+
+  it("stays false for a backend framework (no false-positive on an API repo)", () => {
+    const inv = baseInv();
+    inv.stack.frameworks = ["Express"];
+    expect(hasUI(inv)).toBe(false);
+    const nest = baseInv();
+    nest.stack.frameworks = ["NestJS"];
+    expect(hasUI(nest)).toBe(false);
+  });
 });

@@ -281,4 +281,30 @@ describe("checkOutput — design-system (conditional, warning-only)", () => {
     expect(errors).toEqual([]);
     expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);
   });
+
+  it("still warns when only the source-files list is present (bullets must not mask an empty contract)", () => {
+    const dir = cleanTree(UI_OVERRIDE);
+    // Mirrors the real engine code-mode skeleton with its callouts resolved away
+    // but no tokens/components captured — the source-file bullets must not count.
+    write(
+      dir,
+      "architecture/DESIGN-SYSTEM.md",
+      "# Design system\n\n## Design-system source files\n\n- `tailwind.config.ts`\n\n## Design tokens\n\n(not captured yet)\n",
+    );
+    const { errors, warnings } = checkOutput(dir);
+    expect(errors).toEqual([]);
+    expect(warnings.join("\n")).toMatch(/DESIGN-SYSTEM/);
+  });
+
+  it("a non-UI tree with the rendered DESIGN-SYSTEM.md stub on disk still passes --check clean", () => {
+    const dir = cleanCodeTree(); // no stack/files/routes → hasUI false
+    write(
+      dir,
+      "architecture/DESIGN-SYSTEM.md",
+      "# Design system\n\n_No UI or styling surface was detected — this project has no design-system contract._\n",
+    );
+    const { errors, warnings } = checkOutput(dir);
+    expect(errors).toEqual([]);
+    expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);
+  });
 });

@@ -1004,6 +1004,40 @@ var NPM_FRAMEWORKS = [
   ["@tauri-apps/api", "Tauri"],
   ["@tauri-apps/cli", "Tauri"]
 ];
+var UI_FRAMEWORK_LABELS = /* @__PURE__ */ new Set([
+  "Next.js",
+  "Nuxt",
+  "Remix",
+  "React Router",
+  "SvelteKit",
+  "Astro",
+  "Angular",
+  "SolidStart",
+  "React",
+  "Vue",
+  "Svelte",
+  "SolidJS",
+  "Expo",
+  "React Native",
+  "Electron",
+  "Tauri",
+  "Flutter"
+]);
+var NPM_STYLING_LIBRARIES = [
+  ["tailwindcss", "Tailwind CSS"],
+  ["styled-components", "styled-components"],
+  ["@emotion/react", "Emotion"],
+  ["@mui/material", "MUI"],
+  ["@chakra-ui/react", "Chakra UI"],
+  ["@radix-ui/", "Radix UI"],
+  ["@mantine/core", "Mantine"],
+  ["bootstrap", "Bootstrap"],
+  ["unocss", "UnoCSS"],
+  ["@unocss/", "UnoCSS"],
+  ["@pandacss/dev", "Panda CSS"],
+  ["@vanilla-extract/css", "vanilla-extract"]
+];
+var STYLING_LIBRARY_LABELS = new Set(NPM_STYLING_LIBRARIES.map(([, label]) => label));
 var NPM_LIBRARIES = [
   // ORM / database
   ["drizzle-orm", "Drizzle ORM"],
@@ -1027,15 +1061,8 @@ var NPM_LIBRARIES = [
   ["@apollo/client", "Apollo GraphQL"],
   ["graphql", "GraphQL"],
   ["swr", "SWR"],
-  // Styling / UI
-  ["tailwindcss", "Tailwind CSS"],
-  ["styled-components", "styled-components"],
-  ["@emotion/react", "Emotion"],
-  ["@mui/material", "MUI"],
-  ["@chakra-ui/react", "Chakra UI"],
-  ["@radix-ui/", "Radix UI"],
-  ["@mantine/core", "Mantine"],
-  ["bootstrap", "Bootstrap"],
+  // Styling / UI (the design-system signal — see NPM_STYLING_LIBRARIES above)
+  ...NPM_STYLING_LIBRARIES,
   // State management
   ["@reduxjs/toolkit", "Redux Toolkit"],
   ["redux", "Redux"],
@@ -1454,22 +1481,13 @@ function detectEntryPoints(repo, files) {
 }
 
 // src/design.ts
-var STYLING_LIBRARY_LABELS = /* @__PURE__ */ new Set([
-  "Tailwind CSS",
-  "styled-components",
-  "Emotion",
-  "MUI",
-  "Chakra UI",
-  "Radix UI",
-  "Mantine",
-  "Bootstrap"
-]);
 function detectStylingLibraries(libraries) {
   return libraries.filter((l) => STYLING_LIBRARY_LABELS.has(l));
 }
 function hasUI(inv) {
   if (inv.designSystem != null) return true;
   if ((inv.stack?.stylingLibraries?.length ?? 0) > 0) return true;
+  if (inv.stack?.frameworks?.some((f) => UI_FRAMEWORK_LABELS.has(f))) return true;
   if ((inv.hints?.designSystemCandidates?.length ?? 0) > 0) return true;
   if (inv.files?.some((f) => f.category === "style")) return true;
   if (inv.routes?.some((r) => r.kind === "page" || r.kind === "component")) return true;
@@ -3883,6 +3901,9 @@ function rebuildDoc(inv, opts) {
     ...inv.i18n ? [
       isScratch ? "- [ ] All locales present, each with its own messages file." : "- [ ] All locales present and keys match `data/translations/`."
     ] : [],
+    ...hasUI(inv) ? [
+      "- [ ] UI matches `architecture/DESIGN-SYSTEM.md` \u2014 design tokens reproduced exactly, components built with their variants/states, and the accessibility target met."
+    ] : [],
     ...opts.tdd ? ["- [ ] Tests were written before implementation for each unit (red \u2192 green \u2192 refactor)."] : [],
     "- [ ] Required env vars configured: " + (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") + "."
   ];
@@ -4847,7 +4868,7 @@ function checkOutput(outDir) {
       warnings.push(
         "architecture/DESIGN-SYSTEM.md is missing but UI was detected \u2014 capture the visual contract (tokens, theming, typography, components, a11y)."
       );
-    } else if (!declaresDesignSystem(stripMetaTable(ds.content))) {
+    } else if (!declaresDesignSystem(stripSection(stripMetaTable(ds.content), "Design-system source files"))) {
       warnings.push(
         "architecture/DESIGN-SYSTEM.md captures no tokens/components \u2014 fill the design-system contract for a faithful visual rebuild."
       );
@@ -4888,6 +4909,17 @@ function stripMetaTable(doc) {
       continue;
     }
     out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+function stripSection(doc, heading) {
+  const re = new RegExp(`^##\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  const lines = doc.split(/\r?\n/);
+  const out = [];
+  let skipping = false;
+  for (const line of lines) {
+    if (/^#{1,2}\s/.test(line)) skipping = re.test(line);
+    if (!skipping) out.push(line);
   }
   return out.join("\n");
 }

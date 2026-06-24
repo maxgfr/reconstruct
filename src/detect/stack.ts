@@ -63,6 +63,39 @@ const NPM_FRAMEWORKS: Array<[string, string]> = [
   ["@tauri-apps/cli", "Tauri"],
 ];
 
+// The framework labels (a curated subset of those NPM_FRAMEWORKS / the other-stack
+// detectors emit) that imply a *UI / visual surface*. Used by `hasUI` so a
+// greenfield UI plan that names a frontend framework but no styling library still
+// surfaces a design-system contract. Deliberately EXCLUDES backend frameworks
+// (NestJS/Express/Fastify/Koa/Hono, Django/Flask/FastAPI, Rails, Spring, Laravel,
+// Go/Gin…) — a naive "any framework" check would false-positive every API repo.
+export const UI_FRAMEWORK_LABELS = new Set([
+  "Next.js", "Nuxt", "Remix", "React Router", "SvelteKit", "Astro", "Angular",
+  "SolidStart", "React", "Vue", "Svelte", "SolidJS",
+  "Expo", "React Native", "Electron", "Tauri", "Flutter",
+]);
+
+// Styling / UI libraries — the design-system signal. Kept as its own array so the
+// label set `hasUI`/`detectStylingLibraries` match against is DERIVED from it (no
+// hand-maintained duplicate that can drift). Spread into NPM_LIBRARIES below.
+const NPM_STYLING_LIBRARIES: Array<[string, string]> = [
+  ["tailwindcss", "Tailwind CSS"],
+  ["styled-components", "styled-components"],
+  ["@emotion/react", "Emotion"],
+  ["@mui/material", "MUI"],
+  ["@chakra-ui/react", "Chakra UI"],
+  ["@radix-ui/", "Radix UI"],
+  ["@mantine/core", "Mantine"],
+  ["bootstrap", "Bootstrap"],
+  ["unocss", "UnoCSS"],
+  ["@unocss/", "UnoCSS"],
+  ["@pandacss/dev", "Panda CSS"],
+  ["@vanilla-extract/css", "vanilla-extract"],
+];
+
+/** The styling-library labels — derived from NPM_STYLING_LIBRARIES so it can't drift. */
+export const STYLING_LIBRARY_LABELS = new Set(NPM_STYLING_LIBRARIES.map(([, label]) => label));
+
 // Notable libraries keyed by dependency. A key ending in "/" matches a scope prefix
 // (so all `@trpc/*` packages collapse to one "tRPC"); otherwise it's an exact dep name.
 const NPM_LIBRARIES: Array<[string, string]> = [
@@ -88,15 +121,8 @@ const NPM_LIBRARIES: Array<[string, string]> = [
   ["@apollo/client", "Apollo GraphQL"],
   ["graphql", "GraphQL"],
   ["swr", "SWR"],
-  // Styling / UI
-  ["tailwindcss", "Tailwind CSS"],
-  ["styled-components", "styled-components"],
-  ["@emotion/react", "Emotion"],
-  ["@mui/material", "MUI"],
-  ["@chakra-ui/react", "Chakra UI"],
-  ["@radix-ui/", "Radix UI"],
-  ["@mantine/core", "Mantine"],
-  ["bootstrap", "Bootstrap"],
+  // Styling / UI (the design-system signal — see NPM_STYLING_LIBRARIES above)
+  ...NPM_STYLING_LIBRARIES,
   // State management
   ["@reduxjs/toolkit", "Redux Toolkit"],
   ["redux", "Redux"],

@@ -128,7 +128,7 @@ preserved**; features then get `NN-` numbered slugs in build order.
 | `interface.input` / `.output` / `.sideEffects` | no | omitted | `INTERFACES.md` `## Operation contracts` per operation |
 | `services[]` | no | `[]` | `ARCHITECTURE.md` `## External services & integrations` |
 | `policies[]` | no | `[]` | `ARCHITECTURE.md` `## Cross-cutting policies` (rate limits, validations) |
-| `designSystem` | no | omitted | `architecture/DESIGN-SYSTEM.md` **pre-filled** (tokens, theming, typography, breakpoints, iconography, motion, components, a11y) |
+| `designSystem` | no | omitted | `architecture/DESIGN-SYSTEM.md` **pre-filled** (brand identity, tokens, theming, typography, breakpoints, iconography, motion, components, a11y) |
 | `designSystem.components[]` | no | `[]` | the component-library contract table (variants + states per primitive) |
 | `features[]` | **yes** (≥1) | — | `features/NN-<slug>/PRD.md`; dependency-tiered build order in `REBUILD.md` |
 | `feature.kind` | no | `"feature"` | tier derivation; PRD framing (setup / i18n / docs) |
@@ -277,7 +277,7 @@ and run `node scripts/analyze.mjs --scratch --plan linkrolls.plan.json --out ./o
 | `i18n.locales` | Internationalization feature; `00-overview` locale count; `ARCHITECTURE.md` i18n line |
 | `dataModel` | `architecture/DATA-MODEL.md` **pre-filled** entity tables; relations seed `CONTEXT.md` |
 | `interfaces` | `architecture/INTERFACES.md` **pre-filled** table |
-| `designSystem` | `architecture/DESIGN-SYSTEM.md` **pre-filled** (tokens, theming, typography, breakpoints, iconography, motion, components, a11y) |
+| `designSystem` | `architecture/DESIGN-SYSTEM.md` **pre-filled** (brand identity, tokens, theming, typography, breakpoints, iconography, motion, components, a11y) |
 | `features` | `features/NN-<slug>/PRD.md` (tiered foundations → features → docs); build order in `REBUILD.md` |
 | `glossary` | `CONTEXT.md` Language section — see [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) |
 | `decisions` | `docs/adr/NNNN-<slug>.md`, one terse ADR each — see [ADR-FORMAT.md](./ADR-FORMAT.md) |

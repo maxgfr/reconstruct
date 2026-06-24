@@ -65,6 +65,12 @@ send you back to sharpen an earlier one.
      an honest "no validation"), each `appliesTo` its operations/fields.
    - **i18n message catalog** (→ `plan.i18n.messages`): the source locale, the namespaces,
      and the keys with their source strings — naming locales isn't buildable copy.
+   - **Design system** (→ `plan.designSystem`, UI products only): the brand/voice, the design
+     tokens with their **exact values** (colors, type scale, spacing, radii, shadows, z-index),
+     theming (light/dark + scheme), typography, breakpoints, iconography, motion, the
+     component-library contract (variants + the states each primitive renders), and the a11y
+     target. Capture token values **live** — you can't reconstruct an exact hex later. Skip for
+     a backend/CLI/library: `DESIGN-SYSTEM.md` self-degrades to a no-contract stub.
 6. **Features** — the units of behavior a user cares about, each tied to its `interfaces`,
    `entities`, and the subset it **`writes`**. Assign tiers (below). Features often surface a
    missing entity, enum, service, or route — go back. For any public/anonymous write, name an
@@ -129,6 +135,7 @@ immediately.
 | Operations (routes, RPC, CLI, jobs; input/output/sideEffects) | `interfaces` | `architecture/INTERFACES.md` pre-filled table + `## Operation contracts` |
 | External services (provider, contract, timeout, failure) | `services` | `architecture/ARCHITECTURE.md` `## External services & integrations` |
 | Policies (rate limits, format validations) | `policies` | `architecture/ARCHITECTURE.md` `## Cross-cutting policies` |
+| Design system (tokens/theming/typography/components/a11y; UI products) | `designSystem` | `architecture/DESIGN-SYSTEM.md` pre-filled |
 | Features (tiers; interfaces/entities/`writes`) | `features` | `features/NN-<slug>/PRD.md`, tiered build order in `REBUILD.md` |
 | Locales + message catalog | `i18n.locales` / `i18n.messages` | Internationalization, overview locale count, architecture i18n message catalog |
 | Terms | `glossary` | `CONTEXT.md` (format: `references/CONTEXT-FORMAT.md`) |

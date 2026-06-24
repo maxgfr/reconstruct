@@ -8,6 +8,7 @@ import {
   designSystemDoc,
   interfacesDoc,
   featurePrd,
+  rebuildDoc,
 } from "../src/prd/templates.js";
 import type { Feature, Options, ScratchPlan } from "../src/types.js";
 
@@ -223,9 +224,12 @@ describe("DESIGN-SYSTEM.md — visual contract", () => {
     expect(codeMd).toMatch(/verbatim|exact/i);
   });
 
-  it("redesign mode anchors to brand identity", () => {
+  it("redesign mode anchors to brand identity and still renders the contract body", () => {
     const redesignMd = designSystemDoc(inv, opts({ mode: "redesign" }));
     expect(redesignMd).toMatch(/brand/i);
+    expect(redesignMd).toContain("## Design-system source files"); // code-mode section (!isScratch)
+    expect(redesignMd).toContain("Button"); // captured component still rendered
+    expect(redesignMd).not.toMatch(/No UI/i);
   });
 
   it("a non-UI inventory renders a callout-free stub", () => {
@@ -240,6 +244,54 @@ describe("DESIGN-SYSTEM.md — visual contract", () => {
     const stub = designSystemDoc(backendInv, opts());
     expect(stub).not.toContain("🧠");
     expect(stub).toMatch(/No UI/i);
+  });
+
+  it("a UI framework with no styling lib / no designSystem renders the full skeleton, not the stub", () => {
+    const nextInv = planToInventory(
+      {
+        project: { name: "x", summary: "y" },
+        stack: { primaryLanguage: "TypeScript", frameworks: ["Next.js"], libraries: ["Zustand"] },
+        features: [{ name: "Home", kind: "feature" }],
+      },
+      opts(),
+    );
+    const md = designSystemDoc(nextInv, opts());
+    expect(md).toContain("🧠"); // full skeleton, not the callout-free stub
+    expect(md).not.toMatch(/No UI/i);
+  });
+
+  it("an empty designSystem ({}) still renders the scratch lead and the no-tokens fallback", () => {
+    const emptyInv = planToInventory(
+      {
+        project: { name: "x", summary: "y" },
+        stack: { primaryLanguage: "TypeScript" },
+        designSystem: {},
+        features: [{ name: "F", kind: "feature" }],
+      },
+      opts(),
+    );
+    const md = designSystemDoc(emptyInv, opts());
+    expect(md).toContain("🧠"); // scratch lead callout
+    expect(md).toContain("Captured design system");
+    expect(md).toMatch(/No design tokens captured yet/i);
+  });
+});
+
+describe("REBUILD.md — design-system validation item (hasUI-gated)", () => {
+  it("includes a design-system checklist item for a UI tree", () => {
+    expect(rebuildDoc(inv, opts())).toMatch(/DESIGN-SYSTEM\.md/);
+  });
+
+  it("omits the design-system item for a non-UI (backend) tree", () => {
+    const backendInv = planToInventory(
+      {
+        project: { name: "api", summary: "Backend." },
+        stack: { primaryLanguage: "Go" },
+        features: [{ name: "Health", kind: "feature" }],
+      },
+      opts(),
+    );
+    expect(rebuildDoc(backendInv, opts())).not.toMatch(/DESIGN-SYSTEM\.md/);
   });
 });
 

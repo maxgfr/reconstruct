@@ -82,6 +82,7 @@ function sampleArtifacts(): Artifact[] {
     { relPath: "architecture/ARCHITECTURE.md", content: "# Architecture\n\n## Layers\nText.\n" },
     { relPath: "architecture/INTERFACES.md", content: "# Interfaces\n\nRoutes.\n" },
     { relPath: "architecture/DATA-MODEL.md", content: "# Data model\n\nEntities.\n" },
+    { relPath: "architecture/DESIGN-SYSTEM.md", content: "# Design system\n\nTokens.\n" },
     { relPath: "architecture/diagram.md", content: "# Diagram\n\n```mermaid\ngraph TD\n```\n" },
     { relPath: "features/01-core/PRD.md", content: "# Core\n\nCore feature.\n" },
     { relPath: "features/02-auth/PRD.md", content: "# Auth\n\nAuth feature.\n" },
@@ -167,6 +168,17 @@ describe("mergeArtifacts", () => {
     expect(iArch).toBeLessThan(iCore);
     expect(iCore).toBeLessThan(iAuth); // inventory feature order preserved
     expect(iAuth).toBeLessThan(iRebuild); // build order closes the document
+  });
+
+  it("includes the design system section, anchored between data model and features", () => {
+    expect(out).toContain("## Design system");
+    expect(out).toContain("(#design-system)"); // TOC link
+    expect(out).toContain('id="design-system"'); // section anchor
+    const iDataModel = out.indexOf("## Data model");
+    const iDesign = out.indexOf("## Design system");
+    const iCore = out.indexOf("## Core");
+    expect(iDataModel).toBeLessThan(iDesign);
+    expect(iDesign).toBeLessThan(iCore);
   });
 });
 

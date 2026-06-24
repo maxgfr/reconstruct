@@ -1007,6 +1007,11 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
             : "- [ ] All locales present and keys match `data/translations/`.",
         ]
       : []),
+    ...(hasUI(inv)
+      ? [
+          "- [ ] UI matches `architecture/DESIGN-SYSTEM.md` — design tokens reproduced exactly, components built with their variants/states, and the accessibility target met.",
+        ]
+      : []),
     ...(opts.tdd
       ? ["- [ ] Tests were written before implementation for each unit (red → green → refactor)."]
       : []),
