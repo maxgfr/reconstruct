@@ -10,6 +10,7 @@ import {
   findWorkspaceCycle,
 } from "./detect/workspaces.js";
 import { detectCandidates } from "./detect/candidates.js";
+import { detectStylingLibraries } from "./design.js";
 import {
   extractDependencies,
   extractScripts,
@@ -69,6 +70,11 @@ function computeUnknowns(
       "Auth/middleware signals were found — read `hints.authCandidates` and record the auth rule per operation in the `architecture/INTERFACES.md` interface table's Auth column.",
     );
   }
+  if (hints.designSystemCandidates.length > 0) {
+    u.push(
+      "Design-system source files were found (Tailwind/theme configs, token modules, global CSS) — capture the visual contract (tokens with their exact values, theming, typography, components, a11y) from `hints.designSystemCandidates` in `architecture/DESIGN-SYSTEM.md`.",
+    );
+  }
   return u;
 }
 
@@ -114,6 +120,9 @@ export function analyze(opts: Options): Inventory {
   const unknowns = computeUnknowns(stack, routes, hints, workspaces);
   const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
+  // Derive the styling-library signal from the final (merged) library set so a
+  // workspace-only styling lib still surfaces. Drives `hasUI` / the DS gate.
+  const stylingLibraries = detectStylingLibraries(stack.libraries);
 
   return {
     generatedWith: `reconstruct@${VERSION}`,
@@ -124,7 +133,7 @@ export function analyze(opts: Options): Inventory {
       granularity: opts.granularity,
     },
     repoName: basename(opts.repo) || "project",
-    stack,
+    stack: stylingLibraries.length ? { ...stack, stylingLibraries } : stack,
     fileCount: files.length,
     totalLines,
     files,

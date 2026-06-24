@@ -47,8 +47,9 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    are optional bundles — see **Bundling the output** below.
 
 2. **Read the scaffold:** `inventory.json` (facts **+ `hints` + `unknowns`**),
-   `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, the **`architecture/INTERFACES.md`**
-   and **`architecture/DATA-MODEL.md`** skeletons, and each `features/<slug>/PRD.md`.
+   `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, the **`architecture/INTERFACES.md`**,
+   **`architecture/DATA-MODEL.md`**, and (for a UI product) **`architecture/DESIGN-SYSTEM.md`**
+   skeletons, and each `features/<slug>/PRD.md`.
    Treat `routes`/`i18n` and everything under `hints` as **candidates to verify**, not truth.
    If `inventory.warnings` is present (a malformed manifest, a workspace dependency cycle),
    detection degraded there — verify those areas by hand before trusting the empty defaults.
@@ -89,7 +90,11 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    types`** section with the *complete* member list of every enum/status/role set. Then fill
    the **`architecture/ARCHITECTURE.md`** contract sections — **External services &
    integrations** (provider, request/response, timeout, failure), **Cross-cutting policies**
-   (rate limits and format validations, quantified), and the i18n message catalog. See the
+   (rate limits and format validations, quantified), and the i18n message catalog. **For a UI
+   product**, also fill **`architecture/DESIGN-SYSTEM.md`** — design tokens with their *exact
+   values*, theming (light/dark), typography, breakpoints, iconography, motion, the
+   component-library contract (variants + states), and the accessibility target — from
+   `hints.designSystemCandidates` (it self-degrades to a stub when there is no UI). See the
    playbook (§Data model, §Contracts & buildability) and `references/buildability-checklist.md`.
 
 6. **Group features semantically — and keep them small.** Turn the path-based skeleton into real
@@ -139,8 +144,9 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      `DATA-MODEL.md`, no operations in `INTERFACES.md`). On the **scratch path** it additionally
      enforces reference integrity — a feature must not reference an entity/operation absent from
      the architecture docs (on the code path the inventory carries no `dataModel`/`interfaces`, so
-     the contract-substance check above is the operative gate instead). An uncovered locale is a
-     warning. Fix every error and resolve the warnings. See `references/buildability-checklist.md`.
+     the contract-substance check above is the operative gate instead). An uncovered locale — or a
+     UI product whose `DESIGN-SYSTEM.md` is left empty — is a warning. Fix every error and resolve
+     the warnings. See `references/buildability-checklist.md`.
 
    - **Layer 2 — the AI review (substance).** The gate proves structure but cannot judge
      whether the prose is *actually buildable*. Once `--check` passes, **you (the agent) run a
@@ -211,7 +217,7 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
     scaffold → buildable.
 
 See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
-for per-stack cheat-sheets, `references/buildability-checklist.md` for the nine contract
+for per-stack cheat-sheets, `references/buildability-checklist.md` for the ten contract
 categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
 review, `references/orchestration.md` for fanning the enrichment and review/fix loop out across
 subagents (the map-reduce + the `--review` ledger), and `references/architecture-analysis.md` /
@@ -254,7 +260,8 @@ interview that also proposes alternatives, enhancements, and more ADRs).
    Capture the full contract surface so the from-scratch tree is as buildable as the
    reverse-engineered one: `dataModel` (with `enumRef`, indexes, uniques), `enums` (full member
    lists), `interfaces` (with input/output/sideEffects), `services`, `policies`, the
-   `i18n.messages` catalog, and each `feature.writes`. Schema + worked example:
+   `i18n.messages` catalog, `designSystem` (tokens/theming/components/a11y for a UI product),
+   and each `feature.writes`. Schema + worked example:
    `references/scratch-plan-schema.md`. The plan must be **internally consistent** — the engine
    rejects dangling references and warns on anonymous writes to owner-FK tables.
 
@@ -316,10 +323,13 @@ They work two ways:
 - `INTERFACES.md` lists the **whole** interface surface, each with its input/output/side-effect
   contract; `DATA-MODEL.md` lists every entity with field-level types and constraints, and
   every enum with its **complete** member list.
+- For a UI product, `DESIGN-SYSTEM.md` carries the visual contract — design tokens with their
+  **exact values**, theming, typography, the component-library contract (variants + states), and
+  the accessibility target — not merely named (a non-UI project says so and the gate stays quiet).
 - **Every contract category is captured, not just named** — operation contracts, write
   contracts (every required column/FK has a source; anonymous writes use anonymous-capable
   entities), enums, format validations, external services, quantified policies, and the i18n
-  message catalog. The nine categories are in `references/buildability-checklist.md`.
+  message catalog. The ten categories are in `references/buildability-checklist.md`.
 - **Every `features/<slug>/PRD.md` is a complete PRD** — the full spine is filled (user stories,
   numbered requirements, interface & data contracts, Given/When/Then acceptance criteria, edge
   cases, definition of done), and **no `> 🧠` callout or `_placeholder_` remains** anywhere.

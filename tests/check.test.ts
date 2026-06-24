@@ -244,3 +244,41 @@ describe("checkOutput — i18n coverage", () => {
     expect(warnings.join("\n")).not.toMatch(/locale `en`|locale `fr`/);
   });
 });
+
+describe("checkOutput — design-system (conditional, warning-only)", () => {
+  // A styling library in the inventory is enough to flag a UI surface.
+  const UI_OVERRIDE = { stack: { stylingLibraries: ["Tailwind CSS"] } };
+
+  it("warns — never errors — when UI is detected but DESIGN-SYSTEM.md is missing", () => {
+    const dir = cleanTree(UI_OVERRIDE);
+    const { errors, warnings } = checkOutput(dir);
+    expect(errors).toEqual([]);
+    expect(warnings.join("\n")).toMatch(/DESIGN-SYSTEM/);
+  });
+
+  it("warns when DESIGN-SYSTEM.md is present but captures no contract", () => {
+    const dir = cleanTree(UI_OVERRIDE);
+    write(dir, "architecture/DESIGN-SYSTEM.md", "# Design system\n\nNothing captured here.\n");
+    const { errors, warnings } = checkOutput(dir);
+    expect(errors).toEqual([]);
+    expect(warnings.join("\n")).toMatch(/DESIGN-SYSTEM/);
+  });
+
+  it("is silent when DESIGN-SYSTEM.md captures a real contract", () => {
+    const dir = cleanTree(UI_OVERRIDE);
+    write(
+      dir,
+      "architecture/DESIGN-SYSTEM.md",
+      "# Design system\n\n### Design tokens\n\n- `primary-500: #1d4ed8`\n",
+    );
+    const { errors, warnings } = checkOutput(dir);
+    expect(errors).toEqual([]);
+    expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);
+  });
+
+  it("does not demand a design system for a non-UI (backend) tree", () => {
+    const { errors, warnings } = checkOutput(cleanCodeTree());
+    expect(errors).toEqual([]);
+    expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);
+  });
+});

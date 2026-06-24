@@ -463,13 +463,14 @@ function main(): void {
     inv.hints.apiCandidates.length +
     inv.hints.schemaCandidates.length +
     inv.hints.realtimeCandidates.length +
-    inv.hints.authCandidates.length;
+    inv.hints.authCandidates.length +
+    inv.hints.designSystemCandidates.length;
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
     `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " · " + inv.stack.frameworks.join(", ") : ""}`,
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "—"}`,
     `  features: ${inv.features.length} · routes: ${inv.routes.length} · locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
-    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth) · ${inv.hints.entryPoints.length} entry point(s)`,
+    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth/design-system) · ${inv.hints.entryPoints.length} entry point(s)`,
     ...(inv.workspaces
       ? [
           `  monorepo: ${inv.workspaces.length} workspace(s) · ${inv.workspaces.reduce(

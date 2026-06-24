@@ -150,6 +150,7 @@ function main() {
     interfaces: names(plan.interfaces, "path"),
     services: names(plan.services, "name"),
     policies: names(plan.policies, "name"),
+    designComponents: names(plan.designSystem?.components, "name"),
     locales: opts.locales
       ? opts.locales.split(",").map((s) => s.trim()).filter(Boolean)
       : plan.i18n?.locales ?? [],
@@ -212,6 +213,11 @@ function main() {
       if (!/Cross-cutting policies/i.test(arch)) fail("ARCHITECTURE.md is missing the `Cross-cutting policies` section");
       checkAll("ARCHITECTURE policies", expect.policies, arch);
     }
+    if (expect.designComponents.length) {
+      const ds = read(scratchOut, "architecture/DESIGN-SYSTEM.md");
+      if (!/Design system/i.test(ds)) fail("DESIGN-SYSTEM.md is missing or carries no `Design system` heading");
+      checkAll("DESIGN-SYSTEM components", expect.designComponents, ds);
+    }
     if (expect.locales.length && !/message catalog/i.test(arch)) {
       fail("ARCHITECTURE.md is missing the i18n `message catalog`");
     }
@@ -251,6 +257,7 @@ function main() {
     process.stdout.write(row("enums (scratch)", "—", expect.enums.length) + "\n");
     process.stdout.write(row("services (scratch)", "—", expect.services.length) + "\n");
     process.stdout.write(row("policies (scratch)", "—", expect.policies.length) + "\n");
+    process.stdout.write(row("design components (scr)", "—", expect.designComponents.length) + "\n");
     process.stdout.write(row("locales", codeLocales, scratchLocales.length) + "\n");
     process.stdout.write(`\n  scratch plan generated with no consistency errors/warnings: ${scratch.code === 0 && !/⚠/.test(scratch.stderr) ? "yes ✓" : "NO ✗"}\n`);
     process.stdout.write(`  scratch scaffold carries the declared contract surface: ${failed ? "see ✗ above" : "yes ✓"}\n`);

@@ -179,6 +179,8 @@ Verdict: 1 blocker → FAILS AI review until the write contract is resolved.
 
 A clean unit ends with: `Verdict: 0 blockers → PASSES AI review.`
 
-See [`buildability-checklist.md`](./buildability-checklist.md) for the nine
-*contract categories* the deterministic gate and this review share, and
+See [`buildability-checklist.md`](./buildability-checklist.md) for the ten
+*contract categories* the deterministic gate covers — this per-feature review applies the nine
+that live in a feature PRD; the tenth, the design-system/visual contract, is an
+architecture-doc concern the gate warns on — and
 [`analysis-playbook.md`](./analysis-playbook.md) for how each contract is derived.

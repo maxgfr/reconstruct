@@ -921,6 +921,7 @@ function enrichWorkspaceSurface(workspaces, routes, hints, schemas) {
       schemaCandidates: hints.schemaCandidates.filter((p) => p.startsWith(prefix)),
       realtimeCandidates: hints.realtimeCandidates.filter((p) => p.startsWith(prefix)),
       authCandidates: hints.authCandidates.filter((p) => p.startsWith(prefix)),
+      designSystemCandidates: hints.designSystemCandidates.filter((p) => p.startsWith(prefix)),
       entryPoints: hints.entryPoints.filter((p) => p.startsWith(prefix))
     };
     if (Object.values(wsHints).some((list) => list.length > 0)) ws.hints = wsHints;
@@ -1293,6 +1294,39 @@ var AUTH_CONTENT_RE = new RegExp(
   ].join("|")
 );
 var SCHEMA_CONTENT_RE = /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
+var DS_FILE_NAMES = /* @__PURE__ */ new Set([
+  "tailwind.config.js",
+  "tailwind.config.ts",
+  "tailwind.config.cjs",
+  "tailwind.config.mjs",
+  "panda.config.ts",
+  "panda.config.js",
+  "panda.config.mjs",
+  "uno.config.ts",
+  "uno.config.js",
+  "unocss.config.ts",
+  "unocss.config.js",
+  "theme.ts",
+  "theme.tsx",
+  "theme.js",
+  "tokens.ts",
+  "tokens.js",
+  "tokens.json",
+  "design-tokens.ts",
+  "design-tokens.js",
+  "design-tokens.json",
+  "globals.css",
+  "global.css",
+  "app.css",
+  "index.css",
+  "styles.css",
+  "tokens.css",
+  "theme.css",
+  "components.json"
+  // shadcn/ui
+]);
+var DS_STYLE_EXTS = /* @__PURE__ */ new Set([".css", ".scss", ".sass", ".less", ".styl", ".pcss"]);
+var DS_CSS_RE = /--[\w-]+\s*:|@theme\b|@layer\s+base\b|:root\s*\{/;
 var MAX_CONTENT_SCAN_BYTES = 2e6;
 function segmentsOf(path) {
   return path.toLowerCase().split("/");
@@ -1318,6 +1352,7 @@ function detectCandidates(repo, files, stack) {
   const schemaCandidates = /* @__PURE__ */ new Set();
   const realtimeCandidates = /* @__PURE__ */ new Set();
   const authCandidates = /* @__PURE__ */ new Set();
+  const designSystemCandidates = /* @__PURE__ */ new Set();
   for (const f of files) {
     if (f.binary || f.size === 0) continue;
     const p = f.path;
@@ -1334,6 +1369,11 @@ function detectCandidates(repo, files, stack) {
     if (inDir(lower, API_DIRS)) apiCandidates.add(p);
     if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
     if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
+    if (DS_FILE_NAMES.has(base)) designSystemCandidates.add(p);
+    if (DS_STYLE_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
+      const css = safeRead2(repo, p);
+      if (css && DS_CSS_RE.test(css)) designSystemCandidates.add(p);
+    }
     if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
       const src = safeRead2(repo, p);
       if (!src) continue;
@@ -1350,6 +1390,7 @@ function detectCandidates(repo, files, stack) {
     schemaCandidates: [...schemaCandidates].sort(),
     realtimeCandidates: [...realtimeCandidates].sort(),
     authCandidates: [...authCandidates].sort(),
+    designSystemCandidates: [...designSystemCandidates].sort(),
     entryPoints: detectEntryPoints(repo, files)
   };
 }
@@ -1410,6 +1451,29 @@ function detectEntryPoints(repo, files) {
     if (present.has(c)) entries.add(c);
   }
   return [...entries].sort();
+}
+
+// src/design.ts
+var STYLING_LIBRARY_LABELS = /* @__PURE__ */ new Set([
+  "Tailwind CSS",
+  "styled-components",
+  "Emotion",
+  "MUI",
+  "Chakra UI",
+  "Radix UI",
+  "Mantine",
+  "Bootstrap"
+]);
+function detectStylingLibraries(libraries) {
+  return libraries.filter((l) => STYLING_LIBRARY_LABELS.has(l));
+}
+function hasUI(inv) {
+  if (inv.designSystem != null) return true;
+  if ((inv.stack?.stylingLibraries?.length ?? 0) > 0) return true;
+  if ((inv.hints?.designSystemCandidates?.length ?? 0) > 0) return true;
+  if (inv.files?.some((f) => f.category === "style")) return true;
+  if (inv.routes?.some((r) => r.kind === "page" || r.kind === "component")) return true;
+  return false;
 }
 
 // src/adapters/nextjs.ts
@@ -2912,6 +2976,11 @@ function computeUnknowns(stack, routes, hints, workspaces) {
       "Auth/middleware signals were found \u2014 read `hints.authCandidates` and record the auth rule per operation in the `architecture/INTERFACES.md` interface table's Auth column."
     );
   }
+  if (hints.designSystemCandidates.length > 0) {
+    u.push(
+      "Design-system source files were found (Tailwind/theme configs, token modules, global CSS) \u2014 capture the visual contract (tokens with their exact values, theming, typography, components, a11y) from `hints.designSystemCandidates` in `architecture/DESIGN-SYSTEM.md`."
+    );
+  }
   return u;
 }
 function analyze(opts) {
@@ -2951,6 +3020,7 @@ function analyze(opts) {
   const unknowns = computeUnknowns(stack, routes, hints, workspaces);
   const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
+  const stylingLibraries = detectStylingLibraries(stack.libraries);
   return {
     generatedWith: `reconstruct@${VERSION}`,
     generation: {
@@ -2960,7 +3030,7 @@ function analyze(opts) {
       granularity: opts.granularity
     },
     repoName: basename3(opts.repo) || "project",
-    stack,
+    stack: stylingLibraries.length ? { ...stack, stylingLibraries } : stack,
     fileCount: files.length,
     totalLines,
     files,
@@ -3455,6 +3525,173 @@ function dataModelDoc(inv, opts) {
     ""
   ].join("\n");
 }
+function tokenList(label, items) {
+  if (!items || !items.length) return [];
+  return [`**${label}:**`, "", ...items.map((t) => `- \`${cell(t)}\``), ""];
+}
+function componentTable(components) {
+  if (!components.length) return [];
+  const lines = [
+    "### Component library",
+    "",
+    "| Component | Source | Variants | States |",
+    "| --- | --- | --- | --- |"
+  ];
+  for (const c of components) {
+    lines.push(
+      `| ${cell(c.name)} | ${cell(c.source ?? "")} | ${cell((c.variants ?? []).join(", "))} | ${cell((c.states ?? []).join(", "))} |`
+    );
+  }
+  lines.push("");
+  return lines;
+}
+function filledDesignSystem(ds) {
+  const parts = [];
+  if (ds.brand) parts.push("### Brand identity", "", ds.brand, "");
+  if (ds.tokens) {
+    const t = ds.tokens;
+    const tokenLines = [
+      ...tokenList("Colors", t.colors),
+      ...tokenList("Typography scale", t.typographyScale),
+      ...tokenList("Spacing", t.spacing),
+      ...tokenList("Sizing", t.sizing),
+      ...tokenList("Radii", t.radii),
+      ...tokenList("Shadows", t.shadows),
+      ...tokenList("z-index", t.zIndex)
+    ];
+    if (tokenLines.length) parts.push("### Design tokens", "", ...tokenLines);
+  }
+  if (ds.theme) {
+    const th = ds.theme;
+    const lines = ["### Theming", ""];
+    if (th.modes?.length) lines.push(`- **Modes:** ${th.modes.map((m) => `\`${m}\``).join(", ")}`);
+    if (th.scheme) lines.push(`- **Scheme:** ${th.scheme}`);
+    if (th.default) lines.push(`- **Default:** ${th.default}`);
+    if (th.notes) lines.push(`- ${th.notes}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  if (ds.typography) {
+    const ty = ds.typography;
+    const lines = ["### Typography", ""];
+    if (ty.families?.length) lines.push(`- **Families:** ${ty.families.map((f) => `\`${f}\``).join(", ")}`);
+    if (ty.weights?.length) lines.push(`- **Weights:** ${ty.weights.map((w) => `\`${w}\``).join(", ")}`);
+    if (ty.loading) lines.push(`- **Loading:** ${ty.loading}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  if (ds.breakpoints?.length) {
+    parts.push("### Breakpoints", "", ...ds.breakpoints.map((b) => `- \`${cell(b)}\``), "");
+  }
+  if (ds.iconography) parts.push("### Iconography", "", ds.iconography, "");
+  if (ds.motion) {
+    const mo = ds.motion;
+    const lines = ["### Motion & animation", ""];
+    if (mo.durations?.length) lines.push(`- **Durations:** ${mo.durations.map((d) => `\`${d}\``).join(", ")}`);
+    if (mo.easings?.length) lines.push(`- **Easings:** ${mo.easings.map((e) => `\`${e}\``).join(", ")}`);
+    if (mo.reducedMotion) lines.push(`- **prefers-reduced-motion:** ${mo.reducedMotion}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  if (ds.components?.length) parts.push(...componentTable(ds.components));
+  if (ds.a11y) {
+    const a = ds.a11y;
+    const lines = ["### Accessibility", ""];
+    if (a.target) lines.push(`- **Target:** ${a.target}`);
+    for (const r of a.requirements ?? []) lines.push(`- ${r}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  return parts.join("\n").trimEnd() || "_No design tokens captured yet._";
+}
+function designSystemDoc(inv, opts) {
+  const head = ["# Design system", "", metaBlock(inv, opts)];
+  if (!hasUI(inv)) {
+    return [
+      ...head,
+      "_No UI or styling surface was detected \u2014 this project has no design-system contract. If that is wrong (a UI lives here the engine did not detect), capture the design tokens, theming, typography, components, and the accessibility target here._",
+      ""
+    ].join("\n");
+  }
+  const isScratch = opts.mode === "scratch";
+  const lead = isScratch ? agentNote(
+    "Design the system from the interview's brand/design inputs and `../CONTEXT.md`. Capture every design token with its **exact value**, the theming scheme, typography, breakpoints, iconography, motion, the component-library contract (each primitive's variants and states), and the accessibility target. Any blocks below are pre-filled from the plan \u2014 refine and complete them."
+  ) : opts.mode === "redesign" ? agentNote(
+    "Keep the **brand identity** (logo, voice, the core palette's intent) but you may refresh the system. Record the brand invariants that must survive, then the new/updated tokens, theming, typography, components, and the accessibility target."
+  ) : agentNote(
+    "Reproduce the existing design system **verbatim**. Copy every token value exactly \u2014 colors as exact hex/oklch, the type scale, spacing, sizing, radii, shadows, z-index, and breakpoints \u2014 from the source files listed below; never round, rename, or approximate. Then capture theming (light/dark, the CSS-variable names), typography (font families + weights + how they load), iconography, motion (durations, easing, and the `prefers-reduced-motion` behavior), the component-library contract (each primitive's variants and the states it must render \u2014 default / hover / focus / disabled / loading / empty / error), and the accessibility target (WCAG level, keyboard nav, focus management, contrast minimums, ARIA)."
+  );
+  const out = [...head, lead, ""];
+  if (!isScratch) {
+    out.push(
+      "## Design-system source files",
+      "",
+      listOrNone(
+        inv.hints.designSystemCandidates,
+        "_No design-system config/token files detected \u2014 capture tokens from the component and CSS files._"
+      ),
+      ""
+    );
+  }
+  if (inv.designSystem) {
+    out.push("## Captured design system", "", filledDesignSystem(inv.designSystem), "");
+  } else {
+    out.push(
+      "## Design tokens",
+      "",
+      agentNote(
+        "Capture every token with its **exact value**: the color palette (exact hex/oklch per role + scale step), the typography scale (size / line-height per step), spacing, sizing, radii, shadows, and z-index layers. A token named but not valued (`primary` with no hex) is not buildable."
+      ),
+      "",
+      "## Theming",
+      "",
+      agentNote(
+        "Document the theme modes (light / dark / system), how they are expressed (CSS variables on `:root`/`.dark`, a `data-theme` attribute, a class), the default and how it is chosen/persisted, and the per-theme token overrides."
+      ),
+      "",
+      "## Typography",
+      "",
+      agentNote(
+        "Font families and their roles, the weights loaded, and how fonts load (`next/font`, `@font-face`, a Google Fonts link, self-hosted) including the fallback stack."
+      ),
+      "",
+      "## Breakpoints & responsive",
+      "",
+      agentNote(
+        "The named breakpoints with their exact values and the layout/grid strategy (mobile-first vs desktop-first, container queries)."
+      ),
+      "",
+      "## Iconography",
+      "",
+      agentNote(
+        "The icon set / library, the sizing and stroke conventions, and how icons are colored and used."
+      ),
+      "",
+      "## Motion & animation",
+      "",
+      agentNote(
+        "The duration and easing tokens, the standard transitions, and how `prefers-reduced-motion` is honored."
+      ),
+      "",
+      "## Component library",
+      "",
+      "| Component | Source | Variants | States |",
+      "| --- | --- | --- | --- |",
+      "",
+      agentNote(
+        "Contract every shared/owned primitive: its variants, the states it must render (default / hover / focus / disabled / loading / empty / error), the props, and which tokens it consumes. A component named but not contracted (`Button`, `Card`) cannot be rebuilt to a fixed spec."
+      ),
+      "",
+      "## Accessibility",
+      "",
+      agentNote(
+        "The WCAG conformance target (A / AA / AAA), the keyboard-navigation and focus-management rules, contrast minimums, and the required ARIA roles/labels per component state."
+      ),
+      ""
+    );
+  }
+  return out.join("\n");
+}
 function diagramDoc(inv) {
   const nodes = inv.features.map((f, i) => `  F${i}["${f.name}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
@@ -3542,7 +3779,17 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
     agentNote(
       "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and \u2014 for every required (NOT NULL, no-default) column and foreign key \u2014 where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`."
     ),
-    "",
+    ""
+  );
+  if (hasUI(inv)) {
+    out.push(
+      agentNote(
+        "For any UI this unit renders, conform to `../../architecture/DESIGN-SYSTEM.md`: use its design tokens (no hard-coded colors / spacing / typography), build on the component-library primitives (with their variants and the states empty / loading / error), and meet its accessibility target (keyboard, focus, contrast, ARIA)."
+      ),
+      ""
+    );
+  }
+  out.push(
     "## Acceptance criteria",
     "",
     agentNote(
@@ -3844,6 +4091,7 @@ function orderedSections(artifacts, inv) {
   push("architecture/ARCHITECTURE.md", "Architecture", "architecture");
   push("architecture/INTERFACES.md", "Interfaces", "interfaces");
   push("architecture/DATA-MODEL.md", "Data model", "data-model");
+  push("architecture/DESIGN-SYSTEM.md", "Design system", "design-system");
   push("architecture/diagram.md", "Diagram", "diagram");
   for (const f of inv.features) {
     push(`features/${f.slug}/PRD.md`, f.name, `feature-${f.slug}`);
@@ -4019,6 +4267,7 @@ function render(inv, opts) {
   artifacts.push({ relPath: "architecture/ARCHITECTURE.md", content: architectureDoc(inv, opts) });
   artifacts.push({ relPath: "architecture/INTERFACES.md", content: interfacesDoc(inv, opts) });
   artifacts.push({ relPath: "architecture/DATA-MODEL.md", content: dataModelDoc(inv, opts) });
+  artifacts.push({ relPath: "architecture/DESIGN-SYSTEM.md", content: designSystemDoc(inv, opts) });
   artifacts.push({ relPath: "architecture/diagram.md", content: diagramDoc(inv) });
   artifacts.push({ relPath: "inventory.json", content: JSON.stringify(inv, null, 2) + "\n" });
   for (const feature of inv.features) {
@@ -4161,11 +4410,14 @@ function deriveTier(kind) {
 }
 function planStack(plan) {
   const s = plan.stack;
+  const libraries = s.libraries ?? [];
+  const stylingLibraries = detectStylingLibraries(libraries);
   return {
     primaryLanguage: s.primaryLanguage,
     languages: s.languages ?? [s.primaryLanguage],
     frameworks: s.frameworks ?? [],
-    libraries: s.libraries ?? [],
+    libraries,
+    ...stylingLibraries.length ? { stylingLibraries } : {},
     packageManagers: s.packageManagers ?? [],
     hasTypeScript: s.hasTypeScript ?? /typescript|\bts\b/i.test(s.primaryLanguage)
   };
@@ -4258,7 +4510,7 @@ function planToInventory(plan, opts) {
     envVars: plan.envVars ?? [],
     scripts: {},
     features: planFeatures(plan.features),
-    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], entryPoints: [] },
+    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: [] },
     unknowns: [],
     excludedCount: 0,
     product: {
@@ -4270,7 +4522,8 @@ function planToInventory(plan, opts) {
     dataModel: planDataModel(plan),
     ...plan.enums && plan.enums.length ? { enums: plan.enums } : {},
     ...plan.services && plan.services.length ? { services: plan.services } : {},
-    ...plan.policies && plan.policies.length ? { policies: plan.policies } : {}
+    ...plan.policies && plan.policies.length ? { policies: plan.policies } : {},
+    ...plan.designSystem ? { designSystem: plan.designSystem } : {}
   };
 }
 var IDENTITY_ENTITY = /^users?$/i;
@@ -4368,6 +4621,13 @@ function validatePlanConsistency(plan) {
           `enum field \`${ent.entity}.${f.name}\` has no enumerated members \u2014 list them inline (\`A | B\`) or via enumRef so values are testable`
         );
       }
+    }
+  }
+  for (const c of plan.designSystem?.components ?? []) {
+    if (!(c.variants?.length || c.states?.length)) {
+      warnings.push(
+        `design-system component \`${c.name}\` declares no variants or states \u2014 contract them so it can be rebuilt to a fixed spec`
+      );
     }
   }
   const featureByInterface = /* @__PURE__ */ new Map();
@@ -4581,6 +4841,18 @@ function checkOutput(outDir) {
       "architecture/INTERFACES.md declares no operations \u2014 the interface surface is empty; enumerate it before the tree is buildable"
     );
   }
+  if (hasUI(inv)) {
+    const ds = findDoc("architecture/DESIGN-SYSTEM.md");
+    if (!ds) {
+      warnings.push(
+        "architecture/DESIGN-SYSTEM.md is missing but UI was detected \u2014 capture the visual contract (tokens, theming, typography, components, a11y)."
+      );
+    } else if (!declaresDesignSystem(stripMetaTable(ds.content))) {
+      warnings.push(
+        "architecture/DESIGN-SYSTEM.md captures no tokens/components \u2014 fill the design-system contract for a faithful visual rebuild."
+      );
+    }
+  }
   if (inv.i18n && inv.i18n.locales?.length) {
     const transDir = join13(outDir, "data", "translations");
     const names = existsSync5(transDir) ? fileNames(transDir) : [];
@@ -4632,6 +4904,9 @@ function declaresEntities(doc) {
 function declaresOperations(doc) {
   const real = stripMetaTable(doc);
   return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(real);
+}
+function declaresDesignSystem(doc) {
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S/m.test(doc);
 }
 function sectionBody(doc, heading) {
   const lines = doc.split(/\r?\n/);
@@ -5553,13 +5828,13 @@ function main() {
   }
   const result = render(inv, opts);
   writeOutput(result, opts);
-  const hintTotal = inv.hints.routeCandidates.length + inv.hints.apiCandidates.length + inv.hints.schemaCandidates.length + inv.hints.realtimeCandidates.length + inv.hints.authCandidates.length;
+  const hintTotal = inv.hints.routeCandidates.length + inv.hints.apiCandidates.length + inv.hints.schemaCandidates.length + inv.hints.realtimeCandidates.length + inv.hints.authCandidates.length + inv.hints.designSystemCandidates.length;
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
     `  stack:    ${inv.stack.primaryLanguage}${inv.stack.frameworks.length ? " \xB7 " + inv.stack.frameworks.join(", ") : ""}`,
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`,
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
-    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
+    `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth/design-system) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
     ...inv.workspaces ? [
       `  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce(
         (n, w) => n + (w.dependsOn?.length ?? 0),

@@ -190,6 +190,99 @@ export interface Policy {
   appliesTo?: string[];
 }
 
+// --- Design system (visual / brand contract) --------------------------------
+// The contract a faithful rebuild of the product's *visual identity* needs. Like
+// every other contract here, naming a token set is not enough: the tokens, the
+// theming scheme, the component states, and the accessibility target must be
+// concrete enough to rebuild and test against. Every field is optional — a
+// backend / CLI / library has no design system, and a partial capture is valid.
+
+/** Named design tokens, each as a `name: value` pair (e.g. `"primary-500: #1d4ed8"`). */
+export interface DesignTokens {
+  /** Color roles / scales, e.g. `"primary-500: #1d4ed8"`, `"bg: var(--bg)"`. */
+  colors?: string[];
+  /** Type scale steps, e.g. `"text-sm: 0.875rem / 1.25rem"`. */
+  typographyScale?: string[];
+  /** Spacing scale, e.g. `"2: 0.5rem"`. */
+  spacing?: string[];
+  /** Sizing scale (widths / heights / container sizes). */
+  sizing?: string[];
+  /** Border radii, e.g. `"md: 0.375rem"`. */
+  radii?: string[];
+  /** Shadow / elevation tokens. */
+  shadows?: string[];
+  /** z-index layers, e.g. `"modal: 1000"`. */
+  zIndex?: string[];
+}
+
+export interface DesignTheme {
+  /** Theme modes supported, e.g. `["light", "dark"]`. */
+  modes?: string[];
+  /** How themes are expressed: `"CSS variables on :root/.dark"`, `"data-theme"`, `"class"`. */
+  scheme?: string;
+  /** Default mode and how it is chosen (system / persisted / toggle). */
+  default?: string;
+  notes?: string;
+}
+
+export interface DesignTypography {
+  /** Font families with role, e.g. `"sans: Inter"`, `"mono: JetBrains Mono"`. */
+  families?: string[];
+  /** Weights loaded, e.g. `["400", "500", "700"]`. */
+  weights?: string[];
+  /** How fonts load: `next/font`, `@font-face`, a Google Fonts link, self-hosted. */
+  loading?: string;
+}
+
+export interface DesignMotion {
+  /** Duration tokens, e.g. `"fast: 150ms"`. */
+  durations?: string[];
+  /** Easing curves, e.g. `"standard: cubic-bezier(0.4, 0, 0.2, 1)"`. */
+  easings?: string[];
+  /** How `prefers-reduced-motion` is honored. */
+  reducedMotion?: string;
+}
+
+/** One component-library primitive and the contract a rebuild must reproduce. */
+export interface ComponentPrimitive {
+  name: string;
+  /** Variants, e.g. `["primary", "secondary", "ghost"]`. */
+  variants?: string[];
+  /** States it must render, e.g. `["default", "hover", "focus", "disabled", "loading", "error"]`. */
+  states?: string[];
+  /** Where it comes from: `"owned"`, `"Radix"`, `"shadcn/ui"`, `"MUI"`… */
+  source?: string;
+  notes?: string;
+}
+
+export interface Accessibility {
+  /** WCAG conformance target, e.g. `"WCAG 2.1 AA"`. */
+  target?: string;
+  /** Keyboard-nav, focus-management, contrast, and ARIA expectations. */
+  requirements?: string[];
+}
+
+/**
+ * The design-system contract → `architecture/DESIGN-SYSTEM.md`. Pre-filled from
+ * the interview on the scratch path; surfaced as a skeleton the agent fills (from
+ * the candidate source files) on the code path.
+ */
+export interface DesignSystem {
+  tokens?: DesignTokens;
+  theme?: DesignTheme;
+  typography?: DesignTypography;
+  /** Responsive breakpoints, e.g. `"sm: 640px"`. */
+  breakpoints?: string[];
+  /** Icon set / library and usage, e.g. `"lucide-react · 24px · stroke 2"`. */
+  iconography?: string;
+  motion?: DesignMotion;
+  /** Component-library contract: the primitives and their variants / states. */
+  components?: ComponentPrimitive[];
+  a11y?: Accessibility;
+  /** Free-text brand identity / voice notes — redesign mode anchors to this. */
+  brand?: string;
+}
+
 export interface DependencyInfo {
   manager: string;
   manifest: string;
@@ -203,6 +296,8 @@ export interface StackInfo {
   frameworks: string[];
   /** Notable libraries detected from dependencies: ORM, auth, API layer, styling, testing, etc. */
   libraries: string[];
+  /** Styling / UI libraries (subset of `libraries`): Tailwind, MUI, Radix, Chakra… — the design-system signal. */
+  stylingLibraries?: string[];
   packageManagers: string[];
   hasTypeScript: boolean;
 }
@@ -239,6 +334,11 @@ export interface Hints {
   realtimeCandidates: string[];
   /** Files with auth/middleware signals: guards, auth middleware, session/token plumbing. */
   authCandidates: string[];
+  /**
+   * Files that likely declare a design system: Tailwind/Panda/UnoCSS configs,
+   * theme/token modules, global CSS with custom properties, font config.
+   */
+  designSystemCandidates: string[];
   /** Best-effort program entry points (any ecosystem). */
   entryPoints: string[];
 }
@@ -368,6 +468,12 @@ export interface Inventory {
   services?: ServiceContract[];
   /** Cross-cutting policies: rate limits, validations (scratch pre-fill). */
   policies?: Policy[];
+  /**
+   * The design-system contract → `architecture/DESIGN-SYSTEM.md`. Present only
+   * when UI is detected (code path) or pre-filled from the plan (scratch path);
+   * absent for a backend / CLI / library with no visual surface.
+   */
+  designSystem?: DesignSystem;
 }
 
 // --- Scratch (greenfield) plan -----------------------------------------------
@@ -443,6 +549,8 @@ export interface ScratchPlan {
   services?: ServiceContract[];
   /** Cross-cutting policies: rate limits, format validations, security. */
   policies?: Policy[];
+  /** Design-system plan block → `architecture/DESIGN-SYSTEM.md` (pre-filled). */
+  designSystem?: DesignSystem;
   features: ScratchFeature[];
   /** → CONTEXT.md glossary. */
   glossary?: GlossaryTerm[];

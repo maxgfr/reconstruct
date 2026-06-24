@@ -5,6 +5,7 @@ import { planToInventory } from "../src/scratch.js";
 import {
   architectureDoc,
   dataModelDoc,
+  designSystemDoc,
   interfacesDoc,
   featurePrd,
 } from "../src/prd/templates.js";
@@ -71,6 +72,27 @@ const PLAN: ScratchPlan = {
       appliesTo: ["auth.register"],
     },
   ],
+  designSystem: {
+    tokens: {
+      colors: ["primary-500: #1d4ed8", "bg: #ffffff"],
+      typographyScale: ["text-sm: 0.875rem/1.25rem"],
+      spacing: ["2: 0.5rem"],
+      radii: ["md: 0.375rem"],
+    },
+    theme: { modes: ["light", "dark"], scheme: "CSS variables on :root/.dark", default: "system" },
+    typography: { families: ["sans: Inter"], weights: ["400", "600"], loading: "next/font" },
+    breakpoints: ["sm: 640px", "lg: 1024px"],
+    iconography: "lucide-react · 24px · stroke 2",
+    motion: {
+      durations: ["fast: 150ms"],
+      easings: ["standard: cubic-bezier(.4,0,.2,1)"],
+      reducedMotion: "honor prefers-reduced-motion",
+    },
+    components: [
+      { name: "Button", source: "owned", variants: ["primary", "ghost"], states: ["default", "hover", "disabled", "loading"] },
+    ],
+    a11y: { target: "WCAG 2.1 AA", requirements: ["full keyboard nav", "visible focus ring"] },
+  },
   dataModel: [
     {
       entity: "users",
@@ -171,6 +193,54 @@ describe("INTERFACES.md — operation contracts", () => {
     expect(md).toContain("send welcome email");
   });
 
+});
+
+describe("DESIGN-SYSTEM.md — visual contract", () => {
+  const md = designSystemDoc(inv, opts()); // scratch mode (pre-filled)
+
+  it("renders the captured tokens and theming", () => {
+    expect(md).toMatch(/Design system/i);
+    expect(md).toContain("primary-500: #1d4ed8");
+    expect(md).toMatch(/dark/);
+  });
+
+  it("renders the component contract with variants and states", () => {
+    expect(md).toContain("Button");
+    expect(md).toMatch(/primary/);
+    expect(md).toMatch(/loading/);
+  });
+
+  it("renders the accessibility target", () => {
+    expect(md).toContain("WCAG 2.1 AA");
+  });
+
+  it("scratch mode grounds the system in the interview", () => {
+    expect(md).toMatch(/interview/i);
+  });
+
+  it("preserve mode demands the tokens verbatim from source", () => {
+    const codeMd = designSystemDoc(inv, opts({ mode: "preserve", fidelity: "embed" }));
+    expect(codeMd).toMatch(/verbatim|exact/i);
+  });
+
+  it("redesign mode anchors to brand identity", () => {
+    const redesignMd = designSystemDoc(inv, opts({ mode: "redesign" }));
+    expect(redesignMd).toMatch(/brand/i);
+  });
+
+  it("a non-UI inventory renders a callout-free stub", () => {
+    const backendInv = planToInventory(
+      {
+        project: { name: "api", summary: "Backend API." },
+        stack: { primaryLanguage: "Go" },
+        features: [{ name: "Health", kind: "feature" }],
+      },
+      opts(),
+    );
+    const stub = designSystemDoc(backendInv, opts());
+    expect(stub).not.toContain("🧠");
+    expect(stub).toMatch(/No UI/i);
+  });
 });
 
 describe("feature PRD — write contracts & hardened DoD", () => {

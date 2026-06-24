@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { hasUI } from "./design.js";
 import type { Inventory } from "./types.js";
 
 export interface CheckResult {
@@ -207,6 +208,24 @@ export function checkOutput(outDir: string): CheckResult {
     );
   }
 
+  // 5b. Design-system contract — CONDITIONAL on UI presence and WARNING-only. A
+  //     backend / CLI / library has no design system; demanding the doc there
+  //     would be a false failure. An *un-enriched* DESIGN-SYSTEM.md still hard-
+  //     fails via the 🧠-callout scan above; this only catches an enriched-but-
+  //     emptied one, and only when the inventory actually shows a UI surface.
+  if (hasUI(inv)) {
+    const ds = findDoc("architecture/DESIGN-SYSTEM.md");
+    if (!ds) {
+      warnings.push(
+        "architecture/DESIGN-SYSTEM.md is missing but UI was detected — capture the visual contract (tokens, theming, typography, components, a11y).",
+      );
+    } else if (!declaresDesignSystem(stripMetaTable(ds.content))) {
+      warnings.push(
+        "architecture/DESIGN-SYSTEM.md captures no tokens/components — fill the design-system contract for a faithful visual rebuild.",
+      );
+    }
+  }
+
   // 5. i18n locale coverage (warning): every declared locale should have a
   //    messages file under data/translations/ OR appear in the message catalog.
   if (inv.i18n && inv.i18n.locales?.length) {
@@ -300,6 +319,11 @@ function declaresEntities(doc: string): boolean {
 function declaresOperations(doc: string): boolean {
   const real = stripMetaTable(doc);
   return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(real);
+}
+
+/** A DESIGN-SYSTEM.md captures a contract via `###` subsections, a filled table row, or token bullets. */
+function declaresDesignSystem(doc: string): boolean {
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S/m.test(doc);
 }
 
 /** The body of a `## <heading>` section: lines until the next level-2 heading. */

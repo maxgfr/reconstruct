@@ -110,6 +110,25 @@ const AUTH_CONTENT_RE = new RegExp(
 const SCHEMA_CONTENT_RE =
   /pgTable\(|mysqlTable\(|sqliteTable\(|@Entity\(|@PrimaryGeneratedColumn|new\s+Schema\(|mongoose\.model\(|sequelize\.define\(|extends\s+Model\b|models\.Model\b|create_table\b|add_column\b|CREATE\s+TABLE\b|^[ \t]*model[ \t]+\w+[ \t]*\{/im;
 
+// Design-system config / token source files, matched on basename. These declare
+// the visual contract (tokens, theme, font config) the rebuild must reproduce.
+const DS_FILE_NAMES = new Set([
+  "tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs", "tailwind.config.mjs",
+  "panda.config.ts", "panda.config.js", "panda.config.mjs",
+  "uno.config.ts", "uno.config.js", "unocss.config.ts", "unocss.config.js",
+  "theme.ts", "theme.tsx", "theme.js",
+  "tokens.ts", "tokens.js", "tokens.json", "design-tokens.ts", "design-tokens.js", "design-tokens.json",
+  "globals.css", "global.css", "app.css", "index.css", "styles.css", "tokens.css", "theme.css",
+  "components.json", // shadcn/ui
+]);
+
+// Stylesheet extensions worth content-scanning for token declarations (CSS is not
+// in CONTENT_SCAN_EXTS, so design-system detection reads these separately).
+const DS_STYLE_EXTS = new Set([".css", ".scss", ".sass", ".less", ".styl", ".pcss"]);
+// A stylesheet declares design tokens via CSS custom properties, a Tailwind v4
+// `@theme` block, or a `@layer base` token layer.
+const DS_CSS_RE = /--[\w-]+\s*:|@theme\b|@layer\s+base\b|:root\s*\{/;
+
 // Files larger than this are not content-scanned (path heuristics still apply) —
 // a hard guard against pathological inputs and wasted I/O on huge generated files.
 const MAX_CONTENT_SCAN_BYTES = 2_000_000;
@@ -144,6 +163,7 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
   const schemaCandidates = new Set<string>();
   const realtimeCandidates = new Set<string>();
   const authCandidates = new Set<string>();
+  const designSystemCandidates = new Set<string>();
 
   for (const f of files) {
     if (f.binary || f.size === 0) continue; // empty files (e.g. package markers) declare nothing
@@ -163,6 +183,13 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
     if (inDir(lower, API_DIRS)) apiCandidates.add(p);
     if (f.category === "schema" || ext === ".prisma") schemaCandidates.add(p);
     if (inDir(lower, SCHEMA_DIRS)) schemaCandidates.add(p);
+    if (DS_FILE_NAMES.has(base)) designSystemCandidates.add(p);
+
+    // --- design-system stylesheet scan (CSS is not in CONTENT_SCAN_EXTS) ---
+    if (DS_STYLE_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
+      const css = safeRead(repo, p);
+      if (css && DS_CSS_RE.test(css)) designSystemCandidates.add(p);
+    }
 
     // --- content-based signals (bounded to scannable source under a size cap) ---
     if (CONTENT_SCAN_EXTS.has(ext) && f.size <= MAX_CONTENT_SCAN_BYTES) {
@@ -182,6 +209,7 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
     schemaCandidates: [...schemaCandidates].sort(),
     realtimeCandidates: [...realtimeCandidates].sort(),
     authCandidates: [...authCandidates].sort(),
+    designSystemCandidates: [...designSystemCandidates].sort(),
     entryPoints: detectEntryPoints(repo, files),
   };
 }

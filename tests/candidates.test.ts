@@ -49,6 +49,10 @@ beforeAll(() => {
   );
   w("app/profile.py", `@login_required\ndef profile():\n    return render(request)`);
   w("src/middleware.js", `app.use(passport.initialize());\napp.use(passport.session());`);
+  w("tailwind.config.ts", `export default { theme: { extend: {} } };`);
+  w("src/theme.ts", `export const theme = { colors: { primary: "#1d4ed8" } };`);
+  w("src/styles/variables.css", `:root { --primary: #1d4ed8; --bg: #ffffff; }`);
+  w("src/components/card.module.css", `.card { color: red; padding: 8px; }`);
 
   files.push(
     fi("package.json", "config", ".json"),
@@ -63,6 +67,10 @@ beforeAll(() => {
     fi("src/events.gateway.ts"),
     fi("app/profile.py", "code", ".py"),
     fi("src/middleware.js", "code", ".js"),
+    fi("tailwind.config.ts"),
+    fi("src/theme.ts"),
+    fi("src/styles/variables.css", "style", ".css"),
+    fi("src/components/card.module.css", "style", ".css"),
   );
 });
 
@@ -116,6 +124,22 @@ describe("detectCandidates", () => {
     const h = detectCandidates(repo, files, STACK);
     expect(h.realtimeCandidates).not.toContain("src/app/api/users/route.ts");
     expect(h.authCandidates).not.toContain("src/app/api/users/route.ts");
+  });
+
+  it("flags tailwind/theme config files as design-system candidates (name signal)", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.designSystemCandidates).toContain("tailwind.config.ts");
+    expect(h.designSystemCandidates).toContain("src/theme.ts");
+  });
+
+  it("flags a stylesheet declaring CSS custom properties (content signal)", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.designSystemCandidates).toContain("src/styles/variables.css");
+  });
+
+  it("does not flag a plain component stylesheet with no tokens", () => {
+    const h = detectCandidates(repo, files, STACK);
+    expect(h.designSystemCandidates).not.toContain("src/components/card.module.css");
   });
 });
 

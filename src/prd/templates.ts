@@ -1,4 +1,6 @@
 import type {
+  ComponentPrimitive,
+  DesignSystem,
   EnumDef,
   Entity,
   Feature,
@@ -9,6 +11,7 @@ import type {
   Policy,
   ServiceContract,
 } from "../types.js";
+import { hasUI } from "../design.js";
 
 function agentNote(body: string): string {
   return `> 🧠 **For the AI agent:** ${body}\n`;
@@ -552,6 +555,202 @@ export function dataModelDoc(inv: Inventory, opts: Options): string {
   ].join("\n");
 }
 
+/** A `name: value` token bullet list under a bold label (scratch pre-fill). */
+function tokenList(label: string, items?: string[]): string[] {
+  if (!items || !items.length) return [];
+  return [`**${label}:**`, "", ...items.map((t) => `- \`${cell(t)}\``), ""];
+}
+
+/** The component-library contract as a table: variants + states per primitive. */
+function componentTable(components: ComponentPrimitive[]): string[] {
+  if (!components.length) return [];
+  const lines = [
+    "### Component library",
+    "",
+    "| Component | Source | Variants | States |",
+    "| --- | --- | --- | --- |",
+  ];
+  for (const c of components) {
+    lines.push(
+      `| ${cell(c.name)} | ${cell(c.source ?? "")} | ${cell((c.variants ?? []).join(", "))} | ${cell((c.states ?? []).join(", "))} |`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
+/** Render a pre-filled design system as per-block subsections (scratch pre-fill). */
+function filledDesignSystem(ds: DesignSystem): string {
+  const parts: string[] = [];
+  if (ds.brand) parts.push("### Brand identity", "", ds.brand, "");
+  if (ds.tokens) {
+    const t = ds.tokens;
+    const tokenLines = [
+      ...tokenList("Colors", t.colors),
+      ...tokenList("Typography scale", t.typographyScale),
+      ...tokenList("Spacing", t.spacing),
+      ...tokenList("Sizing", t.sizing),
+      ...tokenList("Radii", t.radii),
+      ...tokenList("Shadows", t.shadows),
+      ...tokenList("z-index", t.zIndex),
+    ];
+    if (tokenLines.length) parts.push("### Design tokens", "", ...tokenLines);
+  }
+  if (ds.theme) {
+    const th = ds.theme;
+    const lines = ["### Theming", ""];
+    if (th.modes?.length) lines.push(`- **Modes:** ${th.modes.map((m) => `\`${m}\``).join(", ")}`);
+    if (th.scheme) lines.push(`- **Scheme:** ${th.scheme}`);
+    if (th.default) lines.push(`- **Default:** ${th.default}`);
+    if (th.notes) lines.push(`- ${th.notes}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  if (ds.typography) {
+    const ty = ds.typography;
+    const lines = ["### Typography", ""];
+    if (ty.families?.length) lines.push(`- **Families:** ${ty.families.map((f) => `\`${f}\``).join(", ")}`);
+    if (ty.weights?.length) lines.push(`- **Weights:** ${ty.weights.map((w) => `\`${w}\``).join(", ")}`);
+    if (ty.loading) lines.push(`- **Loading:** ${ty.loading}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  if (ds.breakpoints?.length) {
+    parts.push("### Breakpoints", "", ...ds.breakpoints.map((b) => `- \`${cell(b)}\``), "");
+  }
+  if (ds.iconography) parts.push("### Iconography", "", ds.iconography, "");
+  if (ds.motion) {
+    const mo = ds.motion;
+    const lines = ["### Motion & animation", ""];
+    if (mo.durations?.length) lines.push(`- **Durations:** ${mo.durations.map((d) => `\`${d}\``).join(", ")}`);
+    if (mo.easings?.length) lines.push(`- **Easings:** ${mo.easings.map((e) => `\`${e}\``).join(", ")}`);
+    if (mo.reducedMotion) lines.push(`- **prefers-reduced-motion:** ${mo.reducedMotion}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  if (ds.components?.length) parts.push(...componentTable(ds.components));
+  if (ds.a11y) {
+    const a = ds.a11y;
+    const lines = ["### Accessibility", ""];
+    if (a.target) lines.push(`- **Target:** ${a.target}`);
+    for (const r of a.requirements ?? []) lines.push(`- ${r}`);
+    lines.push("");
+    parts.push(...lines);
+  }
+  return parts.join("\n").trimEnd() || "_No design tokens captured yet._";
+}
+
+/**
+ * The design-system contract → `architecture/DESIGN-SYSTEM.md`. A peer of
+ * INTERFACES.md / DATA-MODEL.md that captures the visual identity a faithful
+ * rebuild needs: tokens, theming, typography, breakpoints, iconography, motion,
+ * the component-library contract, and the accessibility target. Self-degrades to
+ * a callout-free stub for a backend / CLI / library with no UI, so `--check`
+ * never demands a design system that does not exist.
+ */
+export function designSystemDoc(inv: Inventory, opts: Options): string {
+  const head = ["# Design system", "", metaBlock(inv, opts)];
+
+  // No UI surface → no design-system contract. No 🧠 callout, so a backend / CLI
+  // / library passes `--check` without inventing tokens it does not have.
+  if (!hasUI(inv)) {
+    return [
+      ...head,
+      "_No UI or styling surface was detected — this project has no design-system contract. " +
+        "If that is wrong (a UI lives here the engine did not detect), capture the design tokens, " +
+        "theming, typography, components, and the accessibility target here._",
+      "",
+    ].join("\n");
+  }
+
+  const isScratch = opts.mode === "scratch";
+  const lead = isScratch
+    ? agentNote(
+        "Design the system from the interview's brand/design inputs and `../CONTEXT.md`. Capture every design token with its **exact value**, the theming scheme, typography, breakpoints, iconography, motion, the component-library contract (each primitive's variants and states), and the accessibility target. Any blocks below are pre-filled from the plan — refine and complete them.",
+      )
+    : opts.mode === "redesign"
+      ? agentNote(
+          "Keep the **brand identity** (logo, voice, the core palette's intent) but you may refresh the system. Record the brand invariants that must survive, then the new/updated tokens, theming, typography, components, and the accessibility target.",
+        )
+      : agentNote(
+          "Reproduce the existing design system **verbatim**. Copy every token value exactly — colors as exact hex/oklch, the type scale, spacing, sizing, radii, shadows, z-index, and breakpoints — from the source files listed below; never round, rename, or approximate. Then capture theming (light/dark, the CSS-variable names), typography (font families + weights + how they load), iconography, motion (durations, easing, and the `prefers-reduced-motion` behavior), the component-library contract (each primitive's variants and the states it must render — default / hover / focus / disabled / loading / empty / error), and the accessibility target (WCAG level, keyboard nav, focus management, contrast minimums, ARIA).",
+        );
+
+  const out: string[] = [...head, lead, ""];
+
+  if (!isScratch) {
+    out.push(
+      "## Design-system source files",
+      "",
+      listOrNone(
+        inv.hints.designSystemCandidates,
+        "_No design-system config/token files detected — capture tokens from the component and CSS files._",
+      ),
+      "",
+    );
+  }
+
+  if (inv.designSystem) {
+    out.push("## Captured design system", "", filledDesignSystem(inv.designSystem), "");
+  } else {
+    out.push(
+      "## Design tokens",
+      "",
+      agentNote(
+        "Capture every token with its **exact value**: the color palette (exact hex/oklch per role + scale step), the typography scale (size / line-height per step), spacing, sizing, radii, shadows, and z-index layers. A token named but not valued (`primary` with no hex) is not buildable.",
+      ),
+      "",
+      "## Theming",
+      "",
+      agentNote(
+        "Document the theme modes (light / dark / system), how they are expressed (CSS variables on `:root`/`.dark`, a `data-theme` attribute, a class), the default and how it is chosen/persisted, and the per-theme token overrides.",
+      ),
+      "",
+      "## Typography",
+      "",
+      agentNote(
+        "Font families and their roles, the weights loaded, and how fonts load (`next/font`, `@font-face`, a Google Fonts link, self-hosted) including the fallback stack.",
+      ),
+      "",
+      "## Breakpoints & responsive",
+      "",
+      agentNote(
+        "The named breakpoints with their exact values and the layout/grid strategy (mobile-first vs desktop-first, container queries).",
+      ),
+      "",
+      "## Iconography",
+      "",
+      agentNote(
+        "The icon set / library, the sizing and stroke conventions, and how icons are colored and used.",
+      ),
+      "",
+      "## Motion & animation",
+      "",
+      agentNote(
+        "The duration and easing tokens, the standard transitions, and how `prefers-reduced-motion` is honored.",
+      ),
+      "",
+      "## Component library",
+      "",
+      "| Component | Source | Variants | States |",
+      "| --- | --- | --- | --- |",
+      "",
+      agentNote(
+        "Contract every shared/owned primitive: its variants, the states it must render (default / hover / focus / disabled / loading / empty / error), the props, and which tokens it consumes. A component named but not contracted (`Button`, `Card`) cannot be rebuilt to a fixed spec.",
+      ),
+      "",
+      "## Accessibility",
+      "",
+      agentNote(
+        "The WCAG conformance target (A / AA / AAA), the keyboard-navigation and focus-management rules, contrast minimums, and the required ARIA roles/labels per component state.",
+      ),
+      "",
+    );
+  }
+
+  return out.join("\n");
+}
+
 export function diagramDoc(inv: Inventory): string {
   const nodes = inv.features
     .map((f, i) => `  F${i}["${f.name}"]`)
@@ -663,6 +862,16 @@ export function featurePrd(
       "List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and — for every required (NOT NULL, no-default) column and foreign key — where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`.",
     ),
     "",
+  );
+  if (hasUI(inv)) {
+    out.push(
+      agentNote(
+        "For any UI this unit renders, conform to `../../architecture/DESIGN-SYSTEM.md`: use its design tokens (no hard-coded colors / spacing / typography), build on the component-library primitives (with their variants and the states empty / loading / error), and meet its accessibility target (keyboard, focus, contrast, ARIA).",
+      ),
+      "",
+    );
+  }
+  out.push(
     "## Acceptance criteria",
     "",
     agentNote(

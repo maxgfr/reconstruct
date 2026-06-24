@@ -114,6 +114,7 @@ function orderedSections(artifacts: Artifact[], inv: Inventory): Section[] {
   push("architecture/ARCHITECTURE.md", "Architecture", "architecture");
   push("architecture/INTERFACES.md", "Interfaces", "interfaces");
   push("architecture/DATA-MODEL.md", "Data model", "data-model");
+  push("architecture/DESIGN-SYSTEM.md", "Design system", "design-system");
   push("architecture/diagram.md", "Diagram", "diagram");
   for (const f of inv.features) {
     push(`features/${f.slug}/PRD.md`, f.name, `feature-${f.slug}`);

@@ -220,6 +220,26 @@
       "appliesTo": ["reviews.create"]
     }
   ],
+  "designSystem": {
+    "tokens": {
+      "colors": ["primary-600: #4338ca", "bg: #ffffff", "fg: #111827", "danger-500: #ef4444"],
+      "typographyScale": ["text-sm: 0.875rem/1.25rem", "text-base: 1rem/1.5rem", "text-2xl: 1.5rem/2rem"],
+      "spacing": ["2: 0.5rem", "4: 1rem", "6: 1.5rem"],
+      "radii": ["md: 0.5rem", "full: 9999px"],
+      "shadows": ["card: 0 1px 3px rgba(0,0,0,.1)"]
+    },
+    "theme": { "modes": ["light", "dark"], "scheme": "CSS variables on :root and .dark", "default": "system" },
+    "typography": { "families": ["sans: Inter", "serif: Lora"], "weights": ["400", "500", "700"], "loading": "next/font (self-hosted)" },
+    "breakpoints": ["sm: 640px", "md: 768px", "lg: 1024px", "xl: 1280px"],
+    "iconography": "lucide-react · 20px · stroke 1.5",
+    "motion": { "durations": ["fast: 150ms", "base: 250ms"], "easings": ["standard: cubic-bezier(.4,0,.2,1)"], "reducedMotion": "honor prefers-reduced-motion; disable non-essential transitions" },
+    "components": [
+      { "name": "BookCard", "source": "owned", "variants": ["default", "compact"], "states": ["default", "hover", "loading", "empty"] },
+      { "name": "AddToCartButton", "source": "owned", "variants": ["primary", "disabled"], "states": ["default", "hover", "loading", "error"] },
+      { "name": "Rating", "source": "owned", "variants": ["readonly", "interactive"], "states": ["default", "hover", "empty"] }
+    ],
+    "a11y": { "target": "WCAG 2.1 AA", "requirements": ["full keyboard navigation", "visible focus rings (3:1 against adjacent colors)", "4.5:1 text contrast", "aria-live for cart updates"] }
+  },
   "features": [
     { "name": "Project Setup & Tooling", "kind": "project-setup", "tier": 0, "summary": "Next.js + Drizzle + tRPC scaffolding, env vars, and the database schema." },
     { "name": "Internationalization", "kind": "internationalization", "tier": 0, "summary": "English/French message catalog and locale routing." },

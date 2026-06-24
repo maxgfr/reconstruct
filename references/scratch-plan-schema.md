@@ -5,8 +5,8 @@ that elicits the project's facts from the user instead of reading a repo. It map
 the inventory**: `planToInventory()` is the bridge, validating the plan and projecting it into
 the *same* `Inventory` the code analyzer produces (empty `files`/`routes`/`hints` — there is no
 source to read — but populated `stack`, `dependencies`, `envVars`, `i18n` (+ message catalog),
-tiered `features`, and pre-filled `interfaces`/`dataModel`/`enums`/`services`/`policies`, with
-`mode = "scratch"` and `fidelity = "describe"`).
+tiered `features`, and pre-filled `interfaces`/`dataModel`/`enums`/`services`/`policies`/
+`designSystem`, with `mode = "scratch"` and `fidelity = "describe"`).
 From there the shared renderer takes over: the **engine** emits the deterministic scaffold and
 the **pre-filled** `INTERFACES.md` / `DATA-MODEL.md` tables, and the **agent** enriches the
 prose in the PRDs, `00-overview`, `CONTEXT.md`, and the ADRs.
@@ -69,6 +69,23 @@ Required fields are marked **`// REQUIRED`**; everything else is optional with a
     { "name": "string", "kind": "string",   // rate-limit | validation | security | other
       "rule": "string",                     // concrete, testable (thresholds, regex, window)
       "appliesTo": ["string"] } ],          // interface paths / field names it governs
+  "designSystem": {                     // optional — architecture/DESIGN-SYSTEM.md (UI products only)
+    "tokens": {                         //   token sets, each entry a `name: value` string
+      "colors":          ["primary-500: #1d4ed8"],
+      "typographyScale": ["text-sm: 0.875rem/1.25rem"],
+      "spacing": ["2: 0.5rem"], "sizing": ["container: 1280px"],
+      "radii": ["md: 0.375rem"], "shadows": ["sm: 0 1px 2px rgba(0,0,0,.05)"], "zIndex": ["modal: 1000"] },
+    "theme":      { "modes": ["light", "dark"], "scheme": "CSS vars on :root/.dark", "default": "system" },
+    "typography": { "families": ["sans: Inter"], "weights": ["400", "600"], "loading": "next/font" },
+    "breakpoints": ["sm: 640px", "lg: 1024px"],
+    "iconography": "lucide-react · 24px · stroke 2",
+    "motion":     { "durations": ["fast: 150ms"], "easings": ["standard: cubic-bezier(.4,0,.2,1)"],
+                    "reducedMotion": "honor prefers-reduced-motion" },
+    "components": [                      //   each primitive: variants + the states it must render
+      { "name": "Button", "source": "owned", "variants": ["primary", "ghost"],
+        "states": ["default", "hover", "disabled", "loading"] } ],
+    "a11y":  { "target": "WCAG 2.1 AA", "requirements": ["full keyboard nav", "visible focus ring"] },
+    "brand": "string" },                //   brand identity / voice notes (redesign anchors to this)
   "features": [                         // REQUIRED — at least one entry
     { "name": "string",                 //   REQUIRED
       "kind": "feature",                //   "feature" | "project-setup" | "internationalization" | "documentation"
@@ -111,6 +128,8 @@ preserved**; features then get `NN-` numbered slugs in build order.
 | `interface.input` / `.output` / `.sideEffects` | no | omitted | `INTERFACES.md` `## Operation contracts` per operation |
 | `services[]` | no | `[]` | `ARCHITECTURE.md` `## External services & integrations` |
 | `policies[]` | no | `[]` | `ARCHITECTURE.md` `## Cross-cutting policies` (rate limits, validations) |
+| `designSystem` | no | omitted | `architecture/DESIGN-SYSTEM.md` **pre-filled** (tokens, theming, typography, breakpoints, iconography, motion, components, a11y) |
+| `designSystem.components[]` | no | `[]` | the component-library contract table (variants + states per primitive) |
 | `features[]` | **yes** (≥1) | — | `features/NN-<slug>/PRD.md`; dependency-tiered build order in `REBUILD.md` |
 | `feature.kind` | no | `"feature"` | tier derivation; PRD framing (setup / i18n / docs) |
 | `feature.tier` | no | derived | build order within `REBUILD.md` |
@@ -131,9 +150,11 @@ before it renders — **errors abort**, **warnings print** (resolve them while e
 - **Warning:** an `auth: "public"` mutation whose owning feature `writes` an entity that has a
   non-null foreign key to an identity table (`users`) — an anonymous caller can't satisfy it,
   so write to an anonymous-capable entity (e.g. a `contactRequests` table) instead.
+- **Warning:** a `designSystem.components[]` entry with no `variants` and no `states` — a
+  component named but not contracted can't be rebuilt to a fixed spec.
 
 The post-enrichment gate (`node scripts/analyze.mjs --check --out <OUT>`) then verifies the
-rendered tree. See `references/buildability-checklist.md` for the full nine contract
+rendered tree. See `references/buildability-checklist.md` for the full ten contract
 categories and the consistency self-review.
 
 ## Worked example — `linkrolls` (link-in-bio app)
@@ -208,6 +229,24 @@ and run `node scripts/analyze.mjs --scratch --plan linkrolls.plan.json --out ./o
     { "method": "tRPC", "path": "links.trackClick", "kind": "tRPC mutation", "auth": "public", "notes": "Increment click count" },
     { "method": "GET", "path": "/api/auth/[...nextauth]", "kind": "REST", "auth": "public", "notes": "NextAuth handler" }
   ],
+  "designSystem": {
+    "tokens": {
+      "colors": ["primary-500: #1d4ed8", "bg: #ffffff", "fg: #0f172a"],
+      "typographyScale": ["text-sm: 0.875rem/1.25rem", "text-base: 1rem/1.5rem", "text-xl: 1.25rem/1.75rem"],
+      "spacing": ["2: 0.5rem", "4: 1rem", "8: 2rem"],
+      "radii": ["md: 0.375rem", "full: 9999px"]
+    },
+    "theme": { "modes": ["light", "dark"], "scheme": "Tailwind CSS variables on :root and .dark", "default": "system" },
+    "typography": { "families": ["sans: Inter"], "weights": ["400", "600", "700"], "loading": "next/font (self-hosted)" },
+    "breakpoints": ["sm: 640px", "md: 768px", "lg: 1024px"],
+    "iconography": "lucide-react · 20px · stroke 2",
+    "motion": { "durations": ["fast: 150ms"], "easings": ["standard: cubic-bezier(.4,0,.2,1)"], "reducedMotion": "honor prefers-reduced-motion" },
+    "components": [
+      { "name": "LinkCard", "source": "owned", "variants": ["default", "editing"], "states": ["default", "hover", "dragging", "empty"] },
+      { "name": "Button", "source": "owned", "variants": ["primary", "ghost"], "states": ["default", "hover", "disabled", "loading"] }
+    ],
+    "a11y": { "target": "WCAG 2.1 AA", "requirements": ["full keyboard reordering", "visible focus ring", "4.5:1 text contrast"] }
+  },
   "features": [
     { "name": "Project Setup & Tooling", "kind": "project-setup", "tier": 0, "summary": "Next.js App Router, Tailwind, Drizzle config, env wiring, CI lint." },
     { "name": "Internationalization", "kind": "internationalization", "tier": 0, "summary": "next-intl with en + fr; messages/{locale}.json; locale stored per user." },
@@ -238,6 +277,7 @@ and run `node scripts/analyze.mjs --scratch --plan linkrolls.plan.json --out ./o
 | `i18n.locales` | Internationalization feature; `00-overview` locale count; `ARCHITECTURE.md` i18n line |
 | `dataModel` | `architecture/DATA-MODEL.md` **pre-filled** entity tables; relations seed `CONTEXT.md` |
 | `interfaces` | `architecture/INTERFACES.md` **pre-filled** table |
+| `designSystem` | `architecture/DESIGN-SYSTEM.md` **pre-filled** (tokens, theming, typography, breakpoints, iconography, motion, components, a11y) |
 | `features` | `features/NN-<slug>/PRD.md` (tiered foundations → features → docs); build order in `REBUILD.md` |
 | `glossary` | `CONTEXT.md` Language section — see [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) |
 | `decisions` | `docs/adr/NNNN-<slug>.md`, one terse ADR each — see [ADR-FORMAT.md](./ADR-FORMAT.md) |

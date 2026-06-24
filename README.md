@@ -46,6 +46,7 @@ reconstruction/
 │   ├── ARCHITECTURE.md        # architecture + external services, cross-cutting policies, i18n message catalog
 │   ├── INTERFACES.md          # interface surface (method · path · kind · handler) + per-op input/output/side-effect contracts
 │   ├── DATA-MODEL.md          # entities, fields, relations, indexes + enums & domain types
+│   ├── DESIGN-SYSTEM.md       # design tokens, theming, typography, components & a11y (UI products)
 │   └── diagram.md             # mermaid module diagram
 ├── features/
 │   └── NN-<slug>/PRD.md       # one PRD per feature/module (build-order tiered)
@@ -140,10 +141,11 @@ placeholders, a feature that references an undocumented entity/operation, a feat
 missing its spine, an uncovered locale, and a **gutted** data model / interface surface /
 feature PRD (an emptied contract fails too, not just a callout-laden one).
 
-`--check` covers structure; the **nine contract categories** a PRD must actually carry —
+`--check` covers structure; the **ten contract categories** a PRD must actually carry —
 field-level data model, fully-enumerated enums, operation & write contracts (a public write
 can't require an owner foreign key), format validations, external services, quantified
-policies, the i18n message catalog, and shared/owned UI components — are in
+policies, the i18n message catalog, shared/owned UI components, and — for UI products — the
+design-system contract (tokens, theming, components, a11y) — are in
 [`references/buildability-checklist.md`](./references/buildability-checklist.md). In
 greenfield mode the engine also **validates the plan's consistency** before rendering, so
 dangling references and anonymous-write-to-owner-FK contradictions are caught up front.
@@ -205,9 +207,10 @@ hand-write one if you prefer — the schema and a worked example are in
 Greenfield collapses two axes — mode is always `scratch`, fidelity is forced to `describe`
 (there is no source to mirror) — while `--level` still applies (`complex` = a deeper interview
 that also proposes alternatives and more ADRs). On top of the usual tree it also writes the
-interview's domain docs, and `INTERFACES.md` / `DATA-MODEL.md` come **pre-filled** from the plan —
-along with the enums, external services, cross-cutting policies, and i18n message catalog the
-interview captures, so the from-scratch tree is as buildable as the reverse-engineered one:
+interview's domain docs, and `INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md` come
+**pre-filled** from the plan — along with the enums, external services, cross-cutting policies,
+and i18n message catalog the interview captures, so the from-scratch tree is as buildable as the
+reverse-engineered one:
 
 ```
 reconstruction/
@@ -229,7 +232,7 @@ the interview is never clobbered. Add `--tdd` (here or in any mode) to make ever
 ## How the rebuild works
 
 1. Read `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`,
-   and `architecture/DATA-MODEL.md`.
+   `architecture/DATA-MODEL.md`, and — for a UI product — `architecture/DESIGN-SYSTEM.md`.
 2. Follow the dependency-tiered build order in `REBUILD.md`, implementing one
    `features/<slug>/PRD.md` at a time.
 3. Use `data/` (and `source/` when present) as ground truth.

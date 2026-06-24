@@ -219,7 +219,8 @@ node scripts/analyze.mjs --check --out <OUT>
 
 It fails on unresolved `🧠`/placeholders, a feature that references an undocumented entity or
 operation, a feature PRD missing its spine or left content-less, or an emptied
-`DATA-MODEL.md`/`INTERFACES.md`; an uncovered locale is a warning. The full category list —
-the nine contract categories and the consistency self-review — is in
+`DATA-MODEL.md`/`INTERFACES.md`; an uncovered locale — or a UI product whose `DESIGN-SYSTEM.md`
+is left empty — is a warning. The full category list — the ten contract categories and the
+consistency self-review — is in
 `references/buildability-checklist.md`. Work it until both the consistency review and
 `--check` are clean.

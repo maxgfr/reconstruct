@@ -124,7 +124,7 @@ describe("templates: well-formed fill-in tables (review #13)", () => {
       generatedWith: "reconstruct@test", repoName: "x",
       stack: STACK, fileCount: 0, totalLines: 0, files: [], dependencies: [],
       routes: [], i18n: null, schemas: [], configs: [], docs: [], envVars: [], scripts: {},
-      features: [], hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], entryPoints: [] },
+      features: [], hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: [] },
       unknowns: [], excludedCount: 0,
     };
   }

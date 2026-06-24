@@ -510,6 +510,7 @@ export function enrichWorkspaceSurface(
       schemaCandidates: hints.schemaCandidates.filter((p) => p.startsWith(prefix)),
       realtimeCandidates: hints.realtimeCandidates.filter((p) => p.startsWith(prefix)),
       authCandidates: hints.authCandidates.filter((p) => p.startsWith(prefix)),
+      designSystemCandidates: hints.designSystemCandidates.filter((p) => p.startsWith(prefix)),
       entryPoints: hints.entryPoints.filter((p) => p.startsWith(prefix)),
     };
     if (Object.values(wsHints).some((list) => list.length > 0)) ws.hints = wsHints;

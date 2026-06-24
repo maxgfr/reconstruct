@@ -17,11 +17,11 @@ It exits non-zero on the structural failures (unresolved `🧠` callouts or
 `fill this in` placeholders, a feature that references an undocumented entity or
 operation, a feature PRD missing its spine or left content-less, or an
 architecture doc emptied of its contract — no entities in `DATA-MODEL.md`, no
-operations in `INTERFACES.md`). An uncovered locale is a **warning**, not a
-non-zero exit. A clean `--check` is necessary, not sufficient — the categories
-below are the rest.
+operations in `INTERFACES.md`). An uncovered locale — or a UI project whose
+`DESIGN-SYSTEM.md` is left empty — is a **warning**, not a non-zero exit. A clean
+`--check` is necessary, not sufficient — the categories below are the rest.
 
-## The nine contract categories
+## The ten contract categories
 
 Every one of these is a category the verification found *named but not
 specified*. Naming is not enough; capture the contract.
@@ -74,10 +74,23 @@ specified*. Naming is not enough; capture the contract.
 9. **Shared & owned UI components.** For a unit that renders UI, the contract of
    each shared or owned component it consumes or builds — props/inputs, the states
    it must render (empty / loading / error / populated), validation, and which
-   design-system primitives it uses. A component named but not contracted (e.g.
-   `BookingCard`, `AvailabilityCalendar`) can't be rebuilt to a fixed spec, and a
-   structural acceptance criterion ("renders an h1", "two-card CTA") can't be
-   verified against one.
+   **design-system primitives** (from `DESIGN-SYSTEM.md`) it uses — each with its
+   variants and the states it must render. A component named but not contracted
+   (e.g. `BookingCard`, `AvailabilityCalendar`) can't be rebuilt to a fixed spec,
+   and a structural acceptance criterion ("renders an h1", "two-card CTA") can't
+   be verified against one.
+
+10. **Design system & visual contract.** For any product with a UI: the design
+    **tokens with their exact values** — the color palette (exact hex/oklch per
+    role + scale step), the type scale, spacing, sizing, radii, shadows, z-index,
+    and breakpoints — plus the theming scheme (light/dark, the CSS-variable names
+    and where they are set), typography (font families + weights + how they load),
+    iconography, and motion (durations, easing, and the `prefers-reduced-motion`
+    behavior). Plus the **accessibility target**: the WCAG level, keyboard
+    navigation, focus management, contrast minimums, and required ARIA. A token
+    named but not valued (`primary` with no hex) is not buildable; "looks the
+    same" is not a spec. (→ `DESIGN-SYSTEM.md`.) **Conditional**: a backend / CLI
+    / library with no UI has no design system — say so rather than inventing one.
 
 Helpers the unit calls (e.g. `sendWelcomeEmail`) need their exact signatures too;
 fold them into category 3 (side effects) or 6 (services).
@@ -99,5 +112,5 @@ confirm — this catches the semantic contradictions a linter can't:
 
 > Could a fresh agent rebuild this unit from its PRD + the architecture docs
 > alone — no original product, no conversation — and get the **contracts**
-> right, not just the gist? If any of the nine categories is named but not
+> right, not just the gist? If any of the ten categories is named but not
 > specified, the answer is no. Dig further.

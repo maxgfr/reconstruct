@@ -42,7 +42,7 @@ function makeInv(over: Partial<Inventory> = {}): Inventory {
       { slug: "01-core", name: "Core", description: "Foundations", kind: "feature", files: ["a.ts"], routes: [] },
       { slug: "02-auth", name: "Auth", description: "Login flow", kind: "feature", files: ["b.ts"], routes: [] },
     ],
-    hints: { routeCandidates: ["x"], apiCandidates: ["y", "z"], schemaCandidates: ["db/schema.ts"], realtimeCandidates: [], authCandidates: [], entryPoints: ["main.ts"] },
+    hints: { routeCandidates: ["x"], apiCandidates: ["y", "z"], schemaCandidates: ["db/schema.ts"], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: ["main.ts"] },
     unknowns: ["Map the tRPC procedures into INTERFACES.md"],
     excludedCount: 0,
     ...over,

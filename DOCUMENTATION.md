@@ -20,8 +20,9 @@ reconstruct splits the work into two layers with a sharp boundary:
    not resolve. No API key, no model, no guessing.
 2. **AI playbook** — the markdown (`SKILL.md` + `references/`) is the program the agent
    follows to supply framework-aware understanding for **any** stack: it maps the real
-   interface surface (`INTERFACES.md`), extracts the data model (`DATA-MODEL.md`), groups
-   features semantically, and turns source into concrete, testable PRDs.
+   interface surface (`INTERFACES.md`), extracts the data model (`DATA-MODEL.md`), captures the
+   design system for UI products (`DESIGN-SYSTEM.md`), groups features semantically, and turns
+   source into concrete, testable PRDs.
 
 The engine guarantees correct facts and good starting points; the agent supplies the
 understanding. A markdown playbook that teaches the agent *where to look* scales to any stack;
@@ -147,7 +148,7 @@ agent to build something from scratch, it follows the `## From scratch` procedur
    worked example live in [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md)
    if you'd rather hand-write or tweak one.
 4. **Render** — it runs the engine, which scaffolds the tree and **pre-fills** the
-   `INTERFACES.md` / `DATA-MODEL.md` tables from the plan:
+   `INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md` tables from the plan:
 
    ```bash
    node scripts/analyze.mjs --scratch --plan plan.json --out ./reconstruction --level complex [--tdd]
@@ -204,6 +205,7 @@ reconstruction/
 │   ├── ARCHITECTURE.md        # current (preserve) or proposed (redesign) architecture
 │   ├── INTERFACES.md          # interface surface skeleton (routes/endpoints/RPC/GraphQL/CLI/jobs)
 │   ├── DATA-MODEL.md          # data-model skeleton (entities, fields, relations)
+│   ├── DESIGN-SYSTEM.md       # design-system skeleton (tokens, theming, typography, components, a11y)
 │   └── diagram.md             # mermaid module diagram
 ├── features/
 │   └── NN-<slug>/PRD.md       # one PRD per feature/module (numbered in dependency-tier order)
@@ -247,7 +249,7 @@ walk → detect → candidates → adapters → features → prd → output
 | **candidates** | [`src/detect/candidates.ts`](./src/detect/candidates.ts) | Framework-agnostic **hints**: candidate files for routes, API surface (tRPC/GraphQL/gRPC/OpenAPI), data model (ORM schemas/models), and entry points — from path + bounded content heuristics. |
 | **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, env vars, framework routes, and i18n (see below). |
 | **features** | [`src/features.ts`](./src/features.ts) | Group files into features (skipping route groups `(...)` / dynamic `[...]` segments), order them by **dependency tier** (foundations → feature pages → tests/docs), and apply `--granularity`. |
-| **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts — including the `INTERFACES.md` / `DATA-MODEL.md` skeletons — and decide which real files to copy/embed/describe. |
+| **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts — including the `INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md` skeletons — and decide which real files to copy/embed/describe. |
 | **output** | [`src/output.ts`](./src/output.ts) | Write artifacts and copy ground-truth files to `--out`. |
 
 Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
@@ -311,7 +313,8 @@ the full workflow.
 Once the `reconstruction/` folder exists, rebuild feature-by-feature:
 
 1. Read `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, `architecture/INTERFACES.md`,
-   and `architecture/DATA-MODEL.md` for the big picture.
+   `architecture/DATA-MODEL.md`, and — for a UI product — `architecture/DESIGN-SYSTEM.md` for
+   the big picture.
 2. Follow the dependency-tiered build order in `REBUILD.md`, implementing one
    `features/<slug>/PRD.md` at a time.
 3. Use `data/` (translations, schema, config) and `source/` (when `fidelity=mirror`) as

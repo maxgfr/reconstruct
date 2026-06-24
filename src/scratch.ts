@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { orderFeatures, slugify } from "./features.js";
+import { detectStylingLibraries } from "./design.js";
 import { VERSION } from "./types.js";
 import type {
   Artifact,
@@ -62,11 +63,14 @@ function deriveTier(kind: Feature["kind"]): 0 | 1 | 2 {
 
 function planStack(plan: ScratchPlan): StackInfo {
   const s = plan.stack;
+  const libraries = s.libraries ?? [];
+  const stylingLibraries = detectStylingLibraries(libraries);
   return {
     primaryLanguage: s.primaryLanguage,
     languages: s.languages ?? [s.primaryLanguage],
     frameworks: s.frameworks ?? [],
-    libraries: s.libraries ?? [],
+    libraries,
+    ...(stylingLibraries.length ? { stylingLibraries } : {}),
     packageManagers: s.packageManagers ?? [],
     hasTypeScript: s.hasTypeScript ?? /typescript|\bts\b/i.test(s.primaryLanguage),
   };
@@ -174,7 +178,7 @@ export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
     envVars: plan.envVars ?? [],
     scripts: {},
     features: planFeatures(plan.features),
-    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], entryPoints: [] },
+    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: [] },
     unknowns: [],
     excludedCount: 0,
     product: {
@@ -187,6 +191,7 @@ export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
     ...(plan.enums && plan.enums.length ? { enums: plan.enums } : {}),
     ...(plan.services && plan.services.length ? { services: plan.services } : {}),
     ...(plan.policies && plan.policies.length ? { policies: plan.policies } : {}),
+    ...(plan.designSystem ? { designSystem: plan.designSystem } : {}),
   };
 }
 
@@ -327,6 +332,16 @@ export function validatePlanConsistency(plan: ScratchPlan): {
           `enum field \`${ent.entity}.${f.name}\` has no enumerated members — list them inline (\`A | B\`) or via enumRef so values are testable`,
         );
       }
+    }
+  }
+
+  // Design-system components need a contract (variants / states) to be buildable
+  // to a fixed spec — a bare name renders differently for every rebuilder.
+  for (const c of plan.designSystem?.components ?? []) {
+    if (!(c.variants?.length || c.states?.length)) {
+      warnings.push(
+        `design-system component \`${c.name}\` declares no variants or states — contract them so it can be rebuilt to a fixed spec`,
+      );
     }
   }
 
