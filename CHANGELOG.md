@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.3.0](https://github.com/maxgfr/reconstruct/compare/v1.2.2...v1.3.0) (2026-06-28)
+
+
+### Features
+
+* add biome lint/format parity, harden walk + CLI, Node 20/24 matrix ([2291097](https://github.com/maxgfr/reconstruct/commit/2291097cc12fbaf31d6c85cf383d04e7a268ebbd))
+
 ## [1.2.2](https://github.com/maxgfr/reconstruct/compare/v1.2.1...v1.2.2) (2026-06-28)
 
 
