@@ -4,8 +4,7 @@ import { JS_SRC_EXTS as SRC_EXTS, joinRoute, readSources, resolveModule } from "
 
 const APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*express\(\)/g;
 // `const r = express.Router()` / `Router()` / `require("express").Router()`.
-const ROUTER_RE =
-  /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]express["'`]\s*\)\.)?Router\(\)/g;
+const ROUTER_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:express\.|require\(\s*["'`]express["'`]\s*\)\.)?Router\(\)/g;
 const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 const USE_RE = /(\w+)\.use\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)/g;

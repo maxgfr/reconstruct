@@ -21,6 +21,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "lint": "biome ci .",
+    "format": "biome format --write .",
     "verify:bundle": "node scripts/verify-skill-bundle.mjs",
     "check:build": "tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/analyze.mjs skills/reconstruct/scripts/analyze.mjs && node scripts/verify-skill-bundle.mjs",
     "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light",
@@ -45,6 +47,7 @@
     "url": "https://github.com/maxgfr/reconstruct"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",

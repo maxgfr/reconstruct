@@ -1,15 +1,6 @@
 import { join } from "node:path";
 import type { Artifact, CopyOp, Inventory, Options, RenderResult } from "../types.js";
-import {
-  overviewPrd,
-  architectureDoc,
-  interfacesDoc,
-  dataModelDoc,
-  designSystemDoc,
-  diagramDoc,
-  featurePrd,
-  rebuildDoc,
-} from "./templates.js";
+import { overviewPrd, architectureDoc, interfacesDoc, dataModelDoc, designSystemDoc, diagramDoc, featurePrd, rebuildDoc } from "./templates.js";
 import { renderSourceMaterial } from "./fidelity.js";
 import { mergeArtifacts, mergeFeatures, mergeSpecs, summarize } from "./bundle.js";
 

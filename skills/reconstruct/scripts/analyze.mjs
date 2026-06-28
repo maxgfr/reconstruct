@@ -9,7 +9,7 @@ import { existsSync as existsSync8, statSync as statSync3, realpathSync } from "
 import { basename as basename3 } from "path";
 
 // src/walk.ts
-import { readdirSync, readFileSync, statSync } from "fs";
+import { closeSync, openSync, readSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, relative, extname, basename, resolve } from "path";
 var DEFAULT_IGNORE_DIRS = /* @__PURE__ */ new Set([
   ".git",
@@ -140,6 +140,7 @@ function compilePattern(raw) {
   }
   const anchored = pat.startsWith("/");
   if (anchored) pat = pat.slice(1);
+  pat = pat.replace(/\*{3,}/g, "**").replace(/(?:\*\*\/)+(?=\*\*)/g, "");
   let re = "";
   for (let i = 0; i < pat.length; i++) {
     const c = pat[i];
@@ -189,17 +190,27 @@ function isReconstructOutput(dir) {
     return false;
   }
 }
+var SNIFF_BYTES = 8192;
 function isProbablyBinary(abs, ext) {
   if (BINARY_EXTS.has(ext)) return true;
+  let fd = -1;
   try {
-    const buf = readFileSync(abs);
-    const sample = buf.subarray(0, 8e3);
-    for (const byte of sample) {
-      if (byte === 0) return true;
+    fd = openSync(abs, "r");
+    const buf = Buffer.allocUnsafe(SNIFF_BYTES);
+    const read2 = readSync(fd, buf, 0, SNIFF_BYTES, 0);
+    for (let i = 0; i < read2; i++) {
+      if (buf[i] === 0) return true;
     }
     return false;
   } catch {
     return true;
+  } finally {
+    if (fd >= 0) {
+      try {
+        closeSync(fd);
+      } catch {
+      }
+    }
   }
 }
 function categorize(relPath, ext) {
@@ -226,7 +237,9 @@ function categorize(relPath, ext) {
   if (DATA_EXTS.has(ext)) return "data";
   return "other";
 }
-function countLines(abs) {
+var MAX_COUNT_LINES_BYTES = 8 * 1024 * 1024;
+function countLines(abs, size) {
+  if (size > MAX_COUNT_LINES_BYTES) return 0;
   try {
     const content = readFileSync(abs, "utf8");
     if (content.length === 0) return 0;
@@ -316,7 +329,7 @@ function walk(repo, opts = {}) {
         path: rel,
         ext,
         size,
-        lines: binary ? 0 : countLines(abs),
+        lines: binary ? 0 : countLines(abs, size),
         category: categorize(rel, ext),
         binary
       });
@@ -433,11 +446,7 @@ function extractDependencies(repo, files, warnings, labelBase = "") {
     result.push({ manager: "go modules", manifest: "go.mod", runtime, dev: {} });
   }
   if (present.has("composer.json")) {
-    const composer = readJsonManifest(
-      join2(repo, "composer.json"),
-      labelBase + "composer.json",
-      warnings
-    );
+    const composer = readJsonManifest(join2(repo, "composer.json"), labelBase + "composer.json", warnings);
     if (composer) {
       result.push({
         manager: "composer",
@@ -752,8 +761,7 @@ function detectWorkspaces(repo, warnings) {
   const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo, warnings);
   if (npmPatterns.length) {
     const candidates = /* @__PURE__ */ new Map();
-    for (const { pattern, kind } of npmPatterns)
-      expandPattern(repo, pattern, candidates, kind, warnings);
+    for (const { pattern, kind } of npmPatterns) expandPattern(repo, pattern, candidates, kind, warnings);
     const negRes = negations.map(globToRegExp);
     for (const ws of candidates.values()) {
       if (negRes.some((re) => re.test(ws.path))) continue;
@@ -768,11 +776,7 @@ function resolveDepPath(wsPath, rel) {
   return posix.normalize(posix.join(wsPath, rel)).replace(/\/+$/, "");
 }
 function npmEdges(repo, ws, byName, warnings) {
-  const pkg = readJsonManifest(
-    join3(repo, ws.path, "package.json"),
-    `${ws.path}/package.json`,
-    warnings
-  );
+  const pkg = readJsonManifest(join3(repo, ws.path, "package.json"), `${ws.path}/package.json`, warnings);
   if (!pkg) return [];
   const edges = /* @__PURE__ */ new Set();
   for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
@@ -1135,14 +1139,11 @@ function detectStack(repo, files, warnings, labelBase = "") {
     libraries = detectLibraries(allDeps);
     if ("typescript" in allDeps) hasTypeScript = true;
   }
-  const hasJsManifest = hasPkg || ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some(
-    (f) => existsSync2(join4(repo, f))
-  );
+  const hasJsManifest = hasPkg || ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some((f) => existsSync2(join4(repo, f)));
   if (hasJsManifest) {
     if (existsSync2(join4(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
     else if (existsSync2(join4(repo, "yarn.lock"))) packageManagers.add("yarn");
-    else if (existsSync2(join4(repo, "bun.lockb")) || existsSync2(join4(repo, "bun.lock")))
-      packageManagers.add("bun");
+    else if (existsSync2(join4(repo, "bun.lockb")) || existsSync2(join4(repo, "bun.lock"))) packageManagers.add("bun");
     else packageManagers.add("npm");
   }
   if (existsSync2(join4(repo, "requirements.txt")) || existsSync2(join4(repo, "pyproject.toml"))) {
@@ -1233,15 +1234,7 @@ var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
   ".gql",
   ".proto"
 ]);
-var ROUTE_DIRS = [
-  "routes",
-  "controllers",
-  "handlers",
-  "endpoints",
-  "views",
-  "pages",
-  "api"
-];
+var ROUTE_DIRS = ["routes", "controllers", "handlers", "endpoints", "views", "pages", "api"];
 var API_DIRS = ["trpc", "resolvers", "graphql"];
 var SCHEMA_DIRS = ["models", "entities", "migrations"];
 var ROUTE_FILE_RE = /^(page|route|layout|template|default|\+page|\+server|\+layout)\.[jt]sx?$/;
@@ -1645,10 +1638,7 @@ function pythonImportAliases(src) {
 
 // src/adapters/flask.ts
 var HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
-var DECORATOR_RE = new RegExp(
-  `@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
-  "g"
-);
+var DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']([^)]*)\\)`, "g");
 var BLUEPRINT_DEF_RE = /(\w+)\s*=\s*Blueprint\s*\(([^)]*)\)/g;
 var REGISTER_RE = /(\w+)\.register_blueprint\(\s*(\w+)([^)]*)\)/g;
 var ADD_URL_RE = /(\w+)\.add_url_rule\(\s*["']([^"']*)["']([^)]*)\)/g;
@@ -1659,9 +1649,7 @@ function urlPrefixOf(args) {
 function methodsOf(args) {
   const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
   if (!m) return [];
-  return [...m[1].matchAll(/["']([A-Za-z]+)["']/g)].map(
-    (v) => v[1].toUpperCase()
-  );
+  return [...m[1].matchAll(/["']([A-Za-z]+)["']/g)].map((v) => v[1].toUpperCase());
 }
 function routeKind(src, from) {
   const next = src.slice(from + 1).search(/\n@\w+\.(route|get|post|put|delete|patch)/);
@@ -1740,10 +1728,7 @@ var flaskAdapter = {
 
 // src/adapters/fastapi.ts
 var METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
-var DECORATOR_RE2 = new RegExp(
-  `@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
-  "g"
-);
+var DECORATOR_RE2 = new RegExp(`@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']([^)]*)\\)`, "g");
 var ROUTER_DEF_RE = /(\w+)\s*=\s*APIRouter\(([^)]*)\)/g;
 var INCLUDE_RE = /(\w+)\.include_router\(\s*([\w.]+)([^)]*)\)/g;
 function prefixArg(args) {
@@ -1753,9 +1738,7 @@ function prefixArg(args) {
 function methodsOf2(args) {
   const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
   if (!m) return [];
-  return [...m[1].matchAll(/["']([A-Za-z]+)["']/g)].map(
-    (v) => v[1].toUpperCase()
-  );
+  return [...m[1].matchAll(/["']([A-Za-z]+)["']/g)].map((v) => v[1].toUpperCase());
 }
 var lastSeg = (mod) => mod.split(".").pop() ?? mod;
 var fastapiAdapter = {
@@ -2257,7 +2240,10 @@ var PLURAL_ACTIONS = {
   create: [{ method: "POST", segs: [] }],
   new: [{ method: "GET", segs: ["new"] }],
   show: [{ method: "GET", segs: [":id"] }],
-  update: [{ method: "PUT", segs: [":id"] }, { method: "PATCH", segs: [":id"] }],
+  update: [
+    { method: "PUT", segs: [":id"] },
+    { method: "PATCH", segs: [":id"] }
+  ],
   destroy: [{ method: "DELETE", segs: [":id"] }],
   edit: [{ method: "GET", segs: [":id", "edit"] }]
 };
@@ -2265,7 +2251,10 @@ var SINGULAR_ACTIONS = {
   create: [{ method: "POST", segs: [] }],
   new: [{ method: "GET", segs: ["new"] }],
   show: [{ method: "GET", segs: [] }],
-  update: [{ method: "PUT", segs: [] }, { method: "PATCH", segs: [] }],
+  update: [
+    { method: "PUT", segs: [] },
+    { method: "PATCH", segs: [] }
+  ],
   destroy: [{ method: "DELETE", segs: [] }],
   edit: [{ method: "GET", segs: ["edit"] }]
 };
@@ -2286,7 +2275,9 @@ function singularize(n) {
 }
 function actionsFor(args, singular) {
   const all = Object.keys(singular ? SINGULAR_ACTIONS : PLURAL_ACTIONS);
-  const parse = (s) => new Set(s.split(",").map((a) => a.trim().replace(/^:/, "")).filter(Boolean));
+  const parse = (s) => new Set(
+    s.split(",").map((a) => a.trim().replace(/^:/, "")).filter(Boolean)
+  );
   const only = args.match(/\bonly:\s*\[([^\]]*)\]/);
   if (only) {
     const set = parse(only[1]);
@@ -2501,9 +2492,7 @@ var ROUTE_ADAPTERS = [
   goAdapter
 ];
 function detectRoutes(files, stack, repo) {
-  const active = ROUTE_ADAPTERS.filter(
-    (a) => a.frameworks.some((f) => stack.frameworks.includes(f))
-  );
+  const active = ROUTE_ADAPTERS.filter((a) => a.frameworks.some((f) => stack.frameworks.includes(f)));
   const seen = /* @__PURE__ */ new Set();
   const merged = [];
   for (const adapter of active) {
@@ -2514,9 +2503,7 @@ function detectRoutes(files, stack, repo) {
       merged.push(r);
     }
   }
-  merged.sort(
-    (a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind) || (a.method ?? "").localeCompare(b.method ?? "")
-  );
+  merged.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind) || (a.method ?? "").localeCompare(b.method ?? ""));
   return merged;
 }
 
@@ -2573,20 +2560,7 @@ function detectI18n(repo, files) {
 }
 
 // src/features.ts
-var ROOTS = [
-  "src/app/",
-  "src/pages/",
-  "src/components/",
-  "src/lib/",
-  "src/server/",
-  "src/",
-  "app/",
-  "pages/",
-  "lib/",
-  "server/",
-  "components/",
-  "packages/"
-];
+var ROOTS = ["src/app/", "src/pages/", "src/components/", "src/lib/", "src/server/", "src/", "app/", "pages/", "lib/", "server/", "components/", "packages/"];
 function stripRoot(path) {
   let p = path;
   for (const root of ROOTS) {
@@ -2691,16 +2665,7 @@ var FOUNDATION_KEYS = /* @__PURE__ */ new Set([
   "i18n",
   "locales"
 ]);
-var TEST_KEYS = /* @__PURE__ */ new Set([
-  "test",
-  "tests",
-  "__tests__",
-  "spec",
-  "specs",
-  "e2e",
-  "cypress",
-  "playwright"
-]);
+var TEST_KEYS = /* @__PURE__ */ new Set(["test", "tests", "__tests__", "spec", "specs", "e2e", "cypress", "playwright"]);
 var FOUNDATION_ORDER = [
   "core",
   "types",
@@ -2780,9 +2745,7 @@ function makeWsContext(workspaces, routes) {
       return [ws.path, (segCounts.get(seg) ?? 0) > 1 ? slugify(ws.path) : seg];
     })
   );
-  const appNames = new Set(
-    routes.map((r) => r.workspace).filter((n) => Boolean(n))
-  );
+  const appNames = new Set(routes.map((r) => r.workspace).filter((n) => Boolean(n)));
   const topoIndex = new Map(topoOrderWorkspaces(workspaces).map((name, i) => [name, i]));
   const dependedOn = new Set(workspaces.flatMap((ws) => ws.dependsOn ?? []));
   return {
@@ -3016,9 +2979,7 @@ function analyze(opts) {
     stack = mergeWorkspaceStacks(stack, workspaces);
     const cycle = findWorkspaceCycle(workspaces);
     if (cycle) {
-      warnings.push(
-        `workspace dependency cycle: ${cycle.join(" \u2192 ")} \u2014 the build order falls back to path order for these workspaces`
-      );
+      warnings.push(`workspace dependency cycle: ${cycle.join(" \u2192 ")} \u2014 the build order falls back to path order for these workspaces`);
     }
   }
   const dependencies = extractDependencies(opts.repo, files, warnings);
@@ -3094,16 +3055,11 @@ function cell(value) {
   return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 function filledInterfaceTable(rows) {
-  const header = [
-    "| Method / Trigger | Path / Operation | Kind | Auth | Notes |",
-    "| --- | --- | --- | --- | --- |"
-  ];
+  const header = ["| Method / Trigger | Path / Operation | Kind | Auth | Notes |", "| --- | --- | --- | --- | --- |"];
   if (!rows.length) {
     return [...header, "", "_Add one row per operation as the surface takes shape._"].join("\n");
   }
-  const body = rows.map(
-    (r) => `| ${cell(r.method)} | \`${cell(r.path)}\` | ${cell(r.kind ?? "")} | ${cell(r.auth ?? "")} | ${cell(r.notes ?? "")} |`
-  );
+  const body = rows.map((r) => `| ${cell(r.method)} | \`${cell(r.path)}\` | ${cell(r.kind ?? "")} | ${cell(r.auth ?? "")} | ${cell(r.notes ?? "")} |`);
   return [...header, ...body].join("\n");
 }
 function filledEntityTables(entities) {
@@ -3140,9 +3096,7 @@ function filledEntityTables(entities) {
 function enumsBlock(enums) {
   const lines = ["## Enums & domain types", ""];
   if (!enums || !enums.length) {
-    lines.push(
-      "_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._"
-    );
+    lines.push("_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._");
     return lines.join("\n");
   }
   for (const e of enums) {
@@ -3159,9 +3113,7 @@ function servicesBlock(services) {
     if (s.operations?.length) {
       lines.push("Operations:", "");
       for (const op of s.operations) {
-        lines.push(
-          `- \`${op.name}\`${op.input ? ` \u2014 in: ${op.input}` : ""}${op.output ? ` \u2192 out: ${op.output}` : ""}`
-        );
+        lines.push(`- \`${op.name}\`${op.input ? ` \u2014 in: ${op.input}` : ""}${op.output ? ` \u2192 out: ${op.output}` : ""}`);
       }
       lines.push("");
     }
@@ -3176,9 +3128,7 @@ function servicesBlock(services) {
 function policiesBlock(policies) {
   const lines = ["## Cross-cutting policies", "", "| Policy | Kind | Rule | Applies to |", "| --- | --- | --- | --- |"];
   for (const p of policies) {
-    lines.push(
-      `| ${cell(p.name)} | ${cell(p.kind ?? "")} | ${cell(p.rule)} | ${cell((p.appliesTo ?? []).join(", "))} |`
-    );
+    lines.push(`| ${cell(p.name)} | ${cell(p.kind ?? "")} | ${cell(p.rule)} | ${cell((p.appliesTo ?? []).join(", "))} |`);
   }
   return lines.join("\n");
 }
@@ -3230,9 +3180,7 @@ function overviewPrd(inv, opts) {
     ...inv.product?.audience ? ["", `**Audience:** ${inv.product.audience}`] : [],
     ...inv.product?.value ? ["", `**Core value:** ${inv.product.value}`] : [],
     "",
-    agentNote(
-      "Expand this into a 1\u20132 paragraph product summary grounded in `../CONTEXT.md` (the glossary) and the feature list below."
-    )
+    agentNote("Expand this into a 1\u20132 paragraph product summary grounded in `../CONTEXT.md` (the glossary) and the feature list below.")
   ].join("\n") : opts.level === "complex" ? agentNote(
     "Write a 1\u20132 paragraph product summary: what this project does, for whom, and the core value. Infer it from the README, routes, and feature names below, then refine."
   ) : "_Summarize what this project does, derived from the README and the feature list below._";
@@ -3292,10 +3240,7 @@ function overviewPrd(inv, opts) {
 }
 function workspacesBlock(workspaces) {
   const rows = workspaces.map((w) => {
-    const stack = [
-      ...w.stack?.frameworks ?? [],
-      ...w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "\u2014"]
-    ].join(", ");
+    const stack = [...w.stack?.frameworks ?? [], ...w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "\u2014"]].join(", ");
     return `| \`${w.name}\` | \`${w.path}/\` | ${w.kind ?? "\u2014"} | ${stack || "\u2014"} | ${w.dependsOn?.map((d) => `\`${d}\``).join(", ") || "\u2014"} | ${w.routeCount ?? 0} |`;
   });
   return [
@@ -3312,9 +3257,7 @@ function workspacesBlock(workspaces) {
 }
 function architectureDoc(inv, opts) {
   const isScratch = opts.mode === "scratch";
-  const topDirs = [
-    ...new Set(inv.files.filter((f) => f.path.includes("/")).map((f) => f.path.split("/")[0]))
-  ].sort();
+  const topDirs = [...new Set(inv.files.filter((f) => f.path.includes("/")).map((f) => f.path.split("/")[0]))].sort();
   const rootFiles = inv.files.filter((f) => !f.path.includes("/")).map((f) => f.path).sort();
   const deps = inv.dependencies.map((d) => `- **${d.manager}** (\`${d.manifest}\`): ${Object.keys(d.runtime).length} runtime, ${Object.keys(d.dev).length} dev`).join("\n");
   const common = [
@@ -3464,17 +3407,11 @@ function interfacesDoc(inv, opts) {
     "",
     "## Realtime / WebSocket candidates (verify)",
     "",
-    listOrNone(
-      inv.hints.realtimeCandidates,
-      "_No realtime/WebSocket signals detected._"
-    ),
+    listOrNone(inv.hints.realtimeCandidates, "_No realtime/WebSocket signals detected._"),
     "",
     "## Auth / middleware candidates (verify)",
     "",
-    listOrNone(
-      inv.hints.authCandidates,
-      "_No auth/middleware signals detected \u2014 still record the auth rule per operation below._"
-    ),
+    listOrNone(inv.hints.authCandidates, "_No auth/middleware signals detected \u2014 still record the auth rule per operation below._"),
     "",
     "## Interface table (fill this in)",
     "",
@@ -3549,16 +3486,9 @@ function tokenList(label, items) {
 }
 function componentTable(components) {
   if (!components.length) return [];
-  const lines = [
-    "### Component library",
-    "",
-    "| Component | Source | Variants | States |",
-    "| --- | --- | --- | --- |"
-  ];
+  const lines = ["### Component library", "", "| Component | Source | Variants | States |", "| --- | --- | --- | --- |"];
   for (const c of components) {
-    lines.push(
-      `| ${cell(c.name)} | ${cell(c.source ?? "")} | ${cell((c.variants ?? []).join(", "))} | ${cell((c.states ?? []).join(", "))} |`
-    );
+    lines.push(`| ${cell(c.name)} | ${cell(c.source ?? "")} | ${cell((c.variants ?? []).join(", "))} | ${cell((c.states ?? []).join(", "))} |`);
   }
   lines.push("");
   return lines;
@@ -3644,10 +3574,7 @@ function designSystemDoc(inv, opts) {
     out.push(
       "## Design-system source files",
       "",
-      listOrNone(
-        inv.hints.designSystemCandidates,
-        "_No design-system config/token files detected \u2014 capture tokens from the component and CSS files._"
-      ),
+      listOrNone(inv.hints.designSystemCandidates, "_No design-system config/token files detected \u2014 capture tokens from the component and CSS files._"),
       ""
     );
   }
@@ -3675,21 +3602,15 @@ function designSystemDoc(inv, opts) {
       "",
       "## Breakpoints & responsive",
       "",
-      agentNote(
-        "The named breakpoints with their exact values and the layout/grid strategy (mobile-first vs desktop-first, container queries)."
-      ),
+      agentNote("The named breakpoints with their exact values and the layout/grid strategy (mobile-first vs desktop-first, container queries)."),
       "",
       "## Iconography",
       "",
-      agentNote(
-        "The icon set / library, the sizing and stroke conventions, and how icons are colored and used."
-      ),
+      agentNote("The icon set / library, the sizing and stroke conventions, and how icons are colored and used."),
       "",
       "## Motion & animation",
       "",
-      agentNote(
-        "The duration and easing tokens, the standard transitions, and how `prefers-reduced-motion` is honored."
-      ),
+      agentNote("The duration and easing tokens, the standard transitions, and how `prefers-reduced-motion` is honored."),
       "",
       "## Component library",
       "",
@@ -3732,17 +3653,7 @@ function diagramDoc(inv) {
     "```",
     ""
   ] : [""];
-  return [
-    "# Module diagram",
-    "",
-    "```mermaid",
-    "graph TD",
-    nodes,
-    dataNode,
-    edges,
-    "```",
-    ...workspaceGraph
-  ].join("\n");
+  return ["# Module diagram", "", "```mermaid", "graph TD", nodes, dataNode, edges, "```", ...workspaceGraph].join("\n");
 }
 function featurePrd(inv, feature, opts, sourceMarkdown) {
   const isScratch = opts.mode === "scratch";
@@ -3875,9 +3786,7 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
     "- [ ] Every write is satisfiable against the schema: no required (NOT NULL, no-default) column or foreign key is left unfilled; anonymous/public operations write only to anonymous-capable entities (no owner FK).",
     "- [ ] Every enum/domain value this unit uses is one of the members fully enumerated in `architecture/DATA-MODEL.md`.",
     "- [ ] Every edge case & failure mode above is handled.",
-    ...inv.i18n ? [
-      "- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy)."
-    ] : [],
+    ...inv.i18n ? ["- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy)."] : [],
     "- [ ] `node scripts/analyze.mjs --check --out <out>` passes \u2014 no unresolved agent callouts or placeholders, and every reference resolves.",
     ""
   );
@@ -3898,9 +3807,7 @@ function rebuildDoc(inv, opts) {
     "- [ ] Every interface in `architecture/INTERFACES.md` is implemented (routes, endpoints, RPC/GraphQL, jobs).",
     isScratch ? "- [ ] Every entity in `architecture/DATA-MODEL.md` exists with its fields, relations, and constraints." : "- [ ] Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.",
     isScratch ? "- [ ] All routes/operations respond per `architecture/INTERFACES.md`." : "- [ ] All routes respond as before.",
-    ...inv.i18n ? [
-      isScratch ? "- [ ] All locales present, each with its own messages file." : "- [ ] All locales present and keys match `data/translations/`."
-    ] : [],
+    ...inv.i18n ? [isScratch ? "- [ ] All locales present, each with its own messages file." : "- [ ] All locales present and keys match `data/translations/`."] : [],
     ...hasUI(inv) ? [
       "- [ ] UI matches `architecture/DESIGN-SYSTEM.md` \u2014 design tokens reproduced exactly, components built with their variants/states, and the accessibility target met."
     ] : [],
@@ -3978,10 +3885,8 @@ ${lines.join("\n")}
 `;
 }
 function embedSection(feature, opts) {
-  const parts = [
-    `Key source for this unit (${feature.files.length} file(s) total, showing up to ${MAX_EMBED_FILES}):
-`
-  ];
+  const parts = [`Key source for this unit (${feature.files.length} file(s) total, showing up to ${MAX_EMBED_FILES}):
+`];
   for (const rel of feature.files.slice(0, MAX_EMBED_FILES)) {
     const ext = extOf(rel);
     const lang = FENCE_LANG[ext] ?? "";
@@ -4009,9 +3914,7 @@ function embedSection(feature, opts) {
 }
 function mirrorSection(feature, opts) {
   const copies = [];
-  const lines = [
-    "Ground-truth source has been copied verbatim alongside this PRD. Reference it while rebuilding:\n"
-  ];
+  const lines = ["Ground-truth source has been copied verbatim alongside this PRD. Reference it while rebuilding:\n"];
   for (const rel of feature.files) {
     copies.push({
       from: join9(opts.repo, rel),
@@ -4095,13 +3998,7 @@ function metaLine(inv, opts) {
 function slugify2(value) {
   return value.toLowerCase().replace(/\.md$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
-var BUNDLE_EXCLUDE = /* @__PURE__ */ new Set([
-  "inventory.json",
-  "SUMMARY.md",
-  "RECONSTRUCTION.md",
-  "FEATURES.md",
-  "SPECS.md"
-]);
+var BUNDLE_EXCLUDE = /* @__PURE__ */ new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md", "FEATURES.md", "SPECS.md"]);
 function orderedSections(artifacts, inv) {
   const have = new Set(artifacts.map((a) => a.relPath));
   const sections = [];
@@ -4174,7 +4071,8 @@ function stripSourceMaterial(md) {
         fence = marker;
         continue;
       }
-      if (/^##\s/.test(line)) skipping = false;
+      if (/^##\s/.test(line))
+        skipping = false;
       else continue;
     }
     if (!skipping && /^##\s+Source material\b/i.test(line)) {
@@ -4377,9 +4275,7 @@ function bundleExisting(opts) {
   const dir = opts.out;
   const invPath = join12(dir, "inventory.json");
   if (!existsSync4(invPath)) {
-    throw new Error(
-      `no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`
-    );
+    throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
   const inv = JSON.parse(readFileSync9(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
@@ -4531,7 +4427,15 @@ function planToInventory(plan, opts) {
     envVars: plan.envVars ?? [],
     scripts: {},
     features: planFeatures(plan.features),
-    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: [] },
+    hints: {
+      routeCandidates: [],
+      apiCandidates: [],
+      schemaCandidates: [],
+      realtimeCandidates: [],
+      authCandidates: [],
+      designSystemCandidates: [],
+      entryPoints: []
+    },
     unknowns: [],
     excludedCount: 0,
     product: {
@@ -4611,9 +4515,7 @@ function validatePlanConsistency(plan) {
       if (!entities.has(w)) {
         errors.push(`feature "${f.name}" writes entity \`${w}\` not defined in dataModel`);
       } else if (!featureEntities.has(w)) {
-        warnings.push(
-          `feature "${f.name}" writes \`${w}\` but does not list it among its entities \u2014 add it (writes must be a subset of entities)`
-        );
+        warnings.push(`feature "${f.name}" writes \`${w}\` but does not list it among its entities \u2014 add it (writes must be a subset of entities)`);
       }
     }
   }
@@ -4621,9 +4523,7 @@ function validatePlanConsistency(plan) {
     for (const f of ent.fields ?? []) {
       const target = fkTarget(f);
       if (target && !entityNamesLower.has(target.toLowerCase())) {
-        errors.push(
-          `field \`${ent.entity}.${f.name}\` has a foreign key to undefined table \`${target}\` \u2014 define it in dataModel or fix the reference`
-        );
+        errors.push(`field \`${ent.entity}.${f.name}\` has a foreign key to undefined table \`${target}\` \u2014 define it in dataModel or fix the reference`);
       }
     }
   }
@@ -4638,17 +4538,13 @@ function validatePlanConsistency(plan) {
         errors.push(`field \`${ent.entity}.${f.name}\` references undefined enum \`${f.enumRef}\``);
       }
       if (isEnumTyped(f) && !f.enumRef && !enumMembersInline(f)) {
-        warnings.push(
-          `enum field \`${ent.entity}.${f.name}\` has no enumerated members \u2014 list them inline (\`A | B\`) or via enumRef so values are testable`
-        );
+        warnings.push(`enum field \`${ent.entity}.${f.name}\` has no enumerated members \u2014 list them inline (\`A | B\`) or via enumRef so values are testable`);
       }
     }
   }
   for (const c of plan.designSystem?.components ?? []) {
     if (!(c.variants?.length || c.states?.length)) {
-      warnings.push(
-        `design-system component \`${c.name}\` declares no variants or states \u2014 contract them so it can be rebuilt to a fixed spec`
-      );
+      warnings.push(`design-system component \`${c.name}\` declares no variants or states \u2014 contract them so it can be rebuilt to a fixed spec`);
     }
   }
   const featureByInterface = /* @__PURE__ */ new Map();
@@ -4681,14 +4577,7 @@ function renderScratchDocs(plan) {
   return [{ relPath: "CONTEXT.md", content: contextDoc(plan) }, ...adrDocs(plan)];
 }
 function contextDoc(plan) {
-  const lines = [
-    `# ${plan.project.name} \u2014 Context`,
-    "",
-    plan.project.summary,
-    "",
-    "## Language",
-    ""
-  ];
+  const lines = [`# ${plan.project.name} \u2014 Context`, "", plan.project.summary, "", "## Language", ""];
   if (plan.glossary && plan.glossary.length) {
     for (const g of plan.glossary) {
       lines.push(`**${g.term}**:`, g.definition);
@@ -4720,18 +4609,8 @@ ${body}
 // src/check.ts
 import { existsSync as existsSync5, readFileSync as readFileSync11, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
 import { join as join13, relative as relative3 } from "path";
-var REQUIRED_DOCS = [
-  "REBUILD.md",
-  "00-overview/PRD.md",
-  "architecture/ARCHITECTURE.md",
-  "architecture/INTERFACES.md",
-  "architecture/DATA-MODEL.md"
-];
-var FEATURE_SPINE = [
-  "## Functional requirements",
-  "## Acceptance criteria",
-  "## Definition of done"
-];
+var REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITECTURE.md", "architecture/INTERFACES.md", "architecture/DATA-MODEL.md"];
+var FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
 var SKIP_DIRS = /* @__PURE__ */ new Set(["data", "source", "node_modules", ".git"]);
 function collectMarkdown(dir, base = dir) {
   const out = [];
@@ -4784,9 +4663,7 @@ function checkOutput(outDir) {
   const warnings = [];
   const invPath = join13(outDir, "inventory.json");
   if (!existsSync5(invPath)) {
-    errors.push(
-      `no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`
-    );
+    errors.push(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
     return { errors, warnings };
   }
   let inv;
@@ -4806,9 +4683,7 @@ function checkOutput(outDir) {
     const prose = stripQuotes(stripCode(d.content));
     const callouts = prose.split("\u{1F9E0}").length - 1;
     if (callouts > 0) {
-      errors.push(
-        `${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`
-      );
+      errors.push(`${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`);
     }
     if (/fill this in/i.test(prose)) {
       errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
@@ -4822,9 +4697,7 @@ function checkOutput(outDir) {
   if (dataModelDoc2) {
     for (const e of referencedEntities) {
       if (!documents(dataModelDoc2, e)) {
-        errors.push(
-          `architecture/DATA-MODEL.md does not document entity \`${e}\` referenced by the plan/features`
-        );
+        errors.push(`architecture/DATA-MODEL.md does not document entity \`${e}\` referenced by the plan/features`);
       }
     }
   }
@@ -4834,9 +4707,7 @@ function checkOutput(outDir) {
   if (interfacesDoc2) {
     for (const op of referencedOps) {
       if (!documents(interfacesDoc2, op)) {
-        errors.push(
-          `architecture/INTERFACES.md does not document operation \`${op}\` referenced by the plan/features`
-        );
+        errors.push(`architecture/INTERFACES.md does not document operation \`${op}\` referenced by the plan/features`);
       }
     }
   }
@@ -4846,21 +4717,15 @@ function checkOutput(outDir) {
       if (!d.content.includes(h)) {
         errors.push(`${d.rel}: missing required section "${h}"`);
       } else if (!sectionHasContent(d.content, h)) {
-        errors.push(
-          `${d.rel}: section "${h}" has no content \u2014 fill it (a heading alone is not a PRD section)`
-        );
+        errors.push(`${d.rel}: section "${h}" has no content \u2014 fill it (a heading alone is not a PRD section)`);
       }
     }
   }
   if (dataModelDoc2 && !declaresEntities(dataModelDoc2)) {
-    errors.push(
-      "architecture/DATA-MODEL.md declares no entities \u2014 the data model is empty; fill it before the tree is buildable"
-    );
+    errors.push("architecture/DATA-MODEL.md declares no entities \u2014 the data model is empty; fill it before the tree is buildable");
   }
   if (interfacesDoc2 && !declaresOperations(interfacesDoc2)) {
-    errors.push(
-      "architecture/INTERFACES.md declares no operations \u2014 the interface surface is empty; enumerate it before the tree is buildable"
-    );
+    errors.push("architecture/INTERFACES.md declares no operations \u2014 the interface surface is empty; enumerate it before the tree is buildable");
   }
   if (hasUI(inv)) {
     const ds = findDoc("architecture/DESIGN-SYSTEM.md");
@@ -4869,9 +4734,7 @@ function checkOutput(outDir) {
         "architecture/DESIGN-SYSTEM.md is missing but UI was detected \u2014 capture the visual contract (tokens, theming, typography, components, a11y)."
       );
     } else if (!declaresDesignSystem(stripSection(stripMetaTable(ds.content), "Design-system source files"))) {
-      warnings.push(
-        "architecture/DESIGN-SYSTEM.md captures no tokens/components \u2014 fill the design-system contract for a faithful visual rebuild."
-      );
+      warnings.push("architecture/DESIGN-SYSTEM.md captures no tokens/components \u2014 fill the design-system contract for a faithful visual rebuild.");
     }
   }
   if (inv.i18n && inv.i18n.locales?.length) {
@@ -4882,9 +4745,7 @@ function checkOutput(outDir) {
       const inFiles = names.some((n) => n.includes(loc));
       const inCatalog = catalog.includes(`${loc}`);
       if (!inFiles && !inCatalog) {
-        warnings.push(
-          `locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`
-        );
+        warnings.push(`locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`);
       }
     }
   }
@@ -5145,17 +5006,13 @@ function reduceVerdicts(verdicts) {
 function foldSemantic(outDir, check) {
   const p = join14(outDir, "VERIFY.json");
   if (!existsSync6(p)) {
-    check.warnings.push(
-      "--semantic: no VERIFY.json \u2014 run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped."
-    );
+    check.warnings.push("--semantic: no VERIFY.json \u2014 run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped.");
     return;
   }
   try {
     const sem = JSON.parse(readFileSync12(p, "utf8"));
     if (!sem.ok) {
-      check.errors.push(
-        `semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`
-      );
+      check.errors.push(`semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`);
     }
     if (sem.unadjudicated?.length) {
       check.warnings.push(`${sem.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
@@ -5167,18 +5024,14 @@ function foldSemantic(outDir, check) {
 function formatVerifyReport(r) {
   const lines = [];
   lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
-  lines.push(
-    `  supported: ${r.supported} \xB7 partial: ${r.partial} \xB7 refuted: ${r.refuted} \xB7 unsupported: ${r.unsupported}`
-  );
+  lines.push(`  supported: ${r.supported} \xB7 partial: ${r.partial} \xB7 refuted: ${r.refuted} \xB7 unsupported: ${r.unsupported}`);
   for (const f of r.failures.slice(0, 12)) {
     lines.push(`  \u2717 ${f.claimId} (${f.evidenceRef}): ${f.verdict}${f.note ? " \u2014 " + f.note : ""}`);
   }
   if (r.unadjudicated.length) {
     lines.push(`  \u26A0 ${r.unadjudicated.length} requirement(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
   }
-  lines.push(
-    r.ok ? `  \u2713 every requirement traces to the original source` : `  \u2717 some requirements are refuted or unsupported (invented)`
-  );
+  lines.push(r.ok ? `  \u2713 every requirement traces to the original source` : `  \u2717 some requirements are refuted or unsupported (invented)`);
   return lines.join("\n");
 }
 
@@ -5186,23 +5039,9 @@ function formatVerifyReport(r) {
 import { createHash } from "crypto";
 import { existsSync as existsSync7, readFileSync as readFileSync13, writeFileSync as writeFileSync3 } from "fs";
 import { join as join15 } from "path";
-var ARCH_DOCS = [
-  "architecture/INTERFACES.md",
-  "architecture/DATA-MODEL.md",
-  "architecture/ARCHITECTURE.md"
-];
+var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md"];
 var SEVERITIES = ["blocker", "major", "minor"];
-var CATEGORIES = [
-  "stories",
-  "requirements",
-  "acceptance",
-  "write-contract",
-  "enum",
-  "consistency",
-  "faithfulness",
-  "i18n",
-  "rebuild-test"
-];
+var CATEGORIES = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
 function sha256(s) {
   return createHash("sha256").update(s).digest("hex");
 }
@@ -5363,9 +5202,7 @@ function reduceFindings(findings, ctx) {
     problem: f.problem,
     fix: f.fix
   }));
-  const carried = ctx.priorFailures.filter(
-    (pf) => !touched.has(pf.feature) && (known.size === 0 || known.has(pf.feature))
-  );
+  const carried = ctx.priorFailures.filter((pf) => !touched.has(pf.feature) && (known.size === 0 || known.has(pf.feature)));
   const byId = /* @__PURE__ */ new Map();
   for (const f of carried) byId.set(f.id, f);
   for (const f of fresh) byId.set(f.id, f);
@@ -5443,17 +5280,13 @@ function applyFindings(outDir, findingsPath) {
 function foldReview(outDir, check) {
   const p = join15(outDir, "REVIEW.json");
   if (!existsSync7(p)) {
-    check.warnings.push(
-      "--semantic: no REVIEW.json \u2014 run `--review` then `--review --apply <findings.json>` first; review gate skipped."
-    );
+    check.warnings.push("--semantic: no REVIEW.json \u2014 run `--review` then `--review --apply <findings.json>` first; review gate skipped.");
     return;
   }
   try {
     const rev = JSON.parse(readFileSync13(p, "utf8"));
     if (!rev.ok) {
-      check.errors.push(
-        `AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`
-      );
+      check.errors.push(`AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`);
     }
     if (rev.noProgress) {
       check.warnings.push(
@@ -5473,9 +5306,7 @@ function formatReviewReport(r) {
     lines.push(`  \u2717 ${f.feature} [${f.category}]: ${f.problem}${f.fix ? " \u2014 fix: " + f.fix : ""}`);
   }
   if (r.noProgress) {
-    lines.push(
-      `  \u26A0 no progress for ${r.staleRounds} round(s) on the same blocker(s) \u2014 fix the upstream architecture contract or record as known gaps`
-    );
+    lines.push(`  \u26A0 no progress for ${r.staleRounds} round(s) on the same blocker(s) \u2014 fix the upstream architecture contract or record as known gaps`);
   }
   lines.push(
     r.ok ? `  \u2713 zero unresolved blockers \u2014 the tree passes the AI buildability review` : `  \u2717 ${r.residual.length} blocker(s) gate buildability \u2014 fix in place, re-review the changed units, repeat`
@@ -5577,19 +5408,7 @@ function defaultFidelity(mode, level) {
 function splitGlobs(value) {
   return value.split(",").map((s) => s.trim()).filter(Boolean);
 }
-var VALUE_FLAGS = /* @__PURE__ */ new Set([
-  "repo",
-  "out",
-  "mode",
-  "level",
-  "fidelity",
-  "granularity",
-  "plan",
-  "max-embed-bytes",
-  "include",
-  "exclude",
-  "apply"
-]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply"]);
 function parseArgs(argv) {
   const raw = {};
   const includeGlobs = [];
@@ -5698,15 +5517,8 @@ function parseArgs(argv) {
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
   const mode = scratch ? "scratch" : oneOf("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
-  const fidelity = scratch ? "describe" : oneOf("fidelity", raw.fidelity ?? defaultFidelity(mode, level), [
-    "mirror",
-    "embed",
-    "describe"
-  ]);
-  const granularity = oneOf("granularity", raw.granularity ?? "coarse", [
-    "coarse",
-    "fine"
-  ]);
+  const fidelity = scratch ? "describe" : oneOf("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
+  const granularity = oneOf("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const out = resolve2(
     raw.out ?? (standalone || check || verify || review ? process.cwd() : scratch ? join16(process.cwd(), "reconstruction") : join16(repo, "reconstruction"))
   );
@@ -5782,13 +5594,13 @@ function main() {
     }
   }
   if (opts.check) {
-    const result2 = checkOutput(opts.out);
+    const result = checkOutput(opts.out);
     if (opts.semantic) {
-      foldSemantic(opts.out, result2);
-      foldReview(opts.out, result2);
+      foldSemantic(opts.out, result);
+      foldReview(opts.out, result);
     }
-    process.stdout.write(formatCheckReport(result2, opts.out) + "\n");
-    if (result2.errors.length) process.exit(1);
+    process.stdout.write(formatCheckReport(result, opts.out) + "\n");
+    if (result.errors.length) process.exit(1);
     return;
   }
   if (opts.scratch) {
@@ -5800,10 +5612,8 @@ function main() {
     }
     const consistency = validatePlanConsistency(plan);
     if (consistency.errors.length) {
-      fail(
-        `plan.json is internally inconsistent (fix these before rendering):
-  - ` + consistency.errors.join("\n  - ")
-      );
+      fail(`plan.json is internally inconsistent (fix these before rendering):
+  - ` + consistency.errors.join("\n  - "));
     }
     const effOpts = { ...opts, tdd: opts.tdd || !!plan.tdd };
     const inv2 = planToInventory(plan, effOpts);
@@ -5811,8 +5621,8 @@ function main() {
       process.stdout.write(JSON.stringify(inv2, null, 2) + "\n");
       return;
     }
-    const result2 = render(inv2, effOpts);
-    writeOutput(result2, effOpts);
+    const result = render(inv2, effOpts);
+    writeOutput(result, effOpts);
     const docs = writeArtifactsIfAbsent(renderScratchDocs(plan), effOpts.out);
     const adrCount = docs.filter((p) => p.startsWith("docs/adr/")).length;
     const lines2 = [
@@ -5820,10 +5630,7 @@ function main() {
       `  stack:    ${inv2.stack.primaryLanguage}${inv2.stack.frameworks.length ? " \xB7 " + inv2.stack.frameworks.join(", ") : ""}`,
       `  surface:  ${inv2.features.length} feature(s) \xB7 ${inv2.interfaces?.length ?? 0} interface(s) \xB7 ${inv2.dataModel?.length ?? 0} entit(y/ies) \xB7 ${inv2.i18n ? inv2.i18n.locales.length : 0} locale(s)`,
       `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
-      ...consistency.warnings.length ? [
-        `  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`,
-        ...consistency.warnings.map((w) => `    \u26A0 ${w}`)
-      ] : [],
+      ...consistency.warnings.length ? [`  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`, ...consistency.warnings.map((w) => `    \u26A0 ${w}`)] : [],
       ...effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : [],
       ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
       ...effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
@@ -5836,13 +5643,13 @@ function main() {
     return;
   }
   if (opts.standalone) {
-    let result2;
+    let result;
     try {
-      result2 = bundleExisting(opts);
+      result = bundleExisting(opts);
     } catch (e) {
       fail(e.message);
     }
-    writeOutput(result2, opts);
+    writeOutput(result, opts);
     const made = [
       ...opts.summary ? ["SUMMARY.md"] : [],
       ...opts.features ? ["FEATURES.md"] : [],
@@ -5853,13 +5660,22 @@ function main() {
 `);
     return;
   }
-  const inv = analyze(opts);
+  let inv;
+  try {
+    inv = analyze(opts);
+  } catch (e) {
+    fail(e.message);
+  }
   if (opts.json) {
     process.stdout.write(JSON.stringify(inv, null, 2) + "\n");
     return;
   }
-  const result = render(inv, opts);
-  writeOutput(result, opts);
+  try {
+    const result = render(inv, opts);
+    writeOutput(result, opts);
+  } catch (e) {
+    fail(e.message);
+  }
   const hintTotal = inv.hints.routeCandidates.length + inv.hints.apiCandidates.length + inv.hints.schemaCandidates.length + inv.hints.realtimeCandidates.length + inv.hints.authCandidates.length + inv.hints.designSystemCandidates.length;
   const lines = [
     `reconstruct: analyzed ${inv.fileCount} files (${inv.totalLines} lines) in ${inv.repoName}`,
@@ -5867,17 +5683,9 @@ function main() {
     `  libs:     ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`,
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
     `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth/design-system) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
-    ...inv.workspaces ? [
-      `  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce(
-        (n, w) => n + (w.dependsOn?.length ?? 0),
-        0
-      )} dependency edge(s)`
-    ] : [],
+    ...inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce((n, w) => n + (w.dependsOn?.length ?? 0), 0)} dependency edge(s)`] : [],
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
-    ...inv.warnings?.length ? [
-      `  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`,
-      ...inv.warnings.map((w) => `    \u26A0 ${w}`)
-    ] : [],
+    ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],

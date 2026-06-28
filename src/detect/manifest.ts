@@ -10,11 +10,7 @@ import { readFileSync } from "node:fs";
  * repo defect the agent should hear about → null, plus a warning pushed to
  * the collector (when given) so detection degrades loudly, not silently.
  */
-export function readJsonManifest(
-  absPath: string,
-  relLabel: string,
-  warnings?: string[],
-): Record<string, unknown> | null {
+export function readJsonManifest(absPath: string, relLabel: string, warnings?: string[]): Record<string, unknown> | null {
   let raw: string;
   try {
     raw = readFileSync(absPath, "utf8");

@@ -67,7 +67,10 @@ describe("runVerify (requirement worklist)", () => {
 
   it("skips scaffold callouts and empty items", () => {
     const dir = scratch();
-    tree(dir, "# Auth\n## Functional requirements\n> 🧠 fill this in exhaustively\n- A real requirement about login here.\n## Acceptance criteria\n## Definition of done\n");
+    tree(
+      dir,
+      "# Auth\n## Functional requirements\n> 🧠 fill this in exhaustively\n- A real requirement about login here.\n## Acceptance criteria\n## Definition of done\n",
+    );
     const r = runVerify(dir);
     expect(r.pairs.length).toBe(1);
     rmSync(dir, { recursive: true, force: true });

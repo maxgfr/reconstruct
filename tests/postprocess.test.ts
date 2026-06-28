@@ -135,9 +135,7 @@ describe("bundleExisting (standalone post-step)", () => {
     writeFileSync(join(isolated, "source", "GT_SOURCE_SENTINEL.md"), "# GT_SOURCE_SENTINEL\n");
     writeFileSync(join(isolated, "data", "GT_DATA_SENTINEL.md"), "# GT_DATA_SENTINEL\n");
 
-    const merged = bundleExisting(makeOpts({ out: isolated, merge: true, standalone: true })).artifacts.find(
-      (a) => a.relPath === "RECONSTRUCTION.md",
-    );
+    const merged = bundleExisting(makeOpts({ out: isolated, merge: true, standalone: true })).artifacts.find((a) => a.relPath === "RECONSTRUCTION.md");
     expect(merged?.content).not.toContain("GT_SOURCE_SENTINEL");
     expect(merged?.content).not.toContain("GT_DATA_SENTINEL");
     rmSync(isolated, { recursive: true, force: true });

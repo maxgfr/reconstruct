@@ -22,10 +22,7 @@ describe("build order by dependency tiers", () => {
     file("README.md", "doc"), // documentation → last
     file("package.json", "config"), // project-setup foundation
   ];
-  const routes = [
-    route("/dashboard", "src/app/dashboard/page.tsx"),
-    route("/settings", "src/app/settings/page.tsx"),
-  ];
+  const routes = [route("/dashboard", "src/app/dashboard/page.tsx"), route("/settings", "src/app/settings/page.tsx")];
   const features = buildFeatures(files, routes, null);
   const names = features.map((f) => f.name);
   const idx = (n: string) => names.indexOf(n);
@@ -82,11 +79,7 @@ describe("feature granularity", () => {
 // and the topological order keeps shared packages before their consumers.
 describe("workspace-aware feature grouping", () => {
   const ws = (name: string, path: string, extra: object = {}) => ({ name, path, ...extra });
-  const workspaces = [
-    ws("@acme/db", "packages/db"),
-    ws("@acme/ui", "packages/ui"),
-    ws("@acme/web", "apps/web", { dependsOn: ["@acme/db", "@acme/ui"] }),
-  ];
+  const workspaces = [ws("@acme/db", "packages/db"), ws("@acme/ui", "packages/ui"), ws("@acme/web", "apps/web", { dependsOn: ["@acme/db", "@acme/ui"] })];
   const files = [
     file("apps/web/app/dashboard/page.tsx"),
     file("apps/web/app/billing/page.tsx"),

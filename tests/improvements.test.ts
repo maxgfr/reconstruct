@@ -115,15 +115,7 @@ describe("detectLibraries", () => {
       "@playwright/test": "^1.58.0",
       zod: "^3.25.0",
     });
-    for (const lib of [
-      "Drizzle ORM",
-      "NextAuth.js",
-      "tRPC",
-      "TanStack Query",
-      "Tailwind CSS",
-      "Playwright",
-      "Zod",
-    ]) {
+    for (const lib of ["Drizzle ORM", "NextAuth.js", "tRPC", "TanStack Query", "Tailwind CSS", "Playwright", "Zod"]) {
       expect(libs).toContain(lib);
     }
   });

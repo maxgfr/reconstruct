@@ -15,6 +15,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENGINE_SCRIPTS } from "./copy-bundle.mjs";
 
+// Claude Code matches skill descriptions at <=1024 chars; 1000 leaves a safety
+// margin so a future edit can't silently cross the cap.
+const DESC_MAX = 1000;
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const name = pkg.name;
@@ -49,7 +53,7 @@ if (!existsSync(skillMd)) {
     if (!desc) bad("frontmatter has no description");
     else {
       const len = desc.replace(/^["']|["']$/g, "").length;
-      len <= 1024 ? ok(`description ${len} chars (<= 1024 matcher limit)`) : bad(`description ${len} chars exceeds the 1024-char matcher limit`);
+      len <= DESC_MAX ? ok(`description ${len} chars (<= ${DESC_MAX} headroom cap; matcher limit 1024)`) : bad(`description ${len} chars exceeds the ${DESC_MAX}-char headroom cap (matcher limit 1024)`);
     }
   }
 

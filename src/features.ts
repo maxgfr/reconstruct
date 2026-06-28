@@ -1,20 +1,7 @@
 import { workspaceMatcher, topoOrderWorkspaces } from "./detect/workspaces.js";
 import type { Feature, FileInfo, Granularity, I18nInfo, RouteInfo, Workspace } from "./types.js";
 
-const ROOTS = [
-  "src/app/",
-  "src/pages/",
-  "src/components/",
-  "src/lib/",
-  "src/server/",
-  "src/",
-  "app/",
-  "pages/",
-  "lib/",
-  "server/",
-  "components/",
-  "packages/",
-];
+const ROOTS = ["src/app/", "src/pages/", "src/components/", "src/lib/", "src/server/", "src/", "app/", "pages/", "lib/", "server/", "components/", "packages/"];
 
 function stripRoot(path: string): string[] {
   let p = path;
@@ -32,9 +19,7 @@ function stripRoot(path: string): string[] {
 // keys on `admin` instead of collapsing the whole i18n app under `[locale]`.
 function isSkippableSegment(seg: string): boolean {
   return (
-    (seg.startsWith("(") && seg.endsWith(")")) ||
-    (seg.startsWith("[") && seg.endsWith("]")) ||
-    seg.startsWith("@") // Next.js parallel-route slots (@modal) are not features
+    (seg.startsWith("(") && seg.endsWith(")")) || (seg.startsWith("[") && seg.endsWith("]")) || seg.startsWith("@") // Next.js parallel-route slots (@modal) are not features
   );
 }
 
@@ -93,10 +78,12 @@ export function humanize(key: string): string {
 }
 
 export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "item";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "item"
+  );
 }
 
 // --- Build-order tiers -------------------------------------------------------
@@ -107,36 +94,102 @@ export function slugify(value: string): string {
 // Structural keys whose group is always a foundation (tier 0) and never folded
 // into Core by the coarse granularity pass.
 const FOUNDATION_KEYS = new Set([
-  "core", "types", "type", "config", "env",
-  "db", "database", "schema", "schemas", "model", "models", "entities", "prisma", "drizzle", "migrations",
-  "style", "styles", "css", "theme",
-  "ui", "components", "component",
-  "lib", "libs", "util", "utils", "helpers", "hooks",
-  "store", "stores", "state", "context", "providers",
-  "server", "services", "service", "client",
-  "api", "rpc", "trpc", "graphql", "gql",
-  "auth", "middleware",
-  "i18n", "locales",
+  "core",
+  "types",
+  "type",
+  "config",
+  "env",
+  "db",
+  "database",
+  "schema",
+  "schemas",
+  "model",
+  "models",
+  "entities",
+  "prisma",
+  "drizzle",
+  "migrations",
+  "style",
+  "styles",
+  "css",
+  "theme",
+  "ui",
+  "components",
+  "component",
+  "lib",
+  "libs",
+  "util",
+  "utils",
+  "helpers",
+  "hooks",
+  "store",
+  "stores",
+  "state",
+  "context",
+  "providers",
+  "server",
+  "services",
+  "service",
+  "client",
+  "api",
+  "rpc",
+  "trpc",
+  "graphql",
+  "gql",
+  "auth",
+  "middleware",
+  "i18n",
+  "locales",
 ]);
 
 // Dedicated test directories become a tail-tier "Tests" feature.
-const TEST_KEYS = new Set([
-  "test", "tests", "__tests__", "spec", "specs", "e2e", "cypress", "playwright",
-]);
+const TEST_KEYS = new Set(["test", "tests", "__tests__", "spec", "specs", "e2e", "cypress", "playwright"]);
 
 // Build-earlier-first ordering within the foundation tier.
 const FOUNDATION_ORDER = [
-  "core", "types", "type",
-  "config", "env",
-  "db", "database", "schema", "schemas", "model", "models", "entities",
-  "style", "styles", "css", "theme",
-  "ui", "components", "component",
-  "lib", "libs", "util", "utils", "helpers", "hooks",
-  "store", "stores", "state", "context", "providers",
-  "server", "services", "service", "client",
-  "api", "rpc", "trpc", "graphql", "gql",
-  "auth", "middleware",
-  "i18n", "locales",
+  "core",
+  "types",
+  "type",
+  "config",
+  "env",
+  "db",
+  "database",
+  "schema",
+  "schemas",
+  "model",
+  "models",
+  "entities",
+  "style",
+  "styles",
+  "css",
+  "theme",
+  "ui",
+  "components",
+  "component",
+  "lib",
+  "libs",
+  "util",
+  "utils",
+  "helpers",
+  "hooks",
+  "store",
+  "stores",
+  "state",
+  "context",
+  "providers",
+  "server",
+  "services",
+  "service",
+  "client",
+  "api",
+  "rpc",
+  "trpc",
+  "graphql",
+  "gql",
+  "auth",
+  "middleware",
+  "i18n",
+  "locales",
 ];
 
 const SCHEMA_RANK = FOUNDATION_ORDER.indexOf("schema");
@@ -224,9 +277,7 @@ function makeWsContext(workspaces: Workspace[], routes: RouteInfo[]): WsGroupCon
       return [ws.path, (segCounts.get(seg) ?? 0) > 1 ? slugify(ws.path) : seg] as const;
     }),
   );
-  const appNames = new Set(
-    routes.map((r) => r.workspace).filter((n): n is string => Boolean(n)),
-  );
+  const appNames = new Set(routes.map((r) => r.workspace).filter((n): n is string => Boolean(n)));
   const topoIndex = new Map(topoOrderWorkspaces(workspaces).map((name, i) => [name, i]));
   const dependedOn = new Set(workspaces.flatMap((ws) => ws.dependsOn ?? []));
   return {
@@ -280,12 +331,7 @@ export function buildFeatures(
       configFiles.push(f.path);
     } else if (f.category === "doc") {
       docFiles.push(f.path);
-    } else if (
-      f.category === "code" ||
-      f.category === "test" ||
-      f.category === "style" ||
-      f.category === "schema"
-    ) {
+    } else if (f.category === "code" || f.category === "test" || f.category === "style" || f.category === "schema") {
       const key = keyForFile(f.path);
       const list = codeGroups.get(key) ?? [];
       list.push(f.path);
@@ -304,10 +350,8 @@ export function buildFeatures(
     routesByKey.set(k, list);
   }
 
-  const groupHasSchema = (groupFiles: string[]): boolean =>
-    groupFiles.some((p) => schemaPaths.has(p));
-  const isFoundationGroup = (key: string, groupFiles: string[]): boolean =>
-    FOUNDATION_KEYS.has(innerOf(key)) || groupHasSchema(groupFiles);
+  const groupHasSchema = (groupFiles: string[]): boolean => groupFiles.some((p) => schemaPaths.has(p));
+  const isFoundationGroup = (key: string, groupFiles: string[]): boolean => FOUNDATION_KEYS.has(innerOf(key)) || groupHasSchema(groupFiles);
 
   // Coarse granularity: fold trivial, route-less, non-foundation single-file
   // groups into Core so a one-off util doesn't masquerade as a feature. In a
@@ -323,11 +367,7 @@ export function buildFeatures(
     for (const [key, groupFiles] of [...codeGroups.entries()]) {
       if (key === "core" || innerOf(key) === "core" || isLibGroup(key)) continue;
       const routeCount = routesByKey.get(key)?.length ?? 0;
-      const trivial =
-        groupFiles.length === 1 &&
-        routeCount === 0 &&
-        !isFoundationGroup(key, groupFiles) &&
-        !TEST_KEYS.has(innerOf(key));
+      const trivial = groupFiles.length === 1 && routeCount === 0 && !isFoundationGroup(key, groupFiles) && !TEST_KEYS.has(innerOf(key));
       if (trivial) {
         const target = foldTarget(key);
         if (target !== "core" && ctx && !ctx.groups.has(target)) {
@@ -351,11 +391,7 @@ export function buildFeatures(
         ? `${humanize(short)} · ${humanize(wsGroup.inner)}`
         : humanize(short) + (wsGroup.ws.name !== short ? ` (${wsGroup.ws.name})` : "")
       : humanize(key);
-    const slug = wsGroup
-      ? wsGroup.inner
-        ? slugify(`${short}-${humanize(wsGroup.inner)}`)
-        : slugify(short)
-      : slugify(name);
+    const slug = wsGroup ? (wsGroup.inner ? slugify(`${short}-${humanize(wsGroup.inner)}`) : slugify(short)) : slugify(name);
     const routeList = featureRoutes.map((r) => r.route);
     const uniqueRoutes = [...new Set(routeList)];
     const desc =

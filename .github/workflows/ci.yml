@@ -11,7 +11,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [24]
+        # 20 is active LTS and the vitest 4 / vite 8 toolchain floor (>=20.19); 24 is current.
+        node-version: [20, 24]
     name: build-test (node ${{ matrix.node-version }})
     steps:
       - uses: actions/checkout@v6
@@ -28,6 +29,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint # biome ci .
 
       - name: Build is reproducible (committed bundle up to date)
         run: pnpm run check:build # tsup && git diff --exit-code -- scripts/analyze.mjs

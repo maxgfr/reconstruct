@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, readdirSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join, relative, extname, basename, resolve } from "node:path";
 import type { FileCategory, FileInfo } from "./types.js";
@@ -41,17 +41,80 @@ const DEFAULT_IGNORE_FILES = new Set([
 ]);
 
 const BINARY_EXTS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".bmp", ".tiff",
-  ".pdf", ".zip", ".gz", ".tar", ".rar", ".7z", ".woff", ".woff2", ".ttf",
-  ".otf", ".eot", ".mp3", ".mp4", ".mov", ".avi", ".webm", ".wasm", ".so",
-  ".dylib", ".dll", ".exe", ".bin", ".class", ".jar", ".pyc", ".node",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".ico",
+  ".bmp",
+  ".tiff",
+  ".pdf",
+  ".zip",
+  ".gz",
+  ".tar",
+  ".rar",
+  ".7z",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".eot",
+  ".mp3",
+  ".mp4",
+  ".mov",
+  ".avi",
+  ".webm",
+  ".wasm",
+  ".so",
+  ".dylib",
+  ".dll",
+  ".exe",
+  ".bin",
+  ".class",
+  ".jar",
+  ".pyc",
+  ".node",
 ]);
 
 const CODE_EXTS = new Set([
-  ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
-  ".py", ".rb", ".go", ".rs", ".java", ".kt", ".kts", ".php", ".c", ".cc",
-  ".cpp", ".h", ".hpp", ".cs", ".swift", ".scala", ".clj", ".ex", ".exs",
-  ".dart", ".lua", ".sh", ".bash", ".zig", ".elm",
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".vue",
+  ".svelte",
+  ".astro",
+  ".py",
+  ".rb",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".kts",
+  ".php",
+  ".c",
+  ".cc",
+  ".cpp",
+  ".h",
+  ".hpp",
+  ".cs",
+  ".swift",
+  ".scala",
+  ".clj",
+  ".ex",
+  ".exs",
+  ".dart",
+  ".lua",
+  ".sh",
+  ".bash",
+  ".zig",
+  ".elm",
 ]);
 
 const STYLE_EXTS = new Set([".css", ".scss", ".sass", ".less", ".styl", ".pcss"]);
@@ -80,6 +143,12 @@ function compilePattern(raw: string): CompiledPattern | null {
   }
   const anchored = pat.startsWith("/");
   if (anchored) pat = pat.slice(1);
+
+  // ReDoS guard: collapse runs of '*'/'**' before building the RegExp. A run of
+  // three-or-more '*' means the same as '**', and a '**/**/…' chain collapses to
+  // a single '**' — without this a crafted pattern could emit adjacent unbounded
+  // quantifiers (`.*.*.*…`) that backtrack pathologically on a long path.
+  pat = pat.replace(/\*{3,}/g, "**").replace(/(?:\*\*\/)+(?=\*\*)/g, "");
 
   let re = "";
   for (let i = 0; i < pat.length; i++) {
@@ -142,17 +211,32 @@ function isReconstructOutput(dir: string): boolean {
   }
 }
 
+// Bounded-memory binary sniff: read only the first ~8KB via a file descriptor
+// rather than loading the whole file (a huge input would otherwise be slurped
+// fully into memory just to check for a NUL byte).
+const SNIFF_BYTES = 8192;
+
 function isProbablyBinary(abs: string, ext: string): boolean {
   if (BINARY_EXTS.has(ext)) return true;
+  let fd = -1;
   try {
-    const buf = readFileSync(abs);
-    const sample = buf.subarray(0, 8000);
-    for (const byte of sample) {
-      if (byte === 0) return true;
+    fd = openSync(abs, "r");
+    const buf = Buffer.allocUnsafe(SNIFF_BYTES);
+    const read = readSync(fd, buf, 0, SNIFF_BYTES, 0);
+    for (let i = 0; i < read; i++) {
+      if (buf[i] === 0) return true;
     }
     return false;
   } catch {
     return true;
+  } finally {
+    if (fd >= 0) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* already closed / never opened */
+      }
+    }
   }
 }
 
@@ -182,11 +266,7 @@ export function categorize(relPath: string, ext: string): FileCategory {
     return "schema";
   }
 
-  if (
-    lower.includes(".test.") ||
-    lower.includes(".spec.") ||
-    inDir("__tests__", "test", "tests", "spec", "e2e", "__mocks__")
-  ) {
+  if (lower.includes(".test.") || lower.includes(".spec.") || inDir("__tests__", "test", "tests", "spec", "e2e", "__mocks__")) {
     return "test";
   }
 
@@ -226,7 +306,13 @@ export function categorize(relPath: string, ext: string): FileCategory {
   return "other";
 }
 
-function countLines(abs: string): number {
+// Above this size a file's exact line count isn't worth slurping the whole thing
+// into memory (and a multi-GB input would realistically OOM). Past the cap we
+// report 0 lines — the inventory still records the file and its byte size.
+const MAX_COUNT_LINES_BYTES = 8 * 1024 * 1024; // 8 MB
+
+function countLines(abs: string, size: number): number {
+  if (size > MAX_COUNT_LINES_BYTES) return 0;
   try {
     const content = readFileSync(abs, "utf8");
     if (content.length === 0) return 0;
@@ -358,7 +444,7 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
         path: rel,
         ext,
         size,
-        lines: binary ? 0 : countLines(abs),
+        lines: binary ? 0 : countLines(abs, size),
         category: categorize(rel, ext),
         binary,
       });

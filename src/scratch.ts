@@ -178,7 +178,15 @@ export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
     envVars: plan.envVars ?? [],
     scripts: {},
     features: planFeatures(plan.features),
-    hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: [] },
+    hints: {
+      routeCandidates: [],
+      apiCandidates: [],
+      schemaCandidates: [],
+      realtimeCandidates: [],
+      authCandidates: [],
+      designSystemCandidates: [],
+      entryPoints: [],
+    },
     unknowns: [],
     excludedCount: 0,
     product: {
@@ -295,9 +303,7 @@ export function validatePlanConsistency(plan: ScratchPlan): {
       if (!entities.has(w)) {
         errors.push(`feature "${f.name}" writes entity \`${w}\` not defined in dataModel`);
       } else if (!featureEntities.has(w)) {
-        warnings.push(
-          `feature "${f.name}" writes \`${w}\` but does not list it among its entities — add it (writes must be a subset of entities)`,
-        );
+        warnings.push(`feature "${f.name}" writes \`${w}\` but does not list it among its entities — add it (writes must be a subset of entities)`);
       }
     }
   }
@@ -309,9 +315,7 @@ export function validatePlanConsistency(plan: ScratchPlan): {
     for (const f of ent.fields ?? []) {
       const target = fkTarget(f);
       if (target && !entityNamesLower.has(target.toLowerCase())) {
-        errors.push(
-          `field \`${ent.entity}.${f.name}\` has a foreign key to undefined table \`${target}\` — define it in dataModel or fix the reference`,
-        );
+        errors.push(`field \`${ent.entity}.${f.name}\` has a foreign key to undefined table \`${target}\` — define it in dataModel or fix the reference`);
       }
     }
   }
@@ -328,9 +332,7 @@ export function validatePlanConsistency(plan: ScratchPlan): {
         errors.push(`field \`${ent.entity}.${f.name}\` references undefined enum \`${f.enumRef}\``);
       }
       if (isEnumTyped(f) && !f.enumRef && !enumMembersInline(f)) {
-        warnings.push(
-          `enum field \`${ent.entity}.${f.name}\` has no enumerated members — list them inline (\`A | B\`) or via enumRef so values are testable`,
-        );
+        warnings.push(`enum field \`${ent.entity}.${f.name}\` has no enumerated members — list them inline (\`A | B\`) or via enumRef so values are testable`);
       }
     }
   }
@@ -339,9 +341,7 @@ export function validatePlanConsistency(plan: ScratchPlan): {
   // to a fixed spec — a bare name renders differently for every rebuilder.
   for (const c of plan.designSystem?.components ?? []) {
     if (!(c.variants?.length || c.states?.length)) {
-      warnings.push(
-        `design-system component \`${c.name}\` declares no variants or states — contract them so it can be rebuilt to a fixed spec`,
-      );
+      warnings.push(`design-system component \`${c.name}\` declares no variants or states — contract them so it can be rebuilt to a fixed spec`);
     }
   }
 
@@ -387,14 +387,7 @@ export function renderScratchDocs(plan: ScratchPlan): Artifact[] {
 }
 
 function contextDoc(plan: ScratchPlan): string {
-  const lines: string[] = [
-    `# ${plan.project.name} — Context`,
-    "",
-    plan.project.summary,
-    "",
-    "## Language",
-    "",
-  ];
+  const lines: string[] = [`# ${plan.project.name} — Context`, "", plan.project.summary, "", "## Language", ""];
   if (plan.glossary && plan.glossary.length) {
     for (const g of plan.glossary) {
       lines.push(`**${g.term}**:`, g.definition);

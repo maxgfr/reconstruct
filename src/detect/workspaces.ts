@@ -23,13 +23,7 @@ function readGoModule(dir: string): string | null {
   return m ? (m[1] as string) : "";
 }
 
-function addWorkspace(
-  repo: string,
-  relDir: string,
-  found: Map<string, Workspace>,
-  kind: WorkspaceKind,
-  warnings?: string[],
-): void {
+function addWorkspace(repo: string, relDir: string, found: Map<string, Workspace>, kind: WorkspaceKind, warnings?: string[]): void {
   const norm = relDir.split("\\").join("/").replace(/^\.\//, "").replace(/\/+$/, "");
   if (!norm || norm === "." || found.has(norm)) return;
   let name: string | null;
@@ -79,13 +73,7 @@ function collectWorkspacesRecursive(
 }
 
 /** Expand one membership pattern (a literal dir, or a trailing `/*` / `/**` glob). */
-function expandPattern(
-  repo: string,
-  raw: string,
-  found: Map<string, Workspace>,
-  kind: WorkspaceKind,
-  warnings?: string[],
-): void {
+function expandPattern(repo: string, raw: string, found: Map<string, Workspace>, kind: WorkspaceKind, warnings?: string[]): void {
   const pat = raw.replace(/\/+$/, ""); // normalize a trailing slash
   if (pat.endsWith("/**")) {
     collectWorkspacesRecursive(repo, pat.slice(0, -3), found, kind, 0, warnings);
@@ -172,15 +160,10 @@ function npmFamilyPatterns(
 }
 
 /** lerna.json `packages` / nx.json layout — fallbacks when package.json declares none. */
-function fallbackNpmPatterns(
-  repo: string,
-  warnings?: string[],
-): Array<{ pattern: string; kind: WorkspaceKind }> {
+function fallbackNpmPatterns(repo: string, warnings?: string[]): Array<{ pattern: string; kind: WorkspaceKind }> {
   const lerna = readJsonManifest(join(repo, "lerna.json"), "lerna.json", warnings);
   if (lerna && Array.isArray(lerna.packages)) {
-    return lerna.packages
-      .filter((x): x is string => typeof x === "string")
-      .map((pattern) => ({ pattern, kind: "lerna" as WorkspaceKind }));
+    return lerna.packages.filter((x): x is string => typeof x === "string").map((pattern) => ({ pattern, kind: "lerna" as WorkspaceKind }));
   }
   const nx = readJsonManifest(join(repo, "nx.json"), "nx.json", warnings);
   if (nx) {
@@ -269,8 +252,7 @@ export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[]
   const npmPatterns = positives.length ? positives : fallbackNpmPatterns(repo, warnings);
   if (npmPatterns.length) {
     const candidates = new Map<string, Workspace>();
-    for (const { pattern, kind } of npmPatterns)
-      expandPattern(repo, pattern, candidates, kind, warnings);
+    for (const { pattern, kind } of npmPatterns) expandPattern(repo, pattern, candidates, kind, warnings);
     const negRes = negations.map(globToRegExp);
     for (const ws of candidates.values()) {
       if (negRes.some((re) => re.test(ws.path))) continue;
@@ -292,11 +274,7 @@ function resolveDepPath(wsPath: string, rel: string): string {
 
 /** Sibling-workspace edges declared in an npm-family manifest. */
 function npmEdges(repo: string, ws: Workspace, byName: Set<string>, warnings?: string[]): string[] {
-  const pkg = readJsonManifest(
-    join(repo, ws.path, "package.json"),
-    `${ws.path}/package.json`,
-    warnings,
-  );
+  const pkg = readJsonManifest(join(repo, ws.path, "package.json"), `${ws.path}/package.json`, warnings);
   if (!pkg) return [];
   const edges = new Set<string>();
   for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
@@ -357,20 +335,12 @@ function goEdges(repo: string, ws: Workspace, byName: Set<string>, byPath: Map<s
  * declares a dependency on. Edges come from manifests only; implicit coupling
  * is left to the agent.
  */
-export function buildWorkspaceGraph(
-  repo: string,
-  workspaces: Workspace[],
-  warnings?: string[],
-): void {
+export function buildWorkspaceGraph(repo: string, workspaces: Workspace[], warnings?: string[]): void {
   const byName = new Set(workspaces.map((w) => w.name));
   const byPath = new Map(workspaces.map((w) => [w.path, w.name]));
   for (const ws of workspaces) {
     const edges =
-      ws.kind === "cargo"
-        ? cargoEdges(repo, ws, byName, byPath)
-        : ws.kind === "go"
-          ? goEdges(repo, ws, byName, byPath)
-          : npmEdges(repo, ws, byName, warnings);
+      ws.kind === "cargo" ? cargoEdges(repo, ws, byName, byPath) : ws.kind === "go" ? goEdges(repo, ws, byName, byPath) : npmEdges(repo, ws, byName, warnings);
     if (edges.length) ws.dependsOn = edges.sort();
   }
 }
@@ -414,9 +384,7 @@ export function findWorkspaceCycle(workspaces: Workspace[]): string[] | null {
  * Longest-prefix matcher: which workspace does a repo-relative path belong to?
  * Nested workspaces resolve to the deepest one.
  */
-export function workspaceMatcher(
-  workspaces: Workspace[],
-): (path: string) => Workspace | undefined {
+export function workspaceMatcher(workspaces: Workspace[]): (path: string) => Workspace | undefined {
   const byDepth = [...workspaces].sort((a, b) => b.path.length - a.path.length);
   return (path) => byDepth.find((ws) => path.startsWith(ws.path + "/"));
 }
@@ -426,12 +394,7 @@ export function workspaceMatcher(
  * own stack and manifest dependencies by rebasing its files onto the workspace
  * dir, so detectStack/extractDependencies read the workspace's own manifests.
  */
-export function enrichWorkspaceStacks(
-  repo: string,
-  workspaces: Workspace[],
-  files: FileInfo[],
-  warnings?: string[],
-): void {
+export function enrichWorkspaceStacks(repo: string, workspaces: Workspace[], files: FileInfo[], warnings?: string[]): void {
   const matcher = workspaceMatcher(workspaces);
   const filesByWs = new Map<string, FileInfo[]>();
   for (const f of files) {
@@ -483,12 +446,7 @@ export function mergeWorkspaceStacks(stack: StackInfo, workspaces: Workspace[]):
  * workspace its file lives in, and filters the global hints/schemas down to
  * each workspace's subtree. The global (union) fields stay authoritative.
  */
-export function enrichWorkspaceSurface(
-  workspaces: Workspace[],
-  routes: RouteInfo[],
-  hints: Hints,
-  schemas: string[],
-): void {
+export function enrichWorkspaceSurface(workspaces: Workspace[], routes: RouteInfo[], hints: Hints, schemas: string[]): void {
   const matcher = workspaceMatcher(workspaces);
   const routeCounts = new Map<string, number>();
   for (const r of routes) {
@@ -526,9 +484,7 @@ export function topoOrderWorkspaces(workspaces: Workspace[]): string[] {
   const remaining = new Map(workspaces.map((w) => [w.name, new Set(w.dependsOn ?? [])]));
   const order: string[] = [];
   while (remaining.size > 0) {
-    const ready = [...remaining.entries()]
-      .filter(([, deps]) => [...deps].every((d) => !remaining.has(d)))
-      .map(([name]) => name);
+    const ready = [...remaining.entries()].filter(([, deps]) => [...deps].every((d) => !remaining.has(d))).map(([name]) => name);
     if (ready.length === 0) {
       // Cycle: fall back to path order for whatever is left.
       const leftover = workspaces.filter((w) => remaining.has(w.name)).map((w) => w.name);

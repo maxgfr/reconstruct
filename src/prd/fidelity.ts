@@ -46,9 +46,7 @@ function describeSection(feature: Feature): string {
 }
 
 function embedSection(feature: Feature, opts: Options): string {
-  const parts: string[] = [
-    `Key source for this unit (${feature.files.length} file(s) total, showing up to ${MAX_EMBED_FILES}):\n`,
-  ];
+  const parts: string[] = [`Key source for this unit (${feature.files.length} file(s) total, showing up to ${MAX_EMBED_FILES}):\n`];
   for (const rel of feature.files.slice(0, MAX_EMBED_FILES)) {
     const ext = extOf(rel);
     const lang = FENCE_LANG[ext] ?? "";
@@ -76,9 +74,7 @@ function embedSection(feature: Feature, opts: Options): string {
 
 function mirrorSection(feature: Feature, opts: Options): SourceSection {
   const copies: CopyOp[] = [];
-  const lines: string[] = [
-    "Ground-truth source has been copied verbatim alongside this PRD. Reference it while rebuilding:\n",
-  ];
+  const lines: string[] = ["Ground-truth source has been copied verbatim alongside this PRD. Reference it while rebuilding:\n"];
   for (const rel of feature.files) {
     copies.push({
       from: join(opts.repo, rel),

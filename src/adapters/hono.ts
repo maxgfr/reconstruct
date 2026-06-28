@@ -4,16 +4,14 @@ import { JS_SRC_EXTS as SRC_EXTS, joinRoute, readSources, resolveModule } from "
 
 // `const app = new Hono()` (generics tolerated), with an optional chained
 // `.basePath("/api")` on the same statement.
-const APP_RE =
-  /(?:const|let|var)\s+(\w+)\s*=\s*new\s+Hono\s*(?:<[^>]*>)?\s*\([^)]*\)(?:\s*\.basePath\(\s*["'`]([^"'`]*)["'`]\s*\))?/g;
+const APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*new\s+Hono\s*(?:<[^>]*>)?\s*\([^)]*\)(?:\s*\.basePath\(\s*["'`]([^"'`]*)["'`]\s*\))?/g;
 // Separate-statement `app.basePath("/api")`.
 const BASEPATH_RE = /(\w+)\.basePath\(\s*["'`]([^"'`]*)["'`]/g;
 const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 const ROUTE_RE = /(\w+)\.(get|post|put|delete|patch|options|all)\(\s*["'`]([^"'`]*)["'`]/g;
 // `app.on("PURGE" | ["GET", ...], "/path", handler)`.
-const ON_RE =
-  /(\w+)\.on\(\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])\s*,\s*["'`]([^"'`]*)["'`]/g;
+const ON_RE = /(\w+)\.on\(\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])\s*,\s*["'`]([^"'`]*)["'`]/g;
 // `app.route("/prefix", subApp)` — mounts a sub-app (same- or cross-file).
 const MOUNT_RE = /(\w+)\.route\(\s*["'`]([^"'`]*)["'`]\s*,\s*(\w+)\s*\)/g;
 const EXPORT_RE = /(?:export\s+default|module\.exports\s*=)\s+(\w+)\s*;?/;
@@ -112,8 +110,7 @@ export const honoAdapter: RouteAdapter = {
       const exported = exportedByFile.get(path);
       const prefixFor = (v: string): string | null => {
         if (!vars.has(v)) return null;
-        const mount =
-          mountByLocalVar.get(`${path}::${v}`) ?? (v === exported ? (mountByFile.get(path) ?? "") : "");
+        const mount = mountByLocalVar.get(`${path}::${v}`) ?? (v === exported ? (mountByFile.get(path) ?? "") : "");
         const base = baseOf(path, v);
         return mount === "" && base === "" ? "" : joinRoute(mount, base);
       };

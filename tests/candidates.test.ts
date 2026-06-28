@@ -28,10 +28,7 @@ beforeAll(() => {
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);
   };
-  w(
-    "package.json",
-    JSON.stringify({ name: "x", main: "dist/index.js", bin: { x: "bin/cli.js" } }),
-  );
+  w("package.json", JSON.stringify({ name: "x", main: "dist/index.js", bin: { x: "bin/cli.js" } }));
   w(
     "src/server/routers/user.ts",
     `import { createTRPCRouter, publicProcedure } from "../trpc";\nexport const userRouter = createTRPCRouter({\n  list: publicProcedure.query(() => []),\n  create: publicProcedure.mutation(() => ({})),\n});`,
@@ -43,10 +40,7 @@ beforeAll(() => {
   w("manage.py", "#!/usr/bin/env python\nimport sys");
   w("src/index.ts", "console.log('hi')");
   w("routes/__init__.py", ""); // empty package marker — must not be a candidate
-  w(
-    "src/events.gateway.ts",
-    `@WebSocketGateway({ cors: true })\nexport class EventsGateway {\n  @SubscribeMessage("message")\n  handle() {}\n}`,
-  );
+  w("src/events.gateway.ts", `@WebSocketGateway({ cors: true })\nexport class EventsGateway {\n  @SubscribeMessage("message")\n  handle() {}\n}`);
   w("app/profile.py", `@login_required\ndef profile():\n    return render(request)`);
   w("src/middleware.js", `app.use(passport.initialize());\napp.use(passport.session());`);
   w("tailwind.config.ts", `export default { theme: { extend: {} } };`);

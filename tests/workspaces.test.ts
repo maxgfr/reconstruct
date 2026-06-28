@@ -2,11 +2,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import {
-  detectWorkspaces,
-  buildWorkspaceGraph,
-  topoOrderWorkspaces,
-} from "../src/detect/workspaces.js";
+import { detectWorkspaces, buildWorkspaceGraph, topoOrderWorkspaces } from "../src/detect/workspaces.js";
 
 function makeRepo(write: (w: (rel: string, content: string) => void) => void): string {
   const repo = mkdtempSync(join(tmpdir(), "recon-ws-"));
@@ -33,9 +29,7 @@ describe("detectWorkspaces — npm/pnpm family", () => {
       w("package.json", JSON.stringify({ workspaces: ["packages/*"] }));
       w("packages/ui/package.json", JSON.stringify({ name: "@acme/ui" }));
     });
-    expect(detectWorkspaces(r)).toEqual([
-      { name: "@acme/ui", path: "packages/ui", kind: "npm" },
-    ]);
+    expect(detectWorkspaces(r)).toEqual([{ name: "@acme/ui", path: "packages/ui", kind: "npm" }]);
   });
 
   it("tags pnpm-workspace.yaml entries with kind pnpm", () => {
@@ -164,9 +158,7 @@ describe("detectWorkspaces — go.work", () => {
       w("tools/go.mod", "module example.com/tools\n");
       w("go.mod", "module example.com/root\n");
     });
-    expect(detectWorkspaces(r)).toEqual([
-      { name: "example.com/tools", path: "tools", kind: "go" },
-    ]);
+    expect(detectWorkspaces(r)).toEqual([{ name: "example.com/tools", path: "tools", kind: "go" }]);
   });
 });
 
@@ -174,10 +166,7 @@ describe("buildWorkspaceGraph", () => {
   it("derives npm edges from dependency names", () => {
     const r = repo((w) => {
       w("package.json", JSON.stringify({ workspaces: ["apps/*", "packages/*"] }));
-      w(
-        "apps/web/package.json",
-        JSON.stringify({ name: "@acme/web", dependencies: { "@acme/ui": "workspace:*", react: "^18" } }),
-      );
+      w("apps/web/package.json", JSON.stringify({ name: "@acme/web", dependencies: { "@acme/ui": "workspace:*", react: "^18" } }));
       w("packages/ui/package.json", JSON.stringify({ name: "@acme/ui" }));
     });
     const ws = detectWorkspaces(r);
@@ -190,10 +179,7 @@ describe("buildWorkspaceGraph", () => {
   it("derives cargo edges from path dependencies", () => {
     const r = repo((w) => {
       w("Cargo.toml", '[workspace]\nmembers = ["crates/cli", "crates/core"]\n');
-      w(
-        "crates/cli/Cargo.toml",
-        '[package]\nname = "acme-cli"\n\n[dependencies]\nacme-core = { path = "../core" }\nserde = "1"\n',
-      );
+      w("crates/cli/Cargo.toml", '[package]\nname = "acme-cli"\n\n[dependencies]\nacme-core = { path = "../core" }\nserde = "1"\n');
       w("crates/core/Cargo.toml", '[package]\nname = "acme-core"\n');
     });
     const ws = detectWorkspaces(r);
@@ -206,21 +192,13 @@ describe("buildWorkspaceGraph", () => {
       w("go.work", "use (\n\t./services/api\n\t./pkg/shared\n)\n");
       w(
         "services/api/go.mod",
-        [
-          "module example.com/api",
-          "",
-          "require example.com/shared v0.0.0",
-          "",
-          "replace example.com/shared => ../../pkg/shared",
-        ].join("\n"),
+        ["module example.com/api", "", "require example.com/shared v0.0.0", "", "replace example.com/shared => ../../pkg/shared"].join("\n"),
       );
       w("pkg/shared/go.mod", "module example.com/shared\n");
     });
     const ws = detectWorkspaces(r);
     buildWorkspaceGraph(r, ws);
-    expect(ws.find((x) => x.name === "example.com/api")?.dependsOn).toEqual([
-      "example.com/shared",
-    ]);
+    expect(ws.find((x) => x.name === "example.com/api")?.dependsOn).toEqual(["example.com/shared"]);
   });
 });
 
@@ -248,10 +226,6 @@ describe("detectWorkspaces — polyglot union", () => {
       w("go.work", "use ./backend\n");
       w("backend/go.mod", "module example.com/backend\n");
     });
-    expect(detectWorkspaces(r).map((x) => `${x.kind}:${x.path}`)).toEqual([
-      "go:backend",
-      "cargo:native",
-      "npm:web",
-    ]);
+    expect(detectWorkspaces(r).map((x) => `${x.kind}:${x.path}`)).toEqual(["go:backend", "cargo:native", "npm:web"]);
   });
 });

@@ -24,10 +24,7 @@ afterAll(() => repos.forEach((r) => rmSync(r, { recursive: true, force: true }))
 describe("extractDependencies — Ruby / Java ecosystems", () => {
   it("parses a Gemfile (bundler)", () => {
     const { dir, files } = repo((w) =>
-      w(
-        "Gemfile",
-        `source "https://rubygems.org"\ngem "rails", "~> 7.1"\ngem "pg"\ngroup :development, :test do\n  gem "rspec-rails"\nend\n`,
-      ),
+      w("Gemfile", `source "https://rubygems.org"\ngem "rails", "~> 7.1"\ngem "pg"\ngroup :development, :test do\n  gem "rspec-rails"\nend\n`),
     );
     const deps = extractDependencies(dir, files);
     const bundler = deps.find((d) => d.manager === "bundler");

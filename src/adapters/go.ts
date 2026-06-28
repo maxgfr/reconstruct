@@ -4,12 +4,10 @@ import { joinRoute, readSources } from "./util.js";
 
 // HTTP verbs as a router method, in both Gin/Echo (`GET`) and chi/Fiber (`Get`)
 // capitalizations, plus method-agnostic `Any`/`All`.
-const VERB_TOKENS =
-  "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
+const VERB_TOKENS = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
 const VERB_RE = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
 // Verb-as-argument forms: gin `r.Handle("GET","/p",h)`, echo `e.Add("GET","/p",h)`.
-const HANDLE_VERB_RE =
-  /(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
+const HANDLE_VERB_RE = /(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
 // net/http + gorilla: `mux.HandleFunc("/p", h)` / Go 1.22 `mux.HandleFunc("GET /p", h)`,
 // optionally chained `.Methods("GET","POST")` (gorilla).
 const HANDLEFUNC_RE = /(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
@@ -89,8 +87,7 @@ export const goAdapter: RouteAdapter = {
             .map((r) => r.seg),
         );
 
-      const prefixAt = (recv: string, idx: number): string =>
-        joinRoute(closurePrefix(idx), groupPrefix(recv));
+      const prefixAt = (recv: string, idx: number): string => joinRoute(closurePrefix(idx), groupPrefix(recv));
 
       // 3a. `<recv>.VERB("/path")` — Gin/Echo/chi/Fiber.
       for (const m of src.matchAll(VERB_RE)) {
@@ -126,9 +123,7 @@ export const goAdapter: RouteAdapter = {
         const prefix = prefixAt(m[1] as string, m.index ?? 0);
         const chained = (m[0] as string).match(METHODS_CHAIN_RE);
         const methods = chained
-          ? [...(chained[1] as string).matchAll(/["`]([A-Za-z]+)["`]/g)]
-              .map((v) => (v[1] as string).toUpperCase())
-              .filter((v) => STD_VERBS.test(v))
+          ? [...(chained[1] as string).matchAll(/["`]([A-Za-z]+)["`]/g)].map((v) => (v[1] as string).toUpperCase()).filter((v) => STD_VERBS.test(v))
           : [];
         const route = joinRoute(prefix, routePath);
         if (verbInPattern) {

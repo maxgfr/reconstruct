@@ -20,12 +20,7 @@ function asStringMap(value: unknown): Record<string, string> {
   return out;
 }
 
-export function extractDependencies(
-  repo: string,
-  files: FileInfo[],
-  warnings?: string[],
-  labelBase = "",
-): DependencyInfo[] {
+export function extractDependencies(repo: string, files: FileInfo[], warnings?: string[], labelBase = ""): DependencyInfo[] {
   const result: DependencyInfo[] = [];
   const present = new Set(files.map((f) => f.path));
 
@@ -92,11 +87,7 @@ export function extractDependencies(
 
   // composer / composer.json
   if (present.has("composer.json")) {
-    const composer = readJsonManifest(
-      join(repo, "composer.json"),
-      labelBase + "composer.json",
-      warnings,
-    );
+    const composer = readJsonManifest(join(repo, "composer.json"), labelBase + "composer.json", warnings);
     if (composer) {
       result.push({
         manager: "composer",
@@ -135,8 +126,7 @@ export function extractDependencies(
     const raw = read(repo, "pom.xml") ?? "";
     const runtime: Record<string, string> = {};
     const dev: Record<string, string> = {};
-    const field = (block: string, tag: string): string | undefined =>
-      block.match(new RegExp(`<${tag}>\\s*([^<]+?)\\s*</${tag}>`))?.[1];
+    const field = (block: string, tag: string): string | undefined => block.match(new RegExp(`<${tag}>\\s*([^<]+?)\\s*</${tag}>`))?.[1];
     for (const m of raw.matchAll(/<dependency>([\s\S]*?)<\/dependency>/g)) {
       const block = m[1] as string;
       const gid = field(block, "groupId");

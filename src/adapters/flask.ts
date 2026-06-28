@@ -4,10 +4,7 @@ import { joinRoute, moduleName, pythonImportAliases, readSources } from "./util.
 
 const HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
 // Capture the path AND the trailing kwargs so `methods=[...]` can be read.
-const DECORATOR_RE = new RegExp(
-  `@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
-  "g",
-);
+const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\(\\s*["']([^"']*)["']([^)]*)\\)`, "g");
 // Capture the Blueprint constructor args so a `url_prefix=` set there is honored.
 const BLUEPRINT_DEF_RE = /(\w+)\s*=\s*Blueprint\s*\(([^)]*)\)/g;
 // `app.register_blueprint(bp, url_prefix=...)` — receiver kept so blueprints
@@ -25,9 +22,7 @@ function urlPrefixOf(args: string): string {
 function methodsOf(args: string): string[] {
   const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
   if (!m) return [];
-  return [...(m[1] as string).matchAll(/["']([A-Za-z]+)["']/g)].map((v) =>
-    (v[1] as string).toUpperCase(),
-  );
+  return [...(m[1] as string).matchAll(/["']([A-Za-z]+)["']/g)].map((v) => (v[1] as string).toUpperCase());
 }
 
 /** A `page` if the handler block renders a template, else an `api` endpoint. */
@@ -101,16 +96,14 @@ export const flaskAdapter: RouteAdapter = {
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
       const localBlueprints = blueprintVarsByFile.get(path) ?? new Set<string>();
-      const prefixForObj = (obj: string): string =>
-        localBlueprints.has(obj) ? effectivePrefix(`${moduleName(path)}::${obj}`) : "";
+      const prefixForObj = (obj: string): string => (localBlueprints.has(obj) ? effectivePrefix(`${moduleName(path)}::${obj}`) : "");
 
       for (const m of src.matchAll(DECORATOR_RE)) {
         const obj = m[1] as string;
         const decorator = m[2] as string;
         const route = joinRoute(prefixForObj(obj), m[3] as string);
         const kind = routeKind(src, m.index ?? 0);
-        const methods =
-          decorator === "route" ? methodsOf(m[4] as string) : [decorator.toUpperCase()];
+        const methods = decorator === "route" ? methodsOf(m[4] as string) : [decorator.toUpperCase()];
         const verbs = methods.length ? methods : ["GET"]; // @route defaults to GET
         for (const method of verbs) routes.push({ route, file: path, kind, method });
       }

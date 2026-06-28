@@ -43,10 +43,7 @@ export function bundleExisting(opts: Options): RenderResult {
   const dir = opts.out;
   const invPath = join(dir, "inventory.json");
   if (!existsSync(invPath)) {
-    throw new Error(
-      `no inventory.json in ${dir} — run a full reconstruction there first ` +
-        `(e.g. reconstruct --repo <repo> --out ${dir}).`,
-    );
+    throw new Error(`no inventory.json in ${dir} — run a full reconstruction there first ` + `(e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
   const inv = JSON.parse(readFileSync(invPath, "utf8")) as Inventory;
   const tree = readMarkdownTree(dir);

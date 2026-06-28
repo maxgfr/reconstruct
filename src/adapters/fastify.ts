@@ -3,14 +3,12 @@ import type { RouteAdapter } from "./types.js";
 import { JS_SRC_EXTS as SRC_EXTS, joinRoute, readSources, resolveModule } from "./util.js";
 
 // `const app = Fastify()` / `fastify()` / `require("fastify")()`.
-const APP_RE =
-  /(?:const|let|var)\s+(\w+)\s*=\s*(?:require\(\s*["'`]fastify["'`]\s*\)|[Ff]astify)\s*\(/g;
+const APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:require\(\s*["'`]fastify["'`]\s*\)|[Ff]astify)\s*\(/g;
 const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 // `app.register(require("./x") | pluginVar, { prefix: "/p", ... })` — the
 // inline-require branch must come first or `(\w+)` would swallow `require`.
-const REGISTER_RE =
-  /(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
+const REGISTER_RE = /(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
 const PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
 const ROUTE_RE = /(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
 // `app.route({ method: "GET" | ["GET", ...], url: "/x", ... })` — match the

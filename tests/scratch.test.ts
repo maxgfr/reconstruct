@@ -6,14 +6,7 @@ import { join } from "node:path";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "../src/scratch.js";
 import { render } from "../src/prd/render.js";
 import { writeArtifactsIfAbsent } from "../src/output.js";
-import {
-  overviewPrd,
-  architectureDoc,
-  interfacesDoc,
-  dataModelDoc,
-  featurePrd,
-  rebuildDoc,
-} from "../src/prd/templates.js";
+import { overviewPrd, architectureDoc, interfacesDoc, dataModelDoc, featurePrd, rebuildDoc } from "../src/prd/templates.js";
 import type { Feature, Options, ScratchPlan } from "../src/types.js";
 
 function opts(overrides: Partial<Options> = {}): Options {
@@ -63,9 +56,7 @@ function tinyPlan(overrides: Partial<ScratchPlan> = {}): ScratchPlan {
         relations: ["Todo belongs to User"],
       },
     ],
-    interfaces: [
-      { method: "POST", path: "/api/todos", kind: "REST", auth: "session", notes: "create a todo" },
-    ],
+    interfaces: [{ method: "POST", path: "/api/todos", kind: "REST", auth: "session", notes: "create a todo" }],
     features: [
       { name: "Todos", kind: "feature", tier: 1, summary: "CRUD todos." },
       { name: "Project Setup & Tooling", kind: "project-setup", tier: 0, summary: "Build tooling." },
@@ -292,9 +283,7 @@ describe("templates — tdd (test-first) mode", () => {
 
 describe("filled tables escape markdown pipes", () => {
   const plan = tinyPlan({
-    dataModel: [
-      { entity: "User", fields: [{ name: "role", type: "enum", constraints: "ADMIN | USER" }] },
-    ],
+    dataModel: [{ entity: "User", fields: [{ name: "role", type: "enum", constraints: "ADMIN | USER" }] }],
     interfaces: [{ method: "GET", path: "/x", kind: "REST", auth: "a|b", notes: "n" }],
   });
   const inv = planToInventory(plan, opts());
@@ -386,9 +375,7 @@ describe("scratch pipeline integration (render)", () => {
 });
 
 describe("example plan fixture (convergence test case)", () => {
-  const fixturePath = fileURLToPath(
-    new URL("./fixtures/scratch-plan/example.plan.json", import.meta.url),
-  );
+  const fixturePath = fileURLToPath(new URL("./fixtures/scratch-plan/example.plan.json", import.meta.url));
 
   it("loads and validates", () => {
     const plan = loadPlan(fixturePath);

@@ -120,10 +120,7 @@ describe("review ledger — real CLI end-to-end", () => {
       const a = wl.units[0]!.feature;
       const b = wl.units[1]!.feature;
 
-      const r1 = apply(dir, [
-        blocker(a, "blocker in feature A"),
-        blocker(b, "blocker in feature B"),
-      ]);
+      const r1 = apply(dir, [blocker(a, "blocker in feature A"), blocker(b, "blocker in feature B")]);
       expect(r1.result.ok).toBe(false);
       expect(r1.result.residual.length).toBe(2);
 

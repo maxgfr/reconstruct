@@ -78,9 +78,7 @@ describe("validatePlanConsistency — referential integrity", () => {
 
 describe("validatePlanConsistency — enums", () => {
   it("errors on a declared enum with no members", () => {
-    const { errors } = validatePlanConsistency(
-      plan({ enums: [{ name: "Role", members: [] }] }),
-    );
+    const { errors } = validatePlanConsistency(plan({ enums: [{ name: "Role", members: [] }] }));
     expect(errors.join("\n")).toMatch(/Role/);
     expect(errors.join("\n")).toMatch(/member/i);
   });
@@ -124,12 +122,8 @@ describe("validatePlanConsistency — anonymous writes", () => {
   it("warns when a public write targets an entity with a required owner FK", () => {
     const { warnings } = validatePlanConsistency(
       plan({
-        interfaces: [
-          { method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" },
-        ],
-        features: [
-          { name: "Contact", interfaces: ["posts.contact"], entities: ["posts"], writes: ["posts"] },
-        ],
+        interfaces: [{ method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" }],
+        features: [{ name: "Contact", interfaces: ["posts.contact"], entities: ["posts"], writes: ["posts"] }],
       }),
     );
     // posts.authorId is a non-null FK -> users; an anonymous caller can't satisfy it.
@@ -152,9 +146,7 @@ describe("validatePlanConsistency — anonymous writes", () => {
             ],
           },
         ],
-        interfaces: [
-          { method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" },
-        ],
+        interfaces: [{ method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" }],
         features: [
           {
             name: "Contact",
@@ -189,12 +181,8 @@ describe("validatePlanConsistency — anonymous writes", () => {
             ],
           },
         ],
-        interfaces: [
-          { method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" },
-        ],
-        features: [
-          { name: "Contact", interfaces: ["posts.contact"], entities: ["notifications"], writes: ["notifications"] },
-        ],
+        interfaces: [{ method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" }],
+        features: [{ name: "Contact", interfaces: ["posts.contact"], entities: ["notifications"], writes: ["notifications"] }],
       }),
     );
     expect(warnings.join("\n")).not.toMatch(/posts\.contact/);
@@ -214,12 +202,8 @@ describe("validatePlanConsistency — anonymous writes", () => {
             ],
           },
         ],
-        interfaces: [
-          { method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" },
-        ],
-        features: [
-          { name: "Contact", interfaces: ["posts.contact"], entities: ["messages"], writes: ["messages"] },
-        ],
+        interfaces: [{ method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" }],
+        features: [{ name: "Contact", interfaces: ["posts.contact"], entities: ["messages"], writes: ["messages"] }],
       }),
     );
     expect(warnings.join("\n")).toMatch(/posts\.contact/);

@@ -7,15 +7,31 @@ import type { FileInfo, Hints, StackInfo } from "../types.js";
 // agent at the files most likely to declare one, across any stack.
 
 const CONTENT_SCAN_EXTS = new Set([
-  ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".java", ".kt", ".php", ".rs", ".cs", ".ex", ".exs",
-  ".graphql", ".gql", ".proto",
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".rb",
+  ".go",
+  ".java",
+  ".kt",
+  ".php",
+  ".rs",
+  ".cs",
+  ".ex",
+  ".exs",
+  ".graphql",
+  ".gql",
+  ".proto",
 ]);
 
 // Directories that conventionally hold request handlers / pages across stacks.
-const ROUTE_DIRS = [
-  "routes", "controllers", "handlers", "endpoints", "views", "pages", "api",
-];
+const ROUTE_DIRS = ["routes", "controllers", "handlers", "endpoints", "views", "pages", "api"];
 // RPC/GraphQL surface dirs ONLY. "routers" is deliberately NOT here: it is a
 // REST convention for Flask/FastAPI/Express as much as a tRPC one, and the
 // route adapters + ROUTE_CONTENT_RE already surface those files — listing it
@@ -113,12 +129,33 @@ const SCHEMA_CONTENT_RE =
 // Design-system config / token source files, matched on basename. These declare
 // the visual contract (tokens, theme, font config) the rebuild must reproduce.
 const DS_FILE_NAMES = new Set([
-  "tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs", "tailwind.config.mjs",
-  "panda.config.ts", "panda.config.js", "panda.config.mjs",
-  "uno.config.ts", "uno.config.js", "unocss.config.ts", "unocss.config.js",
-  "theme.ts", "theme.tsx", "theme.js",
-  "tokens.ts", "tokens.js", "tokens.json", "design-tokens.ts", "design-tokens.js", "design-tokens.json",
-  "globals.css", "global.css", "app.css", "index.css", "styles.css", "tokens.css", "theme.css",
+  "tailwind.config.js",
+  "tailwind.config.ts",
+  "tailwind.config.cjs",
+  "tailwind.config.mjs",
+  "panda.config.ts",
+  "panda.config.js",
+  "panda.config.mjs",
+  "uno.config.ts",
+  "uno.config.js",
+  "unocss.config.ts",
+  "unocss.config.js",
+  "theme.ts",
+  "theme.tsx",
+  "theme.js",
+  "tokens.ts",
+  "tokens.js",
+  "tokens.json",
+  "design-tokens.ts",
+  "design-tokens.js",
+  "design-tokens.json",
+  "globals.css",
+  "global.css",
+  "app.css",
+  "index.css",
+  "styles.css",
+  "tokens.css",
+  "theme.css",
   "components.json", // shadcn/ui
 ]);
 
@@ -219,18 +256,34 @@ export function detectCandidates(repo: string, files: FileInfo[], stack: StackIn
 // at build output that is not part of the source tree.
 const CONVENTIONAL_ENTRIES = [
   // JS/TS
-  "src/index.ts", "src/index.js", "src/index.tsx",
-  "src/main.ts", "src/main.tsx", "src/main.js",
-  "index.ts", "index.js",
-  "src/server.ts", "src/server.js", "server.ts", "server.js",
-  "app/layout.tsx", "src/app/layout.tsx",
+  "src/index.ts",
+  "src/index.js",
+  "src/index.tsx",
+  "src/main.ts",
+  "src/main.tsx",
+  "src/main.js",
+  "index.ts",
+  "index.js",
+  "src/server.ts",
+  "src/server.js",
+  "server.ts",
+  "server.js",
+  "app/layout.tsx",
+  "src/app/layout.tsx",
   // Python
-  "manage.py", "main.py", "app.py", "wsgi.py", "asgi.py",
-  "src/main.py", "__main__.py",
+  "manage.py",
+  "main.py",
+  "app.py",
+  "wsgi.py",
+  "asgi.py",
+  "src/main.py",
+  "__main__.py",
   // Go
-  "main.go", "cmd/main.go",
+  "main.go",
+  "cmd/main.go",
   // Ruby
-  "config.ru", "bin/rails",
+  "config.ru",
+  "bin/rails",
   // Rust
   "src/main.rs",
   // Dart / Flutter
@@ -241,10 +294,7 @@ const CONVENTIONAL_ENTRIES = [
 export function detectEntryPoints(repo: string, files: FileInfo[]): string[] {
   const entries = new Set<string>();
   try {
-    const pkg = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")) as Record<
-      string,
-      unknown
-    >;
+    const pkg = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")) as Record<string, unknown>;
     for (const key of ["main", "module"]) {
       const v = pkg[key];
       if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));

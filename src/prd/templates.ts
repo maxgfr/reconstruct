@@ -37,17 +37,11 @@ function cell(value: string): string {
 
 /** Render the interface surface as a filled table (scratch mode pre-fill). */
 function filledInterfaceTable(rows: InterfaceRow[]): string {
-  const header = [
-    "| Method / Trigger | Path / Operation | Kind | Auth | Notes |",
-    "| --- | --- | --- | --- | --- |",
-  ];
+  const header = ["| Method / Trigger | Path / Operation | Kind | Auth | Notes |", "| --- | --- | --- | --- | --- |"];
   if (!rows.length) {
     return [...header, "", "_Add one row per operation as the surface takes shape._"].join("\n");
   }
-  const body = rows.map(
-    (r) =>
-      `| ${cell(r.method)} | \`${cell(r.path)}\` | ${cell(r.kind ?? "")} | ${cell(r.auth ?? "")} | ${cell(r.notes ?? "")} |`,
-  );
+  const body = rows.map((r) => `| ${cell(r.method)} | \`${cell(r.path)}\` | ${cell(r.kind ?? "")} | ${cell(r.auth ?? "")} | ${cell(r.notes ?? "")} |`);
   return [...header, ...body].join("\n");
 }
 
@@ -88,9 +82,7 @@ function filledEntityTables(entities: Entity[]): string {
 function enumsBlock(enums: EnumDef[] | undefined): string {
   const lines = ["## Enums & domain types", ""];
   if (!enums || !enums.length) {
-    lines.push(
-      "_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._",
-    );
+    lines.push("_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._");
     return lines.join("\n");
   }
   for (const e of enums) {
@@ -109,9 +101,7 @@ function servicesBlock(services: ServiceContract[]): string {
     if (s.operations?.length) {
       lines.push("Operations:", "");
       for (const op of s.operations) {
-        lines.push(
-          `- \`${op.name}\`${op.input ? ` — in: ${op.input}` : ""}${op.output ? ` → out: ${op.output}` : ""}`,
-        );
+        lines.push(`- \`${op.name}\`${op.input ? ` — in: ${op.input}` : ""}${op.output ? ` → out: ${op.output}` : ""}`);
       }
       lines.push("");
     }
@@ -128,9 +118,7 @@ function servicesBlock(services: ServiceContract[]): string {
 function policiesBlock(policies: Policy[]): string {
   const lines = ["## Cross-cutting policies", "", "| Policy | Kind | Rule | Applies to |", "| --- | --- | --- | --- |"];
   for (const p of policies) {
-    lines.push(
-      `| ${cell(p.name)} | ${cell(p.kind ?? "")} | ${cell(p.rule)} | ${cell((p.appliesTo ?? []).join(", "))} |`,
-    );
+    lines.push(`| ${cell(p.name)} | ${cell(p.kind ?? "")} | ${cell(p.rule)} | ${cell((p.appliesTo ?? []).join(", "))} |`);
   }
   return lines.join("\n");
 }
@@ -181,9 +169,7 @@ function operationContracts(rows: InterfaceRow[]): string {
 export function overviewPrd(inv: Inventory, opts: Options): string {
   const isScratch = opts.mode === "scratch";
   const s = inv.stack;
-  const featureIndex = inv.features
-    .map((f) => `- [\`${f.slug}\`](../features/${f.slug}/PRD.md) — **${f.name}**: ${f.description}`)
-    .join("\n");
+  const featureIndex = inv.features.map((f) => `- [\`${f.slug}\`](../features/${f.slug}/PRD.md) — **${f.name}**: ${f.description}`).join("\n");
 
   const productSummary = isScratch
     ? [
@@ -191,9 +177,7 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
         ...(inv.product?.audience ? ["", `**Audience:** ${inv.product.audience}`] : []),
         ...(inv.product?.value ? ["", `**Core value:** ${inv.product.value}`] : []),
         "",
-        agentNote(
-          "Expand this into a 1–2 paragraph product summary grounded in `../CONTEXT.md` (the glossary) and the feature list below.",
-        ),
+        agentNote("Expand this into a 1–2 paragraph product summary grounded in `../CONTEXT.md` (the glossary) and the feature list below."),
       ].join("\n")
     : opts.level === "complex"
       ? agentNote(
@@ -264,10 +248,7 @@ export function overviewPrd(inv: Inventory, opts: Options): string {
 
 function workspacesBlock(workspaces: NonNullable<Inventory["workspaces"]>): string {
   const rows = workspaces.map((w) => {
-    const stack = [
-      ...(w.stack?.frameworks ?? []),
-      ...(w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "—"]),
-    ].join(", ");
+    const stack = [...(w.stack?.frameworks ?? []), ...(w.stack?.frameworks?.length ? [] : [w.stack?.primaryLanguage ?? "—"])].join(", ");
     return `| \`${w.name}\` | \`${w.path}/\` | ${w.kind ?? "—"} | ${stack || "—"} | ${
       w.dependsOn?.map((d) => `\`${d}\``).join(", ") || "—"
     } | ${w.routeCount ?? 0} |`;
@@ -287,10 +268,11 @@ function workspacesBlock(workspaces: NonNullable<Inventory["workspaces"]>): stri
 
 export function architectureDoc(inv: Inventory, opts: Options): string {
   const isScratch = opts.mode === "scratch";
-  const topDirs = [
-    ...new Set(inv.files.filter((f) => f.path.includes("/")).map((f) => f.path.split("/")[0])),
-  ].sort();
-  const rootFiles = inv.files.filter((f) => !f.path.includes("/")).map((f) => f.path).sort();
+  const topDirs = [...new Set(inv.files.filter((f) => f.path.includes("/")).map((f) => f.path.split("/")[0]))].sort();
+  const rootFiles = inv.files
+    .filter((f) => !f.path.includes("/"))
+    .map((f) => f.path)
+    .sort();
   const deps = inv.dependencies
     .map((d) => `- **${d.manager}** (\`${d.manifest}\`): ${Object.keys(d.runtime).length} runtime, ${Object.keys(d.dev).length} dev`)
     .join("\n");
@@ -418,9 +400,7 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
       "",
       filledInterfaceTable(inv.interfaces ?? []),
       "",
-      ...(operationContracts(inv.interfaces ?? [])
-        ? [operationContracts(inv.interfaces ?? []), ""]
-        : []),
+      ...(operationContracts(inv.interfaces ?? []) ? [operationContracts(inv.interfaces ?? []), ""] : []),
       agentNote(
         "Every operation needs an exact contract before it is buildable: the input shape (fields + types + validation), the output shape, the auth/permission rule, and the side effects (which entities it writes — and whether the write is transactional). Spell these out per operation; link shapes to `DATA-MODEL.md`.",
       ),
@@ -466,17 +446,11 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
     "",
     "## Realtime / WebSocket candidates (verify)",
     "",
-    listOrNone(
-      inv.hints.realtimeCandidates,
-      "_No realtime/WebSocket signals detected._",
-    ),
+    listOrNone(inv.hints.realtimeCandidates, "_No realtime/WebSocket signals detected._"),
     "",
     "## Auth / middleware candidates (verify)",
     "",
-    listOrNone(
-      inv.hints.authCandidates,
-      "_No auth/middleware signals detected — still record the auth rule per operation below._",
-    ),
+    listOrNone(inv.hints.authCandidates, "_No auth/middleware signals detected — still record the auth rule per operation below._"),
     "",
     "## Interface table (fill this in)",
     "",
@@ -564,16 +538,9 @@ function tokenList(label: string, items?: string[]): string[] {
 /** The component-library contract as a table: variants + states per primitive. */
 function componentTable(components: ComponentPrimitive[]): string[] {
   if (!components.length) return [];
-  const lines = [
-    "### Component library",
-    "",
-    "| Component | Source | Variants | States |",
-    "| --- | --- | --- | --- |",
-  ];
+  const lines = ["### Component library", "", "| Component | Source | Variants | States |", "| --- | --- | --- | --- |"];
   for (const c of components) {
-    lines.push(
-      `| ${cell(c.name)} | ${cell(c.source ?? "")} | ${cell((c.variants ?? []).join(", "))} | ${cell((c.states ?? []).join(", "))} |`,
-    );
+    lines.push(`| ${cell(c.name)} | ${cell(c.source ?? "")} | ${cell((c.variants ?? []).join(", "))} | ${cell((c.states ?? []).join(", "))} |`);
   }
   lines.push("");
   return lines;
@@ -682,10 +649,7 @@ export function designSystemDoc(inv: Inventory, opts: Options): string {
     out.push(
       "## Design-system source files",
       "",
-      listOrNone(
-        inv.hints.designSystemCandidates,
-        "_No design-system config/token files detected — capture tokens from the component and CSS files._",
-      ),
+      listOrNone(inv.hints.designSystemCandidates, "_No design-system config/token files detected — capture tokens from the component and CSS files._"),
       "",
     );
   }
@@ -714,21 +678,15 @@ export function designSystemDoc(inv: Inventory, opts: Options): string {
       "",
       "## Breakpoints & responsive",
       "",
-      agentNote(
-        "The named breakpoints with their exact values and the layout/grid strategy (mobile-first vs desktop-first, container queries).",
-      ),
+      agentNote("The named breakpoints with their exact values and the layout/grid strategy (mobile-first vs desktop-first, container queries)."),
       "",
       "## Iconography",
       "",
-      agentNote(
-        "The icon set / library, the sizing and stroke conventions, and how icons are colored and used.",
-      ),
+      agentNote("The icon set / library, the sizing and stroke conventions, and how icons are colored and used."),
       "",
       "## Motion & animation",
       "",
-      agentNote(
-        "The duration and easing tokens, the standard transitions, and how `prefers-reduced-motion` is honored.",
-      ),
+      agentNote("The duration and easing tokens, the standard transitions, and how `prefers-reduced-motion` is honored."),
       "",
       "## Component library",
       "",
@@ -752,9 +710,7 @@ export function designSystemDoc(inv: Inventory, opts: Options): string {
 }
 
 export function diagramDoc(inv: Inventory): string {
-  const nodes = inv.features
-    .map((f, i) => `  F${i}["${f.name}"]`)
-    .join("\n");
+  const nodes = inv.features.map((f, i) => `  F${i}["${f.name}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
   const edges = inv.features
     .filter((f) => f.kind === "feature")
@@ -772,41 +728,26 @@ export function diagramDoc(inv: Inventory): string {
         "```mermaid",
         "graph TD",
         ...inv.workspaces.map((w, i) => `  W${i}["${w.name}"]`),
-        ...inv.workspaces.flatMap((w, i) =>
-          (w.dependsOn ?? []).map((dep) => {
-            const j = inv.workspaces?.findIndex((x) => x.name === dep) ?? -1;
-            return j >= 0 ? `  W${i} --> W${j}` : "";
-          }),
-        ).filter(Boolean),
+        ...inv.workspaces
+          .flatMap((w, i) =>
+            (w.dependsOn ?? []).map((dep) => {
+              const j = inv.workspaces?.findIndex((x) => x.name === dep) ?? -1;
+              return j >= 0 ? `  W${i} --> W${j}` : "";
+            }),
+          )
+          .filter(Boolean),
         "```",
         "",
       ]
     : [""];
 
-  return [
-    "# Module diagram",
-    "",
-    "```mermaid",
-    "graph TD",
-    nodes,
-    dataNode,
-    edges,
-    "```",
-    ...workspaceGraph,
-  ].join("\n");
+  return ["# Module diagram", "", "```mermaid", "graph TD", nodes, dataNode, edges, "```", ...workspaceGraph].join("\n");
 }
 
-export function featurePrd(
-  inv: Inventory,
-  feature: Feature,
-  opts: Options,
-  sourceMarkdown: string,
-): string {
+export function featurePrd(inv: Inventory, feature: Feature, opts: Options, sourceMarkdown: string): string {
   const isScratch = opts.mode === "scratch";
   // Where the agent gets its ground truth, phrased per mode.
-  const truth = isScratch
-    ? "the interview & `../../CONTEXT.md`"
-    : "the source material below";
+  const truth = isScratch ? "the interview & `../../CONTEXT.md`" : "the source material below";
 
   const out: string[] = [
     `# ${feature.name}`,
@@ -875,7 +816,7 @@ export function featurePrd(
     "## Acceptance criteria",
     "",
     agentNote(
-      "Write **Given / When / Then** scenarios that gate \"done\" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.",
+      'Write **Given / When / Then** scenarios that gate "done" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.',
     ),
     "",
     "## Edge cases & failure modes",
@@ -946,9 +887,7 @@ export function featurePrd(
     "- [ ] Every enum/domain value this unit uses is one of the members fully enumerated in `architecture/DATA-MODEL.md`.",
     "- [ ] Every edge case & failure mode above is handled.",
     ...(inv.i18n
-      ? [
-          "- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy).",
-        ]
+      ? ["- [ ] Every user-facing string has a source string in the message catalog and resolves in every locale (no missing keys, no hard-coded copy)."]
       : []),
     "- [ ] `node scripts/analyze.mjs --check --out <out>` passes — no unresolved agent callouts or placeholders, and every reference resolves.",
     "",
@@ -959,9 +898,7 @@ export function featurePrd(
 
 export function rebuildDoc(inv: Inventory, opts: Options): string {
   const isScratch = opts.mode === "scratch";
-  const order = inv.features
-    .map((f, i) => `${i + 1}. [ ] **${f.name}** → \`features/${f.slug}/PRD.md\``)
-    .join("\n");
+  const order = inv.features.map((f, i) => `${i + 1}. [ ] **${f.name}** → \`features/${f.slug}/PRD.md\``).join("\n");
 
   const modeBlurb =
     opts.mode === "preserve"
@@ -987,7 +924,10 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
       ? "5. Run your test suite, typecheck, and linter to verify each unit before moving on."
       : "5. Run the project's own scripts to verify: " +
         (Object.keys(inv.scripts).length
-          ? Object.keys(inv.scripts).slice(0, 6).map((s) => `\`${s}\``).join(", ")
+          ? Object.keys(inv.scripts)
+              .slice(0, 6)
+              .map((s) => `\`${s}\``)
+              .join(", ")
           : "_no scripts detected_") +
         ".",
   ];
@@ -997,36 +937,24 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
     isScratch
       ? "- [ ] Every entity in `architecture/DATA-MODEL.md` exists with its fields, relations, and constraints."
       : "- [ ] Data model matches `architecture/DATA-MODEL.md` and `data/schema/`.",
-    isScratch
-      ? "- [ ] All routes/operations respond per `architecture/INTERFACES.md`."
-      : "- [ ] All routes respond as before.",
+    isScratch ? "- [ ] All routes/operations respond per `architecture/INTERFACES.md`." : "- [ ] All routes respond as before.",
     ...(inv.i18n
-      ? [
-          isScratch
-            ? "- [ ] All locales present, each with its own messages file."
-            : "- [ ] All locales present and keys match `data/translations/`.",
-        ]
+      ? [isScratch ? "- [ ] All locales present, each with its own messages file." : "- [ ] All locales present and keys match `data/translations/`."]
       : []),
     ...(hasUI(inv)
       ? [
           "- [ ] UI matches `architecture/DESIGN-SYSTEM.md` — design tokens reproduced exactly, components built with their variants/states, and the accessibility target met.",
         ]
       : []),
-    ...(opts.tdd
-      ? ["- [ ] Tests were written before implementation for each unit (red → green → refactor)."]
-      : []),
-    "- [ ] Required env vars configured: " +
-      (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") +
-      ".",
+    ...(opts.tdd ? ["- [ ] Tests were written before implementation for each unit (red → green → refactor)."] : []),
+    "- [ ] Required env vars configured: " + (inv.envVars.length ? inv.envVars.map((e) => `\`${e}\``).join(", ") : "_none_") + ".",
   ];
 
   return [
     `# REBUILD — ${inv.repoName}`,
     "",
     metaBlock(inv, opts),
-    isScratch
-      ? "This folder is a complete plan to build the project from scratch."
-      : "This folder is a complete plan to rebuild the project from scratch.",
+    isScratch ? "This folder is a complete plan to build the project from scratch." : "This folder is a complete plan to rebuild the project from scratch.",
     "",
     "## Mode & level",
     "",
@@ -1044,9 +972,7 @@ export function rebuildDoc(inv: Inventory, opts: Options): string {
     "## Build order",
     "",
     "Ordered by dependency tier — foundations (types, data, shared UI, i18n, cross-cutting) first, feature pages next, tests & docs last." +
-      (inv.workspaces?.length
-        ? " The outer tier is the workspace topological order: shared packages build before the apps that consume them."
-        : ""),
+      (inv.workspaces?.length ? " The outer tier is the workspace topological order: shared packages build before the apps that consume them." : ""),
     "",
     order || "_No features._",
     "",

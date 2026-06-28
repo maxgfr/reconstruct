@@ -220,9 +220,11 @@ See `references/analysis-playbook.md` for the universal methodology, `references
 for per-stack cheat-sheets, `references/buildability-checklist.md` for the ten contract
 categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
 review, `references/orchestration.md` for fanning the enrichment and review/fix loop out across
-subagents (the map-reduce + the `--review` ledger), and `references/architecture-analysis.md` /
-`references/rebuild-instructions.md` / `references/prd-complex-template.md` /
-`references/prd-light-template.md` for the reasoning checklists.
+subagents (the map-reduce + the `--review` ledger), `references/adapters.md` for how route
+adapters resolve `inventory.routes` from a framework's routing convention (and how to add one),
+and `references/architecture-analysis.md` / `references/rebuild-instructions.md` /
+`references/prd-complex-template.md` / `references/prd-light-template.md` for the reasoning
+checklists.
 
 ## Everything is a PRD — dig until done
 

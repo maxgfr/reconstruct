@@ -10,7 +10,10 @@ const PLURAL_ACTIONS: Record<string, ActionDef[]> = {
   create: [{ method: "POST", segs: [] }],
   new: [{ method: "GET", segs: ["new"] }],
   show: [{ method: "GET", segs: [":id"] }],
-  update: [{ method: "PUT", segs: [":id"] }, { method: "PATCH", segs: [":id"] }],
+  update: [
+    { method: "PUT", segs: [":id"] },
+    { method: "PATCH", segs: [":id"] },
+  ],
   destroy: [{ method: "DELETE", segs: [":id"] }],
   edit: [{ method: "GET", segs: [":id", "edit"] }],
 };
@@ -18,7 +21,10 @@ const SINGULAR_ACTIONS: Record<string, ActionDef[]> = {
   create: [{ method: "POST", segs: [] }],
   new: [{ method: "GET", segs: ["new"] }],
   show: [{ method: "GET", segs: [] }],
-  update: [{ method: "PUT", segs: [] }, { method: "PATCH", segs: [] }],
+  update: [
+    { method: "PUT", segs: [] },
+    { method: "PATCH", segs: [] },
+  ],
   destroy: [{ method: "DELETE", segs: [] }],
   edit: [{ method: "GET", segs: ["edit"] }],
 };
@@ -45,7 +51,12 @@ function singularize(n: string): string {
 function actionsFor(args: string, singular: boolean): string[] {
   const all = Object.keys(singular ? SINGULAR_ACTIONS : PLURAL_ACTIONS);
   const parse = (s: string) =>
-    new Set(s.split(",").map((a) => a.trim().replace(/^:/, "")).filter(Boolean));
+    new Set(
+      s
+        .split(",")
+        .map((a) => a.trim().replace(/^:/, ""))
+        .filter(Boolean),
+    );
   const only = args.match(/\bonly:\s*\[([^\]]*)\]/);
   if (only) {
     const set = parse(only[1] as string);
@@ -65,8 +76,7 @@ type Frame =
   | { type: "singular"; name: string }
   | { type: "member" | "collection"; name: string };
 
-const apiKind = (route: string): "page" | "api" =>
-  /(^|\/)api(\/|$)/i.test(route) ? "api" : "page";
+const apiKind = (route: string): "page" | "api" => (/(^|\/)api(\/|$)/i.test(route) ? "api" : "page");
 
 /**
  * Rails routing (`config/routes.rb`, drawn in `routes.draw do … end`):
@@ -159,9 +169,7 @@ export const railsAdapter: RouteAdapter = {
           const res = line.match(/^(resources|resource)\s+:(\w+)/);
           const ns = line.match(NAMESPACE_RE);
           const scopePath = line.match(SCOPE_PATH_RE) ?? line.match(SCOPE_STR_RE);
-          const parentRes = [...frames].reverse().find((f) => f.type === "resources" || f.type === "singular") as
-            | { name: string }
-            | undefined;
+          const parentRes = [...frames].reverse().find((f) => f.type === "resources" || f.type === "singular") as { name: string } | undefined;
           if (MEMBER_RE.test(line)) frames.push({ type: "member", name: parentRes?.name ?? "" });
           else if (COLLECTION_RE.test(line)) frames.push({ type: "collection", name: parentRes?.name ?? "" });
           else if (res && res[1] === "resources") frames.push({ type: "resources", name: res[2] as string, singular: singularize(res[2] as string) });

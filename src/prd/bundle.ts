@@ -94,13 +94,7 @@ interface Section {
 }
 
 /** The relPaths the bundle must never inline (it would duplicate or recurse). */
-const BUNDLE_EXCLUDE = new Set([
-  "inventory.json",
-  "SUMMARY.md",
-  "RECONSTRUCTION.md",
-  "FEATURES.md",
-  "SPECS.md",
-]);
+const BUNDLE_EXCLUDE = new Set(["inventory.json", "SUMMARY.md", "RECONSTRUCTION.md", "FEATURES.md", "SPECS.md"]);
 
 /** Ordered sections of the merged document, built from what the tree contains. */
 function orderedSections(artifacts: Artifact[], inv: Inventory): Section[] {
@@ -143,12 +137,7 @@ interface MergeVariant {
 }
 
 /** Shared core for the whole-tree bundles (`mergeArtifacts` / `mergeSpecs`). */
-function mergeTree(
-  artifacts: Artifact[],
-  inv: Inventory,
-  opts: Options,
-  variant: MergeVariant,
-): string {
+function mergeTree(artifacts: Artifact[], inv: Inventory, opts: Options, variant: MergeVariant): string {
   const byPath = new Map(artifacts.map((a) => [a.relPath, a.content]));
   const sections = orderedSections(artifacts, inv);
 
@@ -186,8 +175,7 @@ function mergeTree(
 export function mergeArtifacts(artifacts: Artifact[], inv: Inventory, opts: Options): string {
   return mergeTree(artifacts, inv, opts, {
     heading: "Reconstruction",
-    intro:
-      "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree.",
+    intro: "Single-file bundle of the full reconstruction. Each section below is one document from the reconstruction tree.",
     stripSource: false,
   });
 }
@@ -216,7 +204,8 @@ export function stripSourceMaterial(md: string): string {
         fence = marker; // opening fence inside the stripped section
         continue;
       }
-      if (/^##\s/.test(line)) skipping = false; // next section heading ends the skip
+      if (/^##\s/.test(line))
+        skipping = false; // next section heading ends the skip
       else continue;
     }
     if (!skipping && /^##\s+Source material\b/i.test(line)) {
@@ -225,7 +214,12 @@ export function stripSourceMaterial(md: string): string {
     }
     out.push(line);
   }
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+  return (
+    out
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trimEnd() + "\n"
+  );
 }
 
 /**
@@ -306,9 +300,7 @@ export function summarize(inv: Inventory, opts: Options): string {
   lines.push("");
 
   lines.push("## Project");
-  const frameworks = inv.stack.frameworks.length
-    ? `${inv.stack.primaryLanguage} · ${inv.stack.frameworks.join(", ")}`
-    : inv.stack.primaryLanguage;
+  const frameworks = inv.stack.frameworks.length ? `${inv.stack.primaryLanguage} · ${inv.stack.frameworks.join(", ")}` : inv.stack.primaryLanguage;
   lines.push(`- **Stack:** ${frameworks}`);
   lines.push(`- **Notable libraries:** ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "—"}`);
   lines.push(`- **Size:** ${inv.fileCount} files · ${inv.totalLines} lines`);
@@ -321,9 +313,7 @@ export function summarize(inv: Inventory, opts: Options): string {
   }
   lines.push(`- **Routes:** ${inv.routes.length} · **Features:** ${inv.features.length}`);
   if (inv.workspaces?.length) {
-    const names = inv.workspaces
-      .map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` → ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`)
-      .join(" · ");
+    const names = inv.workspaces.map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` → ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`).join(" · ");
     lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s) — ${names}`);
   }
   lines.push("");

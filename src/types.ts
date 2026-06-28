@@ -79,17 +79,7 @@ export interface GenerationInfo {
   granularity: Granularity;
 }
 
-export type FileCategory =
-  | "code"
-  | "test"
-  | "config"
-  | "doc"
-  | "i18n"
-  | "schema"
-  | "style"
-  | "asset"
-  | "data"
-  | "other";
+export type FileCategory = "code" | "test" | "config" | "doc" | "i18n" | "schema" | "style" | "asset" | "data" | "other";
 
 export interface FileInfo {
   /** Repo-relative POSIX path. */
@@ -636,16 +626,7 @@ export interface VerifyWorklist {
 export type ReviewSeverity = "blocker" | "major" | "minor";
 
 /** The nine rubric/contract categories a finding can belong to. */
-export type ReviewCategory =
-  | "stories"
-  | "requirements"
-  | "acceptance"
-  | "write-contract"
-  | "enum"
-  | "consistency"
-  | "faithfulness"
-  | "i18n"
-  | "rebuild-test";
+export type ReviewCategory = "stories" | "requirements" | "acceptance" | "write-contract" | "enum" | "consistency" | "faithfulness" | "i18n" | "rebuild-test";
 
 /** One reviewer finding against a feature PRD — one row of the rubric table. */
 export interface ReviewFinding {

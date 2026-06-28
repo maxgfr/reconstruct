@@ -31,9 +31,7 @@ function opts(fixture: string): Options {
 
 /** A route is present if some RouteInfo matches route + kind (+ optional file). */
 function hasRoute(routes: RouteInfo[], route: string, kind: string, file?: string): boolean {
-  return routes.some(
-    (r) => r.route === route && r.kind === kind && (file === undefined || r.file === file),
-  );
+  return routes.some((r) => r.route === route && r.kind === kind && (file === undefined || r.file === file));
 }
 
 describe("flask adapter", () => {

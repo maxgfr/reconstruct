@@ -1,14 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import type {
-  ClaimEvidencePair,
-  Inventory,
-  Verdict,
-  VerdictKind,
-  VerifyResult,
-  VerifyWorklist,
-} from "./types.js";
+import type { ClaimEvidencePair, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
 
 // Bounds the requirement-verification loop (claim↔evidence pairs per run).
 export const VERIFY_MAX = 60;
@@ -23,7 +16,10 @@ const STOP = new Set(
   ),
 );
 function tokens(s: string): string[] {
-  return s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2 && !STOP.has(t));
+  return s
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2 && !STOP.has(t));
 }
 function overlap(query: string[], hay: Set<string>): number {
   let n = 0;
@@ -103,13 +99,10 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
     for (const req of reqs) {
       n++;
       const qt = tokens(req);
-      const ranked = evTok
-        .map(({ e, hay }) => ({ e, s: overlap(qt, hay) }))
-        .sort((a, b) => b.s - a.s);
+      const ranked = evTok.map(({ e, hay }) => ({ e, s: overlap(qt, hay) })).sort((a, b) => b.s - a.s);
       const top = ranked.filter((x, i) => i === 0 || x.s > 0).slice(0, 3);
       const best = top[0];
-      const evidenceRef =
-        best && best.s > 0 ? best.e.ref : ev.length ? `feature ${f.slug}` : `feature ${f.slug} (no captured evidence)`;
+      const evidenceRef = best && best.s > 0 ? best.e.ref : ev.length ? `feature ${f.slug}` : `feature ${f.slug} (no captured evidence)`;
       const digest =
         (top.some((x) => x.s > 0) ? top.filter((x) => x.s > 0) : ranked.slice(0, 4))
           .map((x) => x.e.ref)
@@ -131,7 +124,10 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
   const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
   const kept =
     pairs.length > max
-      ? pairs.slice().sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId)).slice(0, max)
+      ? pairs
+          .slice()
+          .sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId))
+          .slice(0, max)
       : pairs;
   const worklist: VerifyWorklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
 
@@ -228,17 +224,13 @@ export function reduceVerdicts(verdicts: Verdict[]): VerifyResult {
 export function foldSemantic(outDir: string, check: CheckResult): void {
   const p = join(outDir, "VERIFY.json");
   if (!existsSync(p)) {
-    check.warnings.push(
-      "--semantic: no VERIFY.json — run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped.",
-    );
+    check.warnings.push("--semantic: no VERIFY.json — run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped.");
     return;
   }
   try {
     const sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
     if (!sem.ok) {
-      check.errors.push(
-        `semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`,
-      );
+      check.errors.push(`semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`);
     }
     if (sem.unadjudicated?.length) {
       check.warnings.push(`${sem.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
@@ -251,19 +243,13 @@ export function foldSemantic(outDir: string, check: CheckResult): void {
 export function formatVerifyReport(r: VerifyResult): string {
   const lines: string[] = [];
   lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
-  lines.push(
-    `  supported: ${r.supported} · partial: ${r.partial} · refuted: ${r.refuted} · unsupported: ${r.unsupported}`,
-  );
+  lines.push(`  supported: ${r.supported} · partial: ${r.partial} · refuted: ${r.refuted} · unsupported: ${r.unsupported}`);
   for (const f of r.failures.slice(0, 12)) {
     lines.push(`  ✗ ${f.claimId} (${f.evidenceRef}): ${f.verdict}${f.note ? " — " + f.note : ""}`);
   }
   if (r.unadjudicated.length) {
     lines.push(`  ⚠ ${r.unadjudicated.length} requirement(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
   }
-  lines.push(
-    r.ok
-      ? `  ✓ every requirement traces to the original source`
-      : `  ✗ some requirements are refuted or unsupported (invented)`,
-  );
+  lines.push(r.ok ? `  ✓ every requirement traces to the original source` : `  ✗ some requirements are refuted or unsupported (invented)`);
   return lines.join("\n");
 }

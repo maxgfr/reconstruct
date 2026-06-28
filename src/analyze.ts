@@ -11,12 +11,7 @@ import {
 } from "./detect/workspaces.js";
 import { detectCandidates } from "./detect/candidates.js";
 import { detectStylingLibraries } from "./design.js";
-import {
-  extractDependencies,
-  extractScripts,
-  extractEnvVars,
-  collectByCategory,
-} from "./adapters/generic.js";
+import { extractDependencies, extractScripts, extractEnvVars, collectByCategory } from "./adapters/generic.js";
 import { detectRoutes } from "./adapters/registry.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
@@ -28,12 +23,7 @@ import type { Hints, Inventory, Options, RouteInfo, StackInfo, Workspace } from 
  * send the AI agent to the right hints/playbook step instead of leaving a silent
  * gap. The agent resolves these while writing INTERFACES.md / DATA-MODEL.md.
  */
-function computeUnknowns(
-  stack: StackInfo,
-  routes: RouteInfo[],
-  hints: Hints,
-  workspaces: Workspace[],
-): string[] {
+function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints, workspaces: Workspace[]): string[] {
   const u: string[] = [];
   if (workspaces.length > 0) {
     u.push(
@@ -98,9 +88,7 @@ export function analyze(opts: Options): Inventory {
     stack = mergeWorkspaceStacks(stack, workspaces);
     const cycle = findWorkspaceCycle(workspaces);
     if (cycle) {
-      warnings.push(
-        `workspace dependency cycle: ${cycle.join(" → ")} — the build order falls back to path order for these workspaces`,
-      );
+      warnings.push(`workspace dependency cycle: ${cycle.join(" → ")} — the build order falls back to path order for these workspaces`);
     }
   }
   const dependencies = extractDependencies(opts.repo, files, warnings);

@@ -4,12 +4,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyze } from "../src/analyze.js";
-import {
-  detectWorkspaces,
-  buildWorkspaceGraph,
-  topoOrderWorkspaces,
-  findWorkspaceCycle,
-} from "../src/detect/workspaces.js";
+import { detectWorkspaces, buildWorkspaceGraph, topoOrderWorkspaces, findWorkspaceCycle } from "../src/detect/workspaces.js";
 import type { Options } from "../src/types.js";
 
 const SAMPLE = fileURLToPath(new URL("./fixtures/sample-app", import.meta.url));
@@ -98,14 +93,8 @@ describe("analysis warnings — workspace dependency cycles", () => {
   const cyclicRepo = () =>
     repo((w) => {
       w("package.json", JSON.stringify({ name: "root", workspaces: ["packages/*"] }));
-      w(
-        "packages/a/package.json",
-        JSON.stringify({ name: "a", dependencies: { b: "workspace:*" } }),
-      );
-      w(
-        "packages/b/package.json",
-        JSON.stringify({ name: "b", devDependencies: { a: "workspace:*" } }),
-      );
+      w("packages/a/package.json", JSON.stringify({ name: "a", dependencies: { b: "workspace:*" } }));
+      w("packages/b/package.json", JSON.stringify({ name: "b", devDependencies: { a: "workspace:*" } }));
       w("packages/a/index.js", "module.exports = {};\n");
       w("packages/b/index.js", "module.exports = {};\n");
     });
@@ -128,9 +117,7 @@ describe("analysis warnings — workspace dependency cycles", () => {
   it("analyze surfaces the cycle as a warning without changing the topo order", () => {
     const r = cyclicRepo();
     const inv = analyze(makeOpts(r));
-    expect(inv.warnings?.some((x) => x.includes("workspace dependency cycle: a → b → a"))).toBe(
-      true,
-    );
+    expect(inv.warnings?.some((x) => x.includes("workspace dependency cycle: a → b → a"))).toBe(true);
     // The order itself still resolves deterministically (path-order fallback).
     expect(topoOrderWorkspaces(inv.workspaces ?? [])).toEqual(["a", "b"]);
   });

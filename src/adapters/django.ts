@@ -87,8 +87,7 @@ export const djangoAdapter: RouteAdapter = {
         if (!routerVars.has(router)) continue;
         const base = joinRoute(prefix, mountOf.get(router) ?? "", m[2] as string);
         const detail = joinRoute(base, "<pk>");
-        const add = (route: string, method: string) =>
-          routes.push({ route, file: path, kind: "api", method });
+        const add = (route: string, method: string) => routes.push({ route, file: path, kind: "api", method });
         add(base, "GET"); // list
         add(base, "POST"); // create
         add(detail, "GET"); // retrieve

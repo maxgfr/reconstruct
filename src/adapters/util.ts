@@ -26,12 +26,7 @@ function dirOf(p: string): string {
 }
 
 /** Resolve a relative import/require spec to a file present in `sources`. */
-export function resolveModule(
-  fromFile: string,
-  spec: string,
-  sources: Map<string, string>,
-  exts: string[] = JS_SRC_EXTS,
-): string | null {
+export function resolveModule(fromFile: string, spec: string, sources: Map<string, string>, exts: string[] = JS_SRC_EXTS): string | null {
   const segs: string[] = [];
   for (const s of `${dirOf(fromFile)}/${spec}`.split("/")) {
     if (s === "" || s === ".") continue;
@@ -47,7 +42,11 @@ export function resolveModule(
 
 /** "routes/users.py" -> "routes.users" so an import path matches a file. */
 export function moduleName(path: string): string {
-  return path.replace(/\.py$/, "").replace(/\/__init__$/, "").split("/").join(".");
+  return path
+    .replace(/\.py$/, "")
+    .replace(/\/__init__$/, "")
+    .split("/")
+    .join(".");
 }
 
 /** Join route segments (prefixes + a path) into one normalized "/a/b" route. */

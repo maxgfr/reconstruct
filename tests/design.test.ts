@@ -4,9 +4,7 @@ import type { Inventory } from "../src/types.js";
 
 describe("detectStylingLibraries", () => {
   it("filters the styling / UI libraries out of the full library list", () => {
-    expect(
-      detectStylingLibraries(["Tailwind CSS", "Drizzle ORM", "Radix UI", "Zod"]),
-    ).toEqual(["Tailwind CSS", "Radix UI"]);
+    expect(detectStylingLibraries(["Tailwind CSS", "Drizzle ORM", "Radix UI", "Zod"])).toEqual(["Tailwind CSS", "Radix UI"]);
   });
 
   it("returns [] when no styling library is present", () => {
@@ -71,9 +69,7 @@ describe("hasUI", () => {
   });
 
   it("is true when a style file or a page/component route exists", () => {
-    expect(
-      hasUI(baseInv({ files: [{ path: "a.css", ext: ".css", size: 1, lines: 1, category: "style", binary: false }] })),
-    ).toBe(true);
+    expect(hasUI(baseInv({ files: [{ path: "a.css", ext: ".css", size: 1, lines: 1, category: "style", binary: false }] }))).toBe(true);
     expect(hasUI(baseInv({ routes: [{ route: "/", file: "page.tsx", kind: "page" }] }))).toBe(true);
   });
 

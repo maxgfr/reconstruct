@@ -35,9 +35,7 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
  * activate more than one adapter (e.g. a Next.js frontend over an Express API).
  */
 export function detectRoutes(files: FileInfo[], stack: StackInfo, repo: string): RouteInfo[] {
-  const active = ROUTE_ADAPTERS.filter((a) =>
-    a.frameworks.some((f) => stack.frameworks.includes(f)),
-  );
+  const active = ROUTE_ADAPTERS.filter((a) => a.frameworks.some((f) => stack.frameworks.includes(f)));
   const seen = new Set<string>();
   const merged: RouteInfo[] = [];
   for (const adapter of active) {
@@ -51,11 +49,6 @@ export function detectRoutes(files: FileInfo[], stack: StackInfo, repo: string):
       merged.push(r);
     }
   }
-  merged.sort(
-    (a, b) =>
-      a.route.localeCompare(b.route) ||
-      a.kind.localeCompare(b.kind) ||
-      (a.method ?? "").localeCompare(b.method ?? ""),
-  );
+  merged.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind) || (a.method ?? "").localeCompare(b.method ?? ""));
   return merged;
 }

@@ -21,12 +21,14 @@ const INVENTORY = {
     { method: "tRPC", path: "auth.register" },
     { method: "tRPC", path: "posts.list" },
   ],
-  dataModel: [{ entity: "users", fields: [] }, { entity: "posts", fields: [] }],
+  dataModel: [
+    { entity: "users", fields: [] },
+    { entity: "posts", fields: [] },
+  ],
   i18n: { locales: ["en", "fr"], files: [], keyCount: 0 },
 };
 
-const SPINE =
-  "## Functional requirements\n\nDone.\n\n## Acceptance criteria\n\nGiven/When/Then.\n\n## Definition of done\n\n- [ ] done\n";
+const SPINE = "## Functional requirements\n\nDone.\n\n## Acceptance criteria\n\nGiven/When/Then.\n\n## Definition of done\n\n- [ ] done\n";
 
 /** A fully-enriched, buildable tree (no callouts, all references resolve). */
 function cleanTree(invOverride: Record<string, unknown> = {}): string {
@@ -71,11 +73,7 @@ describe("checkOutput — structure", () => {
 describe("checkOutput — unresolved scaffolding", () => {
   it("flags leftover 🧠 agent callouts", () => {
     const dir = cleanTree();
-    write(
-      dir,
-      "architecture/DATA-MODEL.md",
-      "# Data model\n### users\n### posts\n> 🧠 **For the AI agent:** fill the enums.\n",
-    );
+    write(dir, "architecture/DATA-MODEL.md", "# Data model\n### users\n### posts\n> 🧠 **For the AI agent:** fill the enums.\n");
     const { errors } = checkOutput(dir);
     expect(errors.join("\n")).toMatch(/🧠|unresolved|callout/i);
     expect(errors.join("\n")).toMatch(/DATA-MODEL\.md/);
@@ -112,33 +110,21 @@ describe("checkOutput — unresolved scaffolding", () => {
 
   it('does not flag a quoted "fill this in" example in a docs/buildability PRD', () => {
     const dir = cleanTree();
-    write(
-      dir,
-      "features/02-posts/PRD.md",
-      `# Posts\n${SPINE}\n- The gate fails when a placeholder phrase ("fill this in", "TODO", "TBD") remains. (FR1)\n`,
-    );
+    write(dir, "features/02-posts/PRD.md", `# Posts\n${SPINE}\n- The gate fails when a placeholder phrase ("fill this in", "TODO", "TBD") remains. (FR1)\n`);
     const { errors } = checkOutput(dir);
     expect(errors).toEqual([]);
   });
 
   it("does not flag a 🧠 quoted as an example in prose (symmetric with the placeholder check)", () => {
     const dir = cleanTree();
-    write(
-      dir,
-      "features/01-auth/PRD.md",
-      `# Auth\n${SPINE}\n- A real callout is always a bare blockquote like "> 🧠 …", never inline. (FR1)\n`,
-    );
+    write(dir, "features/01-auth/PRD.md", `# Auth\n${SPINE}\n- A real callout is always a bare blockquote like "> 🧠 …", never inline. (FR1)\n`);
     const { errors } = checkOutput(dir);
     expect(errors).toEqual([]);
   });
 
   it("still flags a real `> 🧠` callout and a bare (fill this in) placeholder", () => {
     const dir = cleanTree();
-    write(
-      dir,
-      "features/01-auth/PRD.md",
-      `# Auth\n${SPINE}\n> 🧠 **For the AI agent:** describe the flow.\n\n## Notes (fill this in)\n`,
-    );
+    write(dir, "features/01-auth/PRD.md", `# Auth\n${SPINE}\n> 🧠 **For the AI agent:** describe the flow.\n\n## Notes (fill this in)\n`);
     const { errors } = checkOutput(dir);
     expect(errors.join("\n")).toMatch(/🧠|callout/i);
     expect(errors.join("\n")).toMatch(/fill this in/i);
@@ -221,11 +207,7 @@ describe("checkOutput — contract substance (code-path enforcement)", () => {
 
   it("fails a feature PRD that is headings with no content", () => {
     const dir = cleanCodeTree();
-    write(
-      dir,
-      "features/01-auth/PRD.md",
-      "# Auth\n## Functional requirements\n## Acceptance criteria\n## Definition of done\n",
-    );
+    write(dir, "features/01-auth/PRD.md", "# Auth\n## Functional requirements\n## Acceptance criteria\n## Definition of done\n");
     const { errors } = checkOutput(dir);
     expect(errors.join("\n")).toMatch(/content|empty/i);
   });
@@ -266,11 +248,7 @@ describe("checkOutput — design-system (conditional, warning-only)", () => {
 
   it("is silent when DESIGN-SYSTEM.md captures a real contract", () => {
     const dir = cleanTree(UI_OVERRIDE);
-    write(
-      dir,
-      "architecture/DESIGN-SYSTEM.md",
-      "# Design system\n\n### Design tokens\n\n- `primary-500: #1d4ed8`\n",
-    );
+    write(dir, "architecture/DESIGN-SYSTEM.md", "# Design system\n\n### Design tokens\n\n- `primary-500: #1d4ed8`\n");
     const { errors, warnings } = checkOutput(dir);
     expect(errors).toEqual([]);
     expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);
@@ -298,11 +276,7 @@ describe("checkOutput — design-system (conditional, warning-only)", () => {
 
   it("a non-UI tree with the rendered DESIGN-SYSTEM.md stub on disk still passes --check clean", () => {
     const dir = cleanCodeTree(); // no stack/files/routes → hasUI false
-    write(
-      dir,
-      "architecture/DESIGN-SYSTEM.md",
-      "# Design system\n\n_No UI or styling surface was detected — this project has no design-system contract._\n",
-    );
+    write(dir, "architecture/DESIGN-SYSTEM.md", "# Design system\n\n_No UI or styling surface was detected — this project has no design-system contract._\n");
     const { errors, warnings } = checkOutput(dir);
     expect(errors).toEqual([]);
     expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);

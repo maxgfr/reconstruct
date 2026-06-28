@@ -55,9 +55,7 @@ describe("detectStack — extended framework catalogue", () => {
   });
 
   it("detects Laravel from composer.json", () => {
-    const r = repo((w) =>
-      w("composer.json", JSON.stringify({ require: { "laravel/framework": "^11" } })),
-    );
+    const r = repo((w) => w("composer.json", JSON.stringify({ require: { "laravel/framework": "^11" } })));
     const stack = detectStack(r, [fi("app/Http/Controllers/X.php", ".php")]);
     expect(stack.frameworks).toContain("Laravel");
     expect(stack.packageManagers).toContain("composer");
@@ -67,16 +65,7 @@ describe("detectStack — extended framework catalogue", () => {
     const r = repo((w) =>
       w(
         "go.mod",
-        [
-          "module example.com/api",
-          "",
-          "go 1.22",
-          "",
-          "require (",
-          "\tgithub.com/gin-gonic/gin v1.9.1",
-          "\tgithub.com/go-chi/chi/v5 v5.0.12",
-          ")",
-        ].join("\n"),
+        ["module example.com/api", "", "go 1.22", "", "require (", "\tgithub.com/gin-gonic/gin v1.9.1", "\tgithub.com/go-chi/chi/v5 v5.0.12", ")"].join("\n"),
       ),
     );
     const stack = detectStack(r, [fi("main.go", ".go")]);

@@ -27,8 +27,12 @@ function fi(path: string, category: FileCategory = "code", ext = ".ts", size = 1
   return { path, ext, size, lines: 10, category, binary: false };
 }
 const STACK: StackInfo = {
-  languages: ["TypeScript"], primaryLanguage: "TypeScript", frameworks: [],
-  libraries: [], packageManagers: ["npm"], hasTypeScript: true,
+  languages: ["TypeScript"],
+  primaryLanguage: "TypeScript",
+  frameworks: [],
+  libraries: [],
+  packageManagers: ["npm"],
+  hasTypeScript: true,
 };
 
 describe("walk: glob negation & dir semantics (review #2/#3)", () => {
@@ -82,10 +86,7 @@ describe("candidates: bounded content scan & regex safety (review #1/#4)", () =>
 
 describe("features: data-layer build order & @slot skipping (review #5/#10)", () => {
   it("orders a code-only ORM group (drizzle) before Internationalization", () => {
-    const files = [
-      fi("drizzle/client.ts"),
-      fi("messages/en.json", "i18n", ".json"),
-    ];
+    const files = [fi("drizzle/client.ts"), fi("messages/en.json", "i18n", ".json")];
     // i18n requires an i18n feature; emulate via the i18n arg
     const features = buildFeatures(files, [], { locales: ["en"], files: ["messages/en.json"], keyCount: 1 });
     const names = features.map((f) => f.name);
@@ -103,10 +104,7 @@ describe("features: data-layer build order & @slot skipping (review #5/#10)", ()
 describe("workspaces: pnpm parsing edge cases (review #6/#7/#11)", () => {
   it("only reads the packages: block, strips comments, and recurses /**", () => {
     const r = makeRepo((w) => {
-      w(
-        "pnpm-workspace.yaml",
-        "packages:\n  - 'apps/*'   # the apps\n  - 'packages/**'\nonlyBuiltDependencies:\n  - 'tools/secret'\n",
-      );
+      w("pnpm-workspace.yaml", "packages:\n  - 'apps/*'   # the apps\n  - 'packages/**'\nonlyBuiltDependencies:\n  - 'tools/secret'\n");
       w("apps/web/package.json", JSON.stringify({ name: "web" }));
       w("packages/group/ui/package.json", JSON.stringify({ name: "ui" })); // nested two levels
       w("tools/secret/package.json", JSON.stringify({ name: "secret" }));
@@ -121,14 +119,55 @@ describe("workspaces: pnpm parsing edge cases (review #6/#7/#11)", () => {
 describe("templates: well-formed fill-in tables (review #13)", () => {
   function inv(): Inventory {
     return {
-      generatedWith: "reconstruct@test", repoName: "x",
-      stack: STACK, fileCount: 0, totalLines: 0, files: [], dependencies: [],
-      routes: [], i18n: null, schemas: [], configs: [], docs: [], envVars: [], scripts: {},
-      features: [], hints: { routeCandidates: [], apiCandidates: [], schemaCandidates: [], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: [] },
-      unknowns: [], excludedCount: 0,
+      generatedWith: "reconstruct@test",
+      repoName: "x",
+      stack: STACK,
+      fileCount: 0,
+      totalLines: 0,
+      files: [],
+      dependencies: [],
+      routes: [],
+      i18n: null,
+      schemas: [],
+      configs: [],
+      docs: [],
+      envVars: [],
+      scripts: {},
+      features: [],
+      hints: {
+        routeCandidates: [],
+        apiCandidates: [],
+        schemaCandidates: [],
+        realtimeCandidates: [],
+        authCandidates: [],
+        designSystemCandidates: [],
+        entryPoints: [],
+      },
+      unknowns: [],
+      excludedCount: 0,
     };
   }
-  const opts = { mode: "preserve", level: "light", fidelity: "describe", granularity: "coarse", include: [], exclude: [], json: false, maxEmbedBytes: 16000, repo: "/x", out: "/o", merge: false, summary: false, features: false, specs: false, standalone: false, scratch: false, plan: "", tdd: false, check: false } as Options;
+  const opts = {
+    mode: "preserve",
+    level: "light",
+    fidelity: "describe",
+    granularity: "coarse",
+    include: [],
+    exclude: [],
+    json: false,
+    maxEmbedBytes: 16000,
+    repo: "/x",
+    out: "/o",
+    merge: false,
+    summary: false,
+    features: false,
+    specs: false,
+    standalone: false,
+    scratch: false,
+    plan: "",
+    tdd: false,
+    check: false,
+  } as Options;
 
   it("separates the table delimiter row from the trailing note with a blank line", () => {
     expect(interfacesDoc(inv(), opts)).toMatch(/\| --- \|[^\n]*\n\n_/);

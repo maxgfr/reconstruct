@@ -42,8 +42,7 @@ function opts(repo: string): Options {
   };
 }
 const inv = (files: Record<string, string>): Inventory => analyze(opts(tempRepo(files)));
-const hasM = (routes: RouteInfo[], method: string, route: string): boolean =>
-  routes.some((r) => r.route === route && r.method === method);
+const hasM = (routes: RouteInfo[], method: string, route: string): boolean => routes.some((r) => r.route === route && r.method === method);
 
 // ---------------------------------------------------------------------------
 describe("HTTP method is preserved (engine-wide)", () => {
@@ -253,7 +252,7 @@ public class UserController { @GetMapping("/users") public List users(){return n
 
   it("surfaces an axum Rust route file and its entry point", () => {
     const i = inv({
-      "Cargo.toml": "[dependencies]\naxum = \"0.7\"\n",
+      "Cargo.toml": '[dependencies]\naxum = "0.7"\n',
       "src/main.rs": `fn main(){ let app = Router::new().route("/users", get(list)); }`,
     });
     expect(i.stack.primaryLanguage).toBe("Rust");
@@ -361,8 +360,7 @@ describe("check gate hardening", () => {
   it("fails a feature PRD whose spine section is an empty heading", () => {
     const { errors } = checkOutput(
       tree({
-        "features/01-core/PRD.md":
-          "# Core\n## Functional requirements\n## Acceptance criteria\nGiven/When/Then.\n## Definition of done\n- [ ] done\n",
+        "features/01-core/PRD.md": "# Core\n## Functional requirements\n## Acceptance criteria\nGiven/When/Then.\n## Definition of done\n- [ ] done\n",
       }),
     );
     expect(errors.join("\n")).toMatch(/Functional requirements/);
@@ -401,7 +399,10 @@ describe("scratch plan consistency (FK / writes / duplicates)", () => {
   it("errors on a duplicate entity name", () => {
     const plan: ScratchPlan = {
       ...base,
-      dataModel: [{ entity: "User", fields: [] }, { entity: "User", fields: [] }],
+      dataModel: [
+        { entity: "User", fields: [] },
+        { entity: "User", fields: [] },
+      ],
     };
     expect(validatePlanConsistency(plan).errors.join("\n")).toMatch(/User.*more than once/);
   });

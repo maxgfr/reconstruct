@@ -9,20 +9,10 @@ export interface CheckResult {
 }
 
 /** Required documents every reconstruction tree must carry. */
-const REQUIRED_DOCS = [
-  "REBUILD.md",
-  "00-overview/PRD.md",
-  "architecture/ARCHITECTURE.md",
-  "architecture/INTERFACES.md",
-  "architecture/DATA-MODEL.md",
-];
+const REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITECTURE.md", "architecture/INTERFACES.md", "architecture/DATA-MODEL.md"];
 
 /** The spine every feature PRD must keep after enrichment. */
-const FEATURE_SPINE = [
-  "## Functional requirements",
-  "## Acceptance criteria",
-  "## Definition of done",
-];
+const FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
 
 // Directories that hold copied ground truth or original source — never scanned
 // for scaffolding, since they legitimately contain arbitrary text.
@@ -43,7 +33,7 @@ function collectMarkdown(dir: string, base = dir): Doc[] {
   }
   for (const name of entries) {
     const full = join(dir, name);
-    let st;
+    let st: ReturnType<typeof statSync>;
     try {
       st = statSync(full);
     } catch {
@@ -70,7 +60,7 @@ function fileNames(dir: string): string[] {
   }
   for (const name of entries) {
     const full = join(dir, name);
-    let st;
+    let st: ReturnType<typeof statSync>;
     try {
       st = statSync(full);
     } catch {
@@ -96,9 +86,7 @@ export function checkOutput(outDir: string): CheckResult {
 
   const invPath = join(outDir, "inventory.json");
   if (!existsSync(invPath)) {
-    errors.push(
-      `no inventory.json in ${outDir} — not a reconstruction output (run the analyzer first)`,
-    );
+    errors.push(`no inventory.json in ${outDir} — not a reconstruction output (run the analyzer first)`);
     return { errors, warnings };
   }
   let inv: Inventory;
@@ -111,8 +99,7 @@ export function checkOutput(outDir: string): CheckResult {
 
   const docs = collectMarkdown(outDir);
   const byRel = new Map(docs.map((d) => [d.rel, d]));
-  const findDoc = (rel: string): Doc | undefined =>
-    byRel.get(rel) ?? docs.find((d) => d.rel.endsWith("/" + rel));
+  const findDoc = (rel: string): Doc | undefined => byRel.get(rel) ?? docs.find((d) => d.rel.endsWith("/" + rel));
 
   // 1. Required structure.
   for (const req of REQUIRED_DOCS) {
@@ -133,9 +120,7 @@ export function checkOutput(outDir: string): CheckResult {
     const prose = stripQuotes(stripCode(d.content));
     const callouts = prose.split("🧠").length - 1;
     if (callouts > 0) {
-      errors.push(
-        `${d.rel}: ${callouts} unresolved \`🧠\` agent callout(s) — resolve them exhaustively and delete the callout`,
-      );
+      errors.push(`${d.rel}: ${callouts} unresolved \`🧠\` agent callout(s) — resolve them exhaustively and delete the callout`);
     }
     if (/fill this in/i.test(prose)) {
       errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
@@ -155,9 +140,7 @@ export function checkOutput(outDir: string): CheckResult {
   if (dataModelDoc) {
     for (const e of referencedEntities) {
       if (!documents(dataModelDoc, e)) {
-        errors.push(
-          `architecture/DATA-MODEL.md does not document entity \`${e}\` referenced by the plan/features`,
-        );
+        errors.push(`architecture/DATA-MODEL.md does not document entity \`${e}\` referenced by the plan/features`);
       }
     }
   }
@@ -168,9 +151,7 @@ export function checkOutput(outDir: string): CheckResult {
   if (interfacesDoc) {
     for (const op of referencedOps) {
       if (!documents(interfacesDoc, op)) {
-        errors.push(
-          `architecture/INTERFACES.md does not document operation \`${op}\` referenced by the plan/features`,
-        );
+        errors.push(`architecture/INTERFACES.md does not document operation \`${op}\` referenced by the plan/features`);
       }
     }
   }
@@ -186,9 +167,7 @@ export function checkOutput(outDir: string): CheckResult {
         // A heading whose body is empty (or only its scaffold callout) is not a
         // filled PRD section — the auto-generated DoD/Routes/Source elsewhere in
         // the doc must not mask an unwritten requirements/criteria section.
-        errors.push(
-          `${d.rel}: section "${h}" has no content — fill it (a heading alone is not a PRD section)`,
-        );
+        errors.push(`${d.rel}: section "${h}" has no content — fill it (a heading alone is not a PRD section)`);
       }
     }
   }
@@ -198,14 +177,10 @@ export function checkOutput(outDir: string): CheckResult {
   //    vacuous. An architecture doc emptied of its contract (no callouts left, but
   //    no entities/operations either) must still fail: a hollow tree is not buildable.
   if (dataModelDoc && !declaresEntities(dataModelDoc)) {
-    errors.push(
-      "architecture/DATA-MODEL.md declares no entities — the data model is empty; fill it before the tree is buildable",
-    );
+    errors.push("architecture/DATA-MODEL.md declares no entities — the data model is empty; fill it before the tree is buildable");
   }
   if (interfacesDoc && !declaresOperations(interfacesDoc)) {
-    errors.push(
-      "architecture/INTERFACES.md declares no operations — the interface surface is empty; enumerate it before the tree is buildable",
-    );
+    errors.push("architecture/INTERFACES.md declares no operations — the interface surface is empty; enumerate it before the tree is buildable");
   }
 
   // 5b. Design-system contract — CONDITIONAL on UI presence and WARNING-only. A
@@ -220,9 +195,7 @@ export function checkOutput(outDir: string): CheckResult {
         "architecture/DESIGN-SYSTEM.md is missing but UI was detected — capture the visual contract (tokens, theming, typography, components, a11y).",
       );
     } else if (!declaresDesignSystem(stripSection(stripMetaTable(ds.content), "Design-system source files"))) {
-      warnings.push(
-        "architecture/DESIGN-SYSTEM.md captures no tokens/components — fill the design-system contract for a faithful visual rebuild.",
-      );
+      warnings.push("architecture/DESIGN-SYSTEM.md captures no tokens/components — fill the design-system contract for a faithful visual rebuild.");
     }
   }
 
@@ -246,9 +219,7 @@ export function checkOutput(outDir: string): CheckResult {
       const inFiles = names.some((n) => n.includes(loc));
       const inCatalog = catalog.includes(`${loc}`);
       if (!inFiles && !inCatalog) {
-        warnings.push(
-          `locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`,
-        );
+        warnings.push(`locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`);
       }
     }
   }

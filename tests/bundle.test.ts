@@ -1,12 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  demoteHeadings,
-  mergeArtifacts,
-  mergeFeatures,
-  mergeSpecs,
-  stripSourceMaterial,
-  summarize,
-} from "../src/prd/bundle.js";
+import { demoteHeadings, mergeArtifacts, mergeFeatures, mergeSpecs, stripSourceMaterial, summarize } from "../src/prd/bundle.js";
 import type { Artifact, Inventory, Options, StackInfo } from "../src/types.js";
 
 const STACK: StackInfo = {
@@ -42,7 +35,15 @@ function makeInv(over: Partial<Inventory> = {}): Inventory {
       { slug: "01-core", name: "Core", description: "Foundations", kind: "feature", files: ["a.ts"], routes: [] },
       { slug: "02-auth", name: "Auth", description: "Login flow", kind: "feature", files: ["b.ts"], routes: [] },
     ],
-    hints: { routeCandidates: ["x"], apiCandidates: ["y", "z"], schemaCandidates: ["db/schema.ts"], realtimeCandidates: [], authCandidates: [], designSystemCandidates: [], entryPoints: ["main.ts"] },
+    hints: {
+      routeCandidates: ["x"],
+      apiCandidates: ["y", "z"],
+      schemaCandidates: ["db/schema.ts"],
+      realtimeCandidates: [],
+      authCandidates: [],
+      designSystemCandidates: [],
+      entryPoints: ["main.ts"],
+    },
     unknowns: ["Map the tRPC procedures into INTERFACES.md"],
     excludedCount: 0,
     ...over,

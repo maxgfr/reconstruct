@@ -8,10 +8,6 @@ export default defineConfig({
     // If such a tree sits in this repo (e.g. someone ran the analyzer on it),
     // vitest would otherwise try to run those copies and fail. CI never sees it
     // (it's gitignored), but this keeps local runs robust regardless.
-    exclude: [
-      ...configDefaults.exclude,
-      "**/reconstruction/**",
-      "**/reconstruction-*/**",
-    ],
+    exclude: [...configDefaults.exclude, "**/reconstruction/**", "**/reconstruction-*/**"],
   },
 });

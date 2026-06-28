@@ -4,10 +4,7 @@ import { joinRoute, moduleName, pythonImportAliases, readSources } from "./util.
 
 const METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
 // Capture the path and trailing kwargs (so `api_route(methods=[…])` resolves).
-const DECORATOR_RE = new RegExp(
-  `@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']([^)]*)\\)`,
-  "g",
-);
+const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']([^)]*)\\)`, "g");
 const ROUTER_DEF_RE = /(\w+)\s*=\s*APIRouter\(([^)]*)\)/g;
 // Receiver + included expression captured: nested `api.include_router(v2, prefix=…)`
 // and module-attribute `app.include_router(users.router, prefix=…)` forms.
@@ -21,9 +18,7 @@ function prefixArg(args: string): string {
 function methodsOf(args: string): string[] {
   const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
   if (!m) return [];
-  return [...(m[1] as string).matchAll(/["']([A-Za-z]+)["']/g)].map((v) =>
-    (v[1] as string).toUpperCase(),
-  );
+  return [...(m[1] as string).matchAll(/["']([A-Za-z]+)["']/g)].map((v) => (v[1] as string).toUpperCase());
 }
 
 const lastSeg = (mod: string): string => mod.split(".").pop() ?? mod;
@@ -53,19 +48,12 @@ export const fastapiAdapter: RouteAdapter = {
 
     // Resolve an include() argument to a router key. Bare var → import alias /
     // local def; `mod.attr` → the router named `attr` in submodule `mod`.
-    const resolveRouter = (
-      expr: string,
-      fileModule: string,
-      aliases: Map<string, string>,
-    ): string | null => {
+    const resolveRouter = (expr: string, fileModule: string, aliases: Map<string, string>): string | null => {
       if (expr.includes(".")) {
         const parts = expr.split(".");
         const attr = parts.pop() as string;
         const mod = parts.pop() as string;
-        return (
-          routerKeys.find((k) => k.endsWith(`::${attr}`) && lastSeg(k.split("::")[0] as string) === mod) ??
-          null
-        );
+        return routerKeys.find((k) => k.endsWith(`::${attr}`) && lastSeg(k.split("::")[0] as string) === mod) ?? null;
       }
       const key = aliases.get(expr) ?? `${fileModule}::${expr}`;
       return ownPrefix.has(key) ? key : null;
@@ -109,12 +97,7 @@ export const fastapiAdapter: RouteAdapter = {
         const key = `${fileModule}::${obj}`;
         const prefix = ownPrefix.has(key) ? fullPrefix(key) : "";
         const route = joinRoute(prefix, m[3] as string);
-        const methods =
-          decorator === "websocket"
-            ? ["WS"]
-            : decorator === "api_route"
-              ? methodsOf(m[4] as string)
-              : [decorator.toUpperCase()];
+        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? methodsOf(m[4] as string) : [decorator.toUpperCase()];
         if (methods.length) {
           for (const method of methods) routes.push({ route, file: path, kind: "api", method });
         } else {

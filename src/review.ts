@@ -2,36 +2,14 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import type {
-  Inventory,
-  ReviewCategory,
-  ReviewFinding,
-  ReviewResult,
-  ReviewSeverity,
-  ReviewUnit,
-  ReviewWorklist,
-} from "./types.js";
+import type { Inventory, ReviewCategory, ReviewFinding, ReviewResult, ReviewSeverity, ReviewUnit, ReviewWorklist } from "./types.js";
 
 // The architecture docs every feature PRD's contract hangs off — a change to any
 // of them can regress every feature, so they fold into one shared `archHash`.
-const ARCH_DOCS = [
-  "architecture/INTERFACES.md",
-  "architecture/DATA-MODEL.md",
-  "architecture/ARCHITECTURE.md",
-];
+const ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md"];
 
 const SEVERITIES: ReviewSeverity[] = ["blocker", "major", "minor"];
-const CATEGORIES: ReviewCategory[] = [
-  "stories",
-  "requirements",
-  "acceptance",
-  "write-contract",
-  "enum",
-  "consistency",
-  "faithfulness",
-  "i18n",
-  "rebuild-test",
-];
+const CATEGORIES: ReviewCategory[] = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
 
 function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -52,7 +30,10 @@ function archHash(outDir: string): string {
 
 /** Normalize a finding's problem text so the same issue hashes to the same id. */
 function normalizeProblem(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 /** Stable id `feature:category:hash(problem)` — survives rounds while the finding does. */
@@ -274,9 +255,7 @@ export function reduceFindings(
   }));
   // Carry forward an untouched feature's open blockers — but only if the feature
   // still exists (a removed feature's stale blocker must not haunt the residual).
-  const carried = ctx.priorFailures.filter(
-    (pf) => !touched.has(pf.feature) && (known.size === 0 || known.has(pf.feature)),
-  );
+  const carried = ctx.priorFailures.filter((pf) => !touched.has(pf.feature) && (known.size === 0 || known.has(pf.feature)));
 
   const byId = new Map<string, ReviewResult["failures"][number]>();
   for (const f of carried) byId.set(f.id, f);
@@ -288,10 +267,7 @@ export function reduceFindings(
   const residual = failures.map((f) => f.id);
 
   const priorResidual = [...new Set(ctx.priorFailures.map((f) => f.id))].sort(cmp);
-  const sameAsPrior =
-    residual.length > 0 &&
-    residual.length === priorResidual.length &&
-    residual.every((id, i) => id === priorResidual[i]);
+  const sameAsPrior = residual.length > 0 && residual.length === priorResidual.length && residual.every((id, i) => id === priorResidual[i]);
   const noProgress = sameAsPrior;
   const staleRounds = noProgress ? ctx.priorStale + 1 : 0;
 
@@ -375,17 +351,13 @@ export function applyFindings(outDir: string, findingsPath: string): ReviewResul
 export function foldReview(outDir: string, check: CheckResult): void {
   const p = join(outDir, "REVIEW.json");
   if (!existsSync(p)) {
-    check.warnings.push(
-      "--semantic: no REVIEW.json — run `--review` then `--review --apply <findings.json>` first; review gate skipped.",
-    );
+    check.warnings.push("--semantic: no REVIEW.json — run `--review` then `--review --apply <findings.json>` first; review gate skipped.");
     return;
   }
   try {
     const rev = JSON.parse(readFileSync(p, "utf8")) as ReviewResult;
     if (!rev.ok) {
-      check.errors.push(
-        `AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`,
-      );
+      check.errors.push(`AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`);
     }
     if (rev.noProgress) {
       check.warnings.push(
@@ -407,9 +379,7 @@ export function formatReviewReport(r: ReviewResult): string {
     lines.push(`  ✗ ${f.feature} [${f.category}]: ${f.problem}${f.fix ? " — fix: " + f.fix : ""}`);
   }
   if (r.noProgress) {
-    lines.push(
-      `  ⚠ no progress for ${r.staleRounds} round(s) on the same blocker(s) — fix the upstream architecture contract or record as known gaps`,
-    );
+    lines.push(`  ⚠ no progress for ${r.staleRounds} round(s) on the same blocker(s) — fix the upstream architecture contract or record as known gaps`);
   }
   lines.push(
     r.ok

@@ -2,14 +2,7 @@ import { describe, it, expect } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planToInventory } from "../src/scratch.js";
-import {
-  architectureDoc,
-  dataModelDoc,
-  designSystemDoc,
-  interfacesDoc,
-  featurePrd,
-  rebuildDoc,
-} from "../src/prd/templates.js";
+import { architectureDoc, dataModelDoc, designSystemDoc, interfacesDoc, featurePrd, rebuildDoc } from "../src/prd/templates.js";
 import type { Feature, Options, ScratchPlan } from "../src/types.js";
 
 function opts(overrides: Partial<Options> = {}): Options {
@@ -51,9 +44,7 @@ const PLAN: ScratchPlan = {
       ],
     },
   },
-  enums: [
-    { name: "Role", members: ["ADMIN", "DOCTOR", "CABINET"], description: "Account role" },
-  ],
+  enums: [{ name: "Role", members: ["ADMIN", "DOCTOR", "CABINET"], description: "Account role" }],
   services: [
     {
       name: "Geocoder",
@@ -89,9 +80,7 @@ const PLAN: ScratchPlan = {
       easings: ["standard: cubic-bezier(.4,0,.2,1)"],
       reducedMotion: "honor prefers-reduced-motion",
     },
-    components: [
-      { name: "Button", source: "owned", variants: ["primary", "ghost"], states: ["default", "hover", "disabled", "loading"] },
-    ],
+    components: [{ name: "Button", source: "owned", variants: ["primary", "ghost"], states: ["default", "hover", "disabled", "loading"] }],
     a11y: { target: "WCAG 2.1 AA", requirements: ["full keyboard nav", "visible focus ring"] },
   },
   dataModel: [
@@ -193,7 +182,6 @@ describe("INTERFACES.md — operation contracts", () => {
     expect(md).toContain("{ userId: string }");
     expect(md).toContain("send welcome email");
   });
-
 });
 
 describe("DESIGN-SYSTEM.md — visual contract", () => {

@@ -116,19 +116,7 @@ function splitGlobs(value: string): string[] {
 // recognized flag is a boolean switch handled inline above. Used to reject an
 // unknown or typo'd flag loudly instead of silently swallowing it (and then
 // falling back to a default the user never asked for).
-const VALUE_FLAGS = new Set([
-  "repo",
-  "out",
-  "mode",
-  "level",
-  "fidelity",
-  "granularity",
-  "plan",
-  "max-embed-bytes",
-  "include",
-  "exclude",
-  "apply",
-]);
+const VALUE_FLAGS = new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply"]);
 
 export function parseArgs(argv: string[]): Options {
   const raw: Record<string, string> = {};
@@ -248,45 +236,23 @@ export function parseArgs(argv: string[]): Options {
   // Standalone post-step: bundle an existing output dir when
   // --merge/--summary/--features/--specs is used without --repo (and not in
   // --json/--scratch mode).
-  const standalone =
-    (merge || summary || features || specs) && !json && !scratch && raw.repo === undefined;
+  const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === undefined;
 
   const repo = resolve(raw.repo ?? process.cwd());
   // Scratch reads no repo; standalone and --check read an existing output dir —
   // all three skip the repo-exists check.
-  if (
-    !standalone &&
-    !scratch &&
-    !check &&
-    !verify &&
-    !review &&
-    (!existsSync(repo) || !statSync(repo).isDirectory())
-  ) {
+  if (!standalone && !scratch && !check && !verify && !review && (!existsSync(repo) || !statSync(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
   // Greenfield collapses mode/fidelity: nothing to preserve, no source to mirror.
-  const mode = scratch
-    ? ("scratch" as Mode)
-    : oneOf<Mode>("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
+  const mode = scratch ? ("scratch" as Mode) : oneOf<Mode>("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
   const fidelity = scratch
     ? ("describe" as Fidelity)
-    : oneOf<Fidelity>("fidelity", raw.fidelity ?? defaultFidelity(mode, level), [
-        "mirror",
-        "embed",
-        "describe",
-      ]);
-  const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", [
-    "coarse",
-    "fine",
-  ]);
+    : oneOf<Fidelity>("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
+  const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const out = resolve(
-    raw.out ??
-      (standalone || check || verify || review
-        ? process.cwd()
-        : scratch
-          ? join(process.cwd(), "reconstruction")
-          : join(repo, "reconstruction")),
+    raw.out ?? (standalone || check || verify || review ? process.cwd() : scratch ? join(process.cwd(), "reconstruction") : join(repo, "reconstruction")),
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -377,7 +343,7 @@ function main(): void {
   }
 
   if (opts.scratch) {
-    let plan;
+    let plan: ReturnType<typeof loadPlan>;
     try {
       plan = loadPlan(opts.plan);
     } catch (e) {
@@ -387,10 +353,7 @@ function main(): void {
     // with a plan whose features, entities, interfaces and enums line up.
     const consistency = validatePlanConsistency(plan);
     if (consistency.errors.length) {
-      fail(
-        `plan.json is internally inconsistent (fix these before rendering):\n  - ` +
-          consistency.errors.join("\n  - "),
-      );
+      fail(`plan.json is internally inconsistent (fix these before rendering):\n  - ` + consistency.errors.join("\n  - "));
     }
     // The plan can request TDD too; OR it with the --tdd flag.
     const effOpts: Options = { ...opts, tdd: opts.tdd || !!plan.tdd };
@@ -413,10 +376,7 @@ function main(): void {
       `  surface:  ${inv.features.length} feature(s) · ${inv.interfaces?.length ?? 0} interface(s) · ${inv.dataModel?.length ?? 0} entit(y/ies) · ${inv.i18n ? inv.i18n.locales.length : 0} locale(s)`,
       `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
       ...(consistency.warnings.length
-        ? [
-            `  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`,
-            ...consistency.warnings.map((w) => `    ⚠ ${w}`),
-          ]
+        ? [`  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`, ...consistency.warnings.map((w) => `    ⚠ ${w}`)]
         : []),
       ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
       ...(effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
@@ -448,15 +408,24 @@ function main(): void {
     return;
   }
 
-  const inv = analyze(opts);
+  let inv: ReturnType<typeof analyze>;
+  try {
+    inv = analyze(opts);
+  } catch (e) {
+    fail((e as Error).message);
+  }
 
   if (opts.json) {
     process.stdout.write(JSON.stringify(inv, null, 2) + "\n");
     return;
   }
 
-  const result = render(inv, opts);
-  writeOutput(result, opts);
+  try {
+    const result = render(inv, opts);
+    writeOutput(result, opts);
+  } catch (e) {
+    fail((e as Error).message);
+  }
 
   const hintTotal =
     inv.hints.routeCandidates.length +
@@ -472,19 +441,11 @@ function main(): void {
     `  features: ${inv.features.length} · routes: ${inv.routes.length} · locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
     `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth/design-system) · ${inv.hints.entryPoints.length} entry point(s)`,
     ...(inv.workspaces
-      ? [
-          `  monorepo: ${inv.workspaces.length} workspace(s) · ${inv.workspaces.reduce(
-            (n, w) => n + (w.dependsOn?.length ?? 0),
-            0,
-          )} dependency edge(s)`,
-        ]
+      ? [`  monorepo: ${inv.workspaces.length} workspace(s) · ${inv.workspaces.reduce((n, w) => n + (w.dependsOn?.length ?? 0), 0)} dependency edge(s)`]
       : []),
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...(inv.warnings?.length
-      ? [
-          `  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`,
-          ...inv.warnings.map((w) => `    ⚠ ${w}`),
-        ]
+      ? [`  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    ⚠ ${w}`)]
       : []),
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,

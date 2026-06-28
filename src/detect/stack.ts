@@ -70,9 +70,23 @@ const NPM_FRAMEWORKS: Array<[string, string]> = [
 // (NestJS/Express/Fastify/Koa/Hono, Django/Flask/FastAPI, Rails, Spring, Laravel,
 // Go/Gin…) — a naive "any framework" check would false-positive every API repo.
 export const UI_FRAMEWORK_LABELS = new Set([
-  "Next.js", "Nuxt", "Remix", "React Router", "SvelteKit", "Astro", "Angular",
-  "SolidStart", "React", "Vue", "Svelte", "SolidJS",
-  "Expo", "React Native", "Electron", "Tauri", "Flutter",
+  "Next.js",
+  "Nuxt",
+  "Remix",
+  "React Router",
+  "SvelteKit",
+  "Astro",
+  "Angular",
+  "SolidStart",
+  "React",
+  "Vue",
+  "Svelte",
+  "SolidJS",
+  "Expo",
+  "React Native",
+  "Electron",
+  "Tauri",
+  "Flutter",
 ]);
 
 // Styling / UI libraries — the design-system signal. Kept as its own array so the
@@ -171,9 +185,7 @@ export function detectLibraries(deps: Record<string, string>): string[] {
   const names = Object.keys(deps);
   const found = new Set<string>();
   for (const [pattern, label] of NPM_LIBRARIES) {
-    const hit = pattern.endsWith("/")
-      ? names.some((n) => n.startsWith(pattern))
-      : pattern in deps;
+    const hit = pattern.endsWith("/") ? names.some((n) => n.startsWith(pattern)) : pattern in deps;
     if (hit) found.add(label);
   }
   return [...found];
@@ -183,21 +195,14 @@ export function detectLibraries(deps: Record<string, string>): string[] {
  * `labelBase` prefixes manifest paths in warnings (e.g. a workspace dir), so a
  * malformed `apps/web/package.json` is reported as such, not as the root's.
  */
-export function detectStack(
-  repo: string,
-  files: FileInfo[],
-  warnings?: string[],
-  labelBase = "",
-): StackInfo {
+export function detectStack(repo: string, files: FileInfo[], warnings?: string[], labelBase = ""): StackInfo {
   // Languages ranked by file count.
   const counts = new Map<string, number>();
   for (const f of files) {
     const lang = EXT_LANGUAGE[f.ext];
     if (lang) counts.set(lang, (counts.get(lang) ?? 0) + 1);
   }
-  const languages = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([lang]) => lang);
+  const languages = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([lang]) => lang);
 
   const frameworks = new Set<string>();
   const packageManagers = new Set<string>();
@@ -221,16 +226,11 @@ export function detectStack(
   // Package manager from the lockfile — resolved independently of whether
   // package.json parsed, so a malformed manifest with a lockfile present still
   // reports a manager. `bun.lock` is Bun's modern text lockfile (bun.lockb is legacy).
-  const hasJsManifest =
-    hasPkg ||
-    ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some((f) =>
-      existsSync(join(repo, f)),
-    );
+  const hasJsManifest = hasPkg || ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"].some((f) => existsSync(join(repo, f)));
   if (hasJsManifest) {
     if (existsSync(join(repo, "pnpm-lock.yaml"))) packageManagers.add("pnpm");
     else if (existsSync(join(repo, "yarn.lock"))) packageManagers.add("yarn");
-    else if (existsSync(join(repo, "bun.lockb")) || existsSync(join(repo, "bun.lock")))
-      packageManagers.add("bun");
+    else if (existsSync(join(repo, "bun.lockb")) || existsSync(join(repo, "bun.lock"))) packageManagers.add("bun");
     else packageManagers.add("npm");
   }
 

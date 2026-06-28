@@ -194,10 +194,7 @@ describe("cargo-workspace (Rust monorepo)", () => {
   const ws = (name: string) => (inv.workspaces ?? []).find((w) => w.name === name);
 
   it("enumerates members with kind cargo and honors exclude", () => {
-    expect((inv.workspaces ?? []).map((w) => `${w.kind}:${w.name}`)).toEqual([
-      "cargo:acme-cli",
-      "cargo:acme-core",
-    ]);
+    expect((inv.workspaces ?? []).map((w) => `${w.kind}:${w.name}`)).toEqual(["cargo:acme-cli", "cargo:acme-core"]);
   });
 
   it("derives the edge from the path dependency", () => {
@@ -223,10 +220,7 @@ describe("go-work (Go monorepo)", () => {
   const ws = (name: string) => (inv.workspaces ?? []).find((w) => w.name === name);
 
   it("enumerates modules with kind go, named from go.mod", () => {
-    expect((inv.workspaces ?? []).map((w) => `${w.kind}:${w.name}`)).toEqual([
-      "go:example.com/shared",
-      "go:example.com/api",
-    ]);
+    expect((inv.workspaces ?? []).map((w) => `${w.kind}:${w.name}`)).toEqual(["go:example.com/shared", "go:example.com/api"]);
   });
 
   it("derives the edge from require/replace", () => {
