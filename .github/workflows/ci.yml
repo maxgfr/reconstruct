@@ -44,6 +44,40 @@ jobs:
       - name: Convergence/parity (scratch path, buildable-by-construction)
         run: pnpm run parity # node scripts/parity.mjs --plan <example fixture>; --repo omitted, no external repo needed
 
+  install-bundle:
+    runs-on: ubuntu-latest
+    name: install-bundle (skill installs whole, not just SKILL.md)
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the embedded bundle
+        run: pnpm run build
+
+      - name: Verify the install-bundle shape (no root SKILL.md, engine in sync)
+        run: pnpm run verify:bundle
+
+      - name: End-to-end — `skills add` bundles the engine + references, not SKILL.md alone
+        run: |
+          WORK="$(mktemp -d)"
+          cd "$WORK"
+          npx --yes skills add "$GITHUB_WORKSPACE" --skill reconstruct --agent claude-code --copy -y
+          DIR=.claude/skills/reconstruct
+          test -f "$DIR/SKILL.md"             || { echo "::error::SKILL.md not installed"; exit 1; }
+          test -f "$DIR/scripts/analyze.mjs"  || { echo "::error::engine not bundled — skills add dropped scripts/"; exit 1; }
+          test -d "$DIR/references"           || { echo "::error::references/ not bundled"; exit 1; }
+          node "$DIR/scripts/analyze.mjs" --help > /dev/null || { echo "::error::installed engine does not run"; exit 1; }
+          echo "install-bundle: skill installed whole and the engine runs."
+
   # The shipped scripts/analyze.mjs is a dependency-free bundle that declares
   # engines.node ">=18", but the dev toolchain (vite 8 / vitest 4) needs Node
   # >=20.19 — so build-test above can't prove the floor. This job runs ONLY the

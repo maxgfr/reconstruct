@@ -146,7 +146,7 @@ field-level data model, fully-enumerated enums, operation & write contracts (a p
 can't require an owner foreign key), format validations, external services, quantified
 policies, the i18n message catalog, shared/owned UI components, and — for UI products — the
 design-system contract (tokens, theming, components, a11y) — are in
-[`references/buildability-checklist.md`](./references/buildability-checklist.md). In
+[`references/buildability-checklist.md`](./skills/reconstruct/references/buildability-checklist.md). In
 greenfield mode the engine also **validates the plan's consistency** before rendering, so
 dangling references and anonymous-write-to-owner-FK contradictions are caught up front.
 
@@ -159,7 +159,7 @@ unsatisfiable write contract, an enum value that contradicts the data model). Th
 judgement is the **AI review** — performed **via the skill**, not the script: there is no
 `--ai` flag and no API key, because the agent running the skill *is* the reviewer. After
 `--check` passes, the agent re-reads the tree and applies
-[`references/ai-review-rubric.md`](./references/ai-review-rubric.md) (story completeness,
+[`references/ai-review-rubric.md`](./skills/reconstruct/references/ai-review-rubric.md) (story completeness,
 testable requirements, real Given/When/Then incl. failure paths, satisfiable write contracts,
 enum fidelity, cross-doc consistency, faithfulness, i18n, and the rebuild self-test), fixing
 every **blocker** in place. Layer 1 is fast and CI-friendly; layer 2 is where a smart model
@@ -181,7 +181,7 @@ node scripts/analyze.mjs --review --apply findings.json --out ./my-app/reconstru
 (requirements that don't trace to source) and `REVIEW.json` (unresolved blockers) — additively,
 never relaxing `--check`. For larger trees the enrichment and the review/fix loop both fan out
 across subagents; the protocol (map-reduce + the ledger) is in
-[`references/orchestration.md`](./references/orchestration.md).
+[`references/orchestration.md`](./skills/reconstruct/references/orchestration.md).
 
 ## From scratch (greenfield)
 
@@ -189,8 +189,8 @@ No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your a
 
 > "Use reconstruct to turn my idea into a build plan."
 
-**You don't write `plan.json` by hand — the agent does.** Following [`SKILL.md`](./SKILL.md) →
-[`references/scratch-playbook.md`](./references/scratch-playbook.md), it **interviews you**
+**You don't write `plan.json` by hand — the agent does.** Following [`SKILL.md`](./skills/reconstruct/SKILL.md) →
+[`references/scratch-playbook.md`](./skills/reconstruct/references/scratch-playbook.md), it **interviews you**
 (grill-with-docs style: one question at a time, recommending an answer each time), writes the
 domain docs (`CONTEXT.md`, `docs/adr/`) and a **`plan.json`** — the structured transcript of the
 interview — then runs the engine and enriches the PRDs:
@@ -202,7 +202,7 @@ node scripts/analyze.mjs --scratch --plan plan.json --out ./reconstruction --lev
 
 `plan.json` is an intermediate artifact the agent generates from your answers. You *can*
 hand-write one if you prefer — the schema and a worked example are in
-[`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md).
+[`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md).
 
 Greenfield collapses two axes — mode is always `scratch`, fidelity is forced to `describe`
 (there is no source to mirror) — while `--level` still applies (`complex` = a deeper interview
@@ -223,8 +223,8 @@ reconstruction/
 the interview is never clobbered. Add `--tdd` (here or in any mode) to make every feature PRD and
 `REBUILD.md` drive the build **test-first** (red → green → refactor).
 
-- **The interview:** [`references/scratch-playbook.md`](./references/scratch-playbook.md)
-- **The `plan.json` contract + example:** [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md)
+- **The interview:** [`references/scratch-playbook.md`](./skills/reconstruct/references/scratch-playbook.md)
+- **The `plan.json` contract + example:** [`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md)
 - **A full worked plan:** [`tests/fixtures/scratch-plan/example.plan.json`](./tests/fixtures/scratch-plan/example.plan.json)
   (`pnpm run parity` renders this plan and checks it is buildable-by-construction; pass
   `-- --repo <repo>` to also check the code path and the from-scratch path converge).
@@ -243,19 +243,19 @@ dedicated adapter is never invisible). On top of that, **route adapters resolve 
 routes — with their HTTP method — for ten framework families** (Next.js, Express, Fastify,
 Hono, Flask, FastAPI, NestJS, Django, Rails, Go) through a small pluggable registry. The deeper
 framework-aware depth — the full interface surface and data model — comes from the AI playbook
-in [`SKILL.md`](./SKILL.md) + [`references/`](./references), with per-stack cheat-sheets in
-[`references/stack-guides/`](./references/stack-guides) (Next.js, Remix, Nuxt, SvelteKit,
+in [`SKILL.md`](./skills/reconstruct/SKILL.md) + [`references/`](./skills/reconstruct/references), with per-stack cheat-sheets in
+[`references/stack-guides/`](./skills/reconstruct/references/stack-guides) (Next.js, Remix, Nuxt, SvelteKit,
 Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go, Spring Boot,
 tRPC/gRPC, GraphQL, mobile). Adding agent guidance for a stack is just markdown; adding a
 deterministic route adapter is a small, self-contained code PR — see
-[`references/adapters.md`](./references/adapters.md).
+[`references/adapters.md`](./skills/reconstruct/references/adapters.md).
 
 **Monorepos too.** Workspaces are detected across ecosystems (npm/yarn/pnpm — with Lerna and
 Nx as fallbacks —, Cargo `[workspace]`, `go.work`) and the analysis is attributed per
 workspace: each entry of `inventory.workspaces` carries its own stack, dependencies, hints,
 and the manifest-derived `dependsOn` graph; features group per workspace and the build order
 follows the workspace topological order (shared packages before the apps that consume them).
-See [`references/stack-guides/monorepo.md`](./references/stack-guides/monorepo.md).
+See [`references/stack-guides/monorepo.md`](./skills/reconstruct/references/stack-guides/monorepo.md).
 
 ## Development
 

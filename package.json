@@ -8,9 +8,8 @@
     "reconstruct": "scripts/analyze.mjs"
   },
   "files": [
-    "SKILL.md",
+    "skills",
     "scripts",
-    "references",
     "assets",
     "src"
   ],
@@ -18,11 +17,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/copy-bundle.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check:build": "tsup && git diff --exit-code -- scripts/analyze.mjs",
+    "verify:bundle": "node scripts/verify-skill-bundle.mjs",
+    "check:build": "tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/analyze.mjs skills/reconstruct/scripts/analyze.mjs && node scripts/verify-skill-bundle.mjs",
     "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light",
     "demo:scratch": "node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/example.plan.json --out /tmp/reconstruct-scratch-demo --level complex",
     "parity": "node scripts/parity.mjs --plan tests/fixtures/scratch-plan/example.plan.json",

@@ -12,10 +12,14 @@ import { parse } from "yaml";
 // long `description:` was an unquoted YAML scalar containing `: ` sequences (e.g.
 // "Keywords: …"), which `yaml` reads as a nested mapping and rejects.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// The skill is packaged under skills/reconstruct/ (not at the repo root) so that
+// `npx skills add` bundles the engine + references with the SKILL.md — a root
+// SKILL.md would be installed alone. See scripts/verify-skill-bundle.mjs.
+const SKILL_DIR = join(ROOT, "skills", "reconstruct");
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 describe("SKILL.md is installable by the `skills` CLI", () => {
-  const raw = readFileSync(join(ROOT, "SKILL.md"), "utf8");
+  const raw = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8");
   const match = raw.match(FRONTMATTER_RE);
   const frontmatter = match?.[1] ?? "";
 

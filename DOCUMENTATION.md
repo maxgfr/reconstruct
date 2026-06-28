@@ -3,7 +3,7 @@
 `reconstruct` analyzes any repository and emits a folder of **reconstruction PRDs** that an
 AI agent can follow to rebuild the project from scratch — faithfully, and optionally with
 improvements. This document is the full reference; the [README](./README.md) is the quick
-start and [`SKILL.md`](./SKILL.md) is the agent-facing playbook.
+start and [`SKILL.md`](./skills/reconstruct/SKILL.md) is the agent-facing playbook.
 
 ---
 
@@ -34,7 +34,7 @@ deterministic — they generate worklists, hash what changed, and reduce results
 signal — while the *judgement* they fold in (does this requirement trace to source? is this PRD
 actually buildable?) stays the agent's. That lets the review/fix loop fan out across subagents
 and still terminate on a real fixpoint; the protocol is in
-[`references/orchestration.md`](./references/orchestration.md).
+[`references/orchestration.md`](./skills/reconstruct/references/orchestration.md).
 
 ---
 
@@ -69,7 +69,7 @@ Once installed, just ask your agent:
 
 > "Use the reconstruct skill on this repo in redesign + complex mode."
 
-The agent follows [`SKILL.md`](./SKILL.md): it confirms the inputs (target repo, mode,
+The agent follows [`SKILL.md`](./skills/reconstruct/SKILL.md): it confirms the inputs (target repo, mode,
 level, fidelity, output dir), runs the analyzer, reads the generated output, and enriches
 the PRDs — resolving the fill-in markers the script leaves behind. Those markers come in
 two forms: `_italic placeholders_` in **light** level, and `> 🧠 **For the AI agent:**`
@@ -101,11 +101,11 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--fidelity <mode>` | `mirror` \| `embed` \| `describe` | derived from mode+level | How real code is carried into the PRDs (see below). |
 | `--granularity <g>` | `coarse` \| `fine` | `coarse` | Feature grouping. `coarse` folds trivial, route-less single-file groups into Core; `fine` keeps them split. |
 | `--scratch` | flag | off | **Greenfield** mode: build from a `plan.json` interview instead of a repo. Forces `mode=scratch`, `fidelity=describe`; `--repo` is not used. See [From scratch](#from-scratch-greenfield). |
-| `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md). |
+| `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md). |
 | `--tdd` | flag | off | Emit test-first build guidance into the PRDs/`REBUILD.md` (each unit built red → green → refactor). Works in any mode. |
-| `--check` | flag | off | Validate an existing `--out` tree for buildability and exit non-zero on failures (unresolved `🧠`/placeholders, a feature referencing an undocumented entity/operation, a feature PRD missing its spine). Warnings (non-blocking): an uncovered locale, or a UI project whose `DESIGN-SYSTEM.md` is left empty. Reads no repo. See [`references/buildability-checklist.md`](./references/buildability-checklist.md). |
+| `--check` | flag | off | Validate an existing `--out` tree for buildability and exit non-zero on failures (unresolved `🧠`/placeholders, a feature referencing an undocumented entity/operation, a feature PRD missing its spine). Warnings (non-blocking): an uncovered locale, or a UI project whose `DESIGN-SYSTEM.md` is left empty. Reads no repo. See [`references/buildability-checklist.md`](./skills/reconstruct/references/buildability-checklist.md). |
 | `--verify` | flag | off | Write a requirement→source verification worklist (`VERIFY.todo.json`/`VERIFY.md`) for an existing `--out`: each PRD requirement paired with its captured evidence for an agent to adjudicate (supported/partial/refuted/unsupported). With `--apply`, reduces the filled verdicts to `VERIFY.json`. Reads no repo. |
-| `--review` | flag | off | Write the AI buildability-review worklist (`REVIEW.todo.json`/`REVIEW.md`) for an existing `--out`: one per-feature unit, content-hashed so only changed units are flagged `needsReview`. With `--apply`, reduces agent-filled findings to `REVIEW.json` (`ok`/`residual`/`noProgress`/`staleRounds`). The deterministic ledger that makes the review/fix loop terminate — see [`references/orchestration.md`](./references/orchestration.md). Reads no repo. |
+| `--review` | flag | off | Write the AI buildability-review worklist (`REVIEW.todo.json`/`REVIEW.md`) for an existing `--out`: one per-feature unit, content-hashed so only changed units are flagged `needsReview`. With `--apply`, reduces agent-filled findings to `REVIEW.json` (`ok`/`residual`/`noProgress`/`staleRounds`). The deterministic ledger that makes the review/fix loop terminate — see [`references/orchestration.md`](./skills/reconstruct/references/orchestration.md). Reads no repo. |
 | `--apply <path>` | path | — | Apply an agent-filled verdicts/findings file: pair with `--verify` (verdicts → `VERIFY.json`) or `--review` (findings → `REVIEW.json`). |
 | `--semantic` | flag | off | With `--check`, fold the semantic gates into the structural one: `VERIFY.json` (refuted/unsupported requirements) and `REVIEW.json` (unresolved blockers). Strictly additive — never relaxes `--check`. |
 | `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
@@ -135,8 +135,8 @@ greenfield build plan and a reverse-engineered one are structurally identical.
 
 **Who writes `plan.json`?** The **agent** does — you never hand-author it. When you ask your
 agent to build something from scratch, it follows the `## From scratch` procedure in
-[`SKILL.md`](./SKILL.md) and the interview method in
-[`references/scratch-playbook.md`](./references/scratch-playbook.md):
+[`SKILL.md`](./skills/reconstruct/SKILL.md) and the interview method in
+[`references/scratch-playbook.md`](./skills/reconstruct/references/scratch-playbook.md):
 
 1. **Interview** — the agent grills you one question at a time (recommending an answer each
    time), sharpening fuzzy terms into a glossary and probing entity/feature boundaries with
@@ -145,7 +145,7 @@ agent to build something from scratch, it follows the `## From scratch` procedur
    ADRs under `docs/adr/`.
 3. **`plan.json`** — it serializes the resolved interview into a `plan.json` (the structured
    transcript). This is an **intermediate artifact the agent generates**; the schema and a
-   worked example live in [`references/scratch-plan-schema.md`](./references/scratch-plan-schema.md)
+   worked example live in [`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md)
    if you'd rather hand-write or tweak one.
 4. **Render** — it runs the engine, which scaffolds the tree and **pre-fills** the
    `INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md` tables from the plan:
@@ -274,8 +274,8 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 
 Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Hono,
 Flask, FastAPI, NestJS, Django, Rails, Go); every other stack's interface surface and data model are mapped by the **AI playbook**
-from the candidate hints — see [`references/analysis-playbook.md`](./references/analysis-playbook.md)
-and the per-stack cheat-sheets in [`references/stack-guides/`](./references/stack-guides). The two
+from the candidate hints — see [`references/analysis-playbook.md`](./skills/reconstruct/references/analysis-playbook.md)
+and the per-stack cheat-sheets in [`references/stack-guides/`](./skills/reconstruct/references/stack-guides). The two
 layers are **complementary**: an adapter gives a resolved head-start where a framework has a clear
 routing convention; the playbook + candidates cover everything else and all the deep semantic work.
 
@@ -300,7 +300,7 @@ Framework support has two seams; pick the one that fits — or both.
 clear routing convention, a deterministic adapter upgrades its routes from *candidates* to
 *resolved*. The registry is data-driven, so a new adapter is one file under `src/adapters/` + one
 line in `src/adapters/registry.ts` + a fixture/test — no core change. Full walkthrough (with a
-worked Django example): [`references/adapters.md`](./references/adapters.md).
+worked Django example): [`references/adapters.md`](./skills/reconstruct/references/adapters.md).
 
 Markdown remains the way to teach the agent *any* stack; adapters make deterministic route
 resolution cheap to add where a convention exists. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
@@ -321,10 +321,10 @@ Once the `reconstruction/` folder exists, rebuild feature-by-feature:
    ground truth.
 
 The full reasoning checklist lives in
-[`references/rebuild-instructions.md`](./references/rebuild-instructions.md); the PRD shapes
-are in [`references/prd-light-template.md`](./references/prd-light-template.md) and
-[`references/prd-complex-template.md`](./references/prd-complex-template.md); architecture
-guidance is in [`references/architecture-analysis.md`](./references/architecture-analysis.md).
+[`references/rebuild-instructions.md`](./skills/reconstruct/references/rebuild-instructions.md); the PRD shapes
+are in [`references/prd-light-template.md`](./skills/reconstruct/references/prd-light-template.md) and
+[`references/prd-complex-template.md`](./skills/reconstruct/references/prd-complex-template.md); architecture
+guidance is in [`references/architecture-analysis.md`](./skills/reconstruct/references/architecture-analysis.md).
 
 ---
 
@@ -362,7 +362,7 @@ committed bundle matches the source via `pnpm run check:build`.
 **Which stacks are supported?** All of them. The deterministic scaffold is universal and
 emits candidate hints for routes/API/schema/entry points on any stack; the framework-aware
 depth (the interface surface and data model) comes from the AI playbook plus the per-stack
-guides in [`references/stack-guides/`](./references/stack-guides) — Next.js, Remix, Nuxt,
+guides in [`references/stack-guides/`](./skills/reconstruct/references/stack-guides) — Next.js, Remix, Nuxt,
 SvelteKit, Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go,
 Spring Boot, tRPC/gRPC, GraphQL, and mobile. Next.js, Flask, FastAPI, NestJS, and Express
 routes are additionally resolved deterministically by [route adapters](#adapters). Missing a

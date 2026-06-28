@@ -31,7 +31,10 @@ edit("package.json", (s) => s.replace(/("version":\s*")[^"]+(")/, `$1${version}$
 // src/types.ts — the VERSION constant the analyzer/bundle reports.
 edit("src/types.ts", (s) => s.replace(/(export const VERSION = ")[^"]+(";)/, `$1${version}$2`));
 
-// SKILL.md — the indented `version:` under the frontmatter `metadata:` block.
-edit("SKILL.md", (s) => s.replace(/(\n[ \t]+version:[ \t]*)[^\n]+/, `$1${version}`));
+// skills/reconstruct/SKILL.md — the indented `version:` under the frontmatter
+// `metadata:` block. The skill is packaged under skills/reconstruct/ so that
+// `npx skills add` bundles the engine + references with it (see
+// scripts/verify-skill-bundle.mjs), not the bare SKILL.md.
+edit("skills/reconstruct/SKILL.md", (s) => s.replace(/(\n[ \t]+version:[ \t]*)[^\n]+/, `$1${version}`));
 
-console.log(`sync-version: set ${version} in package.json, src/types.ts, SKILL.md`);
+console.log(`sync-version: set ${version} in package.json, src/types.ts, skills/reconstruct/SKILL.md`);
