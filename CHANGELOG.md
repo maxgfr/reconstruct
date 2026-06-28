@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.2.2](https://github.com/maxgfr/reconstruct/compare/v1.2.1...v1.2.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **skill:** package skill under skills/reconstruct/ so `skills add` bundles the engine ([9645eeb](https://github.com/maxgfr/reconstruct/commit/9645eeb13ec49f600db8f1b243ca650bb69d2949))
+
 ## [1.2.1](https://github.com/maxgfr/reconstruct/compare/v1.2.0...v1.2.1) (2026-06-24)
 
 

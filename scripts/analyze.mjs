@@ -2954,7 +2954,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
 }
 
 // src/types.ts
-var VERSION = "1.2.1";
+var VERSION = "1.2.2";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints, workspaces) {
