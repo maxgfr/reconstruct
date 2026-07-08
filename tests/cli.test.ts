@@ -163,6 +163,17 @@ describe("parseArgs: strict flag validation", () => {
     expectFail(["--check", "--verify", "--out", "/tmp/x"], /mutually exclusive/);
   });
 
+  it("parses --brainstorm as an action and defaults out to cwd", () => {
+    const o = parseArgs(["--brainstorm"]);
+    expect(o.brainstorm).toBe(true);
+    expect(o.out).toBe(resolve(process.cwd()));
+  });
+
+  it("rejects --brainstorm combined with a validation action", () => {
+    expectFail(["--brainstorm", "--check", "--out", "/tmp/x"], /mutually exclusive/);
+    expectFail(["--brainstorm", "--verify", "--out", "/tmp/x"], /mutually exclusive/);
+  });
+
   it("still allows the action modifiers (--check --semantic, --review --apply)", () => {
     expect(parseArgs(["--check", "--semantic", "--out", "/tmp/x"]).semantic).toBe(true);
     expect(parseArgs(["--review", "--apply", "f.json", "--out", "/tmp/x"]).review).toBe(true);

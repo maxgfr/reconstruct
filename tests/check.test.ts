@@ -282,3 +282,33 @@ describe("checkOutput — design-system (conditional, warning-only)", () => {
     expect(warnings.join("\n")).not.toMatch(/DESIGN-SYSTEM/);
   });
 });
+
+describe("checkOutput — brainstorm", () => {
+  it("gates an unresolved BRAINSTORM.md inside a full reconstruction tree", () => {
+    const dir = cleanTree();
+    write(dir, "BRAINSTORM.md", "# Brainstorm\n\n> 🧠 fill this in with concepts\n");
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/BRAINSTORM\.md/);
+  });
+
+  it("gates a brainstorm-only dir (no inventory.json) on the scaffolding scan", () => {
+    const dir = mkdtempSync(join(tmpdir(), "check-brainstorm-"));
+    write(dir, "BRAINSTORM.md", "# Brainstorm\n\n> 🧠 name three concepts\n");
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/BRAINSTORM\.md/);
+    expect(errors.join("\n")).not.toMatch(/inventory\.json/);
+  });
+
+  it("passes a resolved brainstorm-only dir", () => {
+    const dir = mkdtempSync(join(tmpdir(), "check-brainstorm-ok-"));
+    write(dir, "BRAINSTORM.md", "# Brainstorm\n\n## Chosen direction\n\nBuild the thing.\n");
+    const { errors } = checkOutput(dir);
+    expect(errors).toEqual([]);
+  });
+
+  it("an empty dir (no inventory.json, no BRAINSTORM.md) still errors on the missing inventory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "check-empty2-"));
+    const { errors } = checkOutput(dir);
+    expect(errors.join("\n")).toMatch(/inventory\.json|reconstruction/i);
+  });
+});

@@ -106,6 +106,7 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--check` | flag | off | Validate an existing `--out` tree for buildability and exit non-zero on failures (unresolved `🧠`/placeholders, a feature referencing an undocumented entity/operation, a feature PRD missing its spine). Warnings (non-blocking): an uncovered locale, or a UI project whose `DESIGN-SYSTEM.md` is left empty. Reads no repo. See [`references/buildability-checklist.md`](./skills/reconstruct/references/buildability-checklist.md). |
 | `--verify` | flag | off | Write a requirement→source verification worklist (`VERIFY.todo.json`/`VERIFY.md`) for an existing `--out`: each PRD requirement paired with its captured evidence for an agent to adjudicate (supported/partial/refuted/unsupported). With `--apply`, reduces the filled verdicts to `VERIFY.json`. Reads no repo. |
 | `--review` | flag | off | Write the AI buildability-review worklist (`REVIEW.todo.json`/`REVIEW.md`) for an existing `--out`: one per-feature unit, content-hashed so only changed units are flagged `needsReview`. With `--apply`, reduces agent-filled findings to `REVIEW.json` (`ok`/`residual`/`noProgress`/`staleRounds`). The deterministic ledger that makes the review/fix loop terminate — see [`references/orchestration.md`](./skills/reconstruct/references/orchestration.md). Reads no repo. |
+| `--brainstorm` | flag | off | Scaffold a `BRAINSTORM.md` into `--out` for the optional divergent phase (generate several concepts, score, converge). Seeds the recovered surface when `--out` already has an `inventory.json`; never clobbers an edited file. Each section carries a `🧠` callout so `--check` gates an un-enriched brainstorm. Reads no repo. See [`references/brainstorm-playbook.md`](./skills/reconstruct/references/brainstorm-playbook.md). |
 | `--apply <path>` | path | — | Apply an agent-filled verdicts/findings file: pair with `--verify` (verdicts → `VERIFY.json`) or `--review` (findings → `REVIEW.json`). |
 | `--semantic` | flag | off | With `--check`, fold the semantic gates into the structural one: `VERIFY.json` (refuted/unsupported requirements) and `REVIEW.json` (unresolved blockers). Strictly additive — never relaxes `--check`. Trustless and fail-closed: it re-reduces the persisted verdicts/findings (never a stored `ok`), re-resolves every cited `evidenceRef` against the inventory, and errors when a ledger is missing or unreadable. |
 | `--allow-unverified` | flag | off | With `--check --semantic`, downgrade a missing/unreadable `VERIFY.json`/`REVIEW.json` ledger to a warning instead of failing closed. Use deliberately, and say so in the report. |
@@ -217,6 +218,10 @@ reconstruction/
 ├── source/                    # (fidelity=mirror only) copied real source, per feature
 └── inventory.json             # machine-readable manifest of the whole analysis
 ```
+
+`--brainstorm` writes a single `BRAINSTORM.md` into `--out` instead of the tree above — a divergent
+worklist for the optional pre-build phase. It stands alone (no `inventory.json` needed) or sits
+inside an existing reconstruction, where it seeds the recovered surface for brainstorming evolutions.
 
 `inventory.json` is the structured backbone every PRD is rendered from: it includes
 `repoName`, `fileCount`, `totalLines`, `stack` (primary language, frameworks, and detected

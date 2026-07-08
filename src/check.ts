@@ -49,6 +49,29 @@ function collectMarkdown(dir: string, base = dir): Doc[] {
   return out;
 }
 
+/**
+ * Flag unresolved scaffolding in a set of docs. Scans PROSE only — code
+ * spans/blocks AND quoted examples are stripped, because both a 🧠 and the words
+ * "fill this in" legitimately appear in code or quotes (a Definition-of-done line
+ * naming the callout marker inside backticks, embedded source under
+ * "## Source material", or a PRD that documents the gate and quotes the
+ * placeholder). A real callout is always the bare `> 🧠 …` blockquote. The 🧠 and
+ * placeholder scans use the SAME stripped prose so a quoted example is exempted
+ * symmetrically. Shared by the reconstruction gate and the brainstorm-only gate.
+ */
+function scanScaffolding(docs: Doc[], errors: string[]): void {
+  for (const d of docs) {
+    const prose = stripQuotes(stripCode(d.content));
+    const callouts = prose.split("🧠").length - 1;
+    if (callouts > 0) {
+      errors.push(`${d.rel}: ${callouts} unresolved \`🧠\` agent callout(s) — resolve them exhaustively and delete the callout`);
+    }
+    if (/fill this in/i.test(prose)) {
+      errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
+    }
+  }
+}
+
 /** Gather every filename under a directory tree (recursively). */
 function fileNames(dir: string): string[] {
   const out: string[] = [];
@@ -86,6 +109,14 @@ export function checkOutput(outDir: string): CheckResult {
 
   const invPath = join(outDir, "inventory.json");
   if (!existsSync(invPath)) {
+    // A brainstorm-only directory (a BRAINSTORM.md with no reconstruction) is
+    // still gatable on the scaffolding scan alone: unresolved 🧠 callouts or
+    // "fill this in" mean the brainstorm isn't finished. Everything else (the
+    // required-docs / spine / contract checks) needs an inventory, so skip them.
+    if (existsSync(join(outDir, "BRAINSTORM.md"))) {
+      scanScaffolding(collectMarkdown(outDir), errors);
+      return { errors, warnings };
+    }
     errors.push(`no inventory.json in ${outDir} — not a reconstruction output (run the analyzer first)`);
     return { errors, warnings };
   }
@@ -108,24 +139,7 @@ export function checkOutput(outDir: string): CheckResult {
 
   // 2. Unresolved scaffolding — the #1 cause of an unbuildable PRD is an
   //    architecture doc or feature spec left as a 🧠 skeleton.
-  for (const d of docs) {
-    // Scan PROSE only — code spans/blocks AND quoted examples stripped. Both
-    // a 🧠 and the words "fill this in" legitimately appear in code or quotes:
-    // the Definition-of-done line that names the callout marker inside backticks,
-    // embedded source under "## Source material", or a PRD that documents the
-    // gate and quotes the placeholder phrase / the 🧠 marker. Those are not
-    // unresolved scaffolding; a real callout is always the bare `> 🧠 ...`
-    // blockquote, never code or a quote. The 🧠 and placeholder scans use the
-    // SAME stripped prose so a quoted example is exempted symmetrically.
-    const prose = stripQuotes(stripCode(d.content));
-    const callouts = prose.split("🧠").length - 1;
-    if (callouts > 0) {
-      errors.push(`${d.rel}: ${callouts} unresolved \`🧠\` agent callout(s) — resolve them exhaustively and delete the callout`);
-    }
-    if (/fill this in/i.test(prose)) {
-      errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
-    }
-  }
+  scanScaffolding(docs, errors);
 
   // 3. Reference integrity: every entity/operation a feature references must be
   //    documented in the architecture docs. (Inventory carries these on the

@@ -186,6 +186,17 @@ downgrade that to a warning). For larger trees the enrichment and the review/fix
 across subagents; the protocol (map-reduce + the ledger) is in
 [`references/orchestration.md`](./skills/reconstruct/references/orchestration.md).
 
+## Brainstorm first (optional)
+
+Not sure *what* to build yet? Run the divergent phase before converging. Ask your agent to
+"brainstorm ideas" (or run `node scripts/analyze.mjs --brainstorm --out ./ideas`) and it scaffolds a
+`BRAINSTORM.md` — generate 3+ genuinely different concepts, score them, pick one. Every section
+carries a `> 🧠` callout so an un-enriched brainstorm fails `--check`, the same gate the PRDs use.
+Point it at an existing reconstruction (`--brainstorm --out ./reconstruction`) and it **seeds** the
+recovered surface so you brainstorm *evolutions* of what's already built. The chosen direction feeds
+the greenfield interview below, or lands as iteration PRDs — see
+[`references/brainstorm-playbook.md`](./skills/reconstruct/references/brainstorm-playbook.md).
+
 ## From scratch (greenfield)
 
 No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your agent:

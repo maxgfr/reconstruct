@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join16 } from "path";
+import { resolve as resolve2, join as join17 } from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { existsSync as existsSync8, statSync as statSync3, realpathSync } from "fs";
+import { existsSync as existsSync9, statSync as statSync3, realpathSync } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -4831,6 +4831,18 @@ function collectMarkdown(dir, base = dir) {
   }
   return out;
 }
+function scanScaffolding(docs, errors) {
+  for (const d of docs) {
+    const prose = stripQuotes(stripCode(d.content));
+    const callouts = prose.split("\u{1F9E0}").length - 1;
+    if (callouts > 0) {
+      errors.push(`${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`);
+    }
+    if (/fill this in/i.test(prose)) {
+      errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
+    }
+  }
+}
 function fileNames(dir) {
   const out = [];
   let entries;
@@ -4857,6 +4869,10 @@ function checkOutput(outDir) {
   const warnings = [];
   const invPath = join13(outDir, "inventory.json");
   if (!existsSync5(invPath)) {
+    if (existsSync5(join13(outDir, "BRAINSTORM.md"))) {
+      scanScaffolding(collectMarkdown(outDir), errors);
+      return { errors, warnings };
+    }
     errors.push(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
     return { errors, warnings };
   }
@@ -4873,16 +4889,7 @@ function checkOutput(outDir) {
   for (const req of REQUIRED_DOCS) {
     if (!findDoc(req)) errors.push(`missing required document: ${req}`);
   }
-  for (const d of docs) {
-    const prose = stripQuotes(stripCode(d.content));
-    const callouts = prose.split("\u{1F9E0}").length - 1;
-    if (callouts > 0) {
-      errors.push(`${d.rel}: ${callouts} unresolved \`\u{1F9E0}\` agent callout(s) \u2014 resolve them exhaustively and delete the callout`);
-    }
-    if (/fill this in/i.test(prose)) {
-      errors.push(`${d.rel}: contains unresolved "fill this in" placeholder text`);
-    }
-  }
+  scanScaffolding(docs, errors);
   const dataModelDoc2 = findDoc("architecture/DATA-MODEL.md")?.content ?? "";
   const interfacesDoc2 = findDoc("architecture/INTERFACES.md")?.content ?? "";
   const referencedEntities = /* @__PURE__ */ new Set();
@@ -5600,6 +5607,89 @@ function formatReviewReport(r) {
   return lines.join("\n");
 }
 
+// src/brainstorm.ts
+import { readFileSync as readFileSync14 } from "fs";
+import { join as join16 } from "path";
+function callout(text) {
+  return `> \u{1F9E0} ${text}`;
+}
+function recoveredSurface(inv) {
+  const out = ["## Current surface (recovered)", ""];
+  out.push(`Brainstorm **evolutions** of the surface below, grounded in the recovered PRDs \u2014 not a greenfield concept.`);
+  out.push("");
+  const opCount = inv.interfaces?.length ?? inv.routes?.length ?? 0;
+  const entCount = inv.dataModel?.length ?? 0;
+  const enumCount = inv.enums?.length ?? 0;
+  out.push(`- **Scale:** ${inv.features.length} feature(s) \xB7 ${opCount} operation(s) \xB7 ${entCount} entit(y/ies) \xB7 ${enumCount} enum(s)`);
+  if (inv.i18n?.locales?.length) out.push(`- **Locales:** ${inv.i18n.locales.join(", ")}`);
+  out.push("");
+  out.push("**Features:**");
+  for (const f of inv.features) out.push(`- **${f.name}**${f.description ? ` \u2014 ${f.description}` : ""} (\`features/${f.slug}/PRD.md\`)`);
+  out.push("");
+  const entities = (inv.dataModel ?? []).map((e) => e.entity);
+  if (entities.length) out.push(`**Entities:** ${entities.join(", ")}`);
+  const enums = (inv.enums ?? []).map((e) => e.name);
+  if (enums.length) out.push(`**Enums:** ${enums.join(", ")}`);
+  out.push("");
+  return out;
+}
+function renderBrainstorm(inv, name) {
+  const out = [];
+  out.push(`# ${name} \u2014 brainstorm`);
+  out.push("");
+  out.push(
+    "_Divergent phase: generate 3+ genuinely different directions before converging on one. Resolve every `> \u{1F9E0}` callout, then hand the chosen direction to the greenfield interview (\u2192 `plan.json`) or, on an existing reconstruction, to iteration PRDs. See `references/brainstorm-playbook.md`._"
+  );
+  out.push("");
+  if (inv) out.push(...recoveredSurface(inv));
+  const framing = inv ? "What jobs are underserved by the current surface? Who hurts today, and where does the product fall short?" : "What jobs-to-be-done is this for? Who hurts today, and how do they cope now?";
+  out.push("## Problem space", "", callout(framing), "");
+  out.push("## Constraints known", "", callout("Hard limits already known \u2014 budget, stack, timeline, compliance, integrations, non-negotiables."), "");
+  out.push("## Concepts", "", "_At least three genuinely different directions \u2014 not variants of one._", "");
+  for (const letter of ["A", "B", "C"]) {
+    out.push(`### Concept ${letter}`, "");
+    out.push(callout(`Pitch \u2014 one sentence: what it is and for whom.`));
+    out.push(callout(`Differentiators \u2014 what makes it distinct from the other concepts.`));
+    out.push(callout(`Trade-offs \u2014 what it gives up; what gets harder.`));
+    out.push(callout(`Risks \u2014 the thing most likely to sink it.`));
+    out.push("");
+  }
+  out.push("## Scoring & decision", "");
+  out.push(callout("Score each concept against the criteria that matter (value, effort, risk, fit), then state the decision rule you used."));
+  out.push("");
+  out.push("| Criterion | Concept A | Concept B | Concept C |");
+  out.push("| --- | --- | --- | --- |");
+  out.push("| _(fill this in)_ | | | |");
+  out.push("");
+  out.push(
+    "## Chosen direction",
+    "",
+    callout("The concept you're taking forward, and why now. This becomes the product summary the next phase builds on."),
+    ""
+  );
+  out.push(
+    "## Rejected alternatives",
+    "",
+    callout("One bullet per rejected concept: \u201CRejected X because Y.\u201D Each is an ADR seed \u2014 a decision worth recording so it isn't relitigated."),
+    ""
+  );
+  const next = inv ? "Turn the chosen direction into new/changed feature PRDs on this reconstruction, then run the enrich \u2192 `--check` \u2192 `--review` loop." : "Feed the chosen direction into the greenfield interview: it becomes `project.summary`, and each rejected alternative becomes a `decisions[]` entry \u2192 `plan.json` \u2192 `--scratch`.";
+  out.push("## Next step", "", callout(next), "");
+  return out.join("\n");
+}
+function runBrainstorm(outDir) {
+  let inv = null;
+  try {
+    inv = JSON.parse(readFileSync14(join16(outDir, "inventory.json"), "utf8"));
+  } catch {
+    inv = null;
+  }
+  const name = inv?.repoName ?? "new-idea";
+  const relPath = "BRAINSTORM.md";
+  const written = writeArtifactsIfAbsent([{ relPath, content: renderBrainstorm(inv, name) }], outDir);
+  return { relPath, created: written.includes(relPath), seeded: inv !== null };
+}
+
 // src/cli.ts
 var HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -5621,6 +5711,7 @@ Options:
   --check              Validate an existing --out tree for buildability, then exit
   --verify             Write a requirement\u2192source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
+  --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
@@ -5638,6 +5729,16 @@ Options:
 Fidelity defaults:
   preserve+light  -> mirror     preserve+complex -> embed
   redesign+light  -> embed      redesign+complex -> describe
+
+Brainstorm (optional divergent phase, before building):
+  --brainstorm scaffolds a BRAINSTORM.md into --out \u2014 a divergent worklist for
+  generating 3+ genuinely different directions, scoring them, and converging on
+  one (with \u{1F9E0} callouts so --check gates an un-enriched brainstorm). If --out is
+  an existing reconstruction (has inventory.json), it seeds the recovered surface
+  so you brainstorm evolutions of what's built. Feed the chosen direction to the
+  greenfield interview, or to iteration PRDs. See references/brainstorm-playbook.md.
+    reconstruct --brainstorm --out ./ideas            # a fresh idea
+    reconstruct --brainstorm --out ./reconstruction   # evolve an existing one
 
 From scratch (greenfield):
   --scratch builds the SAME reconstruction tree from a plan.json interview
@@ -5716,6 +5817,7 @@ function parseArgs(argv) {
   let review = false;
   let semantic = false;
   let allowUnverified = false;
+  let brainstorm = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
@@ -5774,6 +5876,10 @@ function parseArgs(argv) {
       allowUnverified = true;
       continue;
     }
+    if (arg === "--brainstorm") {
+      brainstorm = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
@@ -5798,9 +5904,9 @@ function parseArgs(argv) {
     }
     fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
-  const actions = [check, verify, review].filter(Boolean).length;
+  const actions = [check, verify, review, brainstorm].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify and --review are mutually exclusive \u2014 run one at a time`);
+    fail(`--check, --verify, --review and --brainstorm are mutually exclusive \u2014 run one at a time`);
   }
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
@@ -5808,7 +5914,7 @@ function parseArgs(argv) {
   const plan = raw.plan ? resolve2(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve2(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && !review && (!existsSync8(repo) || !statSync3(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && (!existsSync9(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
@@ -5816,7 +5922,7 @@ function parseArgs(argv) {
   const fidelity = scratch ? "describe" : oneOf("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
   const granularity = oneOf("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const out = resolve2(
-    raw.out ?? (standalone || check || verify || review ? process.cwd() : scratch ? join16(process.cwd(), "reconstruction") : join16(repo, "reconstruction"))
+    raw.out ?? (standalone || check || verify || review || brainstorm ? process.cwd() : scratch ? join17(process.cwd(), "reconstruction") : join17(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -5846,7 +5952,8 @@ function parseArgs(argv) {
     review,
     apply: raw.apply ?? "",
     semantic,
-    allowUnverified
+    allowUnverified,
+    brainstorm
   };
 }
 function main() {
@@ -5889,6 +5996,15 @@ function main() {
     } catch (e) {
       fail(e.message);
     }
+  }
+  if (opts.brainstorm) {
+    const r = runBrainstorm(opts.out);
+    process.stderr.write(
+      `reconstruct: ${r.created ? "wrote" : "kept existing"} ${r.relPath}${r.seeded ? " (seeded from the recovered surface)" : " (blank scaffold)"} \u2192 ${opts.out}
+  fill in the concepts + chosen direction, then gate it: node scripts/analyze.mjs --check --out ${opts.out}
+`
+    );
+    return;
   }
   if (opts.check) {
     const result = checkOutput(opts.out);
@@ -5934,7 +6050,7 @@ function main() {
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join16(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join17(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -5990,7 +6106,7 @@ function main() {
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join16(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join17(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

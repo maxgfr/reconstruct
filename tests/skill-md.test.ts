@@ -39,4 +39,14 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     expect(typeof data.description).toBe("string");
     expect((data.description as string).length).toBeGreaterThan(0);
   });
+
+  it("keeps the description within the 1024-char ecosystem cap", () => {
+    const data = parse(frontmatter) as Record<string, unknown>;
+    expect((data.description as string).length).toBeLessThanOrEqual(1024);
+  });
+
+  it("carries the brainstorm triggers", () => {
+    const data = parse(frontmatter) as Record<string, unknown>;
+    expect((data.description as string).toLowerCase()).toContain("brainstorm");
+  });
 });

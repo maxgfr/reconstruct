@@ -74,6 +74,11 @@ export interface Options {
    * REVIEW.json ledger to a warning instead of failing closed. `--allow-unverified`.
    */
   allowUnverified?: boolean;
+  /**
+   * Divergent-phase scaffold: write a `BRAINSTORM.md` into `--out` (seeded from an
+   * existing reconstruction's inventory.json when present). Reads no repo. `--brainstorm`.
+   */
+  brainstorm?: boolean;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */

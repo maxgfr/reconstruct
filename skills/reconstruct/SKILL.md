@@ -1,6 +1,6 @@
 ---
 name: reconstruct
-description: 'Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). Keywords: reconstruct, rebuild, clone, reverse engineer, scaffold from existing, migration spec, from scratch, greenfield, build plan, new project, idea to PRD.'
+description: 'Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). ALSO brainstorm product directions before building — "brainstorm ideas", "explore concepts", "compare approaches", "what should we build" — a divergent phase that generates several concepts and converges on one. Keywords: reconstruct, rebuild, clone, reverse engineer, from scratch, greenfield, build plan, new project, idea to PRD, brainstorm, ideation, explore concepts, compare approaches.'
 license: MIT
 metadata:
   version: 1.3.0
@@ -241,6 +241,7 @@ categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-
 review, `references/orchestration.md` for fanning the enrichment and review/fix loop out across
 subagents (the map-reduce + the `--review` ledger), `references/adapters.md` for how route
 adapters resolve `inventory.routes` from a framework's routing convention (and how to add one),
+`references/brainstorm-playbook.md` for the optional divergent phase (`--brainstorm`),
 and `references/architecture-analysis.md` / `references/rebuild-instructions.md` /
 `references/prd-complex-template.md` / `references/prd-light-template.md` for the reasoning
 checklists.
@@ -259,6 +260,32 @@ The output is a **PRD suite**, and the markdown is the program. Optimize for dep
 - **The self-check:** could a fresh agent rebuild this unit from its PRD alone — no access to the
   original product, no access to this conversation? If not, dig further.
 
+## Brainstorm — the optional divergent phase
+
+The interview below **converges** on one already-chosen product. When the direction *itself* is
+undecided — the user has a problem but not a product, or an existing app they want to grow —
+brainstorm **first**: diverge to several genuinely different concepts, then converge on one. Three
+entry points, one command (`references/brainstorm-playbook.md` has the method):
+
+- **Before greenfield** — the idea is fuzzy. Scaffold, fill it, pick a direction, then feed that
+  direction into the scratch interview (step 1 below): the chosen concept becomes `project.summary`
+  and each rejected alternative becomes a `decisions[]` entry in `plan.json`.
+- **Standalone** — just an ideation artifact for the user to react to.
+- **On an existing reconstruction** — brainstorm *evolutions*. Point `--brainstorm` at a tree that
+  already has `inventory.json`; the scaffold is **seeded** with the recovered surface (features,
+  operations, entities) so the concepts are grounded in what's built, then land as iteration PRDs
+  through the normal enrich → `--check` → `--review` loop.
+
+```bash
+node scripts/analyze.mjs --brainstorm --out <DIR>          # a fresh idea → blank scaffold
+node scripts/analyze.mjs --brainstorm --out <RECON_DIR>    # an existing tree → seeded scaffold
+```
+
+It writes `BRAINSTORM.md` (never clobbering an edited one) with a `> 🧠` callout per section, so an
+un-enriched brainstorm **fails `--check`** exactly like an unfinished PRD. Resolve every callout —
+problem space, ≥3 concepts (pitch / differentiators / trade-offs / risks each), a scoring table
+with a decision rule, the chosen direction, and rejected alternatives — then hand off.
+
 ## From scratch
 
 When there is **no repo** — the user wants to turn an idea into a build plan — elicit the facts
@@ -269,7 +296,9 @@ interview that also proposes alternatives, enhancements, and more ADRs).
 
 1. **Interview the user** per `references/scratch-playbook.md` — a grill-with-docs walk:
    relentless, one question at a time, recommending an answer each time; sharpen fuzzy terms into
-   a canonical glossary; invent concrete scenarios to probe entity/feature boundaries.
+   a canonical glossary; invent concrete scenarios to probe entity/feature boundaries. **If the
+   direction itself is undecided, run the Brainstorm phase above first**, then start the interview
+   from the chosen concept.
 
 2. **Write `CONTEXT.md` + ADRs as decisions crystallize.** Capture the glossary inline in
    `CONTEXT.md` (format: `references/CONTEXT-FORMAT.md`) and offer an ADR under `docs/adr/` only

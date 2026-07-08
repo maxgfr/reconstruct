@@ -9,6 +9,7 @@ import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency }
 import { checkOutput, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./verify.js";
 import { runReview, applyFindings, foldReview, formatReviewReport } from "./review.js";
+import { runBrainstorm } from "./brainstorm.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -32,6 +33,7 @@ Options:
   --check              Validate an existing --out tree for buildability, then exit
   --verify             Write a requirement→source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
+  --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
@@ -49,6 +51,16 @@ Options:
 Fidelity defaults:
   preserve+light  -> mirror     preserve+complex -> embed
   redesign+light  -> embed      redesign+complex -> describe
+
+Brainstorm (optional divergent phase, before building):
+  --brainstorm scaffolds a BRAINSTORM.md into --out — a divergent worklist for
+  generating 3+ genuinely different directions, scoring them, and converging on
+  one (with 🧠 callouts so --check gates an un-enriched brainstorm). If --out is
+  an existing reconstruction (has inventory.json), it seeds the recovered surface
+  so you brainstorm evolutions of what's built. Feed the chosen direction to the
+  greenfield interview, or to iteration PRDs. See references/brainstorm-playbook.md.
+    reconstruct --brainstorm --out ./ideas            # a fresh idea
+    reconstruct --brainstorm --out ./reconstruction   # evolve an existing one
 
 From scratch (greenfield):
   --scratch builds the SAME reconstruction tree from a plan.json interview
@@ -139,6 +151,7 @@ export function parseArgs(argv: string[]): Options {
   let review = false;
   let semantic = false;
   let allowUnverified = false;
+  let brainstorm = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -198,6 +211,10 @@ export function parseArgs(argv: string[]): Options {
       allowUnverified = true;
       continue;
     }
+    if (arg === "--brainstorm") {
+      brainstorm = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
@@ -231,9 +248,9 @@ export function parseArgs(argv: string[]): Options {
   // and print a false green; `--check --review` would skip the check entirely).
   // Reject the combination instead of picking a winner. (`--semantic` modifies
   // `--check`; `--apply` modifies `--verify`/`--review` — those are not actions.)
-  const actions = [check, verify, review].filter(Boolean).length;
+  const actions = [check, verify, review, brainstorm].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify and --review are mutually exclusive — run one at a time`);
+    fail(`--check, --verify, --review and --brainstorm are mutually exclusive — run one at a time`);
   }
 
   // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle
@@ -249,9 +266,9 @@ export function parseArgs(argv: string[]): Options {
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === undefined;
 
   const repo = resolve(raw.repo ?? process.cwd());
-  // Scratch reads no repo; standalone and --check read an existing output dir —
-  // all three skip the repo-exists check.
-  if (!standalone && !scratch && !check && !verify && !review && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  // Scratch reads no repo; standalone, --check, --verify, --review and
+  // --brainstorm read/write an existing output dir — all skip the repo-exists check.
+  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && (!existsSync(repo) || !statSync(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
@@ -262,7 +279,8 @@ export function parseArgs(argv: string[]): Options {
     : oneOf<Fidelity>("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
   const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const out = resolve(
-    raw.out ?? (standalone || check || verify || review ? process.cwd() : scratch ? join(process.cwd(), "reconstruction") : join(repo, "reconstruction")),
+    raw.out ??
+      (standalone || check || verify || review || brainstorm ? process.cwd() : scratch ? join(process.cwd(), "reconstruction") : join(repo, "reconstruction")),
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -294,6 +312,7 @@ export function parseArgs(argv: string[]): Options {
     apply: raw.apply ?? "",
     semantic,
     allowUnverified,
+    brainstorm,
   };
 }
 
@@ -339,6 +358,17 @@ function main(): void {
     } catch (e) {
       fail((e as Error).message);
     }
+  }
+
+  // Divergent-phase scaffold: write BRAINSTORM.md (seeded if --out already has a
+  // reconstruction) for the agent to fill, then gate with --check.
+  if (opts.brainstorm) {
+    const r = runBrainstorm(opts.out);
+    process.stderr.write(
+      `reconstruct: ${r.created ? "wrote" : "kept existing"} ${r.relPath}${r.seeded ? " (seeded from the recovered surface)" : " (blank scaffold)"} → ${opts.out}\n` +
+        `  fill in the concepts + chosen direction, then gate it: node scripts/analyze.mjs --check --out ${opts.out}\n`,
+    );
+    return;
   }
 
   // Validation mode: statically check an already-generated tree for buildability.
