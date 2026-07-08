@@ -293,6 +293,10 @@ export function mergeSpecs(artifacts: Artifact[], inv: Inventory, opts: Options)
  * counts, locales, unknowns, and next steps.
  */
 export function summarize(inv: Inventory, opts: Options): string {
+  // A greenfield inventory carries no files/lines/routes by construction — its
+  // surface is the pre-filled plan (operations/entities/enums), so the digest
+  // counts those instead of reporting a misleading "0 files · 0 lines" plan.
+  const isScratch = generationOf(inv, opts).mode === "scratch";
   const lines: string[] = [];
   lines.push(`# ${inv.repoName} — reconstruction summary`);
   lines.push("");
@@ -303,7 +307,11 @@ export function summarize(inv: Inventory, opts: Options): string {
   const frameworks = inv.stack.frameworks.length ? `${inv.stack.primaryLanguage} · ${inv.stack.frameworks.join(", ")}` : inv.stack.primaryLanguage;
   lines.push(`- **Stack:** ${frameworks}`);
   lines.push(`- **Notable libraries:** ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "—"}`);
-  lines.push(`- **Size:** ${inv.fileCount} files · ${inv.totalLines} lines`);
+  if (isScratch) {
+    lines.push(`- **Surface:** ${inv.interfaces?.length ?? 0} operation(s) · ${inv.dataModel?.length ?? 0} entit(y/ies) · ${inv.enums?.length ?? 0} enum(s)`);
+  } else {
+    lines.push(`- **Size:** ${inv.fileCount} files · ${inv.totalLines} lines`);
+  }
   if (inv.stack.packageManagers.length) {
     lines.push(`- **Package manager(s):** ${inv.stack.packageManagers.join(", ")}`);
   }
@@ -311,7 +319,11 @@ export function summarize(inv: Inventory, opts: Options): string {
   if (inv.i18n) {
     lines.push(`- **Locales:** ${inv.i18n.locales.join(", ")} (${inv.i18n.locales.length})`);
   }
-  lines.push(`- **Routes:** ${inv.routes.length} · **Features:** ${inv.features.length}`);
+  if (isScratch) {
+    lines.push(`- **Operations:** ${inv.interfaces?.length ?? 0} · **Features:** ${inv.features.length}`);
+  } else {
+    lines.push(`- **Routes:** ${inv.routes.length} · **Features:** ${inv.features.length}`);
+  }
   if (inv.workspaces?.length) {
     const names = inv.workspaces.map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` → ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`).join(" · ");
     lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s) — ${names}`);
@@ -324,16 +336,23 @@ export function summarize(inv: Inventory, opts: Options): string {
   } else {
     inv.features.forEach((f, i) => {
       const desc = f.description ? ` — ${f.description}` : "";
-      lines.push(`${i + 1}. **${f.name}**${desc} → \`features/${f.slug}/PRD.md\` (${f.files.length} file(s))`);
+      const scope = isScratch ? `${f.interfaces?.length ?? 0} operation(s) · ${f.entities?.length ?? 0} entit(y/ies)` : `${f.files.length} file(s)`;
+      lines.push(`${i + 1}. **${f.name}**${desc} → \`features/${f.slug}/PRD.md\` (${scope})`);
     });
   }
   lines.push("");
 
   lines.push("## Interface & data surface");
-  lines.push(`- Routes resolved: ${inv.routes.length}`);
-  lines.push(`- Route candidates to verify: ${inv.hints.routeCandidates.length}`);
-  lines.push(`- API candidates (RPC / GraphQL / gRPC / OpenAPI): ${inv.hints.apiCandidates.length}`);
-  lines.push(`- Schema / data-model candidates: ${inv.hints.schemaCandidates.length}`);
+  if (isScratch) {
+    lines.push(`- Operations (pre-filled from the plan): ${inv.interfaces?.length ?? 0}`);
+    lines.push(`- Entities (pre-filled from the plan): ${inv.dataModel?.length ?? 0}`);
+    lines.push(`- Enums (full member lists): ${inv.enums?.length ?? 0}`);
+  } else {
+    lines.push(`- Routes resolved: ${inv.routes.length}`);
+    lines.push(`- Route candidates to verify: ${inv.hints.routeCandidates.length}`);
+    lines.push(`- API candidates (RPC / GraphQL / gRPC / OpenAPI): ${inv.hints.apiCandidates.length}`);
+    lines.push(`- Schema / data-model candidates: ${inv.hints.schemaCandidates.length}`);
+  }
   lines.push("");
 
   lines.push("## Unknowns to resolve");

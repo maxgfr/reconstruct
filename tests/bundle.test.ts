@@ -216,6 +216,64 @@ describe("summarize", () => {
   });
 });
 
+describe("summarize (scratch mode)", () => {
+  // A greenfield inventory: no files/lines/routes by construction — the surface
+  // lives in the pre-filled interfaces/dataModel/enums instead.
+  const scratchInv = makeInv({
+    generation: { mode: "scratch", level: "complex", fidelity: "describe", granularity: "coarse" },
+    fileCount: 0,
+    totalLines: 0,
+    routes: [],
+    interfaces: [
+      { method: "POST", path: "/api/rolls", kind: "REST" },
+      { method: "GET", path: "/api/rolls", kind: "REST" },
+      { method: "DELETE", path: "/api/rolls/:id", kind: "REST" },
+    ],
+    dataModel: [
+      { entity: "Roll", fields: [{ name: "id", type: "string" }] },
+      { entity: "User", fields: [{ name: "id", type: "string" }] },
+    ],
+    enums: [{ name: "Visibility", members: ["public", "private"] }],
+    features: [
+      {
+        slug: "01-rolls",
+        name: "Rolls",
+        description: "Create and share rolls",
+        kind: "feature",
+        files: [],
+        routes: [],
+        interfaces: ["POST /api/rolls"],
+        entities: ["Roll"],
+      },
+    ],
+    unknowns: [],
+  });
+  const out = summarize(scratchInv, makeOpts({ scratch: true, mode: "scratch", fidelity: "describe" }));
+
+  it("does not report file/line/route sizes (all zero by construction)", () => {
+    expect(out).not.toContain("0 files");
+    expect(out).not.toContain("**Routes:** 0");
+  });
+
+  it("reports the plan surface instead: operations, entities, enums", () => {
+    expect(out).toContain("3 operation(s)");
+    expect(out).toContain("2 entit");
+    expect(out).toContain("1 enum(s)");
+  });
+
+  it("annotates each feature with its interface/entity counts instead of file counts", () => {
+    expect(out).not.toContain("(0 file(s))");
+    expect(out).toMatch(/1 operation\(s\) · 1 entit/);
+  });
+
+  it("keeps the code path unchanged", () => {
+    const code = summarize(makeInv(), makeOpts());
+    expect(code).toContain("42 files");
+    expect(code).toContain("**Routes:** 2");
+    expect(code).toContain("(1 file(s))");
+  });
+});
+
 describe("mergeFeatures", () => {
   const out = mergeFeatures(sampleArtifacts(), makeInv(), makeOpts());
 

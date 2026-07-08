@@ -4123,6 +4123,7 @@ function mergeSpecs(artifacts, inv, opts) {
   });
 }
 function summarize(inv, opts) {
+  const isScratch = generationOf(inv, opts).mode === "scratch";
   const lines = [];
   lines.push(`# ${inv.repoName} \u2014 reconstruction summary`);
   lines.push("");
@@ -4132,7 +4133,11 @@ function summarize(inv, opts) {
   const frameworks = inv.stack.frameworks.length ? `${inv.stack.primaryLanguage} \xB7 ${inv.stack.frameworks.join(", ")}` : inv.stack.primaryLanguage;
   lines.push(`- **Stack:** ${frameworks}`);
   lines.push(`- **Notable libraries:** ${inv.stack.libraries.length ? inv.stack.libraries.join(", ") : "\u2014"}`);
-  lines.push(`- **Size:** ${inv.fileCount} files \xB7 ${inv.totalLines} lines`);
+  if (isScratch) {
+    lines.push(`- **Surface:** ${inv.interfaces?.length ?? 0} operation(s) \xB7 ${inv.dataModel?.length ?? 0} entit(y/ies) \xB7 ${inv.enums?.length ?? 0} enum(s)`);
+  } else {
+    lines.push(`- **Size:** ${inv.fileCount} files \xB7 ${inv.totalLines} lines`);
+  }
   if (inv.stack.packageManagers.length) {
     lines.push(`- **Package manager(s):** ${inv.stack.packageManagers.join(", ")}`);
   }
@@ -4140,7 +4145,11 @@ function summarize(inv, opts) {
   if (inv.i18n) {
     lines.push(`- **Locales:** ${inv.i18n.locales.join(", ")} (${inv.i18n.locales.length})`);
   }
-  lines.push(`- **Routes:** ${inv.routes.length} \xB7 **Features:** ${inv.features.length}`);
+  if (isScratch) {
+    lines.push(`- **Operations:** ${inv.interfaces?.length ?? 0} \xB7 **Features:** ${inv.features.length}`);
+  } else {
+    lines.push(`- **Routes:** ${inv.routes.length} \xB7 **Features:** ${inv.features.length}`);
+  }
   if (inv.workspaces?.length) {
     const names = inv.workspaces.map((w) => `\`${w.name}\`${w.dependsOn?.length ? ` \u2192 ${w.dependsOn.map((d) => `\`${d}\``).join(", ")}` : ""}`).join(" \xB7 ");
     lines.push(`- **Monorepo:** ${inv.workspaces.length} workspace(s) \u2014 ${names}`);
@@ -4152,15 +4161,22 @@ function summarize(inv, opts) {
   } else {
     inv.features.forEach((f, i) => {
       const desc = f.description ? ` \u2014 ${f.description}` : "";
-      lines.push(`${i + 1}. **${f.name}**${desc} \u2192 \`features/${f.slug}/PRD.md\` (${f.files.length} file(s))`);
+      const scope = isScratch ? `${f.interfaces?.length ?? 0} operation(s) \xB7 ${f.entities?.length ?? 0} entit(y/ies)` : `${f.files.length} file(s)`;
+      lines.push(`${i + 1}. **${f.name}**${desc} \u2192 \`features/${f.slug}/PRD.md\` (${scope})`);
     });
   }
   lines.push("");
   lines.push("## Interface & data surface");
-  lines.push(`- Routes resolved: ${inv.routes.length}`);
-  lines.push(`- Route candidates to verify: ${inv.hints.routeCandidates.length}`);
-  lines.push(`- API candidates (RPC / GraphQL / gRPC / OpenAPI): ${inv.hints.apiCandidates.length}`);
-  lines.push(`- Schema / data-model candidates: ${inv.hints.schemaCandidates.length}`);
+  if (isScratch) {
+    lines.push(`- Operations (pre-filled from the plan): ${inv.interfaces?.length ?? 0}`);
+    lines.push(`- Entities (pre-filled from the plan): ${inv.dataModel?.length ?? 0}`);
+    lines.push(`- Enums (full member lists): ${inv.enums?.length ?? 0}`);
+  } else {
+    lines.push(`- Routes resolved: ${inv.routes.length}`);
+    lines.push(`- Route candidates to verify: ${inv.hints.routeCandidates.length}`);
+    lines.push(`- API candidates (RPC / GraphQL / gRPC / OpenAPI): ${inv.hints.apiCandidates.length}`);
+    lines.push(`- Schema / data-model candidates: ${inv.hints.schemaCandidates.length}`);
+  }
   lines.push("");
   lines.push("## Unknowns to resolve");
   if (inv.unknowns.length === 0) {
