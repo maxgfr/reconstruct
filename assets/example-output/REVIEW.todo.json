@@ -1,0 +1,64 @@
+{
+  "run": "/Users/maxime/Downloads/reconstruct/assets/example-output",
+  "round": 1,
+  "changedSet": [
+    "01-core",
+    "02-project-setup",
+    "03-prisma",
+    "04-api",
+    "05-internationalization",
+    "06-dashboard",
+    "07-documentation"
+  ],
+  "units": [
+    {
+      "feature": "01-core",
+      "prdHash": "9e9b37ed9c36ef05eb4529516e93a3a1aa6545113efe4226f61094d01211eaae",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    },
+    {
+      "feature": "02-project-setup",
+      "prdHash": "30ecf337b8c674297f76a609973811f734a53ea194e6fef4304fe2b9c6ac2fcc",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    },
+    {
+      "feature": "03-prisma",
+      "prdHash": "b0e316a37f1b37a9ecf75fd0febb41f759d2e111330e73ebc8a58d02c83b1d45",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    },
+    {
+      "feature": "04-api",
+      "prdHash": "045fcde9de51dee5e16b3156c38c08831d4c7e7d4637e1d6d8527c2afc0230ef",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    },
+    {
+      "feature": "05-internationalization",
+      "prdHash": "15f4a98b0e2d1157c46cfb65a78e5b6fd447c2b9edcec137d17f159636e24920",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    },
+    {
+      "feature": "06-dashboard",
+      "prdHash": "d61dfc9021ed9f253e0f18e005785cbf0cad7edcca4ce283fa474259f30120d1",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    },
+    {
+      "feature": "07-documentation",
+      "prdHash": "2586c730c4937c24075fccaf4149c5771588ba6fb1494c83dbd546d6dc79133d",
+      "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+      "needsReview": true,
+      "findings": []
+    }
+  ]
+}

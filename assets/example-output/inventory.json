@@ -1,5 +1,5 @@
 {
-  "generatedWith": "reconstruct@0.7.0",
+  "generatedWith": "reconstruct@1.3.0",
   "generation": {
     "mode": "redesign",
     "level": "complex",
@@ -25,7 +25,10 @@
     "packageManagers": [
       "npm"
     ],
-    "hasTypeScript": true
+    "hasTypeScript": true,
+    "stylingLibraries": [
+      "Tailwind CSS"
+    ]
   },
   "fileCount": 12,
   "totalLines": 113,
@@ -301,6 +304,9 @@
     "schemaCandidates": [
       "prisma/schema.prisma"
     ],
+    "realtimeCandidates": [],
+    "authCandidates": [],
+    "designSystemCandidates": [],
     "entryPoints": []
   },
   "unknowns": [

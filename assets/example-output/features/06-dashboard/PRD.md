@@ -8,18 +8,25 @@ Groups 1 file(s); routes: /dashboard.
 
 ## Context & goal
 
-> 🧠 **For the AI agent:** State this unit's user-facing goal in 1–2 sentences (the outcome a user gets), and name the other units it depends on and that depend on it. Derive it from the source material below.
+Serve the `/dashboard` page — a static screen that displays a "Dashboard" heading and
+a "Private area." line. The outcome for a visitor is that page rendering. Faithfully,
+despite the "Private area." wording, the page is **public and static**: there is no
+authentication, no data, and no redirect.
 
+- **Depends on:** `02-project-setup` (Next.js/React toolchain).
+- **Depended on by:** nothing links to it in the source; it is a standalone route.
 
 ## User stories
 
-> 🧠 **For the AI agent:** Enumerate **every** actor and what they need, one line each — `As a <role>, I can <action> so that <value>.` Be **exhaustive**: cover every role and every distinct behaviour, not just the happy path. This list is the backbone of the PRD; nothing below should exist without a story above it.
-
+- As any visitor, I can open `/dashboard` so that I see the "Dashboard" heading and "Private area." text.
+- As an unauthenticated visitor, I can open `/dashboard` so that I still see it — there is no gate (faithful: the "private" label is cosmetic).
 
 ## Functional requirements
 
-> 🧠 **For the AI agent:** Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from the source material below. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done.
-
+1. [confirmed] `GET /dashboard` renders a `<section>` containing exactly one `<h2>` with text `Dashboard` and one `<p>` with text `Private area.`.
+2. [confirmed] The copy is hardcoded (`"Dashboard"`, `"Private area."`) and not read from the i18n catalog; `"Private area."` has no catalog key in either locale. (Faithful gap.)
+3. [confirmed] The page is **not access-controlled**: there is no session check, no `redirect()`, and no middleware — any visitor loads it and receives `200`. The "Private area." label does not imply any enforcement. (Faithful gap.)
+4. [confirmed] The page fetches no data, declares no dynamic segments, reads/writes no entity, and takes no parameters.
 
 ## Routes
 
@@ -29,18 +36,25 @@ Groups 1 file(s); routes: /dashboard.
 
 ## Interfaces & data
 
-> 🧠 **For the AI agent:** List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and — for every required (NOT NULL, no-default) column and foreign key — where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`.
+- **Operations exposed:** `GET /dashboard` (page, HTML) — see `../../architecture/INTERFACES.md` (§`GET /dashboard`). Input: none. Output: `<section><h2>Dashboard</h2><p>Private area.</p></section>`. Auth: none (public, despite the label).
+- **Entities read/written:** none. No access to the `User` entity in `../../architecture/DATA-MODEL.md`; no mutation, so no write contract applies.
+- **Enums/domain values:** none.
 
+- **UI / design-system conformance:** per `../../architecture/DESIGN-SYSTEM.md`, unstyled semantic HTML — a `<section>`, an `<h2>` (heading level 2, one below the home `<h1>`), and a `<p>`. Zero design tokens, no `className`, no ARIA. There is no empty/loading/error state because the page fetches nothing.
 
 ## Acceptance criteria
 
-> 🧠 **For the AI agent:** Write **Given / When / Then** scenarios that gate "done" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.
-
+- **AC-1:** Given any visitor, When they GET `/dashboard`, Then the response is HTML with an `<h2>Dashboard</h2>` and a `<p>Private area.</p>` inside a `<section>`.
+- **AC-2:** Given no session, cookie, or authorization header, When a visitor GETs `/dashboard`, Then it returns `200` and renders normally — no `401`/`403`, no redirect to a login page. (Faithful gap path — the "private" label is not enforced.)
+- **AC-3:** Given the active locale is `fr`, When a visitor loads `/dashboard`, Then the copy is still English (`Dashboard` / `Private area.`) because the page never reads the catalog. (Faithful gap path.)
+- **AC-4:** Given the page renders, When the response completes, Then no database query ran and no entity was written.
 
 ## Edge cases & failure modes
 
-> 🧠 **For the AI agent:** Enumerate what can go wrong and the expected behaviour for each: invalid / empty / oversized input, auth & permission failures, concurrency / race conditions, missing or slow dependencies, partial failures, and idempotency / retries. Each row here should map to an error-path requirement above.
-
+- Unauthenticated access → allowed (public); this is the intended faithful behavior, not an error.
+- Non-`en` locale → copy stays English (catalog unused).
+- No data dependency → the page cannot fail on a missing database or slow upstream; it is fully static.
+- No concurrency/idempotency concerns — stateless render.
 
 ## Source material
 
@@ -51,13 +65,16 @@ Files that implement this unit (rewrite them from the requirements above):
 
 ## Improvements & refactors
 
-> 🧠 **For the AI agent:** Propose concrete improvements for this unit: better types, dead-code removal, performance, accessibility, security, and tests. Mark each as `[keep-behavior]` so the rebuild stays functionally identical unless the user opts in.
-
+- [keep-behavior] Enforce the "private" intent: add a session check that redirects unauthenticated visitors to a login route — opt-in, changes behavior (today it is public).
+- [keep-behavior] Route the copy through the i18n catalog and add a `dashboard.subtitle` key for "Private area." so it is translatable.
+- [keep-behavior] Promote `<h2>` to `<h1>` if `/dashboard` is a standalone page with its own layout, to keep a valid heading hierarchy per screen.
 
 ## Redesign notes
 
-> 🧠 **For the AI agent:** Map this unit onto the new architecture from `architecture/ARCHITECTURE.md`. Note where its files should live and which interfaces it exposes.
-
+Under the proposed layout in `architecture/ARCHITECTURE.md`, the page stays at
+`app/dashboard/page.tsx`. The redesign keeps it public and static by default (to
+preserve behavior); adding auth is called out as an opt-in improvement, not a redesign
+default.
 
 ## Definition of done
 

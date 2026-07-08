@@ -5,11 +5,24 @@
 | Mode | `redesign` |
 | Level | `complex` |
 | Fidelity | `describe` |
-| Generated with | `reconstruct@0.7.0` |
+| Generated with | `reconstruct@1.3.0` |
 
 ## Product summary
 
-> 🧠 **For the AI agent:** Write a 1–2 paragraph product summary: what this project does, for whom, and the core value. Infer it from the README, routes, and feature names below, then refine.
+**sample-app** is a tiny Next.js 14 (App Router) reference application used to
+exercise the reconstruct analyzer. It serves two server-rendered pages — a home page
+at `/` ("Welcome" plus a "Get started" button) and a dashboard at `/dashboard`
+("Dashboard" / "Private area.") — and one JSON route handler, `GET /api/users`, that
+returns a hardcoded two-name list gated on whether `NEXTAUTH_SECRET` is set. It
+declares a Prisma `User` model (PostgreSQL) and English/French message catalogs.
+
+Its audience is the reconstruct test suite, not end users: it is intentionally
+minimal and, faithfully, several declared capabilities are wired but never exercised —
+the `User` model is never queried, the pages hardcode copy instead of reading the i18n
+catalog, `/api/users` performs no real authentication, `/dashboard` is not
+access-controlled, and `zod`/`tailwindcss`/`@playwright/test` are dependencies with no
+usage. The core value of the reconstruction is to capture that exact behavior —
+including the gaps — precisely enough that a fresh agent rebuilds the same app.
 
 
 ## Tech stack
@@ -47,5 +60,11 @@
 
 ## Redesign note
 
-> 🧠 **For the AI agent:** This run is in **redesign** mode: preserve every feature's behavior and logic, but you are free to propose a cleaner architecture in `architecture/ARCHITECTURE.md`.
+This run is in **redesign** mode: every feature's observable behavior and logic is
+preserved exactly — including the faithful gaps listed in the product summary (a
+redesign preserves the contract, it does not "fix" the fixture) — while
+`architecture/ARCHITECTURE.md` proposes a cleaner module layout (a root
+`app/layout.tsx`, `lib/auth.ts` renamed to `lib/env.ts`, an optional Prisma client
+singleton). Each proposed change is marked `[keep-behavior]`, so a rebuild that adopts
+the new structure still produces byte-for-byte the same routes, payloads, and copy.
 

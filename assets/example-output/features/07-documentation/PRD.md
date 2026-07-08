@@ -8,33 +8,43 @@
 
 ## Context & goal
 
-> 🧠 **For the AI agent:** State this unit's user-facing goal in 1–2 sentences (the outcome a user gets), and name the other units it depends on and that depend on it. Derive it from the source material below.
+Provide the project's README so a reader understands what the repository is. The
+outcome is a developer opening `README.md` and learning that this is a tiny Next.js
+fixture used to exercise the reconstruct analyzer.
 
+- **Depends on:** nothing at runtime; it describes the whole app.
+- **Depended on by:** nothing at runtime; it is reference material for humans.
 
 ## User stories
 
-> 🧠 **For the AI agent:** Enumerate **every** actor and what they need, one line each — `As a <role>, I can <action> so that <value>.` Be **exhaustive**: cover every role and every distinct behaviour, not just the happy path. This list is the backbone of the PRD; nothing below should exist without a story above it.
-
+- As a developer, I can read `README.md` so that I understand the project's purpose and shape at a glance.
+- As a new contributor, I can see from the README that this is a reconstruct test fixture so that I do not mistake it for a production app.
 
 ## Functional requirements
 
-> 🧠 **For the AI agent:** Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from the source material below. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done.
-
+1. [confirmed] `README.md` opens with the H1 title `# Sample App`.
+2. [confirmed] It contains a one-to-two sentence description stating it is a tiny Next.js (App Router) fixture with two pages, one API route, a Prisma schema, and English/French translations, used to exercise the reconstruct analyzer.
+3. [confirmed] It provides **no** install/run/build/test instructions and no other sections — the description is the entire content. (Faithful: minimal by design.)
+4. [confirmed] It is the only documentation file in the repository.
 
 ## Interfaces & data
 
-> 🧠 **For the AI agent:** List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and — for every required (NOT NULL, no-default) column and foreign key — where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`.
+- **Operations exposed:** none. Documentation exposes no runtime surface.
+- **Entities read/written:** none.
+- **Enums/domain values:** none.
 
+- **UI / design-system conformance:** not applicable — Markdown documentation renders no application UI.
 
 ## Acceptance criteria
 
-> 🧠 **For the AI agent:** Write **Given / When / Then** scenarios that gate "done" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.
-
+- **AC-1:** Given `README.md`, When it is opened, Then the first heading is `# Sample App`.
+- **AC-2:** Given `README.md`, When it is read, Then the body describes a Next.js App-Router fixture with two pages, one API route, a Prisma schema, and en/fr translations, used to exercise the reconstruct analyzer.
+- **AC-3:** Given `README.md`, When searching for setup/run/test instructions, Then none are present (the file is intentionally minimal). (Faithful gap path.)
 
 ## Edge cases & failure modes
 
-> 🧠 **For the AI agent:** Enumerate what can go wrong and the expected behaviour for each: invalid / empty / oversized input, auth & permission failures, concurrency / race conditions, missing or slow dependencies, partial failures, and idempotency / retries. Each row here should map to an error-path requirement above.
-
+- The README is descriptive only; there is no code path, so no runtime failure modes exist.
+- Because it documents no setup steps, a newcomer must infer commands from `package.json` (`dev`/`build`/`start`/`lint`) — recorded as a documentation gap, not fixed.
 
 ## Source material
 
@@ -45,13 +55,13 @@ Files that implement this unit (rewrite them from the requirements above):
 
 ## Improvements & refactors
 
-> 🧠 **For the AI agent:** Propose concrete improvements for this unit: better types, dead-code removal, performance, accessibility, security, and tests. Mark each as `[keep-behavior]` so the rebuild stays functionally identical unless the user opts in.
-
+- [keep-behavior] Expand the README with a Getting Started section (`npm install`, `npm run dev`, the required env vars from `.env.example`) so the fixture is self-serve — additive, no behavior change.
+- [keep-behavior] Note the known gaps (unused `User` model, hardcoded copy, unauthenticated `/api/users`) so readers are not surprised.
 
 ## Redesign notes
 
-> 🧠 **For the AI agent:** Map this unit onto the new architecture from `architecture/ARCHITECTURE.md`. Note where its files should live and which interfaces it exposes.
-
+The README stays at the repository root. No structural change; the redesign only adds
+optional documentation sections as an improvement.
 
 ## Definition of done
 

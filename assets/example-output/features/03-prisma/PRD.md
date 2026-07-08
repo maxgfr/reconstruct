@@ -8,33 +8,54 @@ Groups 1 file(s).
 
 ## Context & goal
 
-> 🧠 **For the AI agent:** State this unit's user-facing goal in 1–2 sentences (the outcome a user gets), and name the other units it depends on and that depend on it. Derive it from the source material below.
+Define the persistence schema — a single `User` model on PostgreSQL via Prisma. The
+outcome is a declared, migratable data model. Faithfully, the model is **not wired**:
+nothing in the app queries it, so this unit's deliverable is the schema declaration
+itself, captured exactly.
 
+- **Depends on:** `02-project-setup` (the `DATABASE_URL` env var and the `tailwindcss`/toolchain baseline; the Prisma CLI is not itself a declared dependency — another gap).
+- **Depended on by:** `04-api` *conceptually* (a real users endpoint would read `User`), but in the current source `04-api` returns a hardcoded list and does not depend on this schema at runtime.
 
 ## User stories
 
-> 🧠 **For the AI agent:** Enumerate **every** actor and what they need, one line each — `As a <role>, I can <action> so that <value>.` Be **exhaustive**: cover every role and every distinct behaviour, not just the happy path. This list is the backbone of the PRD; nothing below should exist without a story above it.
-
+- As a developer, I can read `prisma/schema.prisma` so that I know the persistence shape (`User` with `id`, `email`, `name`) and the database provider (PostgreSQL).
+- As a developer, I can point `DATABASE_URL` at a Postgres instance so that the datasource is configured (even though no query is issued).
+- As a maintainer, I can see that the `User` model is declared but unused so that I understand the intended-but-unbuilt persistence path.
 
 ## Functional requirements
 
-> 🧠 **For the AI agent:** Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from the source material below. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done.
-
+1. [confirmed] `prisma/schema.prisma` declares `datasource db { provider = "postgresql"; url = env("DATABASE_URL") }`.
+2. [confirmed] It declares `model User` with field `id String @id @default(cuid())` — the primary key, defaulted to a Prisma-generated `cuid()`.
+3. [confirmed] `User.email` is `String @unique` — required (NOT NULL) with a unique index.
+4. [confirmed] `User.name` is `String?` — nullable/optional, no default.
+5. [confirmed] The schema declares **no** `generator client {}` block, so `prisma generate` would produce no client as written. (Faithful gap.)
+6. [confirmed] There are **no** relations, indexes beyond the `email` unique, enums, or additional models. `User` is the only entity.
+7. [confirmed] The `User` model is never queried: no `PrismaClient` is instantiated and no read/write is issued anywhere in the source. (Faithful gap — the model is orphaned from the interface surface.)
 
 ## Interfaces & data
 
-> 🧠 **For the AI agent:** List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and — for every required (NOT NULL, no-default) column and foreign key — where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`.
+- **Operations exposed:** none. Prisma defines a schema, not an HTTP/RPC surface.
+- **Entities:** `User` — see `../../architecture/DATA-MODEL.md` (§User) for the field-level contract (`id` PK `cuid()`, `email` unique NOT NULL, `name` nullable).
+- **Write contract:** none. No mutation exists anywhere against `User`. Note for any future writer: `email` is the only required, non-defaulted column (its value must be supplied on insert); `id` is auto-defaulted via `cuid()`; `name` is optional. There is no owner foreign key, so `User` is anonymous-capable in principle — but nothing writes it today.
+- **Enums/domain values:** none (no enum declared).
 
+- **UI / design-system conformance:** not applicable — this unit renders no UI.
 
 ## Acceptance criteria
 
-> 🧠 **For the AI agent:** Write **Given / When / Then** scenarios that gate "done" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.
-
+- **AC-1:** Given `prisma/schema.prisma`, When it is read, Then the datasource is provider `postgresql` with `url = env("DATABASE_URL")`.
+- **AC-2:** Given the `User` model, When inspecting `id`, Then it is `String`, `@id`, defaulted `@default(cuid())`.
+- **AC-3:** Given the `User` model, When inspecting `email`, Then it is `String`, `@unique`, and NOT NULL (no `?`).
+- **AC-4:** Given the `User` model, When inspecting `name`, Then it is `String?` (nullable) with no default.
+- **AC-5:** Given the schema, When searching for a `generator` block, Then none exists — `prisma generate` produces no client as shipped. (Faithful gap path.)
+- **AC-6:** Given the whole source tree, When grepping for `PrismaClient`, `prisma.`, or any `user.findMany/create/…`, Then there are zero usages — the model is never queried. (Faithful gap path.)
 
 ## Edge cases & failure modes
 
-> 🧠 **For the AI agent:** Enumerate what can go wrong and the expected behaviour for each: invalid / empty / oversized input, auth & permission failures, concurrency / race conditions, missing or slow dependencies, partial failures, and idempotency / retries. Each row here should map to an error-path requirement above.
-
+- `DATABASE_URL` unset/empty → Prisma cannot connect, but since no query runs, the app does not fail at runtime (the datasource is inert).
+- Missing `generator client` → any attempt to `import { PrismaClient }` would fail; the fixture never does, so it does not surface. (Recorded, not fixed.)
+- Duplicate `email` on insert → the `@unique` index would reject it, but there is no insert path in the source, so this is only a schema-level guarantee, not an exercised one.
+- No cascade/relation concerns — the single model holds no foreign keys.
 
 ## Source material
 
@@ -45,13 +66,16 @@ Files that implement this unit (rewrite them from the requirements above):
 
 ## Improvements & refactors
 
-> 🧠 **For the AI agent:** Propose concrete improvements for this unit: better types, dead-code removal, performance, accessibility, security, and tests. Mark each as `[keep-behavior]` so the rebuild stays functionally identical unless the user opts in.
-
+- [keep-behavior] Add the missing `generator client { provider = "prisma-client-js" }` block and the `prisma` + `@prisma/client` dependencies so the schema is actually usable.
+- [keep-behavior] Wire `GET /api/users` to `prisma.user.findMany({ select: { name: true } })` so the endpoint returns real rows instead of the hardcoded list — opt-in, changes behavior.
+- [keep-behavior] Add a `role` enum and `createdAt DateTime @default(now())` if the model grows; none exists today.
 
 ## Redesign notes
 
-> 🧠 **For the AI agent:** Map this unit onto the new architecture from `architecture/ARCHITECTURE.md`. Note where its files should live and which interfaces it exposes.
-
+Under the proposed layout in `architecture/ARCHITECTURE.md`, the schema stays at
+`prisma/schema.prisma`; if the model is ever wired, a `lib/db.ts` `PrismaClient`
+singleton is the intended access point. No schema change is required to preserve
+current (no-op) behavior.
 
 ## Definition of done
 

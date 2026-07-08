@@ -1,0 +1,137 @@
+{
+  "ok": true,
+  "round": 1,
+  "units": 7,
+  "reviewed": 7,
+  "blockers": 0,
+  "majors": 1,
+  "minors": 3,
+  "changedSet": [
+    "01-core",
+    "02-project-setup",
+    "03-prisma",
+    "04-api",
+    "05-internationalization",
+    "06-dashboard",
+    "07-documentation"
+  ],
+  "residual": [],
+  "noProgress": false,
+  "staleRounds": 0,
+  "failures": [],
+  "findings": [
+    {
+      "feature": "01-core",
+      "severity": "blocker",
+      "category": "i18n",
+      "problem": "FR3/AC-3 render hardcoded English copy ('Welcome', 'Get started') instead of reading messages/*.json, and the Definition of done checkbox demands 'no hard-coded copy'. A fresh agent could read the DoD and 'fix' the page to consume the catalog, diverging from the fixture.",
+      "fix": "Keep the hardcoded copy; treat the generic DoD checkbox as boilerplate, not a build instruction. The FR/AC already mark this a faithful gap grounded in app/page.tsx.",
+      "verdict": "refuted",
+      "verifierNote": "Refuted: app/page.tsx literally renders <h1>Welcome</h1> and <Button label=\"Get started\"/>; reproducing the hardcode IS the correct behavior. The PRD flags it as a faithful gap in FR3 and AC-3 and cross-references 05-internationalization. Faithfulness is the anchor; the boilerplate DoD line does not override the explicit requirements. Not a blocker.",
+      "id": "01-core:i18n:0fcd5c2c"
+    },
+    {
+      "feature": "01-core",
+      "severity": "minor",
+      "category": "requirements",
+      "problem": "The generic Definition-of-done checkbox 'every user-facing string has a source string in the message catalog ... no hard-coded copy' is aspirational and conflicts with the deliberately preserved hardcode gap.",
+      "fix": "Optionally annotate the DoD line as N/A for this fixture, or leave as-is since the FRs/ACs are authoritative.",
+      "verdict": null,
+      "verifierNote": "",
+      "id": "01-core:requirements:63ed63ce"
+    },
+    {
+      "feature": "03-prisma",
+      "severity": "blocker",
+      "category": "consistency",
+      "problem": "The User entity is declared in DATA-MODEL.md but no operation in INTERFACES.md reads or writes it, and the schema has no `generator client` block. A reviewer could read this as an unbuildable/incoherent data layer.",
+      "fix": "Preserve it: the entity is intentionally orphaned and the generator is absent in the source. Both are recorded as faithful gaps in FR5/FR7 and in REBUILD.md known-gaps.",
+      "verdict": "refuted",
+      "verifierNote": "Refuted: prisma/schema.prisma has exactly datasource + model User with no generator, and grep of the (tiny) source finds no PrismaClient usage. The reconstruction faithfully specifies an orphaned, un-generated model rather than inventing CRUD. DATA-MODEL.md and the PRD both state this explicitly, so it is buildable-as-specified. Not a blocker.",
+      "id": "03-prisma:consistency:c0325e04"
+    },
+    {
+      "feature": "04-api",
+      "severity": "blocker",
+      "category": "faithfulness",
+      "problem": "GET /api/users is named for users but returns a hardcoded ['alice','bob'] and never reads the User entity; a reviewer could expect it to query the database and flag the PRD as dropping behavior.",
+      "fix": "None needed: the hardcoded list and absence of a query are the actual source behavior; the PRD states this in FR7 and AC-4 and does not invent a query.",
+      "verdict": "refuted",
+      "verifierNote": "Refuted: app/api/users/route.ts returns Response.json({ users: ok ? ['alice','bob'] : [] }) with no DB access. The PRD reproduces exactly that and explicitly records the no-query gap; INTERFACES.md agrees. Inventing a Prisma query would be the unfaithful choice. Not a blocker.",
+      "id": "04-api:faithfulness:ca0132eb"
+    },
+    {
+      "feature": "06-dashboard",
+      "severity": "blocker",
+      "category": "acceptance",
+      "problem": "The page renders 'Private area.' but FR3/AC-2 assert it returns 200 to unauthenticated visitors. A reviewer could read the 'private' label as a missing auth requirement and call the PRD incomplete.",
+      "fix": "Keep it public: the source has no session check, redirect, or middleware. The 'private' label is cosmetic and the PRD documents the gap.",
+      "verdict": "refuted",
+      "verifierNote": "Refuted: app/dashboard/page.tsx is a plain static section with no auth logic anywhere in the source, and there is no middleware.ts. The PRD faithfully preserves public access (AC-2) and records the label as cosmetic. Adding auth would diverge from the fixture. Not a blocker.",
+      "id": "06-dashboard:acceptance:d098211f"
+    },
+    {
+      "feature": "02-project-setup",
+      "severity": "major",
+      "category": "requirements",
+      "problem": "No tsconfig.json ships in the source, so `tsc`/`next build` could not actually compile the TypeScript as-is. This is a real build gap.",
+      "fix": "Recorded as a faithful gap (FR8/AC-8) with 'add a Next.js default tsconfig.json' listed under Improvements; a rebuild that wants to actually run must add one.",
+      "verdict": null,
+      "verifierNote": "Confirmed as a real gap but not a blocker to the reconstruction: it is explicitly captured in FR8, AC-8, and REBUILD.md known-gaps, with the fix noted as an opt-in improvement.",
+      "id": "02-project-setup:requirements:4b907b01"
+    },
+    {
+      "feature": "05-internationalization",
+      "severity": "minor",
+      "category": "i18n",
+      "problem": "'Private area.' rendered on /dashboard has no catalog key in either locale, so it cannot be localized without a schema addition.",
+      "fix": "Recorded in FR5/AC-5 and as an Improvement (add a dashboard.subtitle key). Faithful gap, not fixed.",
+      "verdict": null,
+      "verifierNote": "",
+      "id": "05-internationalization:i18n:79d0d293"
+    },
+    {
+      "feature": "07-documentation",
+      "severity": "minor",
+      "category": "requirements",
+      "problem": "README.md documents no install/run/build instructions, so a newcomer must infer commands from package.json.",
+      "fix": "Recorded in FR3/AC-3 and as an Improvement (add a Getting Started section). Faithful gap, not fixed.",
+      "verdict": null,
+      "verifierNote": "",
+      "id": "07-documentation:requirements:1654452a"
+    }
+  ],
+  "baseline": {
+    "archHash": "9ce1ac454f9a6316303ab79ac44e7f7ae2e74466e563bb732a64d20cb2b78080",
+    "features": [
+      {
+        "feature": "01-core",
+        "prdHash": "9e9b37ed9c36ef05eb4529516e93a3a1aa6545113efe4226f61094d01211eaae"
+      },
+      {
+        "feature": "02-project-setup",
+        "prdHash": "30ecf337b8c674297f76a609973811f734a53ea194e6fef4304fe2b9c6ac2fcc"
+      },
+      {
+        "feature": "03-prisma",
+        "prdHash": "b0e316a37f1b37a9ecf75fd0febb41f759d2e111330e73ebc8a58d02c83b1d45"
+      },
+      {
+        "feature": "04-api",
+        "prdHash": "045fcde9de51dee5e16b3156c38c08831d4c7e7d4637e1d6d8527c2afc0230ef"
+      },
+      {
+        "feature": "05-internationalization",
+        "prdHash": "15f4a98b0e2d1157c46cfb65a78e5b6fd447c2b9edcec137d17f159636e24920"
+      },
+      {
+        "feature": "06-dashboard",
+        "prdHash": "d61dfc9021ed9f253e0f18e005785cbf0cad7edcca4ce283fa474259f30120d1"
+      },
+      {
+        "feature": "07-documentation",
+        "prdHash": "2586c730c4937c24075fccaf4149c5771588ba6fb1494c83dbd546d6dc79133d"
+      }
+    ]
+  }
+}

@@ -8,33 +8,56 @@
 
 ## Context & goal
 
-> 🧠 **For the AI agent:** State this unit's user-facing goal in 1–2 sentences (the outcome a user gets), and name the other units it depends on and that depend on it. Derive it from the source material below.
+Provide the English and French message catalogs (`messages/en.json`,
+`messages/fr.json`) that define the app's user-facing copy. The intended outcome is
+localized text for the home and dashboard screens. Faithfully, the catalogs exist and
+are complete/parallel, but the pages do **not** consume them — copy is hardcoded — so
+this unit's deliverable is the catalog data itself.
 
+- **Depends on:** `02-project-setup` (`next.config.js` declares the `en`/`fr` locales, albeit inert under the App Router).
+- **Depended on by:** `01-core` and `06-dashboard` *should* read these strings but currently hardcode them instead.
 
 ## User stories
 
-> 🧠 **For the AI agent:** Enumerate **every** actor and what they need, one line each — `As a <role>, I can <action> so that <value>.` Be **exhaustive**: cover every role and every distinct behaviour, not just the happy path. This list is the backbone of the PRD; nothing below should exist without a story above it.
-
+- As a developer, I can read `messages/en.json` / `messages/fr.json` so that I have the source strings for the `home` and `dashboard` namespaces in both locales.
+- As a translator, I can add a locale file so that the catalog structure (namespaces `home`, `dashboard`) is clear and parallel across languages.
+- As a maintainer, I can see that the pages hardcode copy so that I know the catalogs are declared-but-unused today.
 
 ## Functional requirements
 
-> 🧠 **For the AI agent:** Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from the source material below. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done.
-
+1. [confirmed] `messages/en.json` defines namespace `home` with `title = "Welcome"` and `cta = "Get started"`, and namespace `dashboard` with `title = "Dashboard"`.
+2. [confirmed] `messages/fr.json` defines the same keys with French values: `home.title = "Bienvenue"`, `home.cta = "Commencer"`, `dashboard.title = "Tableau de bord"`.
+3. [confirmed] Both locales carry the identical key set — exactly three keys each (`home.title`, `home.cta`, `dashboard.title`) — with full parity (no key present in one locale and missing in the other).
+4. [confirmed] The catalogs are **never loaded** by the app: no `next-intl`/`useTranslations`/`getTranslations`/JSON import references them. The pages render hardcoded literals instead. (Faithful gap.)
+5. [confirmed] The string `"Private area."` rendered on `/dashboard` has **no** catalog key in either locale — it is hardcoded and untranslatable as shipped. (Faithful gap.)
+6. [inferred] The declared locales (`en`, `fr`, default `en`) come from `next.config.js`'s `i18n` block, which is a Pages-Router option and is inert under this App-Router app — so there is no locale-prefixed routing to switch between the catalogs even if they were used. (See `02-project-setup`.)
 
 ## Interfaces & data
 
-> 🧠 **For the AI agent:** List **every** operation this unit exposes with its input/output shape (link `../../architecture/INTERFACES.md`), and **every** entity it reads or writes (link `../../architecture/DATA-MODEL.md`). Spell out the **write contract** for each mutation: which entities are written, whether the write is transactional, and — for every required (NOT NULL, no-default) column and foreign key — where the value comes from. A public/anonymous operation cannot satisfy an owner foreign key: it must write to an anonymous-capable entity instead. Every enum/domain value it accepts must be one of the members enumerated in `DATA-MODEL.md`.
+- **Operations exposed:** none. This unit ships data files, not endpoints.
+- **Entities read/written:** none. No database access.
+- **Message catalog (the deliverable):** see `../../architecture/ARCHITECTURE.md` (§Internationalization) for the full table. Source (`en`) → `fr`:
+  - `home.title`: `Welcome` → `Bienvenue`
+  - `home.cta`: `Get started` → `Commencer`
+  - `dashboard.title`: `Dashboard` → `Tableau de bord`
+- **Enums/domain values:** none.
 
+- **UI / design-system conformance:** not applicable — this unit renders no UI itself; it supplies strings the pages could render.
 
 ## Acceptance criteria
 
-> 🧠 **For the AI agent:** Write **Given / When / Then** scenarios that gate "done" — at least one per functional requirement, **including** the failure paths. Example: `Given an unauthenticated visitor, When they POST a todo, Then the API responds 401 and writes nothing.` These scenarios are the spec the rebuild is verified against.
-
+- **AC-1:** Given `messages/en.json`, When it is parsed, Then `home.title === "Welcome"`, `home.cta === "Get started"`, and `dashboard.title === "Dashboard"`.
+- **AC-2:** Given `messages/fr.json`, When it is parsed, Then `home.title === "Bienvenue"`, `home.cta === "Commencer"`, and `dashboard.title === "Tableau de bord"`.
+- **AC-3:** Given both catalogs, When their key sets are compared, Then they are identical (three keys each, full parity, no missing translation).
+- **AC-4:** Given the source tree, When grepping for catalog loaders (`next-intl`, `useTranslations`, imports of `messages/*.json`), Then there are zero references — the catalogs are unused. (Faithful gap path.)
+- **AC-5:** Given `/dashboard` renders `"Private area."`, When searching either catalog for that string, Then no key maps to it. (Faithful gap path.)
 
 ## Edge cases & failure modes
 
-> 🧠 **For the AI agent:** Enumerate what can go wrong and the expected behaviour for each: invalid / empty / oversized input, auth & permission failures, concurrency / race conditions, missing or slow dependencies, partial failures, and idempotency / retries. Each row here should map to an error-path requirement above.
-
+- Adding a third locale → would need a new `messages/<loc>.json` with the same three keys; the app would still not display it (catalogs unused).
+- Missing a key in one locale → would break parity; today parity holds, so this is only a guard for future edits.
+- The `"Private area."` string cannot be localized without first adding a `dashboard.subtitle` (or similar) key — recorded, not fixed.
+- No runtime failure path: these are static JSON assets; a malformed file would fail at build/import time, but nothing imports them today.
 
 ## Source material
 
@@ -46,13 +69,15 @@ Files that implement this unit (rewrite them from the requirements above):
 
 ## Improvements & refactors
 
-> 🧠 **For the AI agent:** Propose concrete improvements for this unit: better types, dead-code removal, performance, accessibility, security, and tests. Mark each as `[keep-behavior]` so the rebuild stays functionally identical unless the user opts in.
-
+- [keep-behavior] Introduce `next-intl` (App-Router `[locale]` segment) and route page copy through these catalogs so `fr` actually renders — opt-in, changes behavior.
+- [keep-behavior] Add a `dashboard.subtitle` key mapping to "Private area." / "Zone privée." so that string becomes translatable.
+- [keep-behavior] Add a key-parity test that fails if `en` and `fr` diverge.
 
 ## Redesign notes
 
-> 🧠 **For the AI agent:** Map this unit onto the new architecture from `architecture/ARCHITECTURE.md`. Note where its files should live and which interfaces it exposes.
-
+Under the proposed layout in `architecture/ARCHITECTURE.md`, the catalogs stay in
+`messages/`. Wiring them is an opt-in improvement; the redesign preserves today's
+hardcoded, English-only rendering by default so behavior is unchanged.
 
 ## Definition of done
 
