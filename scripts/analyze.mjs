@@ -3682,7 +3682,7 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
     "## Functional requirements",
     "",
     agentNote(
-      `Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from ${truth}. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" \u2014 if you write a placeholder, you are not done.`
+      `Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from ${truth}. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" \u2014 if you write a placeholder, you are not done. Tag each requirement \`[confirmed]\` (read directly in the source), \`[inferred]\` (pattern-derived, no false certainty), or \`[gap]\` (needs a human) so the \`--verify\` pass can adjudicate its confidence faster.`
     ),
     ""
   ];
@@ -4859,6 +4859,7 @@ import { existsSync as existsSync6, readFileSync as readFileSync12, writeFileSyn
 import { join as join14 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
+var VALID_CONFIDENCE = ["confirmed", "inferred", "gap"];
 var CLAIM_SECTIONS = /* @__PURE__ */ new Set(["## Functional requirements", "## Acceptance criteria"]);
 var STOP = new Set(
   "the a an is are be to of in on for and or with via from this that it its as at by into using used user users system when then given so each via must should can will every".split(
@@ -4947,7 +4948,7 @@ function runVerify(outDir, opts = {}) {
   const worklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
   const todo = {
     run: outDir,
-    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" }))
+    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "", confidence: null }))
   };
   writeFileSync2(join14(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
   writeFileSync2(join14(outDir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
@@ -4958,7 +4959,7 @@ function renderWorklistMd(wl, total, kept) {
   out.push(`# Requirement verification worklist`);
   out.push("");
   out.push(
-    `For each requirement, open the cited source evidence and judge whether the requirement **traces to the original code** (faithful inference) or was invented. In \`VERIFY.todo.json\`, set each \`verdict\` to supported \xB7 partial \xB7 refuted \xB7 unsupported (+ a short \`note\`), save it (e.g. as \`verdicts.json\`), then run \`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`
+    `For each requirement, open the cited source evidence and judge whether the requirement **traces to the original code** (faithful inference) or was invented. In \`VERIFY.todo.json\`, set each \`verdict\` to supported \xB7 partial \xB7 refuted \xB7 unsupported (+ a short \`note\`), and stamp each \`confidence\` to confirmed (evidence read and decisive) \xB7 inferred (consistent but indirect \u2014 a pattern or standard behavior) \xB7 gap (evidence thin; needs a human). Save it (e.g. as \`verdicts.json\`), then run \`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`
   );
   if (kept < total) out.push(`
 _Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched evidence._`);
@@ -4967,7 +4968,7 @@ _Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched ev
     out.push(`## ${p.claimId} \xB7 ${p.feature} \u2192 ${p.evidenceRef}`);
     out.push(`**Requirement:** ${p.claim}`);
     out.push(`**Captured evidence:** ${p.digest}`);
-    out.push(`**Verdict:** _____ \xB7 **Note:** _____`);
+    out.push(`**Verdict:** _____ \xB7 **Confidence:** _____ \xB7 **Note:** _____`);
     out.push("");
   }
   return out.join("\n");
@@ -5017,6 +5018,7 @@ function applyVerdicts(outDir, verdictsPath) {
   for (const v of list) {
     if (!v || typeof v.claimId !== "string") continue;
     const verdict = VALID.includes(v.verdict) ? v.verdict : void 0;
+    const confidence = VALID_CONFIDENCE.includes(v.confidence) ? v.confidence : void 0;
     verdicts.push({
       claimId: v.claimId,
       claim: typeof v.claim === "string" ? v.claim : "",
@@ -5024,7 +5026,8 @@ function applyVerdicts(outDir, verdictsPath) {
       evidenceRef: typeof v.evidenceRef === "string" ? v.evidenceRef : "",
       digest: typeof v.digest === "string" ? v.digest : "",
       verdict,
-      note: typeof v.note === "string" ? v.note : ""
+      note: typeof v.note === "string" ? v.note : "",
+      ...confidence ? { confidence } : {}
     });
   }
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
@@ -5034,6 +5037,11 @@ function applyVerdicts(outDir, verdictsPath) {
 function reduceVerdicts(verdicts, inv) {
   const counts = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
   for (const v of verdicts) if (v.verdict && counts[v.verdict] !== void 0) counts[v.verdict]++;
+  const confidence = { confirmed: 0, inferred: 0, gap: 0, unlabeled: 0 };
+  for (const v of verdicts) {
+    if (v.confidence && VALID_CONFIDENCE.includes(v.confidence)) confidence[v.confidence]++;
+    else confidence.unlabeled++;
+  }
   const failures = [];
   const unadjudicated = [];
   for (const v of verdicts) {
@@ -5061,7 +5069,8 @@ function reduceVerdicts(verdicts, inv) {
     refuted: counts.refuted,
     unsupported: counts.unsupported,
     failures,
-    unadjudicated
+    unadjudicated,
+    confidence
   };
 }
 function foldSemantic(outDir, check, opts = {}) {
@@ -5094,11 +5103,20 @@ function foldSemantic(outDir, check, opts = {}) {
   if (fresh.unadjudicated.length) {
     check.warnings.push(`${fresh.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
   }
+  if (fresh.confidence?.gap) {
+    check.warnings.push(
+      `${fresh.confidence.gap} verdict(s) labeled confidence:gap \u2014 the cited evidence is thin; strengthen it or record the claims as known gaps`
+    );
+  }
 }
 function formatVerifyReport(r) {
   const lines = [];
   lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
   lines.push(`  supported: ${r.supported} \xB7 partial: ${r.partial} \xB7 refuted: ${r.refuted} \xB7 unsupported: ${r.unsupported}`);
+  const c = r.confidence;
+  if (c && c.confirmed + c.inferred + c.gap > 0) {
+    lines.push(`  confidence: ${c.confirmed} confirmed \xB7 ${c.inferred} inferred \xB7 ${c.gap} gap${c.unlabeled ? ` \xB7 ${c.unlabeled} unlabeled` : ""}`);
+  }
   for (const f of r.failures.slice(0, 12)) {
     lines.push(`  \u2717 ${f.claimId} (${f.evidenceRef}): ${f.verdict}${f.note ? " \u2014 " + f.note : ""}`);
   }

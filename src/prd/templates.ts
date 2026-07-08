@@ -773,7 +773,7 @@ export function featurePrd(inv: Inventory, feature: Feature, opts: Options, sour
     "## Functional requirements",
     "",
     agentNote(
-      `Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from ${truth}. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done.`,
+      `Turn the stories into a **numbered** checklist of precise, testable behaviours, derived from ${truth}. Cover happy paths, every edge case, every validation rule, and every error state. Leave nothing as "etc." or "and so on" — if you write a placeholder, you are not done. Tag each requirement \`[confirmed]\` (read directly in the source), \`[inferred]\` (pattern-derived, no false certainty), or \`[gap]\` (needs a human) so the \`--verify\` pass can adjudicate its confidence faster.`,
     ),
     "",
   ];

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runVerify, applyVerdicts, foldSemantic } from "../src/verify.js";
+import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport, reduceVerdicts } from "../src/verify.js";
 import { checkOutput } from "../src/check.js";
 
 function scratch(): string {
@@ -248,6 +248,51 @@ describe("evidence resolution (fabricated citations)", () => {
     const before = check.errors.length;
     foldSemantic(dir, check);
     expect(check.errors.length).toBeGreaterThan(before);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("confidence: applyVerdicts keeps a valid label and drops an invalid one", () => {
+    const dir = setup();
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    const labels = ["confirmed", "banana", "gap"];
+    const pairs = todo.pairs.map((p: any, i: number) => ({ ...p, verdict: "supported", note: "", confidence: labels[i] }));
+    const f = join(dir, "verdicts.json");
+    writeFileSync(f, JSON.stringify({ pairs }));
+    applyVerdicts(dir, f);
+    const sem = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    expect(sem.verdicts[0].confidence).toBe("confirmed");
+    expect(sem.verdicts[1].confidence).toBeUndefined();
+    expect(sem.verdicts[2].confidence).toBe("gap");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("confidence: reduceVerdicts aggregates the label counts", () => {
+    const v = (claimId: string, confidence?: string) =>
+      ({ claimId, claim: "", feature: "f", evidenceRef: "feature f", digest: "", verdict: "supported", note: "", confidence }) as any;
+    const r = reduceVerdicts([v("C1", "confirmed"), v("C2", "inferred"), v("C3", "gap"), v("C4")]);
+    expect(r.confidence).toEqual({ confirmed: 1, inferred: 1, gap: 1, unlabeled: 1 });
+  });
+
+  it("confidence: formatVerifyReport prints the label line only when labels exist", () => {
+    const v = (claimId: string, confidence?: string) =>
+      ({ claimId, claim: "", feature: "f", evidenceRef: "feature f", digest: "", verdict: "supported", note: "", confidence }) as any;
+    const labeled = formatVerifyReport(reduceVerdicts([v("C1", "confirmed"), v("C2", "gap")]));
+    expect(labeled).toMatch(/confidence: .*1 confirmed.*1 gap/);
+    const unlabeled = formatVerifyReport(reduceVerdicts([v("C1"), v("C2")]));
+    expect(unlabeled).not.toContain("confidence:");
+  });
+
+  it("confidence: foldSemantic warns on gap-labeled verdicts", () => {
+    const dir = setup();
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    const pairs = todo.pairs.map((p: any, i: number) => ({ ...p, verdict: "supported", note: "", confidence: i === 0 ? "gap" : "confirmed" }));
+    const f = join(dir, "verdicts.json");
+    writeFileSync(f, JSON.stringify({ pairs }));
+    const r = applyVerdicts(dir, f);
+    expect(r.ok).toBe(true); // confidence is triage metadata, never a gate
+    const check = checkOutput(dir);
+    foldSemantic(dir, check);
+    expect(check.warnings.join(" ")).toMatch(/gap/);
     rmSync(dir, { recursive: true, force: true });
   });
 

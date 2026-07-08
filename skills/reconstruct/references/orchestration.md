@@ -154,6 +154,14 @@ and report**. Write every remaining `REVIEW.json.failures` entry into `REBUILD.m
 the final report. If a residual blocker is a *faithful* property of the original (a real bug you are
 preserving), record it rather than looping on it. Report once, at the end.
 
+When adjudicating the `--verify` requirement ledger, stamp each verdict with a `confidence` label
+alongside its `verdict`: **confirmed** (you read the cited evidence and it decisively supports the
+requirement), **inferred** (consistent with the source but indirect — a convention, a pattern, or
+standard library/DB behavior, with no false certainty), or **gap** (the evidence is thin or missing
+and a human should confirm). The label never gates — the `verdict` kind does — but it keeps a
+grounded fact machine-distinguishable from an inference, and `--check --semantic` warns when any
+verdict is labeled `gap` so thin evidence surfaces instead of reading as directly confirmed.
+
 `--check --semantic` folds both semantic gates — `VERIFY.json` (refuted/unsupported requirements)
 and `REVIEW.json` (unresolved blockers) — into the structural gate, additively. It re-reduces the
 persisted verdicts/findings at check time and re-resolves every cited `evidenceRef` against the

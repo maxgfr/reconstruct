@@ -583,6 +583,16 @@ export interface RenderResult {
 // ---------------------------------------------------------------------------
 export type VerdictKind = "supported" | "partial" | "refuted" | "unsupported";
 
+/**
+ * How the adjudicator arrived at a verdict: `confirmed` (evidence read and
+ * decisive), `inferred` (consistent with the source but indirect — a pattern,
+ * a convention, standard library/DB behavior), or `gap` (evidence thin or
+ * missing; needs a human). Triage metadata — the verdict kind gates, the
+ * confidence never does; it keeps grounded fact machine-distinguishable from
+ * inference.
+ */
+export type ConfidenceKind = "confirmed" | "inferred" | "gap";
+
 export interface ClaimEvidencePair {
   claimId: string; // "C1", "C2", …
   claim: string; // the requirement text (capped)
@@ -594,6 +604,7 @@ export interface ClaimEvidencePair {
 export interface Verdict extends ClaimEvidencePair {
   verdict: VerdictKind;
   note: string;
+  confidence?: ConfidenceKind;
 }
 
 export interface VerifyResult {
@@ -607,6 +618,8 @@ export interface VerifyResult {
   failures: { claimId: string; evidenceRef: string; verdict: VerdictKind; note: string }[];
   unadjudicated: string[];
   verdicts?: Verdict[];
+  /** Aggregated confidence labels, when the adjudicator stamped any. */
+  confidence?: { confirmed: number; inferred: number; gap: number; unlabeled: number };
 }
 
 export interface VerifyWorklist {

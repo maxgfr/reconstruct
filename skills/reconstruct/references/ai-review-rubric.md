@@ -153,7 +153,11 @@ Make it terminate on a *correct* fixpoint — the ledger backs each rule with a 
    silently dropped ones, no guessed constants where the source is explicit.
    Scratch mode: every requirement traces to the interview, `CONTEXT.md`, or an
    ADR — nothing invented beyond what was decided. *Blocker on a fabricated or
-   omitted behaviour.*
+   omitted behaviour.* When you later run `--verify`, keep a grounded fact
+   distinct from an inference: stamp each verdict `confidence: confirmed`
+   (evidence read and decisive) / `inferred` (indirect — a pattern or standard
+   behaviour) / `gap` (thin evidence, needs a human), so an inferred claim can
+   never read as directly confirmed and `--check --semantic` can surface the gaps.
 
 8. **i18n completeness.** Every user-facing string has a source string in the
    message catalog (`ARCHITECTURE.md`) and resolves in every locale; the PRD

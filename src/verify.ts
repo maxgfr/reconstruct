@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import type { ClaimEvidencePair, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
+import type { ClaimEvidencePair, ConfidenceKind, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
 
 // Bounds the requirement-verification loop (claim↔evidence pairs per run).
 export const VERIFY_MAX = 60;
 const VALID: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
+const VALID_CONFIDENCE: ConfidenceKind[] = ["confirmed", "inferred", "gap"];
 
 // The feature-PRD sections whose list items are testable requirements/claims.
 const CLAIM_SECTIONS = new Set(["## Functional requirements", "## Acceptance criteria"]);
@@ -134,7 +135,7 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
 
   const todo = {
     run: outDir,
-    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "" })),
+    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "", confidence: null as ConfidenceKind | null })),
   };
   writeFileSync(join(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
   writeFileSync(join(outDir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
@@ -149,7 +150,9 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
     `For each requirement, open the cited source evidence and judge whether the requirement ` +
       `**traces to the original code** (faithful inference) or was invented. In ` +
       `\`VERIFY.todo.json\`, set each \`verdict\` to supported · partial · refuted · unsupported ` +
-      `(+ a short \`note\`), save it (e.g. as \`verdicts.json\`), then run ` +
+      `(+ a short \`note\`), and stamp each \`confidence\` to confirmed (evidence read and ` +
+      `decisive) · inferred (consistent but indirect — a pattern or standard behavior) · gap ` +
+      `(evidence thin; needs a human). Save it (e.g. as \`verdicts.json\`), then run ` +
       `\`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`,
   );
   if (kept < total) out.push(`\n_Showing ${kept} of ${total} requirement(s) — capped at the best-matched evidence._`);
@@ -158,7 +161,7 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
     out.push(`## ${p.claimId} · ${p.feature} → ${p.evidenceRef}`);
     out.push(`**Requirement:** ${p.claim}`);
     out.push(`**Captured evidence:** ${p.digest}`);
-    out.push(`**Verdict:** _____ · **Note:** _____`);
+    out.push(`**Verdict:** _____ · **Confidence:** _____ · **Note:** _____`);
     out.push("");
   }
   return out.join("\n");
@@ -229,6 +232,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
   for (const v of list) {
     if (!v || typeof v.claimId !== "string") continue;
     const verdict = VALID.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
+    const confidence = VALID_CONFIDENCE.includes(v.confidence) ? (v.confidence as ConfidenceKind) : undefined;
     verdicts.push({
       claimId: v.claimId,
       claim: typeof v.claim === "string" ? v.claim : "",
@@ -237,6 +241,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       digest: typeof v.digest === "string" ? v.digest : "",
       verdict,
       note: typeof v.note === "string" ? v.note : "",
+      ...(confidence ? { confidence } : {}),
     });
   }
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
@@ -251,6 +256,11 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
 export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResult {
   const counts: Record<VerdictKind, number> = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
   for (const v of verdicts) if (v.verdict && counts[v.verdict] !== undefined) counts[v.verdict]++;
+  const confidence = { confirmed: 0, inferred: 0, gap: 0, unlabeled: 0 };
+  for (const v of verdicts) {
+    if (v.confidence && VALID_CONFIDENCE.includes(v.confidence)) confidence[v.confidence]++;
+    else confidence.unlabeled++;
+  }
 
   const failures: VerifyResult["failures"] = [];
   const unadjudicated: string[] = [];
@@ -281,6 +291,7 @@ export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResu
     unsupported: counts.unsupported,
     failures,
     unadjudicated,
+    confidence,
   };
 }
 
@@ -320,12 +331,21 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   if (fresh.unadjudicated.length) {
     check.warnings.push(`${fresh.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
   }
+  if (fresh.confidence?.gap) {
+    check.warnings.push(
+      `${fresh.confidence.gap} verdict(s) labeled confidence:gap — the cited evidence is thin; strengthen it or record the claims as known gaps`,
+    );
+  }
 }
 
 export function formatVerifyReport(r: VerifyResult): string {
   const lines: string[] = [];
   lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
   lines.push(`  supported: ${r.supported} · partial: ${r.partial} · refuted: ${r.refuted} · unsupported: ${r.unsupported}`);
+  const c = r.confidence;
+  if (c && c.confirmed + c.inferred + c.gap > 0) {
+    lines.push(`  confidence: ${c.confirmed} confirmed · ${c.inferred} inferred · ${c.gap} gap${c.unlabeled ? ` · ${c.unlabeled} unlabeled` : ""}`);
+  }
   for (const f of r.failures.slice(0, 12)) {
     lines.push(`  ✗ ${f.claimId} (${f.evidenceRef}): ${f.verdict}${f.note ? " — " + f.note : ""}`);
   }
