@@ -56,8 +56,9 @@ describe("i18n-app (Next.js [locale] App Router)", () => {
   });
 });
 
-// tRPC: the procedures are invisible behind a single catch-all route — the engine
-// must surface the routers as API candidates and flag the surface in `unknowns`.
+// tRPC: the tRPC adapter resolves the procedures into dot-path routes (see
+// tests/adapters.test.ts). The router files still surface as API candidates and
+// the API-surface unknown still fires — verification pointers, not the resolution.
 describe("trpc-app (tRPC routers behind a catch-all)", () => {
   const inv = analyze(opts("trpc-app"));
 

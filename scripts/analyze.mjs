@@ -2478,6 +2478,181 @@ var goAdapter = {
   }
 };
 
+// src/adapters/trpc.ts
+var ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:createTRPCRouter|\w+\.router)\s*\(/g;
+var REQUIRE_RE4 = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var IMPORT_RE4 = /import\s+\{([^}]*)\}\s+from\s+["'`](\.[^"'`]*)["'`]/g;
+var METHOD_MARKERS = [
+  [/\.subscription\s*\(/, "SUBSCRIPTION"],
+  [/\.mutation\s*\(/, "MUTATION"],
+  [/\.query\s*\(/, "QUERY"]
+];
+function extractObjectBody(src, fromIdx) {
+  let i = fromIdx;
+  while (i < src.length && /\s/.test(src[i])) i++;
+  if (src[i] !== "{") return null;
+  const start = i;
+  let depth = 0;
+  let str = null;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (str) {
+      if (c === "\\") i++;
+      else if (c === str) str = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") str = c;
+    else if (c === "{" || c === "(" || c === "[") depth++;
+    else if (c === "}" || c === ")" || c === "]") {
+      depth--;
+      if (depth === 0) return src.slice(start + 1, i);
+    }
+  }
+  return null;
+}
+function topLevelEntries(body) {
+  const segments = [];
+  let depth = 0;
+  let str = null;
+  let seg = "";
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (str) {
+      seg += c;
+      if (c === "\\") {
+        seg += body[i + 1] ?? "";
+        i++;
+      } else if (c === str) str = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      str = c;
+      seg += c;
+      continue;
+    }
+    if (c === "{" || c === "(" || c === "[") depth++;
+    else if (c === "}" || c === ")" || c === "]") depth--;
+    if (c === "," && depth === 0) {
+      segments.push(seg);
+      seg = "";
+      continue;
+    }
+    seg += c;
+  }
+  if (seg.trim()) segments.push(seg);
+  const out = [];
+  for (const raw of segments) {
+    const s = raw.trim();
+    if (!s) continue;
+    let d = 0;
+    let q = null;
+    let colon = -1;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (q) {
+        if (c === "\\") i++;
+        else if (c === q) q = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") q = c;
+      else if (c === "{" || c === "(" || c === "[") d++;
+      else if (c === "}" || c === ")" || c === "]") d--;
+      else if (c === ":" && d === 0) {
+        colon = i;
+        break;
+      }
+    }
+    if (colon === -1) {
+      const key = /^\w+/.exec(s)?.[0];
+      if (key) out.push({ key, value: key });
+    } else {
+      const key = s.slice(0, colon).trim().replace(/^["'`]|["'`]$/g, "");
+      out.push({ key, value: s.slice(colon + 1).trim() });
+    }
+  }
+  return out;
+}
+function procedureMethod(value) {
+  for (const [re, method] of METHOD_MARKERS) if (re.test(value)) return method;
+  return null;
+}
+var INLINE_ROUTER_RE = /^(?:createTRPCRouter|\w+\.router)\s*\(/;
+function parseRouterBody(body, file) {
+  const def = { file, procedures: [], children: [], inlineChildren: [] };
+  for (const { key, value } of topLevelEntries(body)) {
+    const method = procedureMethod(value);
+    if (method) {
+      def.procedures.push({ name: key, method });
+      continue;
+    }
+    if (INLINE_ROUTER_RE.test(value)) {
+      const inner = extractObjectBody(value, value.indexOf("(") + 1);
+      if (inner !== null) def.inlineChildren.push({ name: key, def: parseRouterBody(inner, file) });
+      continue;
+    }
+    const ident = /^\w+$/.exec(value.trim());
+    if (ident) def.children.push({ name: key, ref: value.trim() });
+  }
+  return def;
+}
+var trpcAdapter = {
+  id: "trpc",
+  frameworks: [],
+  libraries: ["tRPC"],
+  detectRoutes(files, repo) {
+    const sources = readSources(files, repo, JS_SRC_EXTS);
+    const routers = /* @__PURE__ */ new Map();
+    const importsByFile = /* @__PURE__ */ new Map();
+    for (const [path, src] of sources) {
+      const imports = /* @__PURE__ */ new Map();
+      for (const re of [IMPORT_RE4, REQUIRE_RE4]) {
+        for (const m of src.matchAll(re)) {
+          const target = resolveModule(path, m[2], sources);
+          if (!target) continue;
+          for (const name of m[1].split(",")) {
+            const id = name.trim().split(/\s+as\s+/).pop()?.trim();
+            if (id) imports.set(id, target);
+          }
+        }
+      }
+      importsByFile.set(path, imports);
+      for (const m of src.matchAll(ROUTER_DECL_RE)) {
+        const varName = m[1];
+        const body = extractObjectBody(src, (m.index ?? 0) + m[0].length);
+        if (body === null) continue;
+        routers.set(`${path}::${varName}`, parseRouterBody(body, path));
+      }
+    }
+    const resolveRef = (file, ref) => {
+      if (routers.has(`${file}::${ref}`)) return `${file}::${ref}`;
+      const target = importsByFile.get(file)?.get(ref);
+      if (target && routers.has(`${target}::${ref}`)) return `${target}::${ref}`;
+      return null;
+    };
+    const referenced = /* @__PURE__ */ new Set();
+    for (const [id, def] of routers) {
+      const file = id.slice(0, id.lastIndexOf("::"));
+      for (const c of def.children) {
+        const target = resolveRef(file, c.ref);
+        if (target) referenced.add(target);
+      }
+    }
+    const routes = [];
+    const emit = (def, prefix, seen) => {
+      const at = (name) => prefix ? `${prefix}.${name}` : name;
+      for (const p of def.procedures) routes.push({ route: at(p.name), file: def.file, kind: "api", method: p.method });
+      for (const ic of def.inlineChildren) emit(ic.def, at(ic.name), seen);
+      for (const c of def.children) {
+        const target = resolveRef(def.file, c.ref);
+        if (!target || seen.has(target)) continue;
+        emit(routers.get(target), at(c.name), /* @__PURE__ */ new Set([...seen, target]));
+      }
+    };
+    for (const [id, def] of routers) if (!referenced.has(id)) emit(def, "", /* @__PURE__ */ new Set([id]));
+    return routes;
+  }
+};
+
 // src/adapters/registry.ts
 var ROUTE_ADAPTERS = [
   nextjsAdapter,
@@ -2489,10 +2664,13 @@ var ROUTE_ADAPTERS = [
   honoAdapter,
   djangoAdapter,
   railsAdapter,
-  goAdapter
+  goAdapter,
+  trpcAdapter
 ];
 function detectRoutes(files, stack, repo) {
-  const active = ROUTE_ADAPTERS.filter((a) => a.frameworks.some((f) => stack.frameworks.includes(f)));
+  const active = ROUTE_ADAPTERS.filter(
+    (a) => a.frameworks.some((f) => stack.frameworks.includes(f)) || (a.libraries?.some((l) => stack.libraries.includes(l)) ?? false)
+  );
   const seen = /* @__PURE__ */ new Set();
   const merged = [];
   for (const adapter of active) {

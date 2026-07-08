@@ -271,10 +271,11 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 | Django | [`src/adapters/django.ts`](./src/adapters/django.ts) | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules. |
 | Rails | [`src/adapters/rails.ts`](./src/adapters/rails.ts) | `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes. |
 | Go | [`src/adapters/go.ts`](./src/adapters/go.ts) | Gin/Echo/chi/Fiber `<router>.GET("/x")` prefixed by `.Group("/p")` chains, resolved transitively. |
+| tRPC | [`src/adapters/trpc.ts`](./src/adapters/trpc.ts) | Procedures on `createTRPCRouter({…})` / `t.router({…})` → dot-paths (`user.list`) with method QUERY/MUTATION/SUBSCRIPTION; nested routers composed across files. Activates on the `tRPC` **library** label (not a framework). |
 | i18n | [`src/adapters/i18n.ts`](./src/adapters/i18n.ts) | Locale detection and per-file translation-key counting. |
 
 Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Hono,
-Flask, FastAPI, NestJS, Django, Rails, Go); every other stack's interface surface and data model are mapped by the **AI playbook**
+Flask, FastAPI, NestJS, Django, Rails, Go, tRPC); every other stack's interface surface and data model are mapped by the **AI playbook**
 from the candidate hints — see [`references/analysis-playbook.md`](./skills/reconstruct/references/analysis-playbook.md)
 and the per-stack cheat-sheets in [`references/stack-guides/`](./skills/reconstruct/references/stack-guides). The two
 layers are **complementary**: an adapter gives a resolved head-start where a framework has a clear

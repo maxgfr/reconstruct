@@ -10,6 +10,7 @@ import { honoAdapter } from "./hono.js";
 import { djangoAdapter } from "./django.js";
 import { railsAdapter } from "./rails.js";
 import { goAdapter } from "./go.js";
+import { trpcAdapter } from "./trpc.js";
 
 /**
  * Every registered route adapter. To add a framework, append its adapter here
@@ -27,6 +28,7 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
   djangoAdapter,
   railsAdapter,
   goAdapter,
+  trpcAdapter,
 ];
 
 /**
@@ -35,7 +37,9 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
  * activate more than one adapter (e.g. a Next.js frontend over an Express API).
  */
 export function detectRoutes(files: FileInfo[], stack: StackInfo, repo: string): RouteInfo[] {
-  const active = ROUTE_ADAPTERS.filter((a) => a.frameworks.some((f) => stack.frameworks.includes(f)));
+  const active = ROUTE_ADAPTERS.filter(
+    (a) => a.frameworks.some((f) => stack.frameworks.includes(f)) || (a.libraries?.some((l) => stack.libraries.includes(l)) ?? false),
+  );
   const seen = new Set<string>();
   const merged: RouteInfo[] = [];
   for (const adapter of active) {

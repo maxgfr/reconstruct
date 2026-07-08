@@ -18,13 +18,16 @@ test. No core file changes.
 export interface RouteAdapter {
   id: string;            // stable id, e.g. "flask"
   frameworks: string[];  // labels in stack.frameworks this adapter handles, e.g. ["Flask"]
+  libraries?: string[];  // labels in stack.libraries that also activate it, e.g. ["tRPC"]
   detectRoutes(files: FileInfo[], repo: string): RouteInfo[];
 }
 ```
 
 - The registry (`src/adapters/registry.ts`) only calls `detectRoutes` when one of
-  `frameworks` is in the detected stack, so an adapter never re-checks the
-  framework itself.
+  `frameworks` **or** `libraries` is in the detected stack, so an adapter never
+  re-checks the framework itself. Use `libraries` for a surface that registers as
+  a *library* rather than a framework (tRPC over Next.js/Express), so it runs
+  without perturbing framework detection.
 - `files` is the walked file list (paths + metadata); `repo` is the absolute root
   so you can read source for decorator-/convention-based frameworks. Read with the
   shared `readSources(files, repo, exts)` helper in `src/adapters/util.ts`.
@@ -58,6 +61,7 @@ Express API) — their routes merge.
 | `django`  | Django       | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules |
 | `rails`   | Ruby on Rails| `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes via `do`/`end` nesting |
 | `go`      | Gin, Echo, chi, Fiber | `<router>.GET("/x")` (both `GET`/`Get` casings) prefixed by `<child> := <parent>.Group("/p")` chains, resolved transitively |
+| `trpc`    | tRPC _(library)_ | procedures on `createTRPCRouter({…})` / `t.router({…})` resolved to dot-paths (`user.list`) with method QUERY/MUTATION/SUBSCRIPTION; nested routers composed across files. Activates on the `tRPC` **library** label, not a framework. Router composition it can't statically resolve (`mergeRouters`, spreads) stays an apiCandidate hint |
 
 **Deliberately deferred** (covered by the candidate hints + their stack guide
 instead): **Laravel** — being honest about `Route::resource`/controller routes

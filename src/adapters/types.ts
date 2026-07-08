@@ -20,6 +20,14 @@ export interface RouteAdapter {
    */
   frameworks: string[];
   /**
+   * Library labels (as they appear in `stack.libraries`) that also activate this
+   * adapter. For surfaces that register as a *library* rather than a framework —
+   * tRPC, for instance, is a library over Next.js/Express — so the adapter runs
+   * without perturbing framework detection. Activation is OR: any framework OR
+   * any library match runs `detectRoutes`.
+   */
+  libraries?: string[];
+  /**
    * Extract the deterministic routes from the walked files. `repo` is the
    * absolute repo root so an adapter can read file contents (decorator- and
    * convention-based frameworks need the source, not just the paths). Return

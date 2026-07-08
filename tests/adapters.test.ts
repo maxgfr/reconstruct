@@ -278,3 +278,40 @@ describe("go adapter", () => {
     expect(inv.routes.every((r) => !r.route.includes("example.com"))).toBe(true);
   });
 });
+
+/** The method of a resolved route (or undefined if not present). */
+function methodOf(routes: RouteInfo[], route: string): string | undefined {
+  return routes.find((r) => r.route === route)?.method;
+}
+
+describe("trpc adapter", () => {
+  const inv = analyze(opts("trpc-app"));
+
+  it("resolves procedures as dot-paths with QUERY/MUTATION methods", () => {
+    expect(hasRoute(inv.routes, "user.list", "api", "src/server/api/routers/user.ts")).toBe(true);
+    expect(methodOf(inv.routes, "user.list")).toBe("QUERY");
+    expect(methodOf(inv.routes, "user.byId")).toBe("QUERY");
+    expect(methodOf(inv.routes, "user.update")).toBe("MUTATION");
+    expect(hasRoute(inv.routes, "post.feed", "api", "src/server/api/routers/post.ts")).toBe(true);
+    expect(methodOf(inv.routes, "post.feed")).toBe("QUERY");
+    expect(methodOf(inv.routes, "post.create")).toBe("MUTATION");
+  });
+
+  it("composes nested routers transitively (cross-file and same-file)", () => {
+    // root.ts: appRouter = createTRPCRouter({ user, post, admin })
+    // admin.ts (t.router form): { stats, purge, events, audit: auditRouter }
+    expect(methodOf(inv.routes, "admin.stats")).toBe("QUERY");
+    expect(methodOf(inv.routes, "admin.purge")).toBe("MUTATION");
+    // same-file nested router auditRouter mounted at `audit`
+    expect(hasRoute(inv.routes, "admin.audit.log", "api", "src/server/api/routers/admin.ts")).toBe(true);
+  });
+
+  it("detects the subscription kind", () => {
+    expect(methodOf(inv.routes, "admin.events")).toBe("SUBSCRIPTION");
+  });
+
+  it("activates from the library signal, not frameworks", () => {
+    expect(inv.stack.frameworks).not.toContain("tRPC");
+    expect(inv.routes.length).toBeGreaterThan(0);
+  });
+});
