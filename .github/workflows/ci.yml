@@ -45,6 +45,9 @@ jobs:
       - name: Assert reconstruction output was produced
         run: test -f /tmp/reconstruct-demo/inventory.json && test -f /tmp/reconstruct-demo/REBUILD.md
 
+      - name: Golden example passes the full semantic gate (read-only)
+        run: node scripts/analyze.mjs --check --semantic --out assets/example-output
+
       - name: Convergence/parity (scratch path, buildable-by-construction)
         run: pnpm run parity # node scripts/parity.mjs --plan <example fixture>; --repo omitted, no external repo needed
 
@@ -115,3 +118,6 @@ jobs:
         run: |
           node scripts/analyze.mjs --summary --out "$RUNNER_TEMP/r18"
           test -f "$RUNNER_TEMP/r18/SUMMARY.md"
+
+      - name: Semantic gate runs on Node 18 (golden example, read-only)
+        run: node scripts/analyze.mjs --check --semantic --out assets/example-output
