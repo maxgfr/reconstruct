@@ -160,6 +160,22 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      `REVIEW.json`. A unit is done when it has **zero blockers**. Fix blockers in place, re-run
      `--check`, repeat until clean. See `references/orchestration.md` for the fan-out protocol.
 
+   - **The semantic gate — fail-closed.** Once the review converges, adjudicate the
+     requirement→source ledger too, then fold everything into the single final gate:
+
+     ```bash
+     node scripts/analyze.mjs --verify --out <OUT>            # requirement↔evidence worklist
+     # adjudicate each pair against the original source → verdicts.json
+     node scripts/analyze.mjs --verify --apply verdicts.json --out <OUT>
+     node scripts/analyze.mjs --check --semantic --out <OUT>  # the final gate
+     ```
+
+     `--check --semantic` re-reduces BOTH persisted ledgers (`VERIFY.json` verdicts,
+     `REVIEW.json` findings) and re-resolves every cited `evidenceRef` against the inventory —
+     a stale or hand-edited `ok: true` never passes — and it **fails closed**: a missing or
+     unreadable ledger is an error. `--allow-unverified` downgrades that to a warning; use it
+     only deliberately, and say so in the final report.
+
 10. **Run the convergence loop — autonomously, to completion.** A reconstruction is not done
     when the scaffold is filled; it is done when it **converges** to buildable. **You own this
     loop end-to-end: run it yourself, to the fixpoint, in one go.** Do not hand rounds back to
@@ -177,7 +193,10 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
       d. review each flagged unit + verify each blocker    # per references/ai-review-rubric.md
          → save findings.json (one finder/unit, one independent verifier/blocker)
       e. node scripts/analyze.mjs --review --apply findings.json --out <OUT>   # reduce → REVIEW.json
-    until  REVIEW.json.ok            (--check passes AND zero gating blockers)
+      f. when (b)–(e) are clean: node scripts/analyze.mjs --verify --out <OUT>
+         → adjudicate each requirement↔evidence pair → --verify --apply verdicts.json --out <OUT>
+      g. node scripts/analyze.mjs --check --semantic --out <OUT>   # the final, fail-closed gate
+    until  --check --semantic exits 0   (structure AND both semantic ledgers clean)
        or  REVIEW.json.staleRounds >= 2     or     round > 5
     ```
 

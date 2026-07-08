@@ -168,6 +168,12 @@ describe("parseArgs: strict flag validation", () => {
     expect(parseArgs(["--review", "--apply", "f.json", "--out", "/tmp/x"]).review).toBe(true);
   });
 
+  it("parses --allow-unverified as a --check modifier, not an action", () => {
+    const o = parseArgs(["--check", "--semantic", "--allow-unverified", "--out", "/tmp/x"]);
+    expect(o.allowUnverified).toBe(true);
+    expect(parseArgs(["--check", "--out", "/tmp/x"]).allowUnverified).toBe(false);
+  });
+
   it("accepts every known value flag (including = form) and routes globs", () => {
     const o = parseArgs([
       "--repo",

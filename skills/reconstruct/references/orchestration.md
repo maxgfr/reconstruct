@@ -155,8 +155,12 @@ the final report. If a residual blocker is a *faithful* property of the original
 preserving), record it rather than looping on it. Report once, at the end.
 
 `--check --semantic` folds both semantic gates — `VERIFY.json` (refuted/unsupported requirements)
-and `REVIEW.json` (unresolved blockers) — into the structural gate, additively. It is the single
-command that answers "is this tree buildable, structurally **and** semantically?"
+and `REVIEW.json` (unresolved blockers) — into the structural gate, additively. It re-reduces the
+persisted verdicts/findings at check time and re-resolves every cited `evidenceRef` against the
+inventory, so a stale or hand-edited `ok: true` never passes; and it **fails closed** — a missing
+or unreadable ledger is an error (run `--verify`/`--review` first, or pass `--allow-unverified` to
+downgrade it to a warning, deliberately and reported). It is the single command that answers
+"is this tree buildable, structurally **and** semantically?"
 
 ---
 

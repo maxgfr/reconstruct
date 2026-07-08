@@ -4880,7 +4880,7 @@ function featureEvidence(f) {
   const out = [];
   for (const file of f.files ?? []) out.push({ ref: file, text: String(file) });
   for (const r of f.routes ?? []) {
-    const sig = [r?.method, r?.path].filter(Boolean).join(" ") || (typeof r === "string" ? r : JSON.stringify(r));
+    const sig = [r?.method, r?.route ?? r?.path].filter(Boolean).join(" ") || (typeof r === "string" ? r : JSON.stringify(r));
     out.push({ ref: `route ${sig}`, text: sig });
   }
   for (const i of f.interfaces ?? []) out.push({ ref: `interface ${i}`, text: String(i) });
@@ -4956,6 +4956,44 @@ _Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched ev
   }
   return out.join("\n");
 }
+function readInventoryIfPresent(outDir) {
+  try {
+    return JSON.parse(readFileSync12(join14(outDir, "inventory.json"), "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function resolveEvidence(ref, inv) {
+  const features = inv.features ?? [];
+  const feat = /^feature (\S+)( \(no captured evidence\))?$/.exec(ref);
+  if (feat) return features.some((f) => f.slug === feat[1]);
+  const route = /^route (.+)$/.exec(ref);
+  if (route) {
+    const sig = route[1];
+    const sigs = /* @__PURE__ */ new Set();
+    const add = (method, path2) => {
+      if (typeof path2 !== "string" || !path2) return;
+      if (typeof method === "string" && method) sigs.add(`${method} ${path2}`);
+      sigs.add(path2);
+    };
+    for (const r of inv.routes ?? []) add(r.method, r.route);
+    for (const i of inv.interfaces ?? []) add(i.method, i.path);
+    for (const f of features) for (const r of f.routes ?? []) add(r?.method, r?.route ?? r?.path);
+    return sigs.has(sig);
+  }
+  const iface = /^interface (.+)$/.exec(ref);
+  if (iface) {
+    const name = iface[1];
+    return (inv.interfaces ?? []).some((i) => i.path === name) || features.some((f) => (f.interfaces ?? []).includes(name));
+  }
+  const ent = /^entity (.+)$/.exec(ref);
+  if (ent) {
+    const name = ent[1];
+    return (inv.dataModel ?? []).some((e) => e.entity === name) || features.some((f) => (f.entities ?? []).includes(name));
+  }
+  const path = ref.replace(/:\d+(-\d+)?$/, "");
+  return (inv.files ?? []).some((f) => f.path === path) || features.some((f) => (f.files ?? []).includes(path));
+}
 function applyVerdicts(outDir, verdictsPath) {
   const raw = JSON.parse(readFileSync12(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
@@ -4973,11 +5011,11 @@ function applyVerdicts(outDir, verdictsPath) {
       note: typeof v.note === "string" ? v.note : ""
     });
   }
-  const result = reduceVerdicts(verdicts);
+  const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
   writeFileSync2(join14(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
-function reduceVerdicts(verdicts) {
+function reduceVerdicts(verdicts, inv) {
   const counts = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
   for (const v of verdicts) if (v.verdict && counts[v.verdict] !== void 0) counts[v.verdict]++;
   const failures = [];
@@ -4989,6 +5027,13 @@ function reduceVerdicts(verdicts) {
     }
     if (v.verdict === "refuted" || v.verdict === "unsupported") {
       failures.push({ claimId: v.claimId, evidenceRef: v.evidenceRef, verdict: v.verdict, note: v.note });
+    } else if (inv && !resolveEvidence(v.evidenceRef, inv)) {
+      failures.push({
+        claimId: v.claimId,
+        evidenceRef: v.evidenceRef,
+        verdict: v.verdict,
+        note: `fabricated citation: evidenceRef does not resolve against the inventory${v.note ? " \u2014 " + v.note : ""}`
+      });
     }
   }
   return {
@@ -5003,22 +5048,35 @@ function reduceVerdicts(verdicts) {
     unadjudicated
   };
 }
-function foldSemantic(outDir, check) {
+function foldSemantic(outDir, check, opts = {}) {
   const p = join14(outDir, "VERIFY.json");
+  const skip = (msg) => {
+    if (opts.allowUnverified) check.warnings.push(`${msg}; semantic gate skipped (--allow-unverified)`);
+    else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
+  };
   if (!existsSync6(p)) {
-    check.warnings.push("--semantic: no VERIFY.json \u2014 run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped.");
+    skip("--semantic: no VERIFY.json \u2014 run `--verify` then `--verify --apply <verdicts.json>` first");
     return;
   }
+  let sem;
   try {
-    const sem = JSON.parse(readFileSync12(p, "utf8"));
-    if (!sem.ok) {
-      check.errors.push(`semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`);
-    }
-    if (sem.unadjudicated?.length) {
-      check.warnings.push(`${sem.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
-    }
+    sem = JSON.parse(readFileSync12(p, "utf8"));
   } catch (e) {
-    check.warnings.push(`--semantic: VERIFY.json is unreadable (${e.message})`);
+    skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
+    return;
+  }
+  if (!Array.isArray(sem.verdicts)) {
+    skip("--semantic: VERIFY.json carries no verdicts[] ledger \u2014 regenerate it with `--verify` then `--verify --apply <verdicts.json>`");
+    return;
+  }
+  const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir));
+  if (!fresh.ok) {
+    check.errors.push(
+      `semantic verification failed: ${fresh.failures.length} requirement(s) refuted, unsupported or citing unresolvable evidence (see VERIFY.json)`
+    );
+  }
+  if (fresh.unadjudicated.length) {
+    check.warnings.push(`${fresh.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
   }
 }
 function formatVerifyReport(r) {
@@ -5277,24 +5335,40 @@ function applyFindings(outDir, findingsPath) {
   writeFileSync3(reviewPath, JSON.stringify(result, null, 2));
   return result;
 }
-function foldReview(outDir, check) {
+function recomputeReviewGate(rev) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const f of rev.failures ?? []) if (f && typeof f.id === "string") ids.add(f.id);
+  for (const f of rev.findings ?? []) {
+    if (!f || typeof f.feature !== "string") continue;
+    if (gates(f)) ids.add(f.id ?? findingId(f));
+  }
+  return [...ids].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
+function foldReview(outDir, check, opts = {}) {
   const p = join15(outDir, "REVIEW.json");
+  const skip = (msg) => {
+    if (opts.allowUnverified) check.warnings.push(`${msg}; review gate skipped (--allow-unverified)`);
+    else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
+  };
   if (!existsSync7(p)) {
-    check.warnings.push("--semantic: no REVIEW.json \u2014 run `--review` then `--review --apply <findings.json>` first; review gate skipped.");
+    skip("--semantic: no REVIEW.json \u2014 run `--review` then `--review --apply <findings.json>` first");
     return;
   }
+  let rev;
   try {
-    const rev = JSON.parse(readFileSync13(p, "utf8"));
-    if (!rev.ok) {
-      check.errors.push(`AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`);
-    }
-    if (rev.noProgress) {
-      check.warnings.push(
-        `review made no progress for ${rev.staleRounds} round(s) on the same ${rev.residual.length} blocker(s) \u2014 fix the shared architecture contract or record them as known gaps`
-      );
-    }
+    rev = JSON.parse(readFileSync13(p, "utf8"));
   } catch (e) {
-    check.warnings.push(`--semantic: REVIEW.json is unreadable (${e.message})`);
+    skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
+    return;
+  }
+  const residual = recomputeReviewGate(rev);
+  if (residual.length) {
+    check.errors.push(`AI buildability review failed: ${residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`);
+  }
+  if (rev.noProgress) {
+    check.warnings.push(
+      `review made no progress for ${rev.staleRounds} round(s) on the same ${residual.length} blocker(s) \u2014 fix the shared architecture contract or record them as known gaps`
+    );
   }
 }
 function formatReviewReport(r) {
@@ -5337,6 +5411,7 @@ Options:
   --review             Write the AI buildability review worklist for --out
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
+  --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -5388,6 +5463,10 @@ Validation:
     reconstruct --review --apply findings.json --out <dir>
   --check --semantic folds VERIFY.json (refuted/unsupported requirements) and
   REVIEW.json (unresolved blockers) into the gate \u2014 additive, never a relaxation.
+  It re-reduces the persisted verdicts/findings and re-resolves every cited
+  evidenceRef against the inventory (a tampered or stale ok:true never passes),
+  and it FAILS CLOSED: a missing or unreadable ledger is an error \u2014 run --verify
+  and --review first, or pass --allow-unverified to downgrade it to a warning.
   --check, --verify and --review are mutually exclusive (run one at a time).
 `;
 function fail(message) {
@@ -5424,6 +5503,7 @@ function parseArgs(argv) {
   let verify = false;
   let review = false;
   let semantic = false;
+  let allowUnverified = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
@@ -5476,6 +5556,10 @@ function parseArgs(argv) {
     }
     if (arg === "--semantic") {
       semantic = true;
+      continue;
+    }
+    if (arg === "--allow-unverified") {
+      allowUnverified = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -5549,7 +5633,8 @@ function parseArgs(argv) {
     verify,
     review,
     apply: raw.apply ?? "",
-    semantic
+    semantic,
+    allowUnverified
   };
 }
 function main() {
@@ -5596,8 +5681,8 @@ function main() {
   if (opts.check) {
     const result = checkOutput(opts.out);
     if (opts.semantic) {
-      foldSemantic(opts.out, result);
-      foldReview(opts.out, result);
+      foldSemantic(opts.out, result, { allowUnverified: opts.allowUnverified });
+      foldReview(opts.out, result, { allowUnverified: opts.allowUnverified });
     }
     process.stdout.write(formatCheckReport(result, opts.out) + "\n");
     if (result.errors.length) process.exit(1);

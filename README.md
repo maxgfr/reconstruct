@@ -179,7 +179,10 @@ node scripts/analyze.mjs --review --apply findings.json --out ./my-app/reconstru
 
 `--check --semantic` folds both semantic gates into the structural one — `VERIFY.json`
 (requirements that don't trace to source) and `REVIEW.json` (unresolved blockers) — additively,
-never relaxing `--check`. For larger trees the enrichment and the review/fix loop both fan out
+never relaxing `--check`. The gate is **trustless and fail-closed**: it re-reduces the persisted
+verdicts/findings (never a stored `ok`), re-resolves every cited `evidenceRef` against the
+inventory, and errors when a ledger is missing or unreadable (pass `--allow-unverified` to
+downgrade that to a warning). For larger trees the enrichment and the review/fix loop both fan out
 across subagents; the protocol (map-reduce + the ledger) is in
 [`references/orchestration.md`](./skills/reconstruct/references/orchestration.md).
 

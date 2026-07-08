@@ -69,6 +69,11 @@ export interface Options {
    * requirements) and REVIEW.json (unresolved buildability blockers). `--semantic`.
    */
   semantic?: boolean;
+  /**
+   * With `--check --semantic`: downgrade a missing/unreadable VERIFY.json or
+   * REVIEW.json ledger to a warning instead of failing closed. `--allow-unverified`.
+   */
+  allowUnverified?: boolean;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */

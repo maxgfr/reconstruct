@@ -223,14 +223,70 @@ describe("foldReview (--check --semantic composition)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("does not add errors when there is no REVIEW.json (no regression)", () => {
+  it("errors when REVIEW.json is absent (fail closed)", () => {
     const dir = scratch();
     tree(dir, FEAT);
     const check = checkOutput(dir);
     const before = check.errors.length;
     foldReview(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
+    expect(check.errors.join(" ").toLowerCase()).toContain("review");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("downgrades the absent ledger to a warning under allowUnverified", () => {
+    const dir = scratch();
+    tree(dir, FEAT);
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldReview(dir, check, { allowUnverified: true });
     expect(check.errors.length).toBe(before);
     expect(check.warnings.join(" ").toLowerCase()).toContain("review");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("errors on an unparseable REVIEW.json", () => {
+    const dir = scratch();
+    tree(dir, FEAT);
+    writeFileSync(join(dir, "REVIEW.json"), "not-json{");
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldReview(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("foldReview recomputes the gate (no trusted summary)", () => {
+  it("ignores a tampered ok:true when failures still carry a gating blocker", () => {
+    const dir = scratch();
+    tree(dir, FEAT);
+    runReview(dir);
+    applyFindings(dir, writeFindings(dir, [blocker("01-auth")]));
+    const rev = JSON.parse(readFileSync(join(dir, "REVIEW.json"), "utf8"));
+    rev.ok = true;
+    writeFileSync(join(dir, "REVIEW.json"), JSON.stringify(rev));
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldReview(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("catches a gating blocker present in findings[] but stripped from failures[]", () => {
+    const dir = scratch();
+    tree(dir, FEAT);
+    runReview(dir);
+    applyFindings(dir, writeFindings(dir, [blocker("01-auth")]));
+    const rev = JSON.parse(readFileSync(join(dir, "REVIEW.json"), "utf8"));
+    rev.ok = true;
+    rev.failures = [];
+    rev.residual = [];
+    writeFileSync(join(dir, "REVIEW.json"), JSON.stringify(rev));
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldReview(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
     rmSync(dir, { recursive: true, force: true });
   });
 });

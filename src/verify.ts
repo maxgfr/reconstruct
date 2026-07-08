@@ -61,7 +61,8 @@ function featureEvidence(f: any): Ev[] {
   const out: Ev[] = [];
   for (const file of f.files ?? []) out.push({ ref: file, text: String(file) });
   for (const r of f.routes ?? []) {
-    const sig = [r?.method, r?.path].filter(Boolean).join(" ") || (typeof r === "string" ? r : JSON.stringify(r));
+    // Real features carry RouteInfo rows (`route`); older ledgers/fixtures used `path`.
+    const sig = [r?.method, r?.route ?? r?.path].filter(Boolean).join(" ") || (typeof r === "string" ? r : JSON.stringify(r));
     out.push({ ref: `route ${sig}`, text: sig });
   }
   for (const i of f.interfaces ?? []) out.push({ ref: `interface ${i}`, text: String(i) });
@@ -163,8 +164,64 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
   return out.join("\n");
 }
 
+/** Read `<out>/inventory.json` if present/parseable — else citation resolution is skipped. */
+function readInventoryIfPresent(outDir: string): Inventory | undefined {
+  try {
+    return JSON.parse(readFileSync(join(outDir, "inventory.json"), "utf8")) as Inventory;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a verdict's cited evidence actually exists in the inventory. Guards the
+ * ledger against fabricated citations: a `supported`/`partial` verdict must point
+ * at a route, interface, entity, feature or file the reconstruction actually
+ * captured. Names match exactly (never by substring) so `entity User` can't
+ * resolve against `Users2`. The `digest` field is deliberately NOT validated —
+ * it is a 600-char truncated join, not a hash; re-matching it would only
+ * manufacture false positives.
+ */
+export function resolveEvidence(ref: string, inv: Inventory): boolean {
+  const features = inv.features ?? [];
+  const feat = /^feature (\S+)( \(no captured evidence\))?$/.exec(ref);
+  if (feat) return features.some((f) => f.slug === feat[1]);
+
+  const route = /^route (.+)$/.exec(ref);
+  if (route) {
+    const sig = route[1] as string;
+    const sigs = new Set<string>();
+    const add = (method: unknown, path: unknown): void => {
+      if (typeof path !== "string" || !path) return;
+      if (typeof method === "string" && method) sigs.add(`${method} ${path}`);
+      sigs.add(path); // a method-less ref may cite a verb-carrying route
+    };
+    for (const r of inv.routes ?? []) add(r.method, r.route);
+    for (const i of inv.interfaces ?? []) add(i.method, i.path);
+    for (const f of features) for (const r of (f.routes ?? []) as any[]) add(r?.method, r?.route ?? r?.path);
+    return sigs.has(sig);
+  }
+
+  const iface = /^interface (.+)$/.exec(ref);
+  if (iface) {
+    const name = iface[1] as string;
+    return (inv.interfaces ?? []).some((i) => i.path === name) || features.some((f) => (f.interfaces ?? []).includes(name));
+  }
+
+  const ent = /^entity (.+)$/.exec(ref);
+  if (ent) {
+    const name = ent[1] as string;
+    return (inv.dataModel ?? []).some((e) => e.entity === name) || features.some((f) => (f.entities ?? []).includes(name));
+  }
+
+  // Anything else is a file path, optionally with a `:line[-line]` locator.
+  const path = ref.replace(/:\d+(-\d+)?$/, "");
+  return (inv.files ?? []).some((f) => f.path === path) || features.some((f) => (f.files ?? []).includes(path));
+}
+
 // Phase B — read an agent-filled verdicts file (`{ pairs: Verdict[] }` or a bare
-// array), reduce to a VerifyResult, and persist VERIFY.json.
+// array), reduce to a VerifyResult (re-resolving each citation against the
+// inventory), and persist VERIFY.json.
 export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResult {
   const raw = JSON.parse(readFileSync(verdictsPath, "utf8"));
   const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
@@ -182,14 +239,16 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       note: typeof v.note === "string" ? v.note : "",
     });
   }
-  const result = reduceVerdicts(verdicts);
+  const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
   writeFileSync(join(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
 
 // Fold per-requirement verdicts into a pass/fail. A requirement FAILS if the
-// source REFUTES it, or if it is `unsupported` (traces to nothing — invented).
-export function reduceVerdicts(verdicts: Verdict[]): VerifyResult {
+// source REFUTES it, if it is `unsupported` (traces to nothing — invented), or —
+// when an inventory is provided — if its cited evidence does not resolve
+// (fabricated citation).
+export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResult {
   const counts: Record<VerdictKind, number> = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
   for (const v of verdicts) if (v.verdict && counts[v.verdict] !== undefined) counts[v.verdict]++;
 
@@ -202,6 +261,13 @@ export function reduceVerdicts(verdicts: Verdict[]): VerifyResult {
     }
     if (v.verdict === "refuted" || v.verdict === "unsupported") {
       failures.push({ claimId: v.claimId, evidenceRef: v.evidenceRef, verdict: v.verdict, note: v.note });
+    } else if (inv && !resolveEvidence(v.evidenceRef, inv)) {
+      failures.push({
+        claimId: v.claimId,
+        evidenceRef: v.evidenceRef,
+        verdict: v.verdict,
+        note: `fabricated citation: evidenceRef does not resolve against the inventory${v.note ? " — " + v.note : ""}`,
+      });
     }
   }
 
@@ -218,25 +284,41 @@ export function reduceVerdicts(verdicts: Verdict[]): VerifyResult {
   };
 }
 
-// Fold the resolved VERIFY.json into a `--check` result when `--semantic` is set.
-// Strictly additive: it can only ADD an error (a refuted/unsupported requirement),
-// never relax the structural gate. Missing VERIFY.json warns, never fails.
-export function foldSemantic(outDir: string, check: CheckResult): void {
+// Fold the requirement-verification ledger into a `--check` result when
+// `--semantic` is set. Strictly additive on the structural gate, and trustless on
+// the ledger: the pass/fail is RE-REDUCED from `verdicts[]` (each citation
+// re-resolved against the inventory) at check time — a hand-edited or stale
+// `ok: true` never passes. Fails closed: a missing, unreadable or verdict-less
+// VERIFY.json is an error unless `allowUnverified` explicitly downgrades it.
+export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUnverified?: boolean } = {}): void {
   const p = join(outDir, "VERIFY.json");
+  const skip = (msg: string): void => {
+    if (opts.allowUnverified) check.warnings.push(`${msg}; semantic gate skipped (--allow-unverified)`);
+    else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
+  };
   if (!existsSync(p)) {
-    check.warnings.push("--semantic: no VERIFY.json — run `--verify` then `--verify --apply <verdicts.json>` first; semantic gate skipped.");
+    skip("--semantic: no VERIFY.json — run `--verify` then `--verify --apply <verdicts.json>` first");
     return;
   }
+  let sem: VerifyResult;
   try {
-    const sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
-    if (!sem.ok) {
-      check.errors.push(`semantic verification failed: ${sem.failures.length} requirement(s) refuted or unsupported by the original source (see VERIFY.json)`);
-    }
-    if (sem.unadjudicated?.length) {
-      check.warnings.push(`${sem.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
-    }
+    sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
   } catch (e) {
-    check.warnings.push(`--semantic: VERIFY.json is unreadable (${(e as Error).message})`);
+    skip(`--semantic: VERIFY.json is unreadable (${(e as Error).message})`);
+    return;
+  }
+  if (!Array.isArray(sem.verdicts)) {
+    skip("--semantic: VERIFY.json carries no verdicts[] ledger — regenerate it with `--verify` then `--verify --apply <verdicts.json>`");
+    return;
+  }
+  const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir));
+  if (!fresh.ok) {
+    check.errors.push(
+      `semantic verification failed: ${fresh.failures.length} requirement(s) refuted, unsupported or citing unresolvable evidence (see VERIFY.json)`,
+    );
+  }
+  if (fresh.unadjudicated.length) {
+    check.warnings.push(`${fresh.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
   }
 }
 

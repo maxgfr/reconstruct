@@ -34,6 +34,7 @@ Options:
   --review             Write the AI buildability review worklist for --out
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
+  --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
   --include <glob>     Only analyze files matching glob (repeatable, comma-ok)
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
@@ -85,6 +86,10 @@ Validation:
     reconstruct --review --apply findings.json --out <dir>
   --check --semantic folds VERIFY.json (refuted/unsupported requirements) and
   REVIEW.json (unresolved blockers) into the gate — additive, never a relaxation.
+  It re-reduces the persisted verdicts/findings and re-resolves every cited
+  evidenceRef against the inventory (a tampered or stale ok:true never passes),
+  and it FAILS CLOSED: a missing or unreadable ledger is an error — run --verify
+  and --review first, or pass --allow-unverified to downgrade it to a warning.
   --check, --verify and --review are mutually exclusive (run one at a time).
 `;
 
@@ -133,6 +138,7 @@ export function parseArgs(argv: string[]): Options {
   let verify = false;
   let review = false;
   let semantic = false;
+  let allowUnverified = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -186,6 +192,10 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--semantic") {
       semantic = true;
+      continue;
+    }
+    if (arg === "--allow-unverified") {
+      allowUnverified = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -283,6 +293,7 @@ export function parseArgs(argv: string[]): Options {
     review,
     apply: raw.apply ?? "",
     semantic,
+    allowUnverified,
   };
 }
 
@@ -334,8 +345,8 @@ function main(): void {
   if (opts.check) {
     const result = checkOutput(opts.out);
     if (opts.semantic) {
-      foldSemantic(opts.out, result);
-      foldReview(opts.out, result);
+      foldSemantic(opts.out, result, { allowUnverified: opts.allowUnverified });
+      foldReview(opts.out, result, { allowUnverified: opts.allowUnverified });
     }
     process.stdout.write(formatCheckReport(result, opts.out) + "\n");
     if (result.errors.length) process.exit(1);

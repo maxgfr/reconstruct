@@ -345,27 +345,55 @@ export function applyFindings(outDir: string, findingsPath: string): ReviewResul
   return result;
 }
 
-// Fold the resolved REVIEW.json into a `--check` result when `--semantic` is set.
-// Strictly additive: it can only ADD an error (an unresolved buildability blocker),
-// never relax the structural gate. Missing REVIEW.json warns, never fails.
-export function foldReview(outDir: string, check: CheckResult): void {
+/**
+ * Recompute the review gate from the persisted ledger: the union of the stored
+ * open-blocker `failures[]` and every finding in `findings[]` that still gates
+ * (an unrefuted blocker). Trustless on `rev.ok`/`rev.residual`. Integrity
+ * boundary: wholesale deletion of BOTH arrays is indistinguishable from a clean
+ * review — that case is defended by the fail-closed absence handling plus the
+ * `--review --apply` flow, which always persists the arrays together.
+ */
+export function recomputeReviewGate(rev: ReviewResult): string[] {
+  const ids = new Set<string>();
+  for (const f of rev.failures ?? []) if (f && typeof f.id === "string") ids.add(f.id);
+  for (const f of rev.findings ?? []) {
+    if (!f || typeof f.feature !== "string") continue;
+    if (gates(f)) ids.add(f.id ?? findingId(f));
+  }
+  return [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+// Fold the buildability-review ledger into a `--check` result when `--semantic`
+// is set. Strictly additive on the structural gate, and trustless on the ledger:
+// the open-blocker set is RECOMPUTED from `failures[]` ∪ gating `findings[]` at
+// check time — a hand-edited or stale `ok: true` never passes. Fails closed: a
+// missing or unreadable REVIEW.json is an error unless `allowUnverified`
+// explicitly downgrades it.
+export function foldReview(outDir: string, check: CheckResult, opts: { allowUnverified?: boolean } = {}): void {
   const p = join(outDir, "REVIEW.json");
+  const skip = (msg: string): void => {
+    if (opts.allowUnverified) check.warnings.push(`${msg}; review gate skipped (--allow-unverified)`);
+    else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
+  };
   if (!existsSync(p)) {
-    check.warnings.push("--semantic: no REVIEW.json — run `--review` then `--review --apply <findings.json>` first; review gate skipped.");
+    skip("--semantic: no REVIEW.json — run `--review` then `--review --apply <findings.json>` first");
     return;
   }
+  let rev: ReviewResult;
   try {
-    const rev = JSON.parse(readFileSync(p, "utf8")) as ReviewResult;
-    if (!rev.ok) {
-      check.errors.push(`AI buildability review failed: ${rev.residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`);
-    }
-    if (rev.noProgress) {
-      check.warnings.push(
-        `review made no progress for ${rev.staleRounds} round(s) on the same ${rev.residual.length} blocker(s) — fix the shared architecture contract or record them as known gaps`,
-      );
-    }
+    rev = JSON.parse(readFileSync(p, "utf8")) as ReviewResult;
   } catch (e) {
-    check.warnings.push(`--semantic: REVIEW.json is unreadable (${(e as Error).message})`);
+    skip(`--semantic: REVIEW.json is unreadable (${(e as Error).message})`);
+    return;
+  }
+  const residual = recomputeReviewGate(rev);
+  if (residual.length) {
+    check.errors.push(`AI buildability review failed: ${residual.length} unresolved blocker(s) across the feature PRDs (see REVIEW.json)`);
+  }
+  if (rev.noProgress) {
+    check.warnings.push(
+      `review made no progress for ${rev.staleRounds} round(s) on the same ${residual.length} blocker(s) — fix the shared architecture contract or record them as known gaps`,
+    );
   }
 }
 
