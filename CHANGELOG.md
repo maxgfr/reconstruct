@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.0.0](https://github.com/maxgfr/reconstruct/compare/v1.3.0...v2.0.0) (2026-07-08)
+
+
+* fix(check)!: semantic gate fails closed, re-reduces ledgers, validates evidence citations ([5b7dc05](https://github.com/maxgfr/reconstruct/commit/5b7dc05d4b9e402974da4db0edbc35bab78488bc))
+
+
+### Bug Fixes
+
+* **bundle:** scratch SUMMARY reports operations/entities/enums, not zero files/routes ([5dbe7cc](https://github.com/maxgfr/reconstruct/commit/5dbe7ccbd5026da7c2547b5568a977992ab3420d))
+
+
+### Features
+
+* **adapters:** tRPC route adapter with library-signal activation ([4fbc68c](https://github.com/maxgfr/reconstruct/commit/4fbc68cfdc26c67ca9e68695334258b3e6cab883))
+* **cli:** --brainstorm scaffolds a divergent-phase BRAINSTORM.md ([dd7175e](https://github.com/maxgfr/reconstruct/commit/dd7175e3c833982be59e47a7cc0ca7fea1c97938))
+* **verify:** optional confidence labels (confirmed/inferred/gap) on verdicts ([f0eed3f](https://github.com/maxgfr/reconstruct/commit/f0eed3fb1bd2221449895d5b0bbdebab5b70a3bc))
+
+
+### BREAKING CHANGES
+
+* --check --semantic exits 1 when VERIFY.json or
+REVIEW.json is missing/unreadable (previously a warning + exit 0), and
+ledgers created before this release fail re-validation until
+regenerated with --verify / --review --apply. Pass --allow-unverified
+to restore the advisory behavior.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
 # [1.3.0](https://github.com/maxgfr/reconstruct/compare/v1.2.2...v1.3.0) (2026-06-28)
 
 
