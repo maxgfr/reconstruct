@@ -15,8 +15,10 @@ const REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITE
 const FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
 
 // Directories that hold copied ground truth or original source — never scanned
-// for scaffolding, since they legitimately contain arbitrary text.
-const SKIP_DIRS = new Set(["data", "source", "node_modules", ".git"]);
+// for scaffolding, since they legitimately contain arbitrary text. `orchestration`
+// holds the artifacts `--orchestrate` emits (contracts, runbook, subagent scratch),
+// regenerated deterministically from the worklists — harness plumbing, not spec prose.
+const SKIP_DIRS = new Set(["data", "source", "node_modules", ".git", "orchestration"]);
 
 interface Doc {
   rel: string;

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2, join as join17 } from "path";
+import { resolve as resolve3, join as join19 } from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { existsSync as existsSync9, statSync as statSync3, realpathSync } from "fs";
+import { existsSync as existsSync10, statSync as statSync3, realpathSync } from "fs";
 
 // src/analyze.ts
 import { basename as basename3 } from "path";
@@ -4805,7 +4805,7 @@ import { existsSync as existsSync5, readFileSync as readFileSync11, readdirSync 
 import { join as join13, relative as relative3 } from "path";
 var REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITECTURE.md", "architecture/INTERFACES.md", "architecture/DATA-MODEL.md"];
 var FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
-var SKIP_DIRS = /* @__PURE__ */ new Set(["data", "source", "node_modules", ".git"]);
+var SKIP_DIRS = /* @__PURE__ */ new Set(["data", "source", "node_modules", ".git", "orchestration"]);
 function collectMarkdown(dir, base = dir) {
   const out = [];
   let entries;
@@ -5690,6 +5690,490 @@ function runBrainstorm(outDir) {
   return { relPath, created: written.includes(relPath), seeded: inv !== null };
 }
 
+// src/orchestrate.ts
+import { existsSync as existsSync9, mkdirSync as mkdirSync2, readFileSync as readFileSync15, writeFileSync as writeFileSync4 } from "fs";
+import { join as join18, resolve as resolve2 } from "path";
+
+// src/orchestrate-templates.ts
+import { join as join17 } from "path";
+var ONE_WRITER_FOOTER = `
+## Return, don't write
+
+Return ONLY the structured output specified above. Do NOT write, edit, or delete any file in the reconstruction tree; do NOT run any engine command that writes (\`--verify --apply\`, \`--review --apply\`, or the analyzer itself over the out dir). Returning proposals \u2014 not writing the shared docs directly \u2014 is what keeps the map parallel: two agents never race on the same file. The orchestrator is the SINGLE SERIAL REDUCER: it merges your returned fragments, writes the canonical docs and worklists itself, and runs the fail-closed \`--apply\` fold. Exception: if a draft or justification is prose too large to return, write ONLY to \`<OUT>/orchestration/out/<role>-<batch>.md\` (a file namespaced to you alone) and return its path.
+`;
+var DRAFT_SCHEMA = {
+  type: "object",
+  required: ["proposals"],
+  properties: {
+    proposals: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["slug", "prd", "interfaceRows", "entityRows"],
+        properties: {
+          slug: { type: "string" },
+          prd: { type: "string", description: "the COMPLETE features/<slug>/PRD.md content \u2014 full spine, every callout resolved" },
+          interfaceRows: {
+            type: "array",
+            description: "ROW PROPOSALS for architecture/INTERFACES.md (the orchestrator merges them)",
+            items: {
+              type: "object",
+              required: ["method", "path"],
+              properties: {
+                method: { type: "string" },
+                path: { type: "string" },
+                kind: { type: "string" },
+                auth: { type: "string" },
+                input: { type: "string" },
+                output: { type: "string" },
+                sideEffects: { type: "array", items: { type: "string" } }
+              }
+            }
+          },
+          entityRows: {
+            type: "array",
+            description: "ROW PROPOSALS for architecture/DATA-MODEL.md (the orchestrator merges them)",
+            items: {
+              type: "object",
+              required: ["entity", "fields"],
+              properties: {
+                entity: { type: "string" },
+                fields: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["name", "type"],
+                    properties: {
+                      name: { type: "string" },
+                      type: { type: "string" },
+                      constraints: { type: "string" },
+                      enumRef: { type: "string" }
+                    }
+                  }
+                },
+                relations: { type: "array", items: { type: "string" } },
+                indexes: { type: "array", items: { type: "string" } },
+                uniques: { type: "array", items: { type: "string" } }
+              }
+            }
+          },
+          enums: {
+            type: "array",
+            description: "every enum the feature touches, with its COMPLETE member list",
+            items: {
+              type: "object",
+              required: ["name", "members"],
+              properties: { name: { type: "string" }, members: { type: "array", items: { type: "string" } }, description: { type: "string" } }
+            }
+          },
+          notes: { type: "string", description: "what the source could not settle (goes to unknowns, never into the PRD as fact)" }
+        }
+      }
+    }
+  }
+};
+var FINDINGS_SCHEMA = {
+  type: "object",
+  required: ["findings"],
+  properties: {
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["feature", "severity", "category", "problem", "fix"],
+        properties: {
+          feature: { type: "string" },
+          severity: { enum: ["blocker", "major", "minor"] },
+          category: { enum: ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"] },
+          problem: { type: "string" },
+          fix: { type: "string" }
+        }
+      }
+    }
+  }
+};
+var BLOCKER_VERDICT_SCHEMA = {
+  type: "object",
+  required: ["verdicts"],
+  properties: {
+    verdicts: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "verdict", "verifierNote"],
+        properties: {
+          id: { type: "string" },
+          verdict: { enum: ["confirmed", "refuted"] },
+          verifierNote: { type: "string", description: "one line grounded in the PRD/architecture docs you read" }
+        }
+      }
+    }
+  }
+};
+var ADJUDICATE_SCHEMA = {
+  type: "object",
+  required: ["verdicts"],
+  properties: {
+    verdicts: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["claimId", "verdict", "note", "confidence"],
+        properties: {
+          claimId: { type: "string" },
+          verdict: { enum: ["supported", "partial", "refuted", "unsupported"] },
+          note: { type: "string", description: "one line grounded in the evidence you read" },
+          confidence: { enum: ["confirmed", "inferred", "gap"] }
+        }
+      }
+    }
+  }
+};
+var PHASE_SPECS = {
+  "enrich-map": {
+    role: "drafter",
+    title: "Draft",
+    schema: DRAFT_SCHEMA,
+    description: (n) => `Draft the ${n} feature PRD(s) of a reconstruction as a map-reduce (drafters return row proposals; the orchestrator is the single serial reducer)`,
+    applyHint: (engine, out) => `merge the proposals into architecture/INTERFACES.md + architecture/DATA-MODEL.md and write each features/<slug>/PRD.md yourself (the serial REDUCE of references/orchestration.md), then gate: node ${engine} --check --out ${out}`
+  },
+  "review-find": {
+    role: "finder",
+    title: "Find",
+    schema: FINDINGS_SCHEMA,
+    description: (n) => `Review the ${n} flagged feature PRD(s) of a reconstruction against the nine buildability checks (adversarial finder fan-out)`,
+    applyHint: (engine, out) => `merge the findings into ${join17(out, "findings.json")} ({ "findings": [...] }), then: node ${engine} --review --apply ${join17(out, "findings.json")} --out ${out} \u2014 then fan the surviving blockers out with --orchestrate --phase review-verify`
+  },
+  "review-verify": {
+    role: "verifier",
+    title: "Verify",
+    schema: BLOCKER_VERDICT_SCHEMA,
+    description: (n) => `Independently confirm or refute the ${n} open review blocker(s) of a reconstruction (adversarial verifier fan-out)`,
+    applyHint: (engine, out) => `stamp each verdict/verifierNote onto its finding (match by id) in ${join17(out, "findings.json")}, then re-run: node ${engine} --review --apply ${join17(out, "findings.json")} --out ${out} \u2014 a refuted blocker drops from the residual`
+  },
+  adjudicate: {
+    role: "adjudicator",
+    title: "Adjudicate",
+    schema: ADJUDICATE_SCHEMA,
+    description: (n) => `Adjudicate the ${n} requirement\u2194evidence pair(s) of a reconstruction's verification gate (fan-out, fail-closed fold)`,
+    applyHint: (engine, out) => `fill the verdicts into ${join17(out, "verdicts.json")}, then: node ${engine} --verify --apply ${join17(out, "verdicts.json")} --out ${out} && node ${engine} --check --semantic --out ${out}`
+  }
+};
+function phaseSpec(name) {
+  const spec = PHASE_SPECS[name];
+  if (!spec) throw new Error(`no phase spec for "${name}"`);
+  return spec;
+}
+function toBatches(groups, batchSize) {
+  const out = [];
+  for (const ids of groups) {
+    for (let i = 0; i < ids.length; i += batchSize) out.push(ids.slice(i, i + batchSize));
+  }
+  return out;
+}
+function phaseWorkflowScript(ph, outAbs, engineAbs, batchSize) {
+  const spec = phaseSpec(ph.name);
+  const scriptPath = join17(outAbs, "orchestration", `${ph.name}.workflow.mjs`);
+  const meta = { name: `reconstruct-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
+  return [
+    `export const meta = ${JSON.stringify(meta)}`,
+    ``,
+    `// NOT a plain Node script: launch via the Workflow tool \u2014 Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
+    `// Emitted by \`reconstruct --orchestrate\` from the CURRENT worklist. The worklist is the source`,
+    `// of truth: if it changes, re-run \`--orchestrate --phase ${ph.name}\` before launching.`,
+    ``,
+    `// Constants for THIS reconstruction (injected at emit time; no Date.now/Math.random in this harness).`,
+    `const OUT = ${JSON.stringify(outAbs)}`,
+    `const ENGINE = ${JSON.stringify(engineAbs)}`,
+    `const WORKLIST = ${JSON.stringify(ph.worklist)}`,
+    `const AGENTS = OUT + '/orchestration/agents'`,
+    `const BATCHES = ${JSON.stringify(toBatches(ph.groups, batchSize))}`,
+    `const SCHEMA = ${JSON.stringify(spec.schema)}`,
+    ``,
+    `function contract(name, extra) {`,
+    `  return 'Read and follow the dispatch contract at ' + AGENTS + '/' + name + '.md VERBATIM.\\n'`,
+    `    + 'Constants: OUT=' + OUT + '  ENGINE=' + ENGINE + '  WORKLIST=' + WORKLIST + '.\\n'`,
+    `    + 'Invoke the engine only by its ABSOLUTE path: node ' + ENGINE + ' <flags> \u2014 read-only flags only.'`,
+    `    + (extra ? '\\n' + extra : '')`,
+    `}`,
+    ``,
+    `log('reconstruct ${ph.name}: ' + ${JSON.stringify(String(ph.items))} + ' item(s) across ' + BATCHES.length + ' agent(s)')`,
+    ``,
+    `phase(${JSON.stringify(spec.title)})`,
+    `const results = await pipeline(BATCHES, (batch, _item, i) =>`,
+    `  agent(contract('${spec.role}', 'ITEMS=' + batch.join(',')), { label: '${ph.name}:' + (i + 1), phase: ${JSON.stringify(spec.title)}, agentType: 'general-purpose', schema: SCHEMA }))`,
+    ``,
+    `// One-writer rule: this workflow only COLLECTS fragments. The main agent stays the single`,
+    `// serial reducer \u2014 it folds them in itself. Next step:`,
+    `//   ${spec.applyHint(engineAbs, outAbs)}`,
+    `return { phase: ${JSON.stringify(ph.name)}, worklist: WORKLIST, results: results.filter(Boolean) }`,
+    ``
+  ].join("\n");
+}
+function agentContracts(outAbs, engineAbs) {
+  const footer = ONE_WRITER_FOOTER.replaceAll("<OUT>", outAbs);
+  void engineAbs;
+  return {
+    drafter: `# Contract: drafter
+
+You draft ONE feature of a reconstruction at a time, to full PRD depth \u2014 the MAP half of the enrichment map-reduce (\`references/orchestration.md\`, Phase 1).
+
+Worklist: \`${join17(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`).
+
+For EACH of your features:
+
+1. Read ONLY its slice of the tree: the feature's \`files\` plus the \`inventory.hints.*Candidates\` (routes/api/schema/realtime/auth/design-system) that fall inside those files, its scaffold \`features/<slug>/PRD.md\` (including the embedded \`## Source material\`), and the copied ground truth under \`${join17(outAbs, "data")}\`. File paths in the inventory are relative to the analyzed repo \u2014 prefer the embedded source and \`data/\` copies; open the original repo only when the tree references paths it did not embed.
+2. Draft the COMPLETE \`features/<slug>/PRD.md\` content \u2014 the full spine (context & goal, user stories, numbered functional requirements, interfaces & data, Given/When/Then acceptance criteria, edge cases & failure modes, definition of done), resolving every \`> \u{1F9E0}\` callout.
+3. PROPOSE \u2014 do not write \u2014 the shared-doc rows your feature touches:
+   - interface ROW PROPOSALS: method \xB7 path \xB7 kind \xB7 auth \xB7 input \xB7 output \xB7 side-effects;
+   - entity ROW PROPOSALS: entity \xB7 fields+types \xB7 constraints \xB7 relations \xB7 enums;
+   - every enum with its COMPLETE member list.
+4. Ground everything in the source you actually read \u2014 never invent. Anything the source cannot settle goes into \`notes\`, not into the PRD as fact.
+
+Return (structured output): \`{ "proposals": [{ "slug", "prd", "interfaceRows", "entityRows", "enums", "notes" }] }\` \u2014 your ITEMS only.
+
+The orchestrator runs the REDUCE serially: it unions your rows into the canonical \`architecture/INTERFACES.md\` / \`architecture/DATA-MODEL.md\` (deduping by path/operation and by entity name), reconciles conflicts against source, and writes the feature PRDs.
+${footer}`,
+    finder: `# Contract: finder
+
+You are a FINDER of the AI buildability review \u2014 one adversarial reviewer per flagged feature (\`references/orchestration.md\`, Phase 2 step B; rubric: \`references/ai-review-rubric.md\`).
+
+Worklist: \`${join17(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`).
+
+For EACH of your features:
+
+1. Read \`features/<feature>/PRD.md\`, the architecture docs it references (\`architecture/INTERFACES.md\`, \`architecture/DATA-MODEL.md\`, \`architecture/ARCHITECTURE.md\`), and the ground truth (the embedded \`## Source material\`, \`data/\`).
+2. Apply the nine checks \u2014 stories, requirements, acceptance, write-contract, enum, consistency, faithfulness, i18n, rebuild-test. Be ADVERSARIAL: hunt for reasons the unit is NOT buildable by a fresh agent from its PRD + the architecture docs alone; do not bless it.
+3. Emit each finding as \`{ feature, severity (blocker|major|minor), category, problem, fix }\` \u2014 \`problem\` concrete and grounded in what you read, \`fix\` actionable. Leave \`verdict\` unset: an INDEPENDENT verifier rules on each blocker, never you.
+
+Return (structured output): \`{ "findings": [ \u2026 ] }\` \u2014 your ITEMS only (an empty array means the unit passes).
+${footer}`,
+    verifier: `# Contract: verifier
+
+You are an INDEPENDENT VERIFIER of the review loop \u2014 one fresh, adversarial agent per open blocker (\`references/orchestration.md\`, Phase 2 step C). A finding "counts" only when you confirm it.
+
+Worklist: \`${join17(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+
+For EACH of your blockers:
+
+1. Read its failure entry, then the feature's \`features/<feature>/PRD.md\` and the architecture docs \u2014 independently. You were NOT the finder: assume the blocker is WRONG until the docs prove it.
+2. Try to REFUTE it: \`refuted\` when the PRD/architecture docs already answer the stated problem; \`confirmed\` only if you cannot refute it from what you read. A refuted blocker does not gate (the engine drops it from the residual set).
+3. \`verifierNote\` is REQUIRED \u2014 one line grounded in what you read (quote or paraphrase the decisive passage).
+
+Return (structured output): \`{ "verdicts": [{ "id", "verdict", "verifierNote" }] }\` \u2014 your ITEMS only.
+${footer}`,
+    adjudicator: `# Contract: adjudicator
+
+You adjudicate the requirement\u2194source verification gate of a reconstruction \u2014 judging whether each PRD requirement TRACES to the original code (faithful inference) or was invented.
+
+Worklist: \`${join17(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+
+For EACH of your pairs:
+
+1. Open the cited evidence \u2014 \`evidenceRef\` is a file path, \`route \u2026\`, \`interface \u2026\`, \`entity \u2026\` or \`feature \u2026\` the reconstruction captured; \`digest\` lists the nearest matches \u2014 and read it in context (the feature PRD's embedded \`## Source material\`, \`data/\`, the architecture docs).
+2. Set \`verdict\`: \`supported\` (the requirement traces to the source exactly), \`partial\` (real but overstated), \`unsupported\` (traces to nothing \u2014 invented), \`refuted\` (the source contradicts it). When unsure, choose the HARSHER verdict \u2014 a false pass is worse than a false fail.
+3. Stamp \`confidence\` alongside the verdict: **confirmed** (you read the cited evidence and it decisively supports the requirement), **inferred** (consistent with the source but indirect \u2014 a convention, a pattern, or standard library/DB behavior, with no false certainty), or **gap** (the evidence is thin or missing and a human should confirm). The label never gates \u2014 the \`verdict\` kind does \u2014 but it keeps a grounded fact machine-distinguishable from an inference.
+4. \`note\` is REQUIRED \u2014 one line grounded in what you read.
+
+Return (structured output): \`{ "verdicts": [{ "claimId", "verdict", "note", "confidence" }] }\` \u2014 your ITEMS only. The fold is fail-closed: \`--verify --apply\` re-resolves every \`evidenceRef\` against the inventory, so a fabricated citation is rejected.
+${footer}`
+  };
+}
+function runbookMd(phases, outAbs, engineAbs) {
+  const status = phases.map((p) => `| ${p.name} | \`${p.worklist}\` | ${p.ready ? `ready (${p.items} item(s))` : "not ready"} | \`${p.prerequisite}\` |`).join("\n");
+  const engine = `node ${engineAbs}`;
+  const agents = join17(outAbs, "orchestration", "agents");
+  return `# reconstruct \u2014 sequential RUNBOOK (eco / no-subagent fallback)
+
+Out: \`${outAbs}\` \xB7 Engine: \`${engine}\`
+
+Generated by \`reconstruct --orchestrate\` from the CURRENT state of the reconstruction. This
+sequential path is correctness-identical to the multi-agent workflows \u2014 same worklists, same
+contracts, same fail-closed gates; only wall-clock differs. Fan-out is an optimization, not a
+requirement.
+
+## Phase status
+
+| Phase | Worklist | Status | Produce it with |
+|---|---|---|---|
+${status}
+
+## The loop (play every role yourself, one unit at a time)
+
+1. **Analyze** (if not done): \`${engine} --repo <repo> --out ${outAbs}\` \u2192 \`${join17(outAbs, "inventory.json")}\` (greenfield: \`--scratch --plan <plan.json>\`).
+2. **Enrich \u2014 the map-reduce, played solo**: for EVERY \`inventory.json\` feature, apply \`${join17(agents, "drafter.md")}\` yourself (draft the PRD + the interface/entity row proposals), then play the reducer \u2014 merge every proposal into \`architecture/INTERFACES.md\` / \`architecture/DATA-MODEL.md\` and write the feature PRDs. Gate: \`${engine} --check --out ${outAbs}\`.
+3. **Review \u2014 find**: \`${engine} --review --out ${outAbs}\` writes \`${join17(outAbs, "REVIEW.todo.json")}\` (flagging only what changed). For EVERY flagged unit, apply \`${join17(agents, "finder.md")}\` yourself; save the findings as \`${join17(outAbs, "findings.json")}\` (\`{ "findings": [...] }\`), then reduce: \`${engine} --review --apply ${join17(outAbs, "findings.json")} --out ${outAbs}\`.
+4. **Review \u2014 verify**: for EVERY open blocker in \`${join17(outAbs, "REVIEW.json")}\` (\`failures[]\`), apply \`${join17(agents, "verifier.md")}\` yourself (confirm/refute + note, stamped onto the matching finding in \`findings.json\` by \`id\`), then re-reduce: \`${engine} --review --apply ${join17(outAbs, "findings.json")} --out ${outAbs}\`. Loop 2\u21924 until \`REVIEW.json.ok\` (or \`staleRounds >= 2\` / round > 5).
+5. **Adjudicate the requirement gate**: \`${engine} --verify --out ${outAbs}\` writes \`${join17(outAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join17(agents, "adjudicator.md")}\` yourself (verdict + confidence + note \u2192 \`${join17(outAbs, "verdicts.json")}\`), then fold: \`${engine} --verify --apply ${join17(outAbs, "verdicts.json")} --out ${outAbs}\`.
+6. **Gate**: \`${engine} --check --semantic --out ${outAbs}\` must exit 0 before presenting anything.
+
+Never fanned out (orchestrator-only, always serial): the greenfield interview, \`--brainstorm\`
+(the divergent phase), every reduce/merge step, and the scratch build itself.
+
+With subagents available, prefer the emitted workflows instead: \`--orchestrate --out ${outAbs} --phase <p>\`
+then \`Workflow({ scriptPath: "${join17(outAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
+`;
+}
+
+// src/orchestrate.ts
+var PHASES = ["enrich-map", "review-find", "review-verify", "adjudicate"];
+var SMALL_WORKLIST = 3;
+var BATCH_SIZE = 8;
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync15(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function workspaceGroups(inv) {
+  const features = inv.features ?? [];
+  const workspaces = (inv.workspaces ?? []).slice().sort((a, b) => b.path.length - a.path.length);
+  if (!workspaces.length) return features.length ? [features.map((f) => f.slug)] : [];
+  const groupOf = (files) => {
+    const counts = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      const ws = workspaces.find((w) => file === w.path || file.startsWith(`${w.path}/`));
+      const key = ws ? ws.name : "";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    let best = "";
+    let bestCount = 0;
+    for (const [key, count] of counts) {
+      if (count > bestCount) {
+        best = key;
+        bestCount = count;
+      }
+    }
+    return best;
+  };
+  const groups = /* @__PURE__ */ new Map();
+  for (const f of features) {
+    const key = groupOf(f.files ?? []);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(f.slug);
+    else groups.set(key, [f.slug]);
+  }
+  return [...groups.values()];
+}
+function listPhases(outDir, engineAbs) {
+  const out = resolve2(outDir);
+  const invPath = join18(out, "inventory.json");
+  const inv = readJson(invPath);
+  const invReady = !!inv && Array.isArray(inv.features);
+  const enrichGroups = invReady ? workspaceGroups(inv) : [];
+  const enrichIds = enrichGroups.flat();
+  const todoPath = join18(out, "REVIEW.todo.json");
+  const todo = readJson(todoPath);
+  const findReady = !!todo && Array.isArray(todo.units);
+  const findIds = findReady ? todo.units.filter((u) => u.needsReview).map((u) => u.feature) : [];
+  const revPath = join18(out, "REVIEW.json");
+  const rev = readJson(revPath);
+  const verifyReady = !!rev && (Array.isArray(rev.failures) || Array.isArray(rev.findings));
+  const blockerIds = verifyReady ? recomputeReviewGate(rev) : [];
+  const verPath = join18(out, "VERIFY.todo.json");
+  const ver = readJson(verPath);
+  const adjReady = !!ver && Array.isArray(ver.pairs);
+  const adjIds = adjReady ? ver.pairs.map((p) => p.claimId) : [];
+  return [
+    {
+      name: "enrich-map",
+      ready: invReady,
+      worklist: invPath,
+      items: enrichIds.length,
+      ids: enrichIds,
+      groups: enrichGroups,
+      prerequisite: `node ${engineAbs} --repo <repo> --out ${out}`
+    },
+    {
+      name: "review-find",
+      ready: findReady,
+      worklist: todoPath,
+      items: findIds.length,
+      ids: findIds,
+      groups: findIds.length ? [findIds] : [],
+      prerequisite: `node ${engineAbs} --review --out ${out}`
+    },
+    {
+      name: "review-verify",
+      ready: verifyReady,
+      worklist: revPath,
+      items: blockerIds.length,
+      ids: blockerIds,
+      groups: blockerIds.length ? [blockerIds] : [],
+      prerequisite: `node ${engineAbs} --review --apply <findings.json> --out ${out}`
+    },
+    {
+      name: "adjudicate",
+      ready: adjReady,
+      worklist: verPath,
+      items: adjIds.length,
+      ids: adjIds,
+      groups: adjIds.length ? [adjIds] : [],
+      prerequisite: `node ${engineAbs} --verify --out ${out}`
+    }
+  ];
+}
+function orchestrateRun(outDir, engineAbs, opts = {}) {
+  const out = resolve2(outDir);
+  if (!existsSync9(out)) {
+    return { exitCode: 2, written: [], notices: [], errors: [`out dir not found: ${out}`], phases: [] };
+  }
+  const phases = listPhases(out, engineAbs);
+  let selected = phases.filter((p) => p.ready);
+  if (opts.phase !== void 0) {
+    const ph = phases.find((p) => p.name === opts.phase);
+    if (!ph) {
+      return {
+        exitCode: 2,
+        written: [],
+        notices: [],
+        errors: [`unknown phase "${opts.phase}" \u2014 expected one of: ${PHASES.join(", ")}.`],
+        phases
+      };
+    }
+    if (!ph.ready) {
+      return {
+        exitCode: 2,
+        written: [],
+        notices: [],
+        errors: [`phase "${ph.name}" is not ready \u2014 its worklist ${ph.worklist} does not exist yet. Produce it first: ${ph.prerequisite}`],
+        phases
+      };
+    }
+    selected = [ph];
+  }
+  const orchDir = join18(out, "orchestration");
+  const agentsDir = join18(orchDir, "agents");
+  mkdirSync2(join18(orchDir, "out"), { recursive: true });
+  mkdirSync2(agentsDir, { recursive: true });
+  const written = [];
+  const notices = [];
+  for (const [name, content] of Object.entries(agentContracts(out, engineAbs))) {
+    const p = join18(agentsDir, `${name}.md`);
+    writeFileSync4(p, content);
+    written.push(p);
+  }
+  if (!opts.eco) {
+    for (const ph of selected) {
+      if (ph.items === 0) {
+        notices.push(`phase "${ph.name}": worklist is empty \u2014 nothing to orchestrate.`);
+        continue;
+      }
+      if (ph.items <= SMALL_WORKLIST) {
+        notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
+      }
+      const p = join18(orchDir, `${ph.name}.workflow.mjs`);
+      writeFileSync4(p, phaseWorkflowScript(ph, out, engineAbs, BATCH_SIZE));
+      written.push(p);
+    }
+  }
+  const rb = join18(orchDir, "RUNBOOK.md");
+  writeFileSync4(rb, runbookMd(phases, out, engineAbs));
+  written.push(rb);
+  return { exitCode: 0, written, notices, errors: [], phases };
+}
+
 // src/cli.ts
 var HELP = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -5697,6 +6181,7 @@ Analyze a repository and generate reconstruction PRDs to rebuild it from scratch
 Usage:
   reconstruct [--repo <path>] [--out <path>] [options]
   reconstruct --scratch --plan <plan.json> [--out <path>] [options]
+  reconstruct --orchestrate [--phase <p>] [--eco] [--list] --out <path>
 
 Options:
   --repo <path>        Repository to analyze            (default: current dir)
@@ -5712,6 +6197,12 @@ Options:
   --verify             Write a requirement\u2192source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
+  --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
+                       (per-phase workflows + agent contracts + RUNBOOK) into <out>/orchestration/
+  --phase <name>       --orchestrate: emit one phase only \u2014 enrich-map | review-find |
+                       review-verify | adjudicate (exit 2 if its worklist is missing)
+  --eco                --orchestrate: emit only RUNBOOK.md + agents/*.md (sequential low-token path)
+  --list               --orchestrate: print the {"phases":[...]} readiness JSON, write nothing
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
@@ -5739,6 +6230,19 @@ Brainstorm (optional divergent phase, before building):
   greenfield interview, or to iteration PRDs. See references/brainstorm-playbook.md.
     reconstruct --brainstorm --out ./ideas            # a fresh idea
     reconstruct --brainstorm --out ./reconstruction   # evolve an existing one
+
+Orchestration (fan the judgment phases out to subagents):
+  --orchestrate reads --out's CURRENT worklists and emits, per ready phase, a
+  launchable multi-agent workflow (<out>/orchestration/<phase>.workflow.mjs), the
+  agents/<role>.md dispatch contracts (drafter/finder/verifier/adjudicator) and a
+  sequential RUNBOOK.md fallback. Phases: enrich-map (one drafter per
+  inventory.json feature, batched by workspace), review-find (one finder per
+  flagged REVIEW.todo.json unit), review-verify (one independent verifier per
+  open REVIEW.json blocker), adjudicate (one adjudicator per VERIFY.todo.json
+  pair). Subagents RETURN fragments; the reduce (--review/--verify --apply and
+  every doc merge) always stays with the orchestrator. Re-run it whenever a
+  worklist changes \u2014 emission is deterministic and idempotent.
+    reconstruct --orchestrate --out <dir> [--phase <p>] [--eco] [--list]
 
 From scratch (greenfield):
   --scratch builds the SAME reconstruction tree from a plan.json interview
@@ -5800,7 +6304,7 @@ function defaultFidelity(mode, level) {
 function splitGlobs(value) {
   return value.split(",").map((s) => s.trim()).filter(Boolean);
 }
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply", "phase"]);
 function parseArgs(argv) {
   const raw = {};
   const includeGlobs = [];
@@ -5818,6 +6322,9 @@ function parseArgs(argv) {
   let semantic = false;
   let allowUnverified = false;
   let brainstorm = false;
+  let orchestrate = false;
+  let eco = false;
+  let list = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
@@ -5880,6 +6387,18 @@ function parseArgs(argv) {
       brainstorm = true;
       continue;
     }
+    if (arg === "--orchestrate") {
+      orchestrate = true;
+      continue;
+    }
+    if (arg === "--eco") {
+      eco = true;
+      continue;
+    }
+    if (arg === "--list") {
+      list = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
@@ -5904,25 +6423,25 @@ function parseArgs(argv) {
     }
     fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
-  const actions = [check, verify, review, brainstorm].filter(Boolean).length;
+  const actions = [check, verify, review, brainstorm, orchestrate].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify, --review and --brainstorm are mutually exclusive \u2014 run one at a time`);
+    fail(`--check, --verify, --review, --brainstorm and --orchestrate are mutually exclusive \u2014 run one at a time`);
   }
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
-  const plan = raw.plan ? resolve2(raw.plan) : "";
+  const plan = raw.plan ? resolve3(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
-  const repo = resolve2(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && (!existsSync9(repo) || !statSync3(repo).isDirectory())) {
+  const repo = resolve3(raw.repo ?? process.cwd());
+  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && !orchestrate && (!existsSync10(repo) || !statSync3(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
   const mode = scratch ? "scratch" : oneOf("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
   const fidelity = scratch ? "describe" : oneOf("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
   const granularity = oneOf("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
-  const out = resolve2(
-    raw.out ?? (standalone || check || verify || review || brainstorm ? process.cwd() : scratch ? join17(process.cwd(), "reconstruction") : join17(repo, "reconstruction"))
+  const out = resolve3(
+    raw.out ?? (standalone || check || verify || review || brainstorm || orchestrate ? process.cwd() : scratch ? join19(process.cwd(), "reconstruction") : join19(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -5953,7 +6472,11 @@ function parseArgs(argv) {
     apply: raw.apply ?? "",
     semantic,
     allowUnverified,
-    brainstorm
+    brainstorm,
+    orchestrate,
+    phase: raw.phase ?? "",
+    eco,
+    list
   };
 }
 function main() {
@@ -5961,7 +6484,7 @@ function main() {
   if (opts.verify) {
     try {
       if (opts.apply) {
-        const r = applyVerdicts(opts.out, resolve2(opts.apply));
+        const r = applyVerdicts(opts.out, resolve3(opts.apply));
         process.stdout.write(formatVerifyReport(r) + "\n");
         if (!r.ok) process.exit(1);
         return;
@@ -5980,7 +6503,7 @@ function main() {
   if (opts.review) {
     try {
       if (opts.apply) {
-        const r = applyFindings(opts.out, resolve2(opts.apply));
+        const r = applyFindings(opts.out, resolve3(opts.apply));
         process.stdout.write(formatReviewReport(r) + "\n");
         if (!r.ok) process.exit(1);
         return;
@@ -6004,6 +6527,46 @@ function main() {
   fill in the concepts + chosen direction, then gate it: node scripts/analyze.mjs --check --out ${opts.out}
 `
     );
+    return;
+  }
+  if (opts.orchestrate) {
+    const engineAbs = realpathSync(fileURLToPath(import.meta.url));
+    if (opts.list) {
+      if (!existsSync10(opts.out)) {
+        process.stderr.write(`reconstruct --orchestrate: out dir not found: ${opts.out}
+`);
+        process.exit(2);
+      }
+      process.stdout.write(JSON.stringify({ phases: listPhases(opts.out, engineAbs) }, null, 2) + "\n");
+      return;
+    }
+    const res = orchestrateRun(opts.out, engineAbs, { phase: opts.phase || void 0, eco: opts.eco });
+    if (res.exitCode !== 0) {
+      for (const e of res.errors) process.stderr.write(`reconstruct --orchestrate: ${e}
+`);
+      process.exit(res.exitCode);
+    }
+    process.stdout.write(`reconstruct --orchestrate: generated
+${res.written.map((w) => `  ${w}`).join("\n")}
+`);
+    for (const n of res.notices) process.stderr.write(`reconstruct --orchestrate: note \u2014 ${n}
+`);
+    const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
+    if (workflows.length) {
+      process.stdout.write(
+        `
+${workflows.map((w) => `Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })`).join("\n")}
+Then fold the returned fragments in yourself (single serial reducer) and run the fold command shown at the end of each workflow.
+`
+      );
+    } else {
+      process.stdout.write(`Follow ${join19(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+`);
+    }
+    if (!opts.phase && workflows.length === 0 && !opts.eco) {
+      process.stderr.write(`reconstruct --orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
+`);
+    }
     return;
   }
   if (opts.check) {
@@ -6050,7 +6613,7 @@ function main() {
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join17(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     open ${join19(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -6106,7 +6669,7 @@ function main() {
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join17(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     open ${join19(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

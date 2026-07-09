@@ -1,5 +1,14 @@
 # Orchestration — fanning the work out across subagents
 
+> **The engine now EMITS these fan-outs.** `node scripts/analyze.mjs --orchestrate --out <OUT>
+> [--phase enrich-map|review-find|review-verify|adjudicate] [--eco] [--list]` generates, from the
+> tree's CURRENT worklists (`inventory.json`, `REVIEW.todo.json`, `REVIEW.json`,
+> `VERIFY.todo.json`), one launchable workflow per ready phase plus the `agents/<role>.md`
+> dispatch contracts (drafter / finder / verifier / adjudicator) and a sequential `RUNBOOK.md`
+> into `<OUT>/orchestration/` — the protocol below, made executable. The protocol itself stays
+> host-agnostic; the emission is a convenience, not a requirement, and the reduce/`--apply` fold
+> always stays with the orchestrator.
+
 A reconstruction is embarrassingly parallel: the engine already carves the repo into the
 **units** a fleet of agents can own independently. `inventory.json.features[]` is the unit of
 fan-out (each carries its own `slug`, `files`, `routes`, `interfaces`, `entities`, `writes`); for a

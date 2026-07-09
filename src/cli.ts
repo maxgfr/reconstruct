@@ -10,6 +10,7 @@ import { checkOutput, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./verify.js";
 import { runReview, applyFindings, foldReview, formatReviewReport } from "./review.js";
 import { runBrainstorm } from "./brainstorm.js";
+import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -19,6 +20,7 @@ Analyze a repository and generate reconstruction PRDs to rebuild it from scratch
 Usage:
   reconstruct [--repo <path>] [--out <path>] [options]
   reconstruct --scratch --plan <plan.json> [--out <path>] [options]
+  reconstruct --orchestrate [--phase <p>] [--eco] [--list] --out <path>
 
 Options:
   --repo <path>        Repository to analyze            (default: current dir)
@@ -34,6 +36,12 @@ Options:
   --verify             Write a requirement→source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
+  --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
+                       (per-phase workflows + agent contracts + RUNBOOK) into <out>/orchestration/
+  --phase <name>       --orchestrate: emit one phase only — enrich-map | review-find |
+                       review-verify | adjudicate (exit 2 if its worklist is missing)
+  --eco                --orchestrate: emit only RUNBOOK.md + agents/*.md (sequential low-token path)
+  --list               --orchestrate: print the {"phases":[...]} readiness JSON, write nothing
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
@@ -61,6 +69,19 @@ Brainstorm (optional divergent phase, before building):
   greenfield interview, or to iteration PRDs. See references/brainstorm-playbook.md.
     reconstruct --brainstorm --out ./ideas            # a fresh idea
     reconstruct --brainstorm --out ./reconstruction   # evolve an existing one
+
+Orchestration (fan the judgment phases out to subagents):
+  --orchestrate reads --out's CURRENT worklists and emits, per ready phase, a
+  launchable multi-agent workflow (<out>/orchestration/<phase>.workflow.mjs), the
+  agents/<role>.md dispatch contracts (drafter/finder/verifier/adjudicator) and a
+  sequential RUNBOOK.md fallback. Phases: enrich-map (one drafter per
+  inventory.json feature, batched by workspace), review-find (one finder per
+  flagged REVIEW.todo.json unit), review-verify (one independent verifier per
+  open REVIEW.json blocker), adjudicate (one adjudicator per VERIFY.todo.json
+  pair). Subagents RETURN fragments; the reduce (--review/--verify --apply and
+  every doc merge) always stays with the orchestrator. Re-run it whenever a
+  worklist changes — emission is deterministic and idempotent.
+    reconstruct --orchestrate --out <dir> [--phase <p>] [--eco] [--list]
 
 From scratch (greenfield):
   --scratch builds the SAME reconstruction tree from a plan.json interview
@@ -133,7 +154,7 @@ function splitGlobs(value: string): string[] {
 // recognized flag is a boolean switch handled inline above. Used to reject an
 // unknown or typo'd flag loudly instead of silently swallowing it (and then
 // falling back to a default the user never asked for).
-const VALUE_FLAGS = new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply"]);
+const VALUE_FLAGS = new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply", "phase"]);
 
 export function parseArgs(argv: string[]): Options {
   const raw: Record<string, string> = {};
@@ -152,6 +173,9 @@ export function parseArgs(argv: string[]): Options {
   let semantic = false;
   let allowUnverified = false;
   let brainstorm = false;
+  let orchestrate = false;
+  let eco = false;
+  let list = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -215,6 +239,18 @@ export function parseArgs(argv: string[]): Options {
       brainstorm = true;
       continue;
     }
+    if (arg === "--orchestrate") {
+      orchestrate = true;
+      continue;
+    }
+    if (arg === "--eco") {
+      eco = true;
+      continue;
+    }
+    if (arg === "--list") {
+      list = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
@@ -247,10 +283,11 @@ export function parseArgs(argv: string[]): Options {
   // `--verify --review --apply` would adjudicate review findings as verify verdicts
   // and print a false green; `--check --review` would skip the check entirely).
   // Reject the combination instead of picking a winner. (`--semantic` modifies
-  // `--check`; `--apply` modifies `--verify`/`--review` — those are not actions.)
-  const actions = [check, verify, review, brainstorm].filter(Boolean).length;
+  // `--check`; `--apply` modifies `--verify`/`--review`; `--phase`/`--eco`/`--list`
+  // modify `--orchestrate` — those are not actions.)
+  const actions = [check, verify, review, brainstorm, orchestrate].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify, --review and --brainstorm are mutually exclusive — run one at a time`);
+    fail(`--check, --verify, --review, --brainstorm and --orchestrate are mutually exclusive — run one at a time`);
   }
 
   // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle
@@ -266,9 +303,9 @@ export function parseArgs(argv: string[]): Options {
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === undefined;
 
   const repo = resolve(raw.repo ?? process.cwd());
-  // Scratch reads no repo; standalone, --check, --verify, --review and
-  // --brainstorm read/write an existing output dir — all skip the repo-exists check.
-  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  // Scratch reads no repo; standalone, --check, --verify, --review, --brainstorm
+  // and --orchestrate read/write an existing output dir — all skip the repo-exists check.
+  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && !orchestrate && (!existsSync(repo) || !statSync(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
@@ -280,7 +317,11 @@ export function parseArgs(argv: string[]): Options {
   const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const out = resolve(
     raw.out ??
-      (standalone || check || verify || review || brainstorm ? process.cwd() : scratch ? join(process.cwd(), "reconstruction") : join(repo, "reconstruction")),
+      (standalone || check || verify || review || brainstorm || orchestrate
+        ? process.cwd()
+        : scratch
+          ? join(process.cwd(), "reconstruction")
+          : join(repo, "reconstruction")),
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
@@ -313,6 +354,10 @@ export function parseArgs(argv: string[]): Options {
     semantic,
     allowUnverified,
     brainstorm,
+    orchestrate,
+    phase: raw.phase ?? "",
+    eco,
+    list,
   };
 }
 
@@ -368,6 +413,42 @@ function main(): void {
       `reconstruct: ${r.created ? "wrote" : "kept existing"} ${r.relPath}${r.seeded ? " (seeded from the recovered surface)" : " (blank scaffold)"} → ${opts.out}\n` +
         `  fill in the concepts + chosen direction, then gate it: node scripts/analyze.mjs --check --out ${opts.out}\n`,
     );
+    return;
+  }
+
+  // Orchestration: emit the multi-agent fan-out (workflows + contracts + RUNBOOK)
+  // from --out's CURRENT worklists. Family-standard exit codes: 2 on a missing
+  // out dir, an unknown phase, or a phase whose worklist does not exist yet.
+  if (opts.orchestrate) {
+    const engineAbs = realpathSync(fileURLToPath(import.meta.url));
+    if (opts.list) {
+      if (!existsSync(opts.out)) {
+        process.stderr.write(`reconstruct --orchestrate: out dir not found: ${opts.out}\n`);
+        process.exit(2);
+      }
+      process.stdout.write(JSON.stringify({ phases: listPhases(opts.out, engineAbs) }, null, 2) + "\n");
+      return;
+    }
+    const res = orchestrateRun(opts.out, engineAbs, { phase: opts.phase || undefined, eco: opts.eco });
+    if (res.exitCode !== 0) {
+      for (const e of res.errors) process.stderr.write(`reconstruct --orchestrate: ${e}\n`);
+      process.exit(res.exitCode);
+    }
+    process.stdout.write(`reconstruct --orchestrate: generated\n${res.written.map((w) => `  ${w}`).join("\n")}\n`);
+    for (const n of res.notices) process.stderr.write(`reconstruct --orchestrate: note — ${n}\n`);
+    const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
+    if (workflows.length) {
+      process.stdout.write(
+        `\n${workflows.map((w) => `Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })`).join("\n")}\n` +
+          `Then fold the returned fragments in yourself (single serial reducer) and run the fold command shown at the end of each workflow.\n`,
+      );
+    } else {
+      process.stdout.write(`Follow ${join(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).\n`);
+    }
+    // Surface the valid phase names once, so a scripted caller can discover them without --help.
+    if (!opts.phase && workflows.length === 0 && !opts.eco) {
+      process.stderr.write(`reconstruct --orchestrate: no ready phase — phases are ${PHASES.join(", ")} (see --list).\n`);
+    }
     return;
   }
 
