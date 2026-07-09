@@ -222,29 +222,83 @@ export function resolveEvidence(ref: string, inv: Inventory): boolean {
   return (inv.files ?? []).some((f) => f.path === path) || features.some((f) => (f.files ?? []).includes(path));
 }
 
-// Phase B — read an agent-filled verdicts file (`{ pairs: Verdict[] }` or a bare
-// array), reduce to a VerifyResult (re-resolving each citation against the
-// inventory), and persist VERIFY.json.
+/**
+ * Read the run's VERIFY.todo.json pairs keyed by claimId — the worklist the
+ * orchestrate-emitted adjudicator fragments answer. A missing/unreadable
+ * worklist only disables backfill and unknown-id detection (hand-rolled
+ * verdicts files stay self-contained).
+ */
+function readTodoPairs(outDir: string): Map<string, ClaimEvidencePair> | undefined {
+  try {
+    const todo = JSON.parse(readFileSync(join(outDir, "VERIFY.todo.json"), "utf8"));
+    if (!Array.isArray(todo?.pairs)) return undefined;
+    const byClaim = new Map<string, ClaimEvidencePair>();
+    for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p as ClaimEvidencePair);
+    return byClaim.size ? byClaim : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Phase B — read an agent-filled verdicts file (`{ pairs: Verdict[] }`, a
+// `{ verdicts: Verdict[] }` object — the shape the orchestrate-emitted
+// adjudicator fragments return — or a bare array), validate it FAIL-CLOSED,
+// reduce to a VerifyResult (re-resolving each citation against the inventory),
+// and persist VERIFY.json. Fragment rows carrying only claimId/verdict/note/
+// confidence are backfilled (claim, feature, evidenceRef, digest) from the
+// run's VERIFY.todo.json by claimId, so the citation guard stays engaged.
 export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResult {
   const raw = JSON.parse(readFileSync(verdictsPath, "utf8"));
-  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
+  // Fail closed: a parseable file that yields no rows means the fold never
+  // engaged — writing an empty (vacuously ok:true) VERIFY.json here is exactly
+  // the fail-open path `--check --semantic` exists to prevent.
+  if (list.length === 0) {
+    throw new Error(`${verdictsPath}: no verdict rows found — expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
+  }
+  const todo = readTodoPairs(outDir);
+  const problems: string[] = [];
+  const unknown: string[] = [];
   const verdicts: Verdict[] = [];
-  for (const v of list) {
-    if (!v || typeof v.claimId !== "string") continue;
+  for (const [i, v] of (list as any[]).entries()) {
+    if (!v || typeof v.claimId !== "string") {
+      problems.push(`row ${i + 1}: missing claimId`);
+      continue;
+    }
+    // An explicit-but-unknown token is a typo, not an un-adjudication: hard-error
+    // beats silently downgrading a "REFUTED!!" to a warning-level unadjudicated.
+    if (v.verdict != null && !VALID.includes(v.verdict)) {
+      problems.push(`row ${i + 1} (${v.claimId}): invalid verdict "${String(v.verdict)}" — expected ${VALID.join("|")} or null`);
+      continue;
+    }
+    const base = todo?.get(v.claimId);
+    if (todo && !base) {
+      unknown.push(v.claimId);
+      continue;
+    }
     const verdict = VALID.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
     const confidence = VALID_CONFIDENCE.includes(v.confidence) ? (v.confidence as ConfidenceKind) : undefined;
     verdicts.push({
       claimId: v.claimId,
-      claim: typeof v.claim === "string" ? v.claim : "",
-      feature: typeof v.feature === "string" ? v.feature : "",
-      evidenceRef: typeof v.evidenceRef === "string" ? v.evidenceRef : "",
-      digest: typeof v.digest === "string" ? v.digest : "",
+      claim: typeof v.claim === "string" ? v.claim : (base?.claim ?? ""),
+      feature: typeof v.feature === "string" ? v.feature : (base?.feature ?? ""),
+      evidenceRef: typeof v.evidenceRef === "string" ? v.evidenceRef : (base?.evidenceRef ?? ""),
+      digest: typeof v.digest === "string" ? v.digest : (base?.digest ?? ""),
       verdict,
       note: typeof v.note === "string" ? v.note : "",
       ...(confidence ? { confidence } : {}),
     });
   }
+  if (problems.length) {
+    throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) — fix them and re-apply (fail-closed):\n  - ${problems.join("\n  - ")}`);
+  }
+  if (verdicts.length === 0) {
+    throw new Error(
+      `${verdictsPath}: every row cites a claimId unknown to ${join(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) — stale fragment? Re-run --verify and re-adjudicate.`,
+    );
+  }
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
+  if (unknown.length) result.ignored = unknown;
   writeFileSync(join(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
@@ -323,6 +377,15 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
     return;
   }
   const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir));
+  // A green semantic exit must mean the gate ENGAGED: an empty verdicts[] (the
+  // old fail-open fold wrote one for fragments it could not read) or a ledger
+  // whose verdicts were all dropped leaves 0 adjudications — a bypass, not a pass.
+  if (fresh.adjudicated === 0) {
+    skip(
+      "--semantic: VERIFY.json carries 0 adjudicated verdicts — the requirement gate never engaged (re-run --verify then --verify --apply <verdicts.json> with valid verdict tokens)",
+    );
+    return;
+  }
   if (!fresh.ok) {
     check.errors.push(
       `semantic verification failed: ${fresh.failures.length} requirement(s) refuted, unsupported or citing unresolvable evidence (see VERIFY.json)`,
@@ -351,6 +414,9 @@ export function formatVerifyReport(r: VerifyResult): string {
   }
   if (r.unadjudicated.length) {
     lines.push(`  ⚠ ${r.unadjudicated.length} requirement(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
+  }
+  if (r.ignored?.length) {
+    lines.push(`  ⚠ ${r.ignored.length} ignored (unknown id): ${r.ignored.join(", ")} — not in VERIFY.todo.json (stale fragment?)`);
   }
   lines.push(r.ok ? `  ✓ every requirement traces to the original source` : `  ✗ some requirements are refuted or unsupported (invented)`);
   return lines.join("\n");

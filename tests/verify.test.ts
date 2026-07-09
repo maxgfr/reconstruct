@@ -117,6 +117,176 @@ describe("applyVerdicts (gate)", () => {
   });
 });
 
+describe("orchestrate adjudicator fragments (ADJUDICATE_SCHEMA shape)", () => {
+  function setup(): string {
+    const dir = scratch();
+    tree(dir, PRD);
+    runVerify(dir);
+    return dir;
+  }
+
+  /**
+   * The EXACT shape the emitted adjudicate contract/schema returns:
+   * `{ verdicts: [{ claimId, verdict, note, confidence }] }` — NO evidenceRef,
+   * claim, feature or digest (those live in VERIFY.todo.json).
+   */
+  function fragment(dir: string, map: Record<string, string> = {}): string {
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    const verdicts = todo.pairs.map((p: any) => ({
+      claimId: p.claimId,
+      verdict: map[p.claimId] ?? "supported",
+      note: "grounded in the captured evidence",
+      confidence: "confirmed",
+    }));
+    const f = join(dir, "verdicts.json");
+    writeFileSync(f, JSON.stringify({ verdicts }));
+    return f;
+  }
+
+  it("folds the schema-shaped fragment, backfilling evidence from VERIFY.todo.json (supported)", () => {
+    const dir = setup();
+    const r = applyVerdicts(dir, fragment(dir));
+    expect(r.ok).toBe(true);
+    expect(r.adjudicated).toBe(3); // NOT the 0/0 vacuous fold
+    expect(r.supported).toBe(3);
+    const sem = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    for (const [i, v] of sem.verdicts.entries()) {
+      expect(v.claimId).toBe(todo.pairs[i].claimId);
+      expect(v.evidenceRef).toBe(todo.pairs[i].evidenceRef); // backfilled, so resolveEvidence still guards it
+      expect(v.evidenceRef.length).toBeGreaterThan(0);
+      expect(v.claim).toBe(todo.pairs[i].claim);
+      expect(v.feature).toBe(todo.pairs[i].feature);
+      expect(v.digest).toBe(todo.pairs[i].digest);
+      expect(v.confidence).toBe("confirmed");
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("adjudicates an unsupported fragment verdict into a real gate failure", () => {
+    const dir = setup();
+    const r = applyVerdicts(dir, fragment(dir, { C1: "unsupported" }));
+    expect(r.ok).toBe(false);
+    expect(r.failures.some((f) => f.claimId === "C1" && f.verdict === "unsupported")).toBe(true);
+    // and the persisted ledger gates check --semantic
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldSemantic(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("the vacuous-pass repro now FAILS: a file yielding zero rows throws instead of writing an ok ledger", () => {
+    const dir = setup();
+    const f = join(dir, "verdicts.json");
+    writeFileSync(f, JSON.stringify({ verdicts: [] }));
+    expect(() => applyVerdicts(dir, f)).toThrow(/no verdict rows/i);
+    expect(existsSync(join(dir, "VERIFY.json"))).toBe(false);
+    // an object under any OTHER key is just as empty — never a silent 0/0 ok:true
+    writeFileSync(f, JSON.stringify({ judgements: [{ claimId: "C1", verdict: "supported" }] }));
+    expect(() => applyVerdicts(dir, f)).toThrow(/no verdict rows/i);
+    expect(existsSync(join(dir, "VERIFY.json"))).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("ignores unknown claimIds with a report, and errors when ALL are unknown", () => {
+    const dir = setup();
+    const f = join(dir, "verdicts.json");
+    writeFileSync(
+      f,
+      JSON.stringify({
+        verdicts: [
+          { claimId: "C1", verdict: "supported", note: "ok", confidence: "confirmed" },
+          { claimId: "C999", verdict: "supported", note: "ghost of a stale worklist", confidence: "confirmed" },
+        ],
+      }),
+    );
+    const r = applyVerdicts(dir, f);
+    expect(r.pairs).toBe(1);
+    expect(r.ignored).toEqual(["C999"]);
+    expect(formatVerifyReport(r)).toMatch(/1 ignored \(unknown id\)/);
+    writeFileSync(f, JSON.stringify({ verdicts: [{ claimId: "C888", verdict: "supported", note: "x", confidence: "confirmed" }] }));
+    expect(() => applyVerdicts(dir, f)).toThrow(/unknown/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("hard-errors on an explicit-but-invalid verdict token (fail-closed, not unadjudicated)", () => {
+    const dir = setup();
+    const f = join(dir, "verdicts.json");
+    writeFileSync(f, JSON.stringify({ verdicts: [{ claimId: "C1", verdict: "SUPPORTED!!", note: "typo", confidence: "confirmed" }] }));
+    expect(() => applyVerdicts(dir, f)).toThrow(/invalid verdict/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("hard-errors on a row missing its claimId", () => {
+    const dir = setup();
+    const f = join(dir, "verdicts.json");
+    writeFileSync(f, JSON.stringify({ verdicts: [{ verdict: "supported", note: "who am I?" }] }));
+    expect(() => applyVerdicts(dir, f)).toThrow(/claimId/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("still accepts a null verdict as unadjudicated (mid-loop fragments)", () => {
+    const dir = setup();
+    const f = join(dir, "verdicts.json");
+    writeFileSync(
+      f,
+      JSON.stringify({
+        verdicts: [
+          { claimId: "C1", verdict: "supported", note: "", confidence: "confirmed" },
+          { claimId: "C2", verdict: null, note: "", confidence: null },
+        ],
+      }),
+    );
+    const r = applyVerdicts(dir, f);
+    expect(r.adjudicated).toBe(1);
+    expect(r.unadjudicated).toEqual(["C2"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("foldSemantic engagement (vacuous ledgers)", () => {
+  it("fails when VERIFY.json carries 0 adjudicated verdicts — the gate never engaged", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    // The exact ledger the old fail-open applyVerdicts wrote when it could not
+    // read a fragment: ok:true with an empty verdicts[].
+    writeFileSync(
+      join(dir, "VERIFY.json"),
+      JSON.stringify({
+        ok: true,
+        pairs: 0,
+        adjudicated: 0,
+        supported: 0,
+        partial: 0,
+        refuted: 0,
+        unsupported: 0,
+        failures: [],
+        unadjudicated: [],
+        verdicts: [],
+      }),
+    );
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldSemantic(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
+    expect(check.errors.join(" ")).toMatch(/0 adjudicated|never engaged/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("downgrades the vacuous ledger to a warning under allowUnverified", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ok: true, pairs: 0, adjudicated: 0, failures: [], unadjudicated: [], verdicts: [] }));
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldSemantic(dir, check, { allowUnverified: true });
+    expect(check.errors.length).toBe(before);
+    expect(check.warnings.join(" ")).toMatch(/0 adjudicated|never engaged/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("foldSemantic (--check --semantic composition)", () => {
   it("adds an error to the check result when VERIFY.json fails", () => {
     const dir = scratch();

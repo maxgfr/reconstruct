@@ -5196,26 +5196,65 @@ function resolveEvidence(ref, inv) {
   const path = ref.replace(/:\d+(-\d+)?$/, "");
   return (inv.files ?? []).some((f) => f.path === path) || features.some((f) => (f.files ?? []).includes(path));
 }
+function readTodoPairs(outDir) {
+  try {
+    const todo = JSON.parse(readFileSync12(join14(outDir, "VERIFY.todo.json"), "utf8"));
+    if (!Array.isArray(todo?.pairs)) return void 0;
+    const byClaim = /* @__PURE__ */ new Map();
+    for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
+    return byClaim.size ? byClaim : void 0;
+  } catch {
+    return void 0;
+  }
+}
 function applyVerdicts(outDir, verdictsPath) {
   const raw = JSON.parse(readFileSync12(verdictsPath, "utf8"));
-  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
+  if (list.length === 0) {
+    throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
+  }
+  const todo = readTodoPairs(outDir);
+  const problems = [];
+  const unknown = [];
   const verdicts = [];
-  for (const v of list) {
-    if (!v || typeof v.claimId !== "string") continue;
+  for (const [i, v] of list.entries()) {
+    if (!v || typeof v.claimId !== "string") {
+      problems.push(`row ${i + 1}: missing claimId`);
+      continue;
+    }
+    if (v.verdict != null && !VALID.includes(v.verdict)) {
+      problems.push(`row ${i + 1} (${v.claimId}): invalid verdict "${String(v.verdict)}" \u2014 expected ${VALID.join("|")} or null`);
+      continue;
+    }
+    const base = todo?.get(v.claimId);
+    if (todo && !base) {
+      unknown.push(v.claimId);
+      continue;
+    }
     const verdict = VALID.includes(v.verdict) ? v.verdict : void 0;
     const confidence = VALID_CONFIDENCE.includes(v.confidence) ? v.confidence : void 0;
     verdicts.push({
       claimId: v.claimId,
-      claim: typeof v.claim === "string" ? v.claim : "",
-      feature: typeof v.feature === "string" ? v.feature : "",
-      evidenceRef: typeof v.evidenceRef === "string" ? v.evidenceRef : "",
-      digest: typeof v.digest === "string" ? v.digest : "",
+      claim: typeof v.claim === "string" ? v.claim : base?.claim ?? "",
+      feature: typeof v.feature === "string" ? v.feature : base?.feature ?? "",
+      evidenceRef: typeof v.evidenceRef === "string" ? v.evidenceRef : base?.evidenceRef ?? "",
+      digest: typeof v.digest === "string" ? v.digest : base?.digest ?? "",
       verdict,
       note: typeof v.note === "string" ? v.note : "",
       ...confidence ? { confidence } : {}
     });
   }
+  if (problems.length) {
+    throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) \u2014 fix them and re-apply (fail-closed):
+  - ${problems.join("\n  - ")}`);
+  }
+  if (verdicts.length === 0) {
+    throw new Error(
+      `${verdictsPath}: every row cites a claimId unknown to ${join14(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) \u2014 stale fragment? Re-run --verify and re-adjudicate.`
+    );
+  }
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
+  if (unknown.length) result.ignored = unknown;
   writeFileSync2(join14(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
@@ -5280,6 +5319,12 @@ function foldSemantic(outDir, check, opts = {}) {
     return;
   }
   const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir));
+  if (fresh.adjudicated === 0) {
+    skip(
+      "--semantic: VERIFY.json carries 0 adjudicated verdicts \u2014 the requirement gate never engaged (re-run --verify then --verify --apply <verdicts.json> with valid verdict tokens)"
+    );
+    return;
+  }
   if (!fresh.ok) {
     check.errors.push(
       `semantic verification failed: ${fresh.failures.length} requirement(s) refuted, unsupported or citing unresolvable evidence (see VERIFY.json)`
@@ -5307,6 +5352,9 @@ function formatVerifyReport(r) {
   }
   if (r.unadjudicated.length) {
     lines.push(`  \u26A0 ${r.unadjudicated.length} requirement(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
+  }
+  if (r.ignored?.length) {
+    lines.push(`  \u26A0 ${r.ignored.length} ignored (unknown id): ${r.ignored.join(", ")} \u2014 not in VERIFY.todo.json (stale fragment?)`);
   }
   lines.push(r.ok ? `  \u2713 every requirement traces to the original source` : `  \u2717 some requirements are refuted or unsupported (invented)`);
   return lines.join("\n");
@@ -5918,7 +5966,7 @@ function agentContracts(outAbs, engineAbs) {
 
 You draft ONE feature of a reconstruction at a time, to full PRD depth \u2014 the MAP half of the enrichment map-reduce (\`references/orchestration.md\`, Phase 1).
 
-Worklist: \`${join17(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`).
+Worklist: \`${join17(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
@@ -5938,7 +5986,7 @@ ${footer}`,
 
 You are a FINDER of the AI buildability review \u2014 one adversarial reviewer per flagged feature (\`references/orchestration.md\`, Phase 2 step B; rubric: \`references/ai-review-rubric.md\`).
 
-Worklist: \`${join17(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`).
+Worklist: \`${join17(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
@@ -5952,7 +6000,7 @@ ${footer}`,
 
 You are an INDEPENDENT VERIFIER of the review loop \u2014 one fresh, adversarial agent per open blocker (\`references/orchestration.md\`, Phase 2 step C). A finding "counts" only when you confirm it.
 
-Worklist: \`${join17(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join17(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your blockers:
 
@@ -5966,7 +6014,7 @@ ${footer}`,
 
 You adjudicate the requirement\u2194source verification gate of a reconstruction \u2014 judging whether each PRD requirement TRACES to the original code (faithful inference) or was invented.
 
-Worklist: \`${join17(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join17(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your pairs:
 

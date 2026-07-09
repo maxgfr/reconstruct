@@ -637,6 +637,8 @@ export interface VerifyResult {
   verdicts?: Verdict[];
   /** Aggregated confidence labels, when the adjudicator stamped any. */
   confidence?: { confirmed: number; inferred: number; gap: number; unlabeled: number };
+  /** Verdict rows whose claimId is not in the run's VERIFY.todo.json — ignored, never folded. */
+  ignored?: string[];
 }
 
 export interface VerifyWorklist {
