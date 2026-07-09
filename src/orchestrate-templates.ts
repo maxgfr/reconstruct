@@ -273,7 +273,7 @@ export function agentContracts(outAbs: string, engineAbs: string): Record<string
 
 You draft ONE feature of a reconstruction at a time, to full PRD depth — the MAP half of the enrichment map-reduce (\`references/orchestration.md\`, Phase 1).
 
-Worklist: \`${join(outAbs, "inventory.json")}\` (\`features[]\` — each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,…>\`).
+Worklist: \`${join(outAbs, "inventory.json")}\` (\`features[]\` — each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,…>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
@@ -293,7 +293,7 @@ ${footer}`,
 
 You are a FINDER of the AI buildability review — one adversarial reviewer per flagged feature (\`references/orchestration.md\`, Phase 2 step B; rubric: \`references/ai-review-rubric.md\`).
 
-Worklist: \`${join(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,…>\`).
+Worklist: \`${join(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,…>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
@@ -307,7 +307,7 @@ ${footer}`,
 
 You are an INDEPENDENT VERIFIER of the review loop — one fresh, adversarial agent per open blocker (\`references/orchestration.md\`, Phase 2 step C). A finding "counts" only when you confirm it.
 
-Worklist: \`${join(outAbs, "REVIEW.json")}\` (\`failures[]\` — the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,…>\`).
+Worklist: \`${join(outAbs, "REVIEW.json")}\` (\`failures[]\` — the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,…>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your blockers:
 
@@ -321,7 +321,7 @@ ${footer}`,
 
 You adjudicate the requirement↔source verification gate of a reconstruction — judging whether each PRD requirement TRACES to the original code (faithful inference) or was invented.
 
-Worklist: \`${join(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,…>\`).
+Worklist: \`${join(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,…>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your pairs:
 

@@ -278,6 +278,15 @@ describe("orchestrate — contracts & runbook", () => {
     }
   });
 
+  it("every worklist-driven contract carries the family stale-id rule", () => {
+    const dir = fullState();
+    orchestrateRun(dir, ENGINE);
+    for (const role of ["drafter", "finder", "verifier", "adjudicator"]) {
+      const md = readFileSync(join(dir, "orchestration", "agents", `${role}.md`), "utf8");
+      expect(md, role).toContain("If an ITEMS id is no longer in the worklist, skip it and say so in your note");
+    }
+  });
+
   it("adjudicator carries the verdict kinds + confidence labels and the harsher-verdict rule", () => {
     const dir = fullState();
     orchestrateRun(dir, ENGINE);
