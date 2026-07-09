@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.1.0](https://github.com/maxgfr/reconstruct/compare/v2.0.0...v2.1.0) (2026-07-09)
+
+
+### Features
+
+* **orchestrate:** emit the enrich map-reduce / review / adjudication fan-outs + contracts + runbook ([#14](https://github.com/maxgfr/reconstruct/issues/14)) ([7ec8a50](https://github.com/maxgfr/reconstruct/commit/7ec8a5042fa258689ef1dddf3b0cc90866b87792))
+
 # [2.0.0](https://github.com/maxgfr/reconstruct/compare/v1.3.0...v2.0.0) (2026-07-08)
 
 
