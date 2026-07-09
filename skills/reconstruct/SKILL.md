@@ -121,7 +121,9 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
    per feature (each reads its `files` + `hints` and proposes interface/entity rows), then a single
    **reduce** that merges those proposals into the canonical `INTERFACES.md`/`DATA-MODEL.md` —
    deduping and reconciling conflicts against source — so the parallel drafts never race on the
-   shared docs.
+   shared docs. The engine emits this fan-out ready to launch:
+   `node scripts/analyze.mjs --orchestrate --out <OUT> --phase enrich-map`
+   (see **Orchestration — route by harness** below).
 
 8. **Finalize `REBUILD.md`:** confirm the dependency-tiered build order and validation
    checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
@@ -159,6 +161,10 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      independent verifier per blocker, then `--review --apply findings.json` reduces them to
      `REVIEW.json`. A unit is done when it has **zero blockers**. Fix blockers in place, re-run
      `--check`, repeat until clean. See `references/orchestration.md` for the fan-out protocol.
+     The engine emits it ready to launch: `--orchestrate --phase review-find` (one finder per
+     flagged unit), then — after the `--apply` reduce — `--orchestrate --phase review-verify`
+     (one independent verifier per open `REVIEW.json` blocker); see **Orchestration — route by
+     harness** below.
 
    - **The semantic gate — fail-closed.** Once the review converges, adjudicate the
      requirement→source ledger too, then fold everything into the single final gate:
@@ -174,7 +180,9 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
      `REVIEW.json` findings) and re-resolves every cited `evidenceRef` against the inventory —
      a stale or hand-edited `ok: true` never passes — and it **fails closed**: a missing or
      unreadable ledger is an error. `--allow-unverified` downgrades that to a warning; use it
-     only deliberately, and say so in the final report.
+     only deliberately, and say so in the final report. The adjudication itself fans out — one
+     adjudicator per `VERIFY.todo.json` pair — via `--orchestrate --phase adjudicate`
+     (see **Orchestration — route by harness** below); the `--apply` fold stays with you.
 
 10. **Run the convergence loop — autonomously, to completion.** A reconstruction is not done
     when the scaffold is filled; it is done when it **converges** to buildable. **You own this
@@ -223,7 +231,7 @@ Skip it for tiny single-file scripts, or when the user wants a running app now, 
 
     At scale, drive the loop as a fan-out — one finder + one independent verifier per changed
     feature — per **`references/orchestration.md`** (which also covers the parallel map-reduce
-    *enrichment*). **Terminate on the ledger, not by feel:** stop at `REVIEW.json.ok` (the
+    *enrichment*); `--orchestrate` emits each round's fan-out from the CURRENT worklists. **Terminate on the ledger, not by feel:** stop at `REVIEW.json.ok` (the
     fixpoint), or when `staleRounds >= 2` (two rounds stuck on the same blockers) or after ≤ 5
     rounds. When you stop **not** at `ok`, do not stop silently: the escalation ladder is re-edit
     the unit → fix the shared architecture contract those blockers share → **record and report** —
@@ -245,6 +253,33 @@ adapters resolve `inventory.routes` from a framework's routing convention (and h
 and `references/architecture-analysis.md` / `references/rebuild-instructions.md` /
 `references/prd-complex-template.md` / `references/prd-light-template.md` for the reasoning
 checklists.
+
+## Orchestration — route by harness
+
+The judgment phases fan out: the enrichment map (`inventory.json.features[]`, one drafter per
+feature, batched per workspace on a monorepo), the review loop (`REVIEW.todo.json` flagged
+units → one finder each; then `REVIEW.json` open blockers → one independent verifier each) and
+the requirement adjudication (`VERIFY.todo.json` pairs → one adjudicator each) are independent
+per-unit worklists. The engine manages the fan-out — `--orchestrate` emits the orchestration
+from `--out`'s CURRENT worklists, with absolute paths and the real unit ids baked in:
+
+```bash
+node scripts/analyze.mjs --orchestrate --out <OUT> [--phase enrich-map|review-find|review-verify|adjudicate] [--eco] [--list]
+```
+
+| Your harness | How to run each judgment phase |
+|---|---|
+| Has the Workflow tool | `--orchestrate --out <OUT> --phase <p>`, then `Workflow({ scriptPath: "<OUT>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN drafts/findings/verdict fragments; you merge them (the single serial reduce), then run the fold command shown at the end of each workflow (`--check`, `--review --apply`, `--verify --apply`). |
+| Subagents but no Workflow tool | Same `--orchestrate`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md` (the workflow script shows batches + prompts). One writer: you fold results in. |
+| Eco mode, or no subagents | `--orchestrate --out <OUT> --eco` → follow `<OUT>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+
+Fan-out is an optimization, never a requirement — the gates (`--check`, `--verify --apply`,
+`--review --apply`) are harness-independent and every phase has a sequential fallback with
+identical artifacts. Subagents never write: the emitted contracts end with the one-writer rule,
+and the reduce (every doc merge and `--apply` fold) always stays with you, the orchestrator.
+Never fan out the greenfield interview, `--brainstorm`, a reduce step, or the scratch build.
+Re-run `--orchestrate` whenever a worklist changes (emission is deterministic and idempotent);
+`--phase <p>` before its worklist exists fails and names the command that produces it.
 
 ## Everything is a PRD — dig until done
 

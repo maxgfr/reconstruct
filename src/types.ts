@@ -79,6 +79,18 @@ export interface Options {
    * existing reconstruction's inventory.json when present). Reads no repo. `--brainstorm`.
    */
   brainstorm?: boolean;
+  /**
+   * Emit the multi-agent orchestration (per-phase workflows + dispatch contracts
+   * + sequential RUNBOOK) for `--out`'s CURRENT worklists into
+   * `<out>/orchestration/`. Reads no repo. `--orchestrate`.
+   */
+  orchestrate?: boolean;
+  /** With `--orchestrate`: emit one phase only (`--phase <name>`, else ""). */
+  phase?: string;
+  /** With `--orchestrate`: emit only RUNBOOK.md + agents/*.md. `--eco`. */
+  eco?: boolean;
+  /** With `--orchestrate`: print the `{phases:[...]}` JSON, write nothing. `--list`. */
+  list?: boolean;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */
