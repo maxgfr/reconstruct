@@ -5,6 +5,13 @@ import type { ClaimEvidencePair, ConfidenceKind, Inventory, Verdict, VerdictKind
 
 // Bounds the requirement-verification loop (claim↔evidence pairs per run).
 export const VERIFY_MAX = 60;
+
+/** The pure worklist derivation plus the pre-/post-cap counts `renderWorklistMd` needs. */
+export interface BuiltWorklist {
+  worklist: VerifyWorklist;
+  total: number; // requirement↔evidence pairs derivable from the PRDs before the cap
+  kept: number; // pairs in this (possibly capped) worklist
+}
 const VALID: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
 const VALID_CONFIDENCE: ConfidenceKind[] = ["confirmed", "inferred", "gap"];
 
@@ -71,13 +78,17 @@ function featureEvidence(f: any): Ev[] {
   return out;
 }
 
-// Phase A — build the requirement↔evidence worklist. For each feature PRD
-// requirement, pair it with the feature's most-relevant captured evidence (by
-// keyword overlap) so an agent can judge whether the requirement traces to real
-// source (supported) or was invented (unsupported/refuted). Deterministic; the
-// JUDGEMENT is the agent's. Capped at maxVerify. Writes VERIFY.todo.json +
-// VERIFY.md.
-export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): VerifyWorklist {
+// Phase A (pure) — derive the requirement↔evidence worklist WITHOUT writing any
+// files. For each feature PRD requirement, pair it with the feature's most-
+// relevant captured evidence (by keyword overlap) so an agent can judge whether
+// the requirement traces to real source (supported) or was invented
+// (unsupported/refuted). Deterministic; the JUDGEMENT is the agent's. Capped at
+// maxVerify (highest-overlap requirements first). `runVerify` persists the
+// result; the `--check --semantic` coverage gate re-derives it (from the same
+// PRDs) to detect verdict rows dropped after adjudication — so the two must
+// stay byte-aligned. maxVerify is NOT CLI-configurable: `--verify` and the gate
+// both use the default cap, so the re-derived pairs line up with what was shown.
+export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {}): BuiltWorklist {
   let invRaw: string;
   try {
     invRaw = readFileSync(join(outDir, "inventory.json"), "utf8");
@@ -132,13 +143,20 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
           .slice(0, max)
       : pairs;
   const worklist: VerifyWorklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
+  return { worklist, total: pairs.length, kept: kept.length };
+}
 
+// Phase A — build the requirement↔evidence worklist AND persist it
+// (VERIFY.todo.json machine worklist + VERIFY.md human checklist). Thin wrapper
+// over `buildWorklist`; see its comment for the derivation + cap contract.
+export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): VerifyWorklist {
+  const { worklist, total, kept } = buildWorklist(outDir, opts);
   const todo = {
     run: outDir,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "", confidence: null as ConfidenceKind | null })),
   };
   writeFileSync(join(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync(join(outDir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync(join(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 
@@ -399,6 +417,34 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
       "--semantic: VERIFY.json carries 0 adjudicated verdicts — the requirement gate never engaged (re-run --verify then --verify --apply <verdicts.json> with valid verdict tokens)",
     );
     return;
+  }
+  // Deep COVERAGE gate: reduceVerdicts folds ONLY the pairs present in
+  // verdicts[], so a wholly-dropped verdict row — an agent (or attacker) deleting
+  // the inconvenient, e.g. refuted, claims before `--verify --apply` — is invisible
+  // to the re-reduce, and a partially-adjudicated ledger would pass on an
+  // unverified requirement. Re-derive the worklist deterministically from the PRDs
+  // (the same derivation `--verify` used; maxVerify is not CLI-configurable, so the
+  // pairs line up) and fail closed on any expected requirement with no adjudicated
+  // verdict. This also catches a PRD edited after verification — its claim ids then
+  // shift, so the stale ledger no longer covers the re-derived set. Routed through
+  // `skip` (a coverage absence, like a missing/vacuous ledger, so `--allow-unverified`
+  // downgrades it consistently); a verdict that is PRESENT and refuted still hard-fails
+  // below regardless.
+  let expected: ClaimEvidencePair[] = [];
+  try {
+    expected = buildWorklist(outDir).worklist.pairs;
+  } catch {
+    expected = [];
+  }
+  const adjudicatedIds = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
+  const uncovered = expected.filter((p) => !adjudicatedIds.has(p.claimId));
+  if (uncovered.length) {
+    const ids = uncovered.map((p) => p.claimId);
+    skip(
+      `--semantic: ${uncovered.length} requirement(s) in the feature PRDs have no adjudicated verdict in VERIFY.json ` +
+        `(${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}) — the requirement gate never covered them; re-run ` +
+        `--verify then --verify --apply <verdicts.json> so every requirement is adjudicated (the gate must not pass on dropped verdicts)`,
+    );
   }
   if (!fresh.ok) {
     check.errors.push(

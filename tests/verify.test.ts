@@ -365,6 +365,58 @@ describe("foldSemantic re-reduces the persisted ledger (no trusted summary)", ()
   });
 });
 
+describe("foldSemantic coverage gate (dropped verdicts)", () => {
+  function setup(map: Record<string, string>): string {
+    const dir = scratch();
+    tree(dir, PRD);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, map));
+    return dir;
+  }
+
+  it("fails closed when a cited claim's verdict row is dropped from the ledger", () => {
+    // The dropped-verdict fail-open: adjudicate C1 as refuted, then delete ONLY
+    // C1's row. reduceVerdicts sees only C2/C3 (both supported) so the re-reduce
+    // reads ok:true — the refuted claim silently vanished. The coverage gate must
+    // re-derive the worklist and reject the now-uncovered C1.
+    const dir = setup({ C1: "refuted", C2: "supported", C3: "supported" });
+    const sem = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    sem.verdicts = sem.verdicts.filter((v: any) => v.claimId !== "C1");
+    sem.ok = true; // and the summary now claims a pass
+    sem.failures = [];
+    writeFileSync(join(dir, "VERIFY.json"), JSON.stringify(sem));
+
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldSemantic(dir, check);
+    expect(check.errors.length).toBeGreaterThan(before);
+    expect(check.errors.join(" ")).toMatch(/C1/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("passes a fully-adjudicated ledger — the coverage gate never false-fails", () => {
+    const dir = setup({ C1: "supported", C2: "supported", C3: "supported" });
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldSemantic(dir, check);
+    expect(check.errors.length).toBe(before); // no semantic error added
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("downgrades a dropped-verdict coverage gap to a warning under allowUnverified", () => {
+    const dir = setup({ C1: "supported", C2: "supported", C3: "supported" });
+    const sem = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    sem.verdicts = sem.verdicts.filter((v: any) => v.claimId !== "C2");
+    writeFileSync(join(dir, "VERIFY.json"), JSON.stringify(sem));
+    const check = checkOutput(dir);
+    const before = check.errors.length;
+    foldSemantic(dir, check, { allowUnverified: true });
+    expect(check.errors.length).toBe(before);
+    expect(check.warnings.join(" ")).toMatch(/C2/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("evidence resolution (fabricated citations)", () => {
   function setup(): string {
     const dir = scratch();

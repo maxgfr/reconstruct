@@ -5089,7 +5089,7 @@ function featureEvidence(f) {
   for (const e of f.entities ?? []) out.push({ ref: `entity ${e}`, text: String(e) });
   return out;
 }
-function runVerify(outDir, opts = {}) {
+function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
     invRaw = readFileSync12(join14(outDir, "inventory.json"), "utf8");
@@ -5131,12 +5131,16 @@ function runVerify(outDir, opts = {}) {
   const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
   const kept = pairs.length > max ? pairs.slice().sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId)).slice(0, max) : pairs;
   const worklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
+  return { worklist, total: pairs.length, kept: kept.length };
+}
+function runVerify(outDir, opts = {}) {
+  const { worklist, total, kept } = buildWorklist(outDir, opts);
   const todo = {
     run: outDir,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "", confidence: null }))
   };
   writeFileSync2(join14(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync2(join14(outDir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync2(join14(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -5332,6 +5336,20 @@ function foldSemantic(outDir, check, opts = {}) {
       "--semantic: VERIFY.json carries 0 adjudicated verdicts \u2014 the requirement gate never engaged (re-run --verify then --verify --apply <verdicts.json> with valid verdict tokens)"
     );
     return;
+  }
+  let expected = [];
+  try {
+    expected = buildWorklist(outDir).worklist.pairs;
+  } catch {
+    expected = [];
+  }
+  const adjudicatedIds = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
+  const uncovered = expected.filter((p2) => !adjudicatedIds.has(p2.claimId));
+  if (uncovered.length) {
+    const ids = uncovered.map((p2) => p2.claimId);
+    skip(
+      `--semantic: ${uncovered.length} requirement(s) in the feature PRDs have no adjudicated verdict in VERIFY.json (${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}) \u2014 the requirement gate never covered them; re-run --verify then --verify --apply <verdicts.json> so every requirement is adjudicated (the gate must not pass on dropped verdicts)`
+    );
   }
   if (!fresh.ok) {
     check.errors.push(
