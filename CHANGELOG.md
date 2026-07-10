@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.1.2](https://github.com/maxgfr/reconstruct/compare/v2.1.1...v2.1.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* **check:** fail closed when a requirement's verdict is dropped from VERIFY.json ([8f02517](https://github.com/maxgfr/reconstruct/commit/8f0251707e76a445c46e55ad3e8c3f17910828bb))
+* **verify:** fail closed on a file:line citation past the file's end ([6826565](https://github.com/maxgfr/reconstruct/commit/6826565cfec7ffe53cd555b81fbfbbf9ed238218))
+
 ## [2.1.1](https://github.com/maxgfr/reconstruct/compare/v2.1.0...v2.1.1) (2026-07-09)
 
 
