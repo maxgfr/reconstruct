@@ -183,7 +183,10 @@ function readInventoryIfPresent(outDir: string): Inventory | undefined {
  * captured. Names match exactly (never by substring) so `entity User` can't
  * resolve against `Users2`. The `digest` field is deliberately NOT validated —
  * it is a 600-char truncated join, not a hash; re-matching it would only
- * manufacture false positives.
+ * manufacture false positives. A file path may carry a `:line[-line]` locator:
+ * when the inventory records that file's length, a locator pointing past the end
+ * is rejected (a wrong/fabricated line the ledger has the data to catch); an
+ * in-range locator, or one on a file whose length is unknown, resolves.
  */
 export function resolveEvidence(ref: string, inv: Inventory): boolean {
   const features = inv.features ?? [];
@@ -218,8 +221,19 @@ export function resolveEvidence(ref: string, inv: Inventory): boolean {
   }
 
   // Anything else is a file path, optionally with a `:line[-line]` locator.
+  const loc = /:(\d+)(?:-(\d+))?$/.exec(ref);
   const path = ref.replace(/:\d+(-\d+)?$/, "");
-  return (inv.files ?? []).some((f) => f.path === path) || features.some((f) => (f.files ?? []).includes(path));
+  const invFile = (inv.files ?? []).find((f) => f.path === path);
+  const inFeature = features.some((f) => (f.files ?? []).includes(path));
+  if (!invFile && !inFeature) return false;
+  // When a line locator is present AND the file's length is known, the cited line
+  // (or the high end of a range) must fall within the file — a citation past the
+  // end is a wrong/fabricated reference the ledger records enough to catch.
+  if (loc && invFile && typeof invFile.lines === "number" && invFile.lines > 0) {
+    const hi = Math.max(Number(loc[1]), loc[2] ? Number(loc[2]) : 0);
+    if (hi > invFile.lines) return false;
+  }
+  return true;
 }
 
 /**

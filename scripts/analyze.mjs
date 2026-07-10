@@ -5193,8 +5193,16 @@ function resolveEvidence(ref, inv) {
     const name = ent[1];
     return (inv.dataModel ?? []).some((e) => e.entity === name) || features.some((f) => (f.entities ?? []).includes(name));
   }
+  const loc = /:(\d+)(?:-(\d+))?$/.exec(ref);
   const path = ref.replace(/:\d+(-\d+)?$/, "");
-  return (inv.files ?? []).some((f) => f.path === path) || features.some((f) => (f.files ?? []).includes(path));
+  const invFile = (inv.files ?? []).find((f) => f.path === path);
+  const inFeature = features.some((f) => (f.files ?? []).includes(path));
+  if (!invFile && !inFeature) return false;
+  if (loc && invFile && typeof invFile.lines === "number" && invFile.lines > 0) {
+    const hi = Math.max(Number(loc[1]), loc[2] ? Number(loc[2]) : 0);
+    if (hi > invFile.lines) return false;
+  }
+  return true;
 }
 function readTodoPairs(outDir) {
   try {

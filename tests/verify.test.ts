@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport, reduceVerdicts } from "../src/verify.js";
+import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport, reduceVerdicts, resolveEvidence } from "../src/verify.js";
 import { checkOutput } from "../src/check.js";
 
 function scratch(): string {
@@ -464,6 +464,31 @@ describe("evidence resolution (fabricated citations)", () => {
     foldSemantic(dir, check);
     expect(check.warnings.join(" ")).toMatch(/gap/);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("rejects a file:line citation whose line is beyond the file's known length, but accepts an in-range one", () => {
+    // The inventory records each file's `lines`; a citation pointing at a line
+    // past the end of a real file is a wrong/fabricated citation the guard must
+    // catch (fail-closed), while an in-range line and a plain path must resolve.
+    const inv: any = {
+      repoName: "demo",
+      files: [{ path: "src/main.ts", ext: ".ts", size: 100, lines: 60, category: "code", binary: false }],
+      features: [{ slug: "01-core", name: "Core", kind: "feature", files: ["src/only-in-feature.ts"], routes: [], interfaces: [], entities: [] }],
+    };
+    // plain path (no locator) — unchanged behaviour
+    expect(resolveEvidence("src/main.ts", inv)).toBe(true);
+    expect(resolveEvidence("src/nope.ts", inv)).toBe(false);
+    // in-range single line + range — resolve
+    expect(resolveEvidence("src/main.ts:5", inv)).toBe(true);
+    expect(resolveEvidence("src/main.ts:60", inv)).toBe(true);
+    expect(resolveEvidence("src/main.ts:10-40", inv)).toBe(true);
+    // out-of-range line — fail closed
+    expect(resolveEvidence("src/main.ts:9999", inv)).toBe(false);
+    expect(resolveEvidence("src/main.ts:61", inv)).toBe(false);
+    expect(resolveEvidence("src/main.ts:10-9999", inv)).toBe(false);
+    // a file known only through a feature's string list has no recorded length →
+    // a locator on it must NOT false-fail (we can only range-check when we know the length)
+    expect(resolveEvidence("src/only-in-feature.ts:9999", inv)).toBe(true);
   });
 
   it("real RouteInfo-shaped feature routes produce route refs with a path", () => {
