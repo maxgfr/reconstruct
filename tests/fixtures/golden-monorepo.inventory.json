@@ -1,0 +1,644 @@
+{
+  "generatedWith": "reconstruct@GOLDEN",
+  "generation": {
+    "mode": "preserve",
+    "level": "light",
+    "fidelity": "describe",
+    "granularity": "coarse"
+  },
+  "repoName": "golden-monorepo",
+  "stack": {
+    "languages": [
+      "TypeScript",
+      "Rust",
+      "JavaScript",
+      "Astro"
+    ],
+    "primaryLanguage": "TypeScript",
+    "frameworks": [
+      "Next.js",
+      "React"
+    ],
+    "libraries": [
+      "Vitest",
+      "next-intl"
+    ],
+    "packageManagers": [
+      "npm",
+      "cargo"
+    ],
+    "hasTypeScript": true
+  },
+  "fileCount": 28,
+  "totalLines": 100,
+  "files": [
+    {
+      "path": ".gitignore",
+      "ext": "",
+      "size": 16,
+      "lines": 3,
+      "category": "other",
+      "binary": false
+    },
+    {
+      "path": "apps/web/app/api/users/route.ts",
+      "ext": ".ts",
+      "size": 175,
+      "lines": 7,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "apps/web/app/dashboard/page.tsx",
+      "ext": ".tsx",
+      "size": 79,
+      "lines": 4,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "apps/web/app/page.tsx",
+      "ext": ".tsx",
+      "size": 63,
+      "lines": 4,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "apps/web/package.json",
+      "ext": ".json",
+      "size": 159,
+      "lines": 10,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "assets/pixel.png",
+      "ext": ".png",
+      "size": 67,
+      "lines": 0,
+      "category": "asset",
+      "binary": true
+    },
+    {
+      "path": "Cargo.toml",
+      "ext": ".toml",
+      "size": 40,
+      "lines": 3,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "crates/native/Cargo.toml",
+      "ext": ".toml",
+      "size": 51,
+      "lines": 4,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "crates/native/src/lib.rs",
+      "ext": ".rs",
+      "size": 48,
+      "lines": 4,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "crates/native/src/util.h",
+      "ext": ".h",
+      "size": 23,
+      "lines": 2,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "data/seed.csv",
+      "ext": ".csv",
+      "size": 25,
+      "lines": 3,
+      "category": "data",
+      "binary": false
+    },
+    {
+      "path": "db/migrations/001_init.sql",
+      "ext": ".sql",
+      "size": 63,
+      "lines": 2,
+      "category": "schema",
+      "binary": false
+    },
+    {
+      "path": "docs/notes.txt",
+      "ext": ".txt",
+      "size": 18,
+      "lines": 2,
+      "category": "doc",
+      "binary": false
+    },
+    {
+      "path": "logo.svg",
+      "ext": ".svg",
+      "size": 96,
+      "lines": 2,
+      "category": "other",
+      "binary": false
+    },
+    {
+      "path": "messages/en.json",
+      "ext": ".json",
+      "size": 74,
+      "lines": 2,
+      "category": "i18n",
+      "binary": false
+    },
+    {
+      "path": "messages/fr.json",
+      "ext": ".json",
+      "size": 82,
+      "lines": 2,
+      "category": "i18n",
+      "binary": false
+    },
+    {
+      "path": "next.config.js",
+      "ext": ".js",
+      "size": 21,
+      "lines": 2,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "package.json",
+      "ext": ".json",
+      "size": 267,
+      "lines": 9,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "packages/ui/.gitignore",
+      "ext": "",
+      "size": 11,
+      "lines": 2,
+      "category": "other",
+      "binary": false
+    },
+    {
+      "path": "packages/ui/generated/gen.ts",
+      "ext": ".ts",
+      "size": 31,
+      "lines": 2,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "packages/ui/package.json",
+      "ext": ".json",
+      "size": 25,
+      "lines": 2,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "packages/ui/src/Button.tsx",
+      "ext": ".tsx",
+      "size": 106,
+      "lines": 4,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "ext": ".prisma",
+      "size": 83,
+      "lines": 5,
+      "category": "schema",
+      "binary": false
+    },
+    {
+      "path": "README.md",
+      "ext": ".md",
+      "size": 89,
+      "lines": 4,
+      "category": "doc",
+      "binary": false
+    },
+    {
+      "path": "src/index.astro",
+      "ext": ".astro",
+      "size": 49,
+      "lines": 5,
+      "category": "code",
+      "binary": false
+    },
+    {
+      "path": "styles/global.css",
+      "ext": ".css",
+      "size": 30,
+      "lines": 4,
+      "category": "style",
+      "binary": false
+    },
+    {
+      "path": "tests/app.test.ts",
+      "ext": ".ts",
+      "size": 85,
+      "lines": 5,
+      "category": "test",
+      "binary": false
+    },
+    {
+      "path": "tsconfig.json",
+      "ext": ".json",
+      "size": 42,
+      "lines": 2,
+      "category": "config",
+      "binary": false
+    }
+  ],
+  "dependencies": [
+    {
+      "manager": "npm",
+      "manifest": "package.json",
+      "runtime": {},
+      "dev": {
+        "typescript": "^5.6.0",
+        "vitest": "^2.0.0"
+      }
+    },
+    {
+      "manager": "cargo",
+      "manifest": "Cargo.toml",
+      "runtime": {},
+      "dev": {}
+    }
+  ],
+  "routes": [
+    {
+      "route": "/",
+      "file": "apps/web/app/page.tsx",
+      "kind": "page",
+      "workspace": "@golden/web"
+    },
+    {
+      "route": "/api/users",
+      "file": "apps/web/app/api/users/route.ts",
+      "kind": "api",
+      "method": "GET",
+      "workspace": "@golden/web"
+    },
+    {
+      "route": "/api/users",
+      "file": "apps/web/app/api/users/route.ts",
+      "kind": "api",
+      "method": "POST",
+      "workspace": "@golden/web"
+    },
+    {
+      "route": "/dashboard",
+      "file": "apps/web/app/dashboard/page.tsx",
+      "kind": "page",
+      "workspace": "@golden/web"
+    }
+  ],
+  "i18n": {
+    "locales": [
+      "en",
+      "fr"
+    ],
+    "files": [
+      "messages/en.json",
+      "messages/fr.json"
+    ],
+    "keyCount": 2
+  },
+  "schemas": [
+    "db/migrations/001_init.sql",
+    "prisma/schema.prisma"
+  ],
+  "configs": [
+    "apps/web/package.json",
+    "Cargo.toml",
+    "crates/native/Cargo.toml",
+    "next.config.js",
+    "package.json",
+    "packages/ui/package.json",
+    "tsconfig.json"
+  ],
+  "docs": [
+    "docs/notes.txt",
+    "README.md"
+  ],
+  "envVars": [],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "test": "vitest run"
+  },
+  "features": [
+    {
+      "slug": "01-ui",
+      "name": "UI (@golden/ui)",
+      "description": "Groups 2 file(s) in workspace `packages/ui`.",
+      "kind": "feature",
+      "files": [
+        "packages/ui/generated/gen.ts",
+        "packages/ui/src/Button.tsx"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "02-core",
+      "name": "Core",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "src/index.astro"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "03-project-setup",
+      "name": "Project Setup & Tooling",
+      "description": "7 configuration/tooling file(s): build, lint, env, CI.",
+      "kind": "project-setup",
+      "files": [
+        "Cargo.toml",
+        "apps/web/package.json",
+        "crates/native/Cargo.toml",
+        "next.config.js",
+        "package.json",
+        "packages/ui/package.json",
+        "tsconfig.json"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "04-db",
+      "name": "DB",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "db/migrations/001_init.sql"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "05-prisma",
+      "name": "Prisma",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "prisma/schema.prisma"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "06-styles",
+      "name": "Styles",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "styles/global.css"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "07-internationalization",
+      "name": "Internationalization",
+      "description": "2 locale(s) (en, fr), up to 2 keys per locale.",
+      "kind": "internationalization",
+      "files": [
+        "messages/en.json",
+        "messages/fr.json"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "08-web-core",
+      "name": "Web · Core",
+      "description": "Groups 1 file(s) in workspace `apps/web`; routes: /.",
+      "kind": "feature",
+      "files": [
+        "apps/web/app/page.tsx"
+      ],
+      "routes": [
+        {
+          "route": "/",
+          "file": "apps/web/app/page.tsx",
+          "kind": "page",
+          "workspace": "@golden/web"
+        }
+      ]
+    },
+    {
+      "slug": "09-web-api",
+      "name": "Web · API",
+      "description": "Groups 1 file(s) in workspace `apps/web`; routes: /api/users.",
+      "kind": "feature",
+      "files": [
+        "apps/web/app/api/users/route.ts"
+      ],
+      "routes": [
+        {
+          "route": "/api/users",
+          "file": "apps/web/app/api/users/route.ts",
+          "kind": "api",
+          "method": "GET",
+          "workspace": "@golden/web"
+        },
+        {
+          "route": "/api/users",
+          "file": "apps/web/app/api/users/route.ts",
+          "kind": "api",
+          "method": "POST",
+          "workspace": "@golden/web"
+        }
+      ]
+    },
+    {
+      "slug": "10-native",
+      "name": "Native (golden-native)",
+      "description": "Groups 2 file(s) in workspace `crates/native`.",
+      "kind": "feature",
+      "files": [
+        "crates/native/src/lib.rs",
+        "crates/native/src/util.h"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "11-web-dashboard",
+      "name": "Web · Dashboard",
+      "description": "Groups 1 file(s) in workspace `apps/web`; routes: /dashboard.",
+      "kind": "feature",
+      "files": [
+        "apps/web/app/dashboard/page.tsx"
+      ],
+      "routes": [
+        {
+          "route": "/dashboard",
+          "file": "apps/web/app/dashboard/page.tsx",
+          "kind": "page",
+          "workspace": "@golden/web"
+        }
+      ]
+    },
+    {
+      "slug": "12-tests",
+      "name": "Tests",
+      "description": "Groups 1 file(s).",
+      "kind": "feature",
+      "files": [
+        "tests/app.test.ts"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "13-documentation",
+      "name": "Documentation",
+      "description": "2 documentation file(s).",
+      "kind": "documentation",
+      "files": [
+        "README.md",
+        "docs/notes.txt"
+      ],
+      "routes": []
+    }
+  ],
+  "hints": {
+    "routeCandidates": [
+      "apps/web/app/api/users/route.ts",
+      "apps/web/app/dashboard/page.tsx",
+      "apps/web/app/page.tsx"
+    ],
+    "apiCandidates": [],
+    "schemaCandidates": [
+      "db/migrations/001_init.sql",
+      "prisma/schema.prisma"
+    ],
+    "realtimeCandidates": [],
+    "authCandidates": [],
+    "designSystemCandidates": [
+      "styles/global.css"
+    ],
+    "entryPoints": []
+  },
+  "unknowns": [
+    "Monorepo: workspaces were detected (`workspaces[*]` carries each one's stack, dependencies, hints, and `dependsOn`) — verify each workspace's role (app / package / service) and extend the dependency graph with implicit edges (HTTP calls between apps, generated clients, shared env vars); deterministic edges come from manifest declarations only.",
+    "The data model is not structured by the engine — extract entities, fields, types, and relations from `hints.schemaCandidates` into `architecture/DATA-MODEL.md`.",
+    "Design-system source files were found (Tailwind/theme configs, token modules, global CSS) — capture the visual contract (tokens with their exact values, theming, typography, components, a11y) from `hints.designSystemCandidates` in `architecture/DESIGN-SYSTEM.md`."
+  ],
+  "workspaces": [
+    {
+      "name": "@golden/web",
+      "path": "apps/web",
+      "kind": "npm",
+      "dependsOn": [
+        "@golden/ui"
+      ],
+      "fileCount": 4,
+      "stack": {
+        "languages": [
+          "TypeScript"
+        ],
+        "primaryLanguage": "TypeScript",
+        "frameworks": [
+          "Next.js",
+          "React"
+        ],
+        "libraries": [
+          "next-intl"
+        ],
+        "packageManagers": [
+          "npm"
+        ],
+        "hasTypeScript": true
+      },
+      "dependencies": [
+        {
+          "manager": "npm",
+          "manifest": "apps/web/package.json",
+          "runtime": {
+            "next": "^15.0.0",
+            "react": "^19.0.0",
+            "next-intl": "^3.0.0",
+            "@golden/ui": "workspace:*"
+          },
+          "dev": {}
+        }
+      ],
+      "routeCount": 4,
+      "hints": {
+        "routeCandidates": [
+          "apps/web/app/api/users/route.ts",
+          "apps/web/app/dashboard/page.tsx",
+          "apps/web/app/page.tsx"
+        ],
+        "apiCandidates": [],
+        "schemaCandidates": [],
+        "realtimeCandidates": [],
+        "authCandidates": [],
+        "designSystemCandidates": [],
+        "entryPoints": []
+      }
+    },
+    {
+      "name": "golden-native",
+      "path": "crates/native",
+      "kind": "cargo",
+      "fileCount": 3,
+      "stack": {
+        "languages": [
+          "Rust"
+        ],
+        "primaryLanguage": "Rust",
+        "frameworks": [],
+        "libraries": [],
+        "packageManagers": [
+          "cargo"
+        ],
+        "hasTypeScript": false
+      },
+      "dependencies": [
+        {
+          "manager": "cargo",
+          "manifest": "crates/native/Cargo.toml",
+          "runtime": {},
+          "dev": {}
+        }
+      ]
+    },
+    {
+      "name": "@golden/ui",
+      "path": "packages/ui",
+      "kind": "npm",
+      "fileCount": 4,
+      "stack": {
+        "languages": [
+          "TypeScript"
+        ],
+        "primaryLanguage": "TypeScript",
+        "frameworks": [],
+        "libraries": [],
+        "packageManagers": [
+          "npm"
+        ],
+        "hasTypeScript": true
+      },
+      "dependencies": [
+        {
+          "manager": "npm",
+          "manifest": "packages/ui/package.json",
+          "runtime": {},
+          "dev": {}
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "node": ">=20"
+  },
+  "excludedCount": 2
+}

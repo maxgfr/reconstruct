@@ -8,6 +8,8 @@ export default defineConfig({
     // If such a tree sits in this repo (e.g. someone ran the analyzer on it),
     // vitest would otherwise try to run those copies and fail. CI never sees it
     // (it's gitignored), but this keeps local runs robust regardless.
-    exclude: [...configDefaults.exclude, "**/reconstruction/**", "**/reconstruction-*/**"],
+    // Fixtures may contain `*.test.ts` files (they exercise the walker's `test`
+    // categorization); they are analyzer inputs, never tests of this repo.
+    exclude: [...configDefaults.exclude, "**/reconstruction/**", "**/reconstruction-*/**", "tests/fixtures/**"],
   },
 });

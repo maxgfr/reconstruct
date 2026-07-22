@@ -1,0 +1,8 @@
+{
+  "name": "golden",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=20" },
+  "scripts": { "dev": "next dev", "build": "next build", "test": "vitest run" },
+  "devDependencies": { "typescript": "^5.6.0", "vitest": "^2.0.0" }
+}
