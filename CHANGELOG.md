@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.2.0](https://github.com/maxgfr/reconstruct/compare/v2.1.2...v2.2.0) (2026-07-22)
+
+
+### Features
+
+* **describe:** adopt the vendored codeindex engine ([ee0baaf](https://github.com/maxgfr/reconstruct/commit/ee0baaf05f33cb85cb15a5c239301c3832bdd0c6))
+
 ## [2.1.2](https://github.com/maxgfr/reconstruct/compare/v2.1.1...v2.1.2) (2026-07-10)
 
 
