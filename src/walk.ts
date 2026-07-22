@@ -1,6 +1,8 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
-import { join, relative, extname, basename, resolve } from "node:path";
+import { join, extname, resolve } from "node:path";
+import { categorize as engineCategorize, parseGitignore, isIgnored, readText } from "./vendor/codeindex-engine.mjs";
+import type { IgnoreRule } from "./vendor/codeindex-engine.mjs";
 import type { FileCategory, FileInfo } from "./types.js";
 
 const DEFAULT_IGNORE_DIRS = new Set([
@@ -78,121 +80,69 @@ const BINARY_EXTS = new Set([
   ".node",
 ]);
 
-const CODE_EXTS = new Set([
-  ".ts",
-  ".tsx",
-  ".mts",
-  ".cts",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".vue",
-  ".svelte",
-  ".astro",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-  ".java",
-  ".kt",
-  ".kts",
-  ".php",
-  ".c",
-  ".cc",
-  ".cpp",
-  ".h",
-  ".hpp",
-  ".cs",
-  ".swift",
-  ".scala",
-  ".clj",
-  ".ex",
-  ".exs",
-  ".dart",
-  ".lua",
-  ".sh",
-  ".bash",
-  ".zig",
-  ".elm",
+/**
+ * File categorization is the vendored codeindex engine's `categorize` (which was
+ * ported from this very module), with reconstruct's historical asset semantics
+ * preserved where the two disagree — behavior is kept local for every case that
+ * differs, never regressed silently:
+ *
+ * - archives / executables / bytecode (`.zip`, `.so`, `.exe`, `.jar`, …) stay
+ *   `asset` here; the engine files them under `other`.
+ * - `.svg` stays `other` here (it is text, and not in reconstruct's binary/asset
+ *   set); the engine calls it an `asset`.
+ */
+const LOCAL_ASSET_ONLY_EXTS = new Set([
+  ".zip",
+  ".gz",
+  ".tar",
+  ".rar",
+  ".7z",
+  ".wasm",
+  ".so",
+  ".dylib",
+  ".dll",
+  ".exe",
+  ".bin",
+  ".class",
+  ".jar",
+  ".pyc",
+  ".node",
 ]);
 
-const STYLE_EXTS = new Set([".css", ".scss", ".sass", ".less", ".styl", ".pcss"]);
-const DOC_EXTS = new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
-const DATA_EXTS = new Set([".json", ".yaml", ".yml", ".toml", ".csv", ".xml", ".env"]);
-const ASSET_EXTS = BINARY_EXTS;
-
-interface CompiledPattern {
-  re: RegExp;
-  negate: boolean;
-  dirOnly: boolean;
+export function categorize(relPath: string, ext: string): FileCategory {
+  const cat = engineCategorize(relPath, ext);
+  // Both overrides act on the engine's FALLBACK tier only (asset/data/other):
+  // the earlier, path-driven rules (i18n/schema/test/config/doc/style/code) are
+  // identical in both implementations and always win first in both.
+  if (cat === "other" && LOCAL_ASSET_ONLY_EXTS.has(ext)) return "asset";
+  if (cat === "asset" && ext === ".svg") return "other";
+  return cat;
 }
 
-function compilePattern(raw: string): CompiledPattern | null {
-  let pat = raw.trim();
-  if (!pat || pat.startsWith("#")) return null;
-  let negate = false;
-  if (pat.startsWith("!")) {
-    negate = true;
-    pat = pat.slice(1);
-  }
-  let dirOnly = false;
-  if (pat.endsWith("/")) {
-    dirOnly = true;
-    pat = pat.slice(0, -1);
-  }
-  const anchored = pat.startsWith("/");
-  if (anchored) pat = pat.slice(1);
-
-  // ReDoS guard: collapse runs of '*'/'**' before building the RegExp. A run of
-  // three-or-more '*' means the same as '**', and a '**/**/…' chain collapses to
-  // a single '**' — without this a crafted pattern could emit adjacent unbounded
-  // quantifiers (`.*.*.*…`) that backtrack pathologically on a long path.
-  pat = pat.replace(/\*{3,}/g, "**").replace(/(?:\*\*\/)+(?=\*\*)/g, "");
-
-  let re = "";
-  for (let i = 0; i < pat.length; i++) {
-    const c = pat[i] as string;
-    if (c === "*") {
-      if (pat[i + 1] === "*") {
-        re += ".*";
-        i++;
-        if (pat[i + 1] === "/") i++;
-      } else {
-        re += "[^/]*";
-      }
-    } else if (c === "?") {
-      re += "[^/]";
-    } else if ("\\^$.|+()[]{}".includes(c)) {
-      re += "\\" + c;
-    } else {
-      re += c;
-    }
-  }
-  const prefix = anchored ? "^" : "(^|/)";
-  return { re: new RegExp(prefix + re + "($|/)"), negate, dirOnly };
+/**
+ * Gitignore-style patterns (ignore rules and `--include`/`--exclude` scoping)
+ * are compiled and matched by the vendored engine (`parseGitignore`/`isIgnored`),
+ * which implements git's real semantics: `!` negation, trailing-`/` dir-only
+ * rules, interior-`/` anchoring, `**` at segment boundaries, `[...]` character
+ * classes, `\x` escapes — and per-directory `.gitignore` files apply to their own
+ * subtree (later rules win), which the previous root-only parser did not honor.
+ */
+function compileScopeGlobs(patterns: string[] | undefined): IgnoreRule[] {
+  if (!patterns || patterns.length === 0) return [];
+  // A stray gitignore-style '!' re-include is meaningless for a flat scope
+  // filter — ignore it rather than silently inverting the user's intent.
+  return parseGitignore(patterns.join("\n"), "").filter((r) => !r.negated);
 }
 
-export function loadIgnore(repo: string): (relPath: string, isDir: boolean) => boolean {
-  const patterns: CompiledPattern[] = [];
-  try {
-    const content = readFileSync(join(repo, ".gitignore"), "utf8");
-    for (const line of content.split(/\r?\n/)) {
-      const compiled = compilePattern(line);
-      if (compiled) patterns.push(compiled);
-    }
-  } catch {
-    // no .gitignore — rely on defaults only
+/** True when `rel` (a file) or any of its ancestor directories matches a rule. */
+function matchesScope(rules: readonly IgnoreRule[], rel: string): boolean {
+  if (isIgnored(rules, rel, false)) return true;
+  let dir = rel;
+  for (let i = dir.lastIndexOf("/"); i !== -1; i = dir.lastIndexOf("/")) {
+    dir = dir.slice(0, i);
+    if (isIgnored(rules, dir, true)) return true;
   }
-
-  return (relPath: string, isDir: boolean): boolean => {
-    let ignored = false;
-    for (const p of patterns) {
-      if (p.dirOnly && !isDir) continue;
-      if (p.re.test(relPath)) ignored = !p.negate;
-    }
-    return ignored;
-  };
+  return false;
 }
 
 /**
@@ -240,72 +190,6 @@ function isProbablyBinary(abs: string, ext: string): boolean {
   }
 }
 
-export function categorize(relPath: string, ext: string): FileCategory {
-  const lower = relPath.toLowerCase();
-  const base = basename(lower);
-  const segments = lower.split("/");
-
-  const inDir = (...names: string[]) => names.some((n) => segments.includes(n));
-
-  if (
-    inDir("locales", "locale", "i18n", "lang", "langs", "translations", "messages") &&
-    (ext === ".json" || ext === ".yaml" || ext === ".yml" || ext === ".po" || ext === ".properties")
-  ) {
-    return "i18n";
-  }
-
-  if (
-    ext === ".prisma" ||
-    ext === ".sql" ||
-    ext === ".graphql" ||
-    ext === ".gql" ||
-    base.startsWith("schema.") ||
-    base === "models.py" ||
-    inDir("migrations", "entities", "models")
-  ) {
-    return "schema";
-  }
-
-  if (lower.includes(".test.") || lower.includes(".spec.") || inDir("__tests__", "test", "tests", "spec", "e2e", "__mocks__")) {
-    return "test";
-  }
-
-  if (
-    base === "package.json" ||
-    base === "tsconfig.json" ||
-    base.endsWith(".config.js") ||
-    base.endsWith(".config.ts") ||
-    base.endsWith(".config.mjs") ||
-    base.startsWith(".eslintrc") ||
-    base.startsWith(".prettierrc") ||
-    base.startsWith(".env") ||
-    base === "dockerfile" ||
-    base.startsWith("docker-compose") ||
-    base === "vite.config.ts" ||
-    base === "next.config.js" ||
-    base === "next.config.mjs" ||
-    base === "tailwind.config.js" ||
-    base === "tailwind.config.ts" ||
-    base === "pyproject.toml" ||
-    base === "cargo.toml" ||
-    base === "go.mod" ||
-    base === "requirements.txt" ||
-    base === "gemfile" ||
-    base === "composer.json" ||
-    base === "pubspec.yaml" ||
-    base === "makefile"
-  ) {
-    return "config";
-  }
-
-  if (DOC_EXTS.has(ext)) return "doc";
-  if (STYLE_EXTS.has(ext)) return "style";
-  if (CODE_EXTS.has(ext)) return "code";
-  if (ASSET_EXTS.has(ext)) return "asset";
-  if (DATA_EXTS.has(ext)) return "data";
-  return "other";
-}
-
 // Above this size a file's exact line count isn't worth slurping the whole thing
 // into memory (and a multi-GB input would realistically OOM). Past the cap we
 // report 0 lines — the inventory still records the file and its byte size.
@@ -347,36 +231,31 @@ export interface WalkResult {
   excludedCount: number;
 }
 
-function compileGlobs(patterns: string[] | undefined): CompiledPattern[] {
-  if (!patterns) return [];
-  const out: CompiledPattern[] = [];
-  for (const raw of patterns) {
-    const c = compilePattern(raw);
-    // A stray gitignore-style '!' re-include is meaningless for a flat scope
-    // filter — ignore it rather than silently inverting the user's intent.
-    if (c && !c.negate) out.push(c);
-  }
-  return out;
-}
-
 export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
-  const ignore = loadIgnore(repo);
-  const includePats = compileGlobs(opts.include);
-  const excludePats = compileGlobs(opts.exclude);
+  const includeRules = compileScopeGlobs(opts.include);
+  const excludeRules = compileScopeGlobs(opts.exclude);
   const outAbs = opts.out ? resolve(opts.out) : "";
   const files: FileInfo[] = [];
   let excludedCount = 0;
 
-  const recurse = (dir: string): void => {
+  // `ignoreRules` is the .gitignore chain inherited from ancestor directories;
+  // this directory's own .gitignore (when present) is appended after, so deeper
+  // rules win — the engine's `isIgnored` returns the last matching rule's verdict.
+  const recurse = (dir: string, relDir: string, inherited: readonly IgnoreRule[]): void => {
     let entries: Dirent<string>[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
+    let ignoreRules = inherited;
+    if (entries.some((e) => e.name === ".gitignore")) {
+      const parsed = parseGitignore(readText(join(dir, ".gitignore")), relDir);
+      if (parsed.length) ignoreRules = [...ignoreRules, ...parsed];
+    }
     for (const entry of entries) {
       const abs = join(dir, entry.name);
-      const rel = relative(repo, abs).split("\\").join("/");
+      const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
       const isDir = entry.isDirectory();
       // Symlinks: a link to a file is real content — include it like any
       // file. A link to a directory is never followed (following could loop
@@ -403,7 +282,7 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
       if (isDir && isReconstructOutput(abs)) continue;
       // Pruned directories are not counted (their contents are never enumerated).
       if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
-      if (ignore(rel, isDir)) {
+      if (ignoreRules.length && isIgnored(ignoreRules, rel, isDir)) {
         if (!isDir) excludedCount++;
         continue;
       }
@@ -412,8 +291,8 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
         // Prune directories matching an exclude glob so we never descend into a
         // large excluded tree. Their contents are not counted (like other pruned
         // dirs). Includes are file-level only — a dir is never pruned by include.
-        if (excludePats.some((p) => p.re.test(rel))) continue;
-        recurse(abs);
+        if (isIgnored(excludeRules, rel, true)) continue;
+        recurse(abs, rel, ignoreRules);
         continue;
       }
       if (!isFile) continue;
@@ -423,11 +302,11 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
         continue;
       }
       // A dir-only pattern (trailing slash) must not exclude a file of that name.
-      if (excludePats.some((p) => !p.dirOnly && p.re.test(rel))) {
+      if (isIgnored(excludeRules, rel, false)) {
         excludedCount++;
         continue;
       }
-      if (includePats.length > 0 && !includePats.some((p) => p.re.test(rel))) {
+      if (includeRules.length > 0 && !matchesScope(includeRules, rel)) {
         excludedCount++;
         continue;
       }
@@ -451,7 +330,7 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
     }
   };
 
-  recurse(repo);
+  recurse(repo, "", []);
   files.sort((a, b) => a.path.localeCompare(b.path));
   return { files, excludedCount };
 }

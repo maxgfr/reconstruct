@@ -1,38 +1,47 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { extToLang } from "../vendor/codeindex-engine.mjs";
 import { readJsonManifest, safeRead } from "./manifest.js";
 import type { FileInfo, StackInfo } from "../types.js";
 
-const EXT_LANGUAGE: Record<string, string> = {
-  ".ts": "TypeScript",
-  ".tsx": "TypeScript",
-  ".mts": "TypeScript",
-  ".cts": "TypeScript",
-  ".js": "JavaScript",
-  ".jsx": "JavaScript",
-  ".mjs": "JavaScript",
-  ".cjs": "JavaScript",
-  ".vue": "Vue",
-  ".svelte": "Svelte",
-  ".astro": "Astro",
-  ".py": "Python",
-  ".rb": "Ruby",
-  ".go": "Go",
-  ".rs": "Rust",
-  ".java": "Java",
-  ".kt": "Kotlin",
-  ".php": "PHP",
-  ".c": "C",
-  ".cc": "C++",
-  ".cpp": "C++",
-  ".cs": "C#",
-  ".swift": "Swift",
-  ".scala": "Scala",
-  ".dart": "Dart",
-  ".ex": "Elixir",
-  ".exs": "Elixir",
-  ".lua": "Lua",
+// The ext → language mapping is the vendored codeindex engine's `extToLang`
+// (upstream-first); the tables below only translate its lowercase language ids
+// into the display labels reconstruct's inventory has always used, and cover
+// the one mapping the engine lacks. Engine ids deliberately NOT translated
+// (markdown, json, yaml, html, css, shell, sql, clojure, erlang, haskell,
+// objective-c, …) stay out of the histogram, exactly as before — the inventory
+// counts programming languages, not data/prose formats.
+const LANG_LABEL: Record<string, string> = {
+  typescript: "TypeScript",
+  javascript: "JavaScript",
+  vue: "Vue",
+  svelte: "Svelte",
+  python: "Python",
+  ruby: "Ruby",
+  go: "Go",
+  rust: "Rust",
+  java: "Java",
+  kotlin: "Kotlin",
+  php: "PHP",
+  c: "C",
+  cpp: "C++",
+  csharp: "C#",
+  swift: "Swift",
+  scala: "Scala",
+  dart: "Dart",
+  elixir: "Elixir",
+  lua: "Lua",
 };
+
+// Engine gap (reported upstream, kept local): codeindex has no `.astro` entry.
+const LOCAL_EXT_LANGUAGE: Record<string, string> = {
+  ".astro": "Astro",
+};
+
+/** Display-label of a file extension's language, or undefined when uncounted. */
+function languageLabelOf(ext: string): string | undefined {
+  return LOCAL_EXT_LANGUAGE[ext] ?? LANG_LABEL[extToLang(ext)];
+}
 
 const NPM_FRAMEWORKS: Array<[string, string]> = [
   ["next", "Next.js"],
@@ -199,7 +208,7 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   // Languages ranked by file count.
   const counts = new Map<string, number>();
   for (const f of files) {
-    const lang = EXT_LANGUAGE[f.ext];
+    const lang = languageLabelOf(f.ext);
     if (lang) counts.set(lang, (counts.get(lang) ?? 0) + 1);
   }
   const languages = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([lang]) => lang);
@@ -207,7 +216,7 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   const frameworks = new Set<string>();
   const packageManagers = new Set<string>();
   let libraries: string[] = [];
-  let hasTypeScript = files.some((f) => EXT_LANGUAGE[f.ext] === "TypeScript");
+  let hasTypeScript = files.some((f) => languageLabelOf(f.ext) === "TypeScript");
 
   // JS/TS ecosystem.
   const hasPkg = existsSync(join(repo, "package.json"));

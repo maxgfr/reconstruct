@@ -11,6 +11,7 @@
     "languages": [
       "TypeScript",
       "Rust",
+      "C",
       "JavaScript",
       "Astro"
     ],
@@ -29,8 +30,8 @@
     ],
     "hasTypeScript": true
   },
-  "fileCount": 28,
-  "totalLines": 100,
+  "fileCount": 27,
+  "totalLines": 98,
   "files": [
     {
       "path": ".gitignore",
@@ -185,14 +186,6 @@
       "binary": false
     },
     {
-      "path": "packages/ui/generated/gen.ts",
-      "ext": ".ts",
-      "size": 31,
-      "lines": 2,
-      "category": "code",
-      "binary": false
-    },
-    {
       "path": "packages/ui/package.json",
       "ext": ".json",
       "size": 25,
@@ -338,23 +331,22 @@
   },
   "features": [
     {
-      "slug": "01-ui",
-      "name": "UI (@golden/ui)",
-      "description": "Groups 2 file(s) in workspace `packages/ui`.",
-      "kind": "feature",
-      "files": [
-        "packages/ui/generated/gen.ts",
-        "packages/ui/src/Button.tsx"
-      ],
-      "routes": []
-    },
-    {
-      "slug": "02-core",
+      "slug": "01-core",
       "name": "Core",
       "description": "Groups 1 file(s).",
       "kind": "feature",
       "files": [
         "src/index.astro"
+      ],
+      "routes": []
+    },
+    {
+      "slug": "02-ui",
+      "name": "UI (@golden/ui)",
+      "description": "Groups 1 file(s) in workspace `packages/ui`.",
+      "kind": "feature",
+      "files": [
+        "packages/ui/src/Button.tsx"
       ],
       "routes": []
     },
@@ -591,7 +583,8 @@
       "fileCount": 3,
       "stack": {
         "languages": [
-          "Rust"
+          "Rust",
+          "C"
         ],
         "primaryLanguage": "Rust",
         "frameworks": [],
@@ -614,7 +607,7 @@
       "name": "@golden/ui",
       "path": "packages/ui",
       "kind": "npm",
-      "fileCount": 4,
+      "fileCount": 3,
       "stack": {
         "languages": [
           "TypeScript"

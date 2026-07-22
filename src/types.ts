@@ -356,13 +356,13 @@ export interface Hints {
 }
 
 /** Which membership declaration a workspace was detected from. */
-export type WorkspaceKind = "npm" | "pnpm" | "lerna" | "nx" | "cargo" | "go";
+export type WorkspaceKind = "npm" | "pnpm" | "lerna" | "nx" | "cargo" | "go" | "maven";
 
 /** A workspace inside a monorepo. */
 export interface Workspace {
   name: string;
   path: string;
-  /** Detection source (npm/yarn `workspaces`, pnpm, lerna, nx, cargo, go.work). */
+  /** Detection source (npm/yarn `workspaces`, pnpm, lerna, nx, cargo, go.work, maven `<modules>`). */
   kind?: WorkspaceKind;
   /**
    * Names of sibling workspaces this one depends on, from manifest declarations
