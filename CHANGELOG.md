@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.4.0](https://github.com/maxgfr/reconstruct/compare/v2.3.0...v2.4.0) (2026-07-23)
+
+
+### Features
+
+* **workspaces:** cover the remaining engine workspace kinds ([9b4a743](https://github.com/maxgfr/reconstruct/commit/9b4a743ab65ca8e088f7304558d6e37ba619ba2d))
+
 # [2.3.0](https://github.com/maxgfr/reconstruct/compare/v2.2.0...v2.3.0) (2026-07-23)
 
 
