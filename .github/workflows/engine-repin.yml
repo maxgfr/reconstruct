@@ -39,6 +39,7 @@ jobs:
       - name: Detect latest codeindex release
         id: detect
         run: |
+          set -euo pipefail
           PINNED=$(node -p "require('./src/vendor/engine.meta.json').tag")
           # NOT releases/latest: the codeindex repo also carries the
           # embed-model-v1 asset release, which is not an engine tag.
@@ -55,8 +56,10 @@ jobs:
 
       - name: Re-pin the vendored engine
         if: steps.detect.outputs.up_to_date != 'true'
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
         run: |
-          node scripts/sync-engine.mjs --ref "${{ steps.detect.outputs.latest }}"
+          node scripts/sync-engine.mjs --ref "$LATEST"
           node scripts/sync-engine.mjs --check
 
       - name: Install dependencies
@@ -111,6 +114,7 @@ jobs:
 
       - name: All gates green — commit and push the re-pin to main
         if: steps.detect.outputs.up_to_date != 'true'
+        id: push
         env:
           LATEST: ${{ steps.detect.outputs.latest }}
         run: |
@@ -118,7 +122,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           SUMMARY="$(git diff --cached --stat | tail -n 1)"
           git commit -m "feat(engine): re-pin codeindex ${LATEST}" -m "automated re-pin, all gates green, goldens byte-identical" -m "$SUMMARY"
+          git pull --rebase origin main
           git push origin HEAD:main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Trigger release.yml (a bot push does not fire other workflows)
         if: steps.detect.outputs.up_to_date != 'true'
@@ -129,7 +135,7 @@ jobs:
         run: gh workflow run ci.yml --ref main
 
       - name: On gate failure — push adjudication branch and open a PR
-        if: failure()
+        if: failure() && steps.push.outputs.pushed != 'true' && steps.detect.outputs.latest != ''
         env:
           LATEST: ${{ steps.detect.outputs.latest }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
