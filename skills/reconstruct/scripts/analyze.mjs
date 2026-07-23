@@ -12071,6 +12071,15 @@ function readGoModule(dir) {
   const m = gomod.match(/^module\s+(\S+)/m);
   return m ? m[1] : "";
 }
+function readUvName(dir) {
+  const toml = safeRead(join15(dir, "pyproject.toml"));
+  if (!toml) return null;
+  const nameIn = (body2) => body2?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+  return nameIn(tomlSectionBody2(toml, "project")) ?? nameIn(tomlSectionBody2(toml, "tool.poetry")) ?? "";
+}
+function hasGradleManifest(dir) {
+  return existsSync5(join15(dir, "build.gradle")) || existsSync5(join15(dir, "build.gradle.kts"));
+}
 function tomlSectionBody2(toml, section) {
   const re = new RegExp(`^\\[${section}\\]\\s*$([\\s\\S]*?)(?=^\\[|$(?![\\s\\S]))`, "m");
   const m = toml.match(re);
@@ -12083,6 +12092,17 @@ function adaptPackage(repo, pkg, warnings) {
     name2 = readCargoName(join15(repo, path));
   } else if (pkg.kind === "go") {
     name2 = readGoModule(join15(repo, path));
+  } else if (pkg.kind === "uv") {
+    name2 = readUvName(join15(repo, path));
+  } else if (pkg.kind === "gradle") {
+    name2 = hasGradleManifest(join15(repo, path)) ? "" : null;
+  } else if (pkg.kind === "composer") {
+    if (!existsSync5(join15(repo, path, "composer.json"))) {
+      name2 = null;
+    } else {
+      const manifest = readJsonManifest(join15(repo, path, "composer.json"), `${path}/composer.json`, warnings);
+      name2 = manifest && typeof manifest.name === "string" && manifest.name ? manifest.name : "";
+    }
   } else if (pkg.kind === "maven") {
     name2 = pkg.name;
   } else if (pkg.kind === "nx" && !existsSync5(join15(repo, path, "package.json"))) {

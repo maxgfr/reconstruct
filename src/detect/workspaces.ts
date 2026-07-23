@@ -30,11 +30,18 @@ import type { FileInfo, Hints, RouteInfo, StackInfo, Workspace, WorkspaceKind } 
 //
 // What stays local:
 //
-// - a dir declared a member via a cargo/go pattern is a workspace only if its
-//   Cargo.toml / go.mod actually exists and names it (go.work members are named
-//   by their go.mod `module`, even when a package.json is also present) — the
-//   engine's own probe chain tries package.json FIRST for a cargo/go-declared
-//   dir and would otherwise report it under a JS-derived name;
+// - a dir declared a member via a cargo/go/uv/gradle pattern is a workspace
+//   only if its own Cargo.toml / go.mod / pyproject.toml / build.gradle[.kts]
+//   actually exists and names it (go.work members are named by their go.mod
+//   `module`, even when a package.json is also present) — the engine's
+//   per-kind probe chain (`packageAt`) doesn't try the kind's own manifest
+//   first for every kind (cargo- and gradle-declared dirs fall through
+//   node/maven/… first) and would otherwise report such a dir under a
+//   JS-derived name. composer gets the same "own manifest required" guard,
+//   re-reading composer.json itself (its probe chain does try composer.json
+//   first, but only once the manifest is confirmed present does this module
+//   trust it — same as the npm-family package.json branch below). maven is
+//   the one exception, kept as-is with no local precedent for the guard;
 // - malformed-manifest WARNINGS in this module's own wording (`malformed
 //   <ws>/package.json … — falling back to empty defaults`), so a defect
 //   surfaces once, in the phrasing every other stage (stack/deps/scripts) uses
@@ -42,11 +49,15 @@ import type { FileInfo, Hints, RouteInfo, StackInfo, Workspace, WorkspaceKind } 
 //   worded differently and, being collected separately, would double-report
 //   the same malformed file under two strings instead of deduping to one (see
 //   `tests/warnings.test.ts`'s "warns once…" case), so it is deliberately not
-//   merged in.
+//   merged in. composer.json gets this treatment too (JSON, like package.json);
+//   pyproject.toml and build.gradle[.kts] don't (regex-based, like Cargo.toml
+//   and go.mod — see manifest.ts's TOML/YAML/Gemfile note).
 //
 // The workspace dependency edges (npm name deps, cargo name/path deps, go
-// require/replace, maven artifactIds) come from the engine's graph, remapped
-// onto the local naming contract by directory in buildWorkspaceGraph below.
+// require/replace, maven artifactIds, uv PEP 508 deps / `tool.uv.sources`,
+// composer require/require-dev, gradle `project(":x")` refs) come from the
+// engine's graph, remapped onto the local naming contract by directory in
+// buildWorkspaceGraph below.
 
 /** Workspace name from a member's `Cargo.toml` `[package] name`; null if no manifest. */
 function readCargoName(dir: string): string | null {
@@ -63,6 +74,19 @@ function readGoModule(dir: string): string | null {
   if (!gomod) return null;
   const m = gomod.match(/^module\s+(\S+)/m);
   return m ? (m[1] as string) : "";
+}
+
+/** Workspace name from a member's `pyproject.toml` (`[project]` or `[tool.poetry]` `name`); null if no manifest. */
+function readUvName(dir: string): string | null {
+  const toml = safeRead(join(dir, "pyproject.toml"));
+  if (!toml) return null;
+  const nameIn = (body: string | null) => body?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+  return nameIn(tomlSectionBody(toml, "project")) ?? nameIn(tomlSectionBody(toml, "tool.poetry")) ?? "";
+}
+
+/** A member's `build.gradle`/`build.gradle.kts` — presence only, gradle has no portable name field; null if neither exists. */
+function hasGradleManifest(dir: string): boolean {
+  return existsSync(join(dir, "build.gradle")) || existsSync(join(dir, "build.gradle.kts"));
 }
 
 /** The body of a top-level `[section]` table, up to the next `[…]` header. */
@@ -86,6 +110,20 @@ function adaptPackage(repo: string, pkg: WorkspacePackage, warnings?: string[]):
     name = readCargoName(join(repo, path));
   } else if (pkg.kind === "go") {
     name = readGoModule(join(repo, path));
+  } else if (pkg.kind === "uv") {
+    name = readUvName(join(repo, path));
+  } else if (pkg.kind === "gradle") {
+    // No portable name field in Gradle's DSL (probeGradle itself falls back to
+    // the dir) — presence of the member's own build.gradle[.kts] is what the
+    // local contract requires; the empty string here defers to `name || path`.
+    name = hasGradleManifest(join(repo, path)) ? "" : null;
+  } else if (pkg.kind === "composer") {
+    if (!existsSync(join(repo, path, "composer.json"))) {
+      name = null;
+    } else {
+      const manifest = readJsonManifest(join(repo, path, "composer.json"), `${path}/composer.json`, warnings);
+      name = manifest && typeof manifest.name === "string" && manifest.name ? manifest.name : "";
+    }
   } else if (pkg.kind === "maven") {
     // No local precedent — keep the engine's `<artifactId>` naming as-is.
     name = pkg.name;
@@ -111,9 +149,10 @@ function adaptPackage(repo: string, pkg: WorkspacePackage, warnings?: string[]):
  * Detect monorepo workspaces across ecosystems: npm/yarn `workspaces`,
  * pnpm-workspace.yaml (incl. `!` negation patterns), lerna.json / nx.json as
  * fallbacks when package.json declares none, Cargo `[workspace] members`,
- * go.work `use` directives, and maven `<modules>`. A trailing `/*` glob is
- * expanded one directory level, `/**` recursively. Returns [] for a
- * single-package repo.
+ * go.work `use` directives, maven `<modules>`, uv `[tool.uv.workspace]
+ * members`, composer `repositories` path entries, and gradle `settings.gradle[
+ * .kts]` `include`. A trailing `/*` glob is expanded one directory level,
+ * `/**` recursively. Returns [] for a single-package repo.
  */
 export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[] {
   const found = new Map<string, Workspace>();
@@ -128,8 +167,10 @@ export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[]
  * Fill each workspace's `dependsOn` with the sibling workspaces its manifest
  * declares a dependency on. Edges come from manifests only (the engine's
  * workspace graph: package.json deps, Cargo name/path deps, go.mod
- * require/replace, maven `<dependency>` artifactIds), remapped by directory
- * onto the local workspace names; implicit coupling is left to the agent.
+ * require/replace, maven `<dependency>` artifactIds, uv PEP 508 deps /
+ * `tool.uv.sources`, composer require/require-dev, gradle `project(":x")`
+ * refs), remapped by directory onto the local workspace names; implicit
+ * coupling is left to the agent.
  */
 export function buildWorkspaceGraph(repo: string, workspaces: Workspace[], _warnings?: string[]): void {
   if (workspaces.length === 0) return;

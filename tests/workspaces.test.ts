@@ -162,6 +162,36 @@ describe("detectWorkspaces — go.work", () => {
   });
 });
 
+describe("detectWorkspaces — uv", () => {
+  it("expands [tool.uv.workspace] members, naming from pyproject.toml [project]", () => {
+    const r = repo((w) => {
+      w("pyproject.toml", '[tool.uv.workspace]\nmembers = ["packages/*"]\n');
+      w("packages/core/pyproject.toml", '[project]\nname = "acme-core"\n');
+    });
+    expect(detectWorkspaces(r)).toEqual([{ name: "acme-core", path: "packages/core", kind: "uv" }]);
+  });
+});
+
+describe("detectWorkspaces — composer", () => {
+  it("expands path repositories, naming from composer.json", () => {
+    const r = repo((w) => {
+      w("composer.json", JSON.stringify({ repositories: [{ type: "path", url: "packages/*" }] }));
+      w("packages/lib/composer.json", JSON.stringify({ name: "acme/lib" }));
+    });
+    expect(detectWorkspaces(r)).toEqual([{ name: "acme/lib", path: "packages/lib", kind: "composer" }]);
+  });
+});
+
+describe("detectWorkspaces — gradle", () => {
+  it("reads settings.gradle includes, falling back to the path (no name field in the DSL)", () => {
+    const r = repo((w) => {
+      w("settings.gradle", "include 'lib'\n");
+      w("lib/build.gradle", "// minimal gradle module\n");
+    });
+    expect(detectWorkspaces(r)).toEqual([{ name: "lib", path: "lib", kind: "gradle" }]);
+  });
+});
+
 describe("buildWorkspaceGraph", () => {
   it("derives npm edges from dependency names", () => {
     const r = repo((w) => {
