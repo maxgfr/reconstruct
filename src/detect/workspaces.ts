@@ -1,5 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
-import type { Dirent } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { detectWorkspaces as engineDetectWorkspaces } from "../vendor/codeindex-engine.mjs";
 import type { WorkspacePackage } from "../vendor/codeindex-engine.mjs";
@@ -9,22 +8,41 @@ import { extractDependencies } from "../adapters/generic.js";
 import type { FileInfo, Hints, RouteInfo, StackInfo, Workspace, WorkspaceKind } from "../types.js";
 
 // Workspace membership discovery — npm/yarn `workspaces`, pnpm-workspace.yaml
-// (incl. `!` negations), lerna.json / nx.json fallbacks, Cargo `[workspace]
-// members` (globs + exclude), go.work `use` directives, and maven `<modules>`
-// (a detector reconstruct never had — richer detection, adjudicated) — is the
-// vendored codeindex engine's `detectWorkspaces`, which was itself ported from
-// this module. What stays local is reconstruct's own contract on top of it:
+// (incl. `!` negations), lerna.json / nx.json fallbacks (now including nx
+// members manifested ONLY by project.json — an engine gap up to v2.0.1, closed
+// as of v2.6, verified in the vendored .d.mts/.mjs: `packageAt`'s default probe
+// order ends in a project.json probe), Cargo `[workspace] members` (globs +
+// exclude), go.work `use` directives, and maven/uv/composer/gradle module
+// declarations — is the vendored codeindex engine's `detectWorkspaces`, which
+// was itself ported from this module. Two engine-era differences that used to
+// be documented here no longer hold and were dropped with the v2.10.0 re-pin:
 //
-// - NAMING: a member whose manifest declares no name falls back to its full
-//   repo-relative path (the engine uses the dir basename, which can collide
-//   across siblings and would silently rename inventory workspaces);
+// - NAMING: the engine's per-kind probes (`probeNodePkg`, `probeCargo`, …) now
+//   fall back to the full repo-relative dir on a nameless manifest, same as
+//   this module — at v2.0.1 the engine fell back to the dir *basename*, which
+//   could collide across siblings;
+// - nx members manifested only by project.json are now found by the engine's
+//   own probe chain (verified against `tests/workspaces.test.ts`'s "reads the
+//   nx workspaceLayout, accepting project.json manifests" case), so the local
+//   `addNxProjectJsonMembers`/`pnpmDeclaresPackages` fallback (~48 lines) that
+//   used to patch this gap is gone; `adaptPackage` below still re-reads the
+//   winning manifest itself, for the warning below.
+//
+// What stays local:
+//
 // - a dir declared a member via a cargo/go pattern is a workspace only if its
 //   Cargo.toml / go.mod actually exists and names it (go.work members are named
-//   by their go.mod `module`, even when a package.json is also present);
-// - nx members manifested ONLY by project.json (the engine probes package.json /
-//   Cargo.toml / go.mod / pom.xml and misses them — engine gap, reported);
-// - malformed-manifest WARNINGS (`malformed <ws>/package.json …`), which the
-//   engine's silent readers do not collect.
+//   by their go.mod `module`, even when a package.json is also present) — the
+//   engine's own probe chain tries package.json FIRST for a cargo/go-declared
+//   dir and would otherwise report it under a JS-derived name;
+// - malformed-manifest WARNINGS in this module's own wording (`malformed
+//   <ws>/package.json … — falling back to empty defaults`), so a defect
+//   surfaces once, in the phrasing every other stage (stack/deps/scripts) uses
+//   — the engine's `WorkspaceInfo.warnings` exists too (added v2.10.0) but is
+//   worded differently and, being collected separately, would double-report
+//   the same malformed file under two strings instead of deduping to one (see
+//   `tests/warnings.test.ts`'s "warns once…" case), so it is deliberately not
+//   merged in.
 //
 // The workspace dependency edges (npm name deps, cargo name/path deps, go
 // require/replace, maven artifactIds) come from the engine's graph, remapped
@@ -71,6 +89,12 @@ function adaptPackage(repo: string, pkg: WorkspacePackage, warnings?: string[]):
   } else if (pkg.kind === "maven") {
     // No local precedent — keep the engine's `<artifactId>` naming as-is.
     name = pkg.name;
+  } else if (pkg.kind === "nx" && !existsSync(join(repo, path, "package.json"))) {
+    // The engine's own probe chain now finds nx members manifested only by
+    // project.json (v2.6+); only the malformed-manifest warning wording — this
+    // module's, not the engine's — stays local (see the header comment).
+    const proj = readJsonManifest(join(repo, path, "project.json"), `${path}/project.json`, warnings);
+    name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
   } else if (existsSync(join(repo, path, "package.json"))) {
     // A malformed member manifest still marks a workspace (the dir was declared
     // a member); it falls back to the path name and the warning surfaces it.
@@ -81,64 +105,6 @@ function adaptPackage(repo: string, pkg: WorkspacePackage, warnings?: string[]):
   }
   if (name === null) return null;
   return { name: name || path, path, kind: pkg.kind as WorkspaceKind };
-}
-
-/**
- * Engine gap (reported upstream): an nx member manifested ONLY by project.json
- * is invisible to the engine's package probe (package.json / Cargo.toml /
- * go.mod / pom.xml). Mirror the historical nx fallback for exactly that case,
- * under the same precedence: only when package.json / pnpm-workspace.yaml
- * declare no workspace patterns and lerna.json declares no packages.
- */
-function addNxProjectJsonMembers(repo: string, found: Map<string, Workspace>, warnings?: string[]): void {
-  const pkg = readJsonManifest(join(repo, "package.json"), "package.json", warnings);
-  const ws = pkg?.workspaces;
-  if (Array.isArray(ws) && ws.some((x) => typeof x === "string" && x.trim())) return;
-  if (ws && typeof ws === "object" && !Array.isArray(ws)) {
-    const packages = (ws as { packages?: unknown }).packages;
-    if (Array.isArray(packages) && packages.some((x) => typeof x === "string" && (x as string).trim())) return;
-  }
-  if (pnpmDeclaresPackages(repo)) return;
-  const lerna = readJsonManifest(join(repo, "lerna.json"), "lerna.json", warnings);
-  if (lerna && Array.isArray(lerna.packages)) return;
-  const nx = readJsonManifest(join(repo, "nx.json"), "nx.json", warnings);
-  if (!nx) return;
-  const layout = (nx.workspaceLayout ?? {}) as Record<string, unknown>;
-  const appsDir = typeof layout.appsDir === "string" ? layout.appsDir : "apps";
-  const libsDir = typeof layout.libsDir === "string" ? layout.libsDir : "libs";
-  for (const base of new Set([appsDir, libsDir])) {
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(join(repo, base), { withFileTypes: true });
-    } catch {
-      continue; // layout dir missing
-    }
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const path = `${base}/${ent.name}`;
-      if (found.has(path)) continue;
-      if (existsSync(join(repo, path, "package.json"))) continue; // the engine already adjudicated this dir
-      if (!existsSync(join(repo, path, "project.json"))) continue;
-      const proj = readJsonManifest(join(repo, path, "project.json"), `${path}/project.json`, warnings);
-      const name = proj && typeof proj.name === "string" && proj.name ? proj.name : "";
-      found.set(path, { name: name || path, path, kind: "nx" });
-    }
-  }
-}
-
-/** True when pnpm-workspace.yaml lists at least one entry under `packages:`. */
-function pnpmDeclaresPackages(repo: string): boolean {
-  const pnpm = safeRead(join(repo, "pnpm-workspace.yaml"));
-  let inPackages = false;
-  for (const line of pnpm.split(/\r?\n/)) {
-    if (/^\S/.test(line)) {
-      inPackages = /^packages\s*:/.test(line);
-      continue;
-    }
-    if (!inPackages) continue;
-    if (/^\s*-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/.test(line)) return true;
-  }
-  return false;
 }
 
 /**
@@ -155,7 +121,6 @@ export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[]
     const ws = adaptPackage(repo, pkg, warnings);
     if (ws) found.set(ws.path, ws);
   }
-  addNxProjectJsonMembers(repo, found, warnings);
   return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 

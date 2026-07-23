@@ -1,6 +1,6 @@
-declare const ENGINE_VERSION = "2.0.1";
+declare const ENGINE_VERSION = "2.10.0";
 declare const SCHEMA_VERSION = 4;
-declare const EXTRACTOR_VERSION = 5;
+declare const EXTRACTOR_VERSION = 6;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "use" | "mention";
 type Tier = 0 | 1 | 2;
@@ -37,6 +37,7 @@ interface FileRecord {
     calls?: {
         name: string;
         line: number;
+        receiver?: string;
     }[];
     importedNames?: string[];
 }
@@ -131,6 +132,7 @@ interface WalkedFile {
 interface WalkResult {
     files: WalkedFile[];
     capped: boolean;
+    excluded: number;
 }
 declare const DEFAULT_MAX_FILES = 20000;
 declare function walk(root: string, opts?: WalkOptions): WalkResult;
@@ -144,6 +146,7 @@ interface RepoScan {
     docText: Map<string, string>;
     mtimes: Map<string, number>;
     capped: boolean;
+    excluded: number;
 }
 interface ScanOptions {
     include?: string[];
@@ -195,6 +198,7 @@ interface CodeInfo {
     calls?: {
         name: string;
         line: number;
+        receiver?: string;
     }[];
     importedNames?: string[];
 }
@@ -221,6 +225,7 @@ interface AstResult {
     calls: {
         name: string;
         line: number;
+        receiver?: string;
     }[];
     importedNames: string[];
 }
@@ -319,6 +324,10 @@ declare function resolveCallEdges(scan: RepoScan, importPairs: Set<string>): Edg
 interface CallerSite {
     file: string;
     line: number;
+    confidence?: "corroborated" | "unique-name";
+}
+interface CallerIndexOptions {
+    recall?: boolean;
 }
 interface CallerEntry {
     def: CodeSymbol;
@@ -326,21 +335,56 @@ interface CallerEntry {
 }
 type CallerIndex = Map<string, CallerEntry>;
 declare function computeImportPairs(scan: RepoScan): Set<string>;
-declare function buildCallerIndex(scan: RepoScan, importPairs?: Set<string>): CallerIndex;
+declare function buildCallerIndex(scan: RepoScan, importPairs?: Set<string>, opts?: CallerIndexOptions): CallerIndex;
 declare function enclosingSymbol(scan: RepoScan, file: string, line: number): CodeSymbol | undefined;
 
-type WorkspaceKind = "npm" | "pnpm" | "lerna" | "nx" | "cargo" | "go" | "maven";
+declare function symbolsOverview(scan: RepoScan, rel: string): CodeSymbol[];
+interface SymbolMatch extends CodeSymbol {
+    body?: string;
+}
+interface FindSymbolOptions {
+    substring?: boolean;
+    includeBody?: boolean;
+    maxResults?: number;
+}
+declare function findSymbol(scan: RepoScan, namePath: string, opts?: FindSymbolOptions): SymbolMatch[];
+interface SymbolReferences {
+    defs: CodeSymbol[];
+    callSites: CallerSite[];
+    referencingFiles: string[];
+}
+declare function findReferences(scan: RepoScan, name: string): SymbolReferences;
+
+interface EditResult {
+    file: string;
+    startLine: number;
+    endLine: number;
+    lines: number;
+}
+declare function resolveUniqueSymbol(scan: RepoScan, namePath: string, file?: string): CodeSymbol;
+declare function replaceSymbolBody(scan: RepoScan, namePath: string, body: string, file?: string): EditResult;
+declare function insertAfterSymbol(scan: RepoScan, namePath: string, body: string, file?: string): EditResult;
+declare function insertBeforeSymbol(scan: RepoScan, namePath: string, body: string, file?: string): EditResult;
+
+declare function writeMemory(repo: string, name: string, content: string): string;
+declare function readMemory(repo: string, name: string): string | undefined;
+declare function deleteMemory(repo: string, name: string): boolean;
+declare function listMemories(repo: string): string[];
+
+type WorkspaceKind = "npm" | "pnpm" | "lerna" | "nx" | "cargo" | "go" | "maven" | "uv" | "composer" | "gradle";
 interface WorkspacePackage {
     name: string;
     dir: string;
     kind: WorkspaceKind;
     manifest: string;
+    description?: string;
     dependsOn?: string[];
 }
 interface WorkspaceInfo {
     packages: WorkspacePackage[];
     cycle?: string[];
     topoOrder: string[];
+    warnings: string[];
     packageOf(rel: string): WorkspacePackage | undefined;
 }
 declare function detectWorkspaces(root: string): WorkspaceInfo;
@@ -370,6 +414,12 @@ declare function buildSymbolIndex(scan: RepoScan, refs?: Map<string, Set<string>
 declare function renderSymbolsJson(index: SymbolIndex): string;
 
 declare function renderGraphJson(graph: Graph): string;
+
+interface RenderScipOptions {
+    projectRoot?: string;
+    toolVersion?: string;
+}
+declare function renderScip(scan: RepoScan, opts?: RenderScipOptions): Uint8Array;
 
 interface BuildIndexOptions extends ScanOptions {
     meta?: {
@@ -435,6 +485,166 @@ interface GrepOptions {
 }
 declare function grepRepo(root: string, pattern: string, opts?: GrepOptions): SearchHit[];
 
+interface SearchOptions {
+    limit?: number;
+    fuzzy?: boolean;
+}
+interface SearchResult {
+    file: string;
+    score: number;
+    matchedTerms: string[];
+    topSymbols: string[];
+    fuzzyTerms?: string[];
+}
+declare function subtokens(raw: string): string[];
+declare function searchIndex(scan: RepoScan, query: string, opts?: SearchOptions): SearchResult[];
+
+declare const EMBED_VERSION = 1;
+interface StaticEmbedModel {
+    modelId: string;
+    dim: number;
+    unk: string;
+    unkId: number;
+    vocabSize: number;
+    vocab: Map<string, number>;
+    weights: Float64Array;
+}
+declare function resolveEmbedModelDir(repo?: string): string | undefined;
+declare function hasEmbedModel(repo?: string): boolean;
+declare function loadEmbedModel(dir?: string): StaticEmbedModel | undefined;
+declare function resolveEmbedPullUrl(): string | undefined;
+
+declare function basicTokenize(text: string): string[];
+declare function wordpiece(word: string, model: StaticEmbedModel): number[];
+declare function tokenize(text: string, model: StaticEmbedModel): number[];
+declare function roundHalfToEven(x: number): number;
+declare function encode(model: StaticEmbedModel, text: string): Int8Array;
+declare function intDot(a: Int8Array, b: Int8Array): number;
+
+interface EmbeddingRecord {
+    file: string;
+    symbol?: string;
+    line?: number;
+    vec: Int8Array;
+}
+interface EmbeddingIndex {
+    embedVersion: number;
+    modelId: string;
+    dim: number;
+    records: EmbeddingRecord[];
+}
+declare function buildEmbeddingIndex(scan: RepoScan, model: StaticEmbedModel): EmbeddingIndex;
+declare function serializeEmbeddings(index: EmbeddingIndex): Uint8Array;
+declare function deserializeEmbeddings(bytes: Uint8Array): EmbeddingIndex;
+
+interface SemanticSearchOptions extends SearchOptions {
+    model?: StaticEmbedModel;
+    rrfK?: number;
+}
+interface SemanticSearchResult extends SearchResult {
+    semanticSymbol?: string;
+}
+declare function searchSemantic(scan: RepoScan, query: string, index: EmbeddingIndex | undefined, opts?: SemanticSearchOptions): SemanticSearchResult[];
+
+interface EmbedEndpointOptions {
+    url?: string;
+    timeoutMs?: number;
+    headers?: Record<string, string>;
+}
+declare function resolveEmbedEndpoint(opts?: EmbedEndpointOptions): string | undefined;
+declare function embedViaEndpoint(texts: string[], opts?: EmbedEndpointOptions): Promise<number[][]>;
+
+type RuleSeverity = "error" | "warn";
+interface ForbiddenEdgeRule {
+    name: string;
+    from: string | string[];
+    to: string | string[];
+    kind?: EdgeKind[];
+    severity?: RuleSeverity;
+    comment?: string;
+}
+interface BuiltinRule {
+    name: string;
+    builtin: "cycles" | "orphans";
+    severity?: RuleSeverity;
+    comment?: string;
+}
+type ArchRule = ForbiddenEdgeRule | BuiltinRule;
+interface RuleViolation {
+    rule: string;
+    from: string;
+    to: string;
+    kind: EdgeKind | "cycle" | "orphan";
+    severity: RuleSeverity;
+    comment?: string;
+}
+declare function parseRules(input: unknown): ArchRule[];
+declare function checkRules(graph: Graph, rules: ArchRule[]): RuleViolation[];
+
+interface ChangeCoupling {
+    a: string;
+    b: string;
+    together: number;
+    totalA: number;
+    totalB: number;
+    strength: number;
+}
+interface CouplingOptions {
+    since?: string;
+    maxCommitFiles?: number;
+    minTogether?: number;
+    maxPairs?: number;
+}
+declare function changeCoupling(dir: string, opts?: CouplingOptions): {
+    ok: boolean;
+    couplings: ChangeCoupling[];
+};
+interface Hotspot {
+    rel: string;
+    lines: number;
+    commits: number;
+    score: number;
+}
+declare function rankHotspots(scan: RepoScan, churn: Map<string, number>, top?: number): Hotspot[];
+
+interface RepoMapOptions {
+    budgetTokens?: number;
+    maxSymbolsPerFile?: number;
+}
+declare function renderRepoMap(scan: RepoScan, graph: Graph, opts?: RepoMapOptions): string;
+
+interface DeadSymbol {
+    name: string;
+    file: string;
+    line: number;
+    kind: string;
+    tier: "unreferenced" | "uncalled";
+}
+declare function findDeadCode(scan: RepoScan): DeadSymbol[];
+
+declare function complexityOfSource(source: string): number;
+interface SymbolComplexity {
+    file: string;
+    name: string;
+    line: number;
+    endLine?: number;
+    complexity: number;
+}
+declare function symbolComplexity(scan: RepoScan, rel?: string, top?: number): SymbolComplexity[];
+interface RiskHotspot {
+    file: string;
+    complexity: number;
+    commits: number;
+    score: number;
+}
+declare function riskHotspots(scan: RepoScan, churn: Map<string, number>, top?: number): RiskHotspot[];
+
+interface MermaidOptions {
+    module?: string;
+    maxEdges?: number;
+}
+declare function renderMermaid(graph: Graph, opts?: MermaidOptions): string;
+
 declare function runMcpServer(): Promise<void>;
 
 declare function sha1(s: string): string;
@@ -454,7 +664,7 @@ declare function sh(cmd: string, args: string[], opts?: {
     cwd?: string;
     input?: string;
     timeoutMs?: number;
-    env?: NodeJS.ProcessEnv;
+    env?: Record<string, string | undefined>;
 }): ShResult;
 declare function have(cmd: string): boolean;
 declare function slugify(input: string): string;
@@ -468,4 +678,4 @@ declare function rrf<T>(lists: T[][], keyOf: (item: T) => string, k?: number): M
 
 declare function runCli(argv: string[]): Promise<void>;
 
-export { type BuildIndexOptions, type CallerEntry, type CallerIndex, type CallerSite, type CodeInfo, type CodeSymbol, DEFAULT_MAX_FILES, type DiffFile, type DiffSpec, ENGINE_VERSION, EXTRACTOR_VERSION, type Edge, type EdgeKind, type FileCategory, type FileKind, type FileNode, type FileRecord, type Graph, type GrepOptions, type Hunk, type IgnoreRule, type IndexArtifacts, MARKDOWN_EXT, type MarkdownInfo, type ModuleInfo, type ModuleNode, type RawRef, type RepoScan, type Resolution, type ResolveContext, SCHEMA_VERSION, type ScanOptions, type SearchHit, type ShResult, type SurpriseEdge, type SymbolIndex, type TestMap, type Tier, type WalkOptions, type WalkResult, type WalkedFile, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, betweennessOf, buildCallerIndex, buildGraph, buildIndexArtifacts, buildModules, buildResolveContext, buildSymbolIndex, byKey, byStr, categorize, changedSince, classify, clip, clipInline, communityOf, compileGlobs, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, detectCommunities, detectWorkspaces, diffFiles, diffHunks, enclosingSymbol, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractMarkdown, extractSymbols, foldText, gitChurn, grammarKeyForExt, grammarReady, grepRepo, have, headCommit, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keywords, languageOf, pagerankOf, parseGitignore, rankedKeywords, readText, renderGraphJson, renderSymbolsJson, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveImport, rrf, runCli, runMcpServer, scanRepo, sh, sha1, shortHash, slugify, testsForModule, tierForPath, uniqueSymbolDefs, untestedModules, untrackedFiles, walk };
+export { type ArchRule, type BuildIndexOptions, type BuiltinRule, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type CodeInfo, type CodeSymbol, type CouplingOptions, DEFAULT_MAX_FILES, type DeadSymbol, type DiffFile, type DiffSpec, EMBED_VERSION, ENGINE_VERSION, EXTRACTOR_VERSION, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbeddingIndex, type EmbeddingRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type Graph, type GrepOptions, type Hotspot, type Hunk, type IgnoreRule, type IndexArtifacts, MARKDOWN_EXT, type MarkdownInfo, type MermaidOptions, type ModuleInfo, type ModuleNode, type RawRef, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolIndex, type SymbolMatch, type SymbolReferences, type TestMap, type Tier, type WalkOptions, type WalkResult, type WalkedFile, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildCallerIndex, buildEmbeddingIndex, buildGraph, buildIndexArtifacts, buildModules, buildResolveContext, buildSymbolIndex, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, communityOf, compileGlobs, complexityOfSource, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, deleteMemory, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedViaEndpoint, enclosingSymbol, encode, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractMarkdown, extractSymbols, findDeadCode, findReferences, findSymbol, foldText, gitChurn, grammarKeyForExt, grammarReady, grepRepo, hasEmbedModel, have, headCommit, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keywords, languageOf, listMemories, loadEmbedModel, pagerankOf, parseGitignore, parseRules, rankHotspots, rankedKeywords, readMemory, readText, renderGraphJson, renderMermaid, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveImport, resolveUniqueSymbol, riskHotspots, roundHalfToEven, rrf, runCli, runMcpServer, scanRepo, searchIndex, searchSemantic, serializeEmbeddings, sh, sha1, shortHash, slugify, subtokens, symbolComplexity, symbolsOverview, testsForModule, tierForPath, tokenize, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, wordpiece, writeMemory };
