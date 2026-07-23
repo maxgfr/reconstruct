@@ -117,7 +117,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           SUMMARY="$(git diff --cached --stat | tail -n 1)"
-          git commit -m "chore(engine): re-pin codeindex ${LATEST}" -m "automated re-pin, all gates green, goldens byte-identical" -m "$SUMMARY"
+          git commit -m "feat(engine): re-pin codeindex ${LATEST}" -m "automated re-pin, all gates green, goldens byte-identical" -m "$SUMMARY"
           git push origin HEAD:main
 
       - name: Trigger release.yml (a bot push does not fire other workflows)
