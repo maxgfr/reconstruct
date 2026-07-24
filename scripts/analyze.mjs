@@ -9,7 +9,7 @@ import { existsSync as existsSync14, statSync as statSync7, realpathSync as real
 import { basename as basename4 } from "path";
 
 // src/walk.ts
-import { closeSync, openSync, readSync, readdirSync as readdirSync4, readFileSync as readFileSync7, statSync as statSync5 } from "fs";
+import { closeSync, openSync, readSync, readdirSync as readdirSync4, readFileSync as readFileSync8, statSync as statSync5 } from "fs";
 import { join as join3, extname as extname2, resolve as resolve3 } from "path";
 
 // src/vendor/codeindex-engine.mjs
@@ -38,7 +38,7 @@ import { join as join11 } from "path";
 import { createHash as createHash3 } from "crypto";
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "fs";
 import { join as join13 } from "path";
-import { statSync as statSync4 } from "fs";
+import { readFileSync as readFileSync6, statSync as statSync4 } from "fs";
 import { join as join14 } from "path";
 import { createInterface } from "readline";
 import { basename as basename2 } from "path";
@@ -47,7 +47,7 @@ import { mkdirSync, writeFileSync } from "fs";
 import { dirname as dirname2, resolve, sep as sep2 } from "path";
 import { gunzipSync } from "zlib";
 import { join as join12 } from "path";
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, mkdtempSync, readFileSync as readFileSync6, renameSync, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, mkdtempSync, readFileSync as readFileSync7, renameSync, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
 import { dirname as dirname4, join as join15, resolve as resolve2 } from "path";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -64,7 +64,7 @@ var EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.14.0";
+    ENGINE_VERSION = "2.15.0";
     SCHEMA_VERSION = 4;
     EXTRACTOR_VERSION = 10;
   }
@@ -10393,6 +10393,57 @@ function toCacheMap(scan2) {
   for (const f of scan2.files) m.set(f.rel, { hash: f.hash, record: f, size: f.size, mtimeMs: scan2.mtimes.get(f.rel) });
   return m;
 }
+function readPersistedIndex(repo) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync6(join14(repo, ".codeindex", "cache.json"), "utf8"));
+  } catch {
+    return void 0;
+  }
+  if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || parsed.extractorVersion !== EXTRACTOR_VERSION || !parsed.files) {
+    return void 0;
+  }
+  const cacheMap = new Map(Object.entries(parsed.files));
+  const meta = {
+    engineVersion: parsed.engineVersion,
+    commit: parsed.commit,
+    graphSha1: parsed.graphSha1,
+    symbolsSha1: parsed.symbolsSha1
+  };
+  return { cacheMap, meta };
+}
+function preloadArtifacts(repo, scan2, meta) {
+  if (!scan2.contentUnchanged || meta.engineVersion !== ENGINE_VERSION || meta.commit !== scan2.commit || meta.graphSha1 === void 0 || meta.symbolsSha1 === void 0) {
+    return void 0;
+  }
+  const dir = join14(repo, ".codeindex");
+  let graphBytes;
+  let symbolsBytes;
+  try {
+    graphBytes = readFileSync6(join14(dir, "graph.json"));
+    symbolsBytes = readFileSync6(join14(dir, "symbols.json"));
+  } catch {
+    return void 0;
+  }
+  if (sha1(graphBytes) !== meta.graphSha1 || sha1(symbolsBytes) !== meta.symbolsSha1) {
+    return void 0;
+  }
+  try {
+    const graph = JSON.parse(graphBytes.toString("utf8"));
+    const symbols = JSON.parse(symbolsBytes.toString("utf8"));
+    if (graph.schemaVersion !== SCHEMA_VERSION || symbols.schemaVersion !== SCHEMA_VERSION) return void 0;
+    return { scan: scan2, graph, symbols };
+  } catch {
+    return void 0;
+  }
+}
+function preloadSession(repo, opts) {
+  const persisted = readPersistedIndex(repo);
+  if (!persisted) return void 0;
+  const scan2 = scanRepo(repo, { ...opts, cache: persisted.cacheMap });
+  const arts = preloadArtifacts(repo, scan2, persisted.meta);
+  return { scan: scan2, cacheMap: toCacheMap(scan2), arts };
+}
 function getScan(repo, opts = {}) {
   const key = sessionKey(repo, opts);
   if (sessionCache && sessionCache.key === key) {
@@ -10404,6 +10455,11 @@ function getScan(repo, opts = {}) {
     }
     sessionCache = { key, scan: fresh, cacheMap: toCacheMap(fresh) };
     return fresh;
+  }
+  const preloaded = preloadSession(repo, opts);
+  if (preloaded) {
+    sessionCache = { key, scan: preloaded.scan, cacheMap: preloaded.cacheMap, arts: preloaded.arts };
+    return preloaded.scan;
   }
   const scan2 = scanRepo(repo, opts);
   sessionCache = { key, scan: scan2, cacheMap: toCacheMap(scan2) };
@@ -11669,7 +11725,7 @@ async function runCli(argv) {
     let cache;
     let meta = {};
     try {
-      const parsed = JSON.parse(readFileSync6(cachePath, "utf8"));
+      const parsed = JSON.parse(readFileSync7(cachePath, "utf8"));
       if (parsed.schemaVersion === SCHEMA_VERSION && parsed.extractorVersion === EXTRACTOR_VERSION) {
         cache = new Map(Object.entries(parsed.files));
         meta = {
@@ -11690,7 +11746,7 @@ async function runCli(argv) {
     const embedPath = join15(outDir, "embeddings.bin");
     const artifactSha = (path) => {
       try {
-        return sha1(readFileSync6(path));
+        return sha1(readFileSync7(path));
       } catch {
         return void 0;
       }
@@ -11940,7 +11996,7 @@ async function runCli(argv) {
       if (existsSync4(runtime) && expected && existsSync4(markerPath)) {
         let marker = "";
         try {
-          marker = readFileSync6(markerPath, "utf8").trim();
+          marker = readFileSync7(markerPath, "utf8").trim();
         } catch {
         }
         if (marker === expected) {
@@ -11993,7 +12049,7 @@ async function runCli(argv) {
     }
   } else if (cmd === "rules") {
     if (!flags2.config) throw new Error("rules needs --config <codeindex.rules.json>");
-    const rules = parseRules(JSON.parse(readFileSync6(flags2.config, "utf8")));
+    const rules = parseRules(JSON.parse(readFileSync7(flags2.config, "utf8")));
     const { graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2, precomputedWalk));
     const violations = checkRules(graph, rules);
     const errors = violations.filter((v) => v.severity === "error").length;
@@ -12164,7 +12220,7 @@ function matchesScope(rules, rel) {
 }
 function isReconstructOutput(dir) {
   try {
-    const head = readFileSync7(join3(dir, "inventory.json"), "utf8").slice(0, 4096);
+    const head = readFileSync8(join3(dir, "inventory.json"), "utf8").slice(0, 4096);
     return /"generatedWith"\s*:\s*"reconstruct@/.test(head);
   } catch {
     return false;
@@ -12197,7 +12253,7 @@ var MAX_COUNT_LINES_BYTES = 8 * 1024 * 1024;
 function countLines2(abs, size) {
   if (size > MAX_COUNT_LINES_BYTES) return 0;
   try {
-    const content = readFileSync7(abs, "utf8");
+    const content = readFileSync8(abs, "utf8");
     if (content.length === 0) return 0;
     let n = 1;
     for (let i2 = 0; i2 < content.length; i2++) {
@@ -12296,11 +12352,11 @@ import { existsSync as existsSync6 } from "fs";
 import { join as join18 } from "path";
 
 // src/detect/manifest.ts
-import { readFileSync as readFileSync8 } from "fs";
+import { readFileSync as readFileSync9 } from "fs";
 function readJsonManifest(absPath, relLabel, warnings) {
   let raw;
   try {
-    raw = readFileSync8(absPath, "utf8");
+    raw = readFileSync9(absPath, "utf8");
   } catch {
     return null;
   }
@@ -12314,7 +12370,7 @@ function readJsonManifest(absPath, relLabel, warnings) {
 }
 function safeRead(path) {
   try {
-    return readFileSync8(path, "utf8");
+    return readFileSync9(path, "utf8");
   } catch {
     return "";
   }
@@ -12325,11 +12381,11 @@ import { existsSync as existsSync5 } from "fs";
 import { join as join17 } from "path";
 
 // src/adapters/generic.ts
-import { readFileSync as readFileSync9 } from "fs";
+import { readFileSync as readFileSync10 } from "fs";
 import { join as join16 } from "path";
 function read(repo, rel) {
   try {
-    return readFileSync9(join16(repo, rel), "utf8");
+    return readFileSync10(join16(repo, rel), "utf8");
   } catch {
     return null;
   }
@@ -12987,7 +13043,7 @@ function detectNodeVersion(repo, warnings) {
 }
 
 // src/detect/candidates.ts
-import { readFileSync as readFileSync10 } from "fs";
+import { readFileSync as readFileSync11 } from "fs";
 import { join as join19 } from "path";
 var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
   ".ts",
@@ -13138,7 +13194,7 @@ function baseName(path) {
 }
 function safeRead2(repo, rel) {
   try {
-    return readFileSync10(join19(repo, rel), "utf8");
+    return readFileSync11(join19(repo, rel), "utf8");
   } catch {
     return "";
   }
@@ -13230,7 +13286,7 @@ var CONVENTIONAL_ENTRIES = [
 function detectEntryPoints(repo, files) {
   const entries = /* @__PURE__ */ new Set();
   try {
-    const pkg = JSON.parse(readFileSync10(join19(repo, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync11(join19(repo, "package.json"), "utf8"));
     for (const key of ["main", "module"]) {
       const v = pkg[key];
       if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
@@ -13266,7 +13322,7 @@ function hasUI(inv) {
 }
 
 // src/adapters/nextjs.ts
-import { readFileSync as readFileSync11 } from "fs";
+import { readFileSync as readFileSync12 } from "fs";
 import { join as join20 } from "path";
 var CODE_PAGE_EXTS = /* @__PURE__ */ new Set([".tsx", ".ts", ".jsx", ".js"]);
 var PAGES_SPECIAL = /* @__PURE__ */ new Set(["_app", "_document", "_error", "middleware"]);
@@ -13297,7 +13353,7 @@ function afterDir(path, dir) {
 function routeMethods(repo, file) {
   let src;
   try {
-    src = readFileSync11(join20(repo, file), "utf8");
+    src = readFileSync12(join20(repo, file), "utf8");
   } catch {
     return [];
   }
@@ -13360,7 +13416,7 @@ var nextjsAdapter = {
 };
 
 // src/adapters/util.ts
-import { readFileSync as readFileSync12 } from "fs";
+import { readFileSync as readFileSync13 } from "fs";
 import { join as join21 } from "path";
 function readSources(files, repo, exts) {
   const set = new Set(exts);
@@ -13368,7 +13424,7 @@ function readSources(files, repo, exts) {
   for (const f of files) {
     if (!set.has(f.ext)) continue;
     try {
-      out2.set(f.path, readFileSync12(join21(repo, f.path), "utf8"));
+      out2.set(f.path, readFileSync13(join21(repo, f.path), "utf8"));
     } catch {
     }
   }
@@ -14464,7 +14520,7 @@ function detectRoutes(files, stack, repo) {
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync13 } from "fs";
+import { readFileSync as readFileSync14 } from "fs";
 import { join as join22, basename as basename3, extname as extname3 } from "path";
 var LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
 var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
@@ -14490,7 +14546,7 @@ function localeOf(path) {
 }
 function keysIn(repo, f) {
   try {
-    const raw = readFileSync13(join22(repo, f.path), "utf8");
+    const raw = readFileSync14(join22(repo, f.path), "utf8");
     if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
     return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
   } catch {
@@ -15801,7 +15857,7 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync14 } from "fs";
+import { readFileSync as readFileSync15 } from "fs";
 import { join as join23 } from "path";
 var FENCE_LANG = {
   ".ts": "ts",
@@ -15848,7 +15904,7 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body2;
     try {
-      body2 = readFileSync14(join23(opts.repo, rel), "utf8");
+      body2 = readFileSync15(join23(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
@@ -16223,7 +16279,7 @@ function writeArtifactsIfAbsent(artifacts, outDir) {
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync15, existsSync as existsSync8 } from "fs";
+import { readdirSync as readdirSync5, readFileSync as readFileSync16, existsSync as existsSync8 } from "fs";
 import { join as join26, relative, sep as sep3 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
@@ -16236,7 +16292,7 @@ function readMarkdownTree(dir) {
         if (GROUND_TRUTH_DIRS.has(rel)) continue;
         walk3(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out2.push({ relPath: rel, content: readFileSync15(child, "utf8") });
+        out2.push({ relPath: rel, content: readFileSync16(child, "utf8") });
       }
     }
   };
@@ -16249,7 +16305,7 @@ function bundleExisting(opts) {
   if (!existsSync8(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
-  const inv = JSON.parse(readFileSync15(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync16(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -16260,11 +16316,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync16 } from "fs";
+import { readFileSync as readFileSync17 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync16(path, "utf8");
+    raw = readFileSync17(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -16579,7 +16635,7 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync9, readFileSync as readFileSync17, readdirSync as readdirSync6, statSync as statSync6 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync18, readdirSync as readdirSync6, statSync as statSync6 } from "fs";
 import { join as join27, relative as relative2 } from "path";
 var REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITECTURE.md", "architecture/INTERFACES.md", "architecture/DATA-MODEL.md"];
 var FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
@@ -16604,7 +16660,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2)) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative2(base, full).split("\\").join("/"), content: readFileSync17(full, "utf8") });
+      out2.push({ rel: relative2(base, full).split("\\").join("/"), content: readFileSync18(full, "utf8") });
     }
   }
   return out2;
@@ -16656,7 +16712,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync17(invPath, "utf8"));
+    inv = JSON.parse(readFileSync18(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -16818,7 +16874,7 @@ function formatCheckReport(r, outDir) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync10, readFileSync as readFileSync18, writeFileSync as writeFileSync6 } from "fs";
+import { existsSync as existsSync10, readFileSync as readFileSync19, writeFileSync as writeFileSync6 } from "fs";
 import { join as join28 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
@@ -16870,7 +16926,7 @@ function featureEvidence(f) {
 function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
-    invRaw = readFileSync18(join28(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync19(join28(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -16885,7 +16941,7 @@ function buildWorklist(outDir, opts = {}) {
   for (const f of inv.features ?? []) {
     const prdPath = join28(outDir, "features", f.slug, "PRD.md");
     if (!existsSync10(prdPath)) continue;
-    const reqs = requirements(readFileSync18(prdPath, "utf8"));
+    const reqs = requirements(readFileSync19(prdPath, "utf8"));
     const ev = featureEvidence(f);
     const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
     for (const req of reqs) {
@@ -16942,7 +16998,7 @@ _Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched ev
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync18(join28(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync19(join28(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -16988,7 +17044,7 @@ function resolveEvidence(ref, inv) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync18(join28(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync19(join28(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -16998,7 +17054,7 @@ function readTodoPairs(outDir) {
   }
 }
 function applyVerdicts(outDir, verdictsPath) {
-  const raw = JSON.parse(readFileSync18(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync19(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
@@ -17099,7 +17155,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync18(p, "utf8"));
+    sem = JSON.parse(readFileSync19(p, "utf8"));
   } catch (e) {
     skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
     return;
@@ -17166,7 +17222,7 @@ function formatVerifyReport(r) {
 
 // src/review.ts
 import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync11, readFileSync as readFileSync19, writeFileSync as writeFileSync7 } from "fs";
+import { existsSync as existsSync11, readFileSync as readFileSync20, writeFileSync as writeFileSync7 } from "fs";
 import { join as join29 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md"];
 var SEVERITIES2 = ["blocker", "major", "minor"];
@@ -17176,7 +17232,7 @@ function sha256(s) {
 }
 function readIfExists(path) {
   try {
-    return readFileSync19(path, "utf8");
+    return readFileSync20(path, "utf8");
   } catch {
     return "";
   }
@@ -17202,7 +17258,7 @@ function runReview(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join29(outDir, "features", f.slug, "PRD.md");
     if (!existsSync11(prdPath)) continue;
-    const prdHash = sha256(readFileSync19(prdPath, "utf8"));
+    const prdHash = sha256(readFileSync20(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -17218,7 +17274,7 @@ function runReview(outDir) {
 function readInventory(outDir) {
   let raw;
   try {
-    raw = readFileSync19(join29(outDir, "inventory.json"), "utf8");
+    raw = readFileSync20(join29(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -17233,7 +17289,7 @@ function readPrior(outDir) {
   if (!existsSync11(reviewPath)) return null;
   let rev;
   try {
-    rev = JSON.parse(readFileSync19(reviewPath, "utf8"));
+    rev = JSON.parse(readFileSync20(reviewPath, "utf8"));
   } catch {
     return null;
   }
@@ -17244,7 +17300,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync19(join29(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync20(join29(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -17359,7 +17415,7 @@ function reduceFindings(findings, ctx) {
   };
 }
 function applyFindings(outDir, findingsPath) {
-  const findings = normalizeFindings(JSON.parse(readFileSync19(findingsPath, "utf8")));
+  const findings = normalizeFindings(JSON.parse(readFileSync20(findingsPath, "utf8")));
   let round;
   let changedSet = [];
   let units = 0;
@@ -17367,7 +17423,7 @@ function applyFindings(outDir, findingsPath) {
   let currentFeatures = [];
   let baseline;
   try {
-    const todo = JSON.parse(readFileSync19(join29(outDir, "REVIEW.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync20(join29(outDir, "REVIEW.todo.json"), "utf8"));
     round = todo.round;
     changedSet = todo.changedSet ?? [];
     units = todo.units?.length ?? 0;
@@ -17385,7 +17441,7 @@ function applyFindings(outDir, findingsPath) {
   const reviewPath = join29(outDir, "REVIEW.json");
   if (existsSync11(reviewPath)) {
     try {
-      const prev = JSON.parse(readFileSync19(reviewPath, "utf8"));
+      const prev = JSON.parse(readFileSync20(reviewPath, "utf8"));
       priorFailures = prev.failures ?? [];
       priorStale = prev.staleRounds ?? 0;
       priorRound = prev.round ?? 0;
@@ -17427,7 +17483,7 @@ function foldReview(outDir, check, opts = {}) {
   }
   let rev;
   try {
-    rev = JSON.parse(readFileSync19(p, "utf8"));
+    rev = JSON.parse(readFileSync20(p, "utf8"));
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
     return;
@@ -17460,7 +17516,7 @@ function formatReviewReport(r) {
 }
 
 // src/brainstorm.ts
-import { readFileSync as readFileSync20 } from "fs";
+import { readFileSync as readFileSync21 } from "fs";
 import { join as join30 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
@@ -17532,7 +17588,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync20(join30(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync21(join30(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -17543,7 +17599,7 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync5, readFileSync as readFileSync21, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync5, readFileSync as readFileSync22, writeFileSync as writeFileSync8 } from "fs";
 import { join as join32, resolve as resolve4 } from "path";
 
 // src/orchestrate-templates.ts
@@ -17873,7 +17929,7 @@ var SMALL_WORKLIST = 3;
 var BATCH_SIZE = 8;
 function readJson2(path) {
   try {
-    return JSON.parse(readFileSync21(path, "utf8"));
+    return JSON.parse(readFileSync22(path, "utf8"));
   } catch {
     return void 0;
   }

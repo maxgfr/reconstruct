@@ -14,7 +14,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.14.0";
+    ENGINE_VERSION = "2.15.0";
     SCHEMA_VERSION = 4;
     EXTRACTOR_VERSION = 10;
   }
@@ -10303,7 +10303,7 @@ __export(mcp_exports, {
   toCacheMap: () => toCacheMap,
   warmGrammarsForRepo: () => warmGrammarsForRepo
 });
-import { statSync as statSync4 } from "fs";
+import { readFileSync as readFileSync6, statSync as statSync4 } from "fs";
 import { join as join14 } from "path";
 import { createInterface } from "readline";
 function str(v) {
@@ -10357,6 +10357,57 @@ function toCacheMap(scan2) {
   for (const f of scan2.files) m.set(f.rel, { hash: f.hash, record: f, size: f.size, mtimeMs: scan2.mtimes.get(f.rel) });
   return m;
 }
+function readPersistedIndex(repo) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync6(join14(repo, ".codeindex", "cache.json"), "utf8"));
+  } catch {
+    return void 0;
+  }
+  if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || parsed.extractorVersion !== EXTRACTOR_VERSION || !parsed.files) {
+    return void 0;
+  }
+  const cacheMap = new Map(Object.entries(parsed.files));
+  const meta = {
+    engineVersion: parsed.engineVersion,
+    commit: parsed.commit,
+    graphSha1: parsed.graphSha1,
+    symbolsSha1: parsed.symbolsSha1
+  };
+  return { cacheMap, meta };
+}
+function preloadArtifacts(repo, scan2, meta) {
+  if (!scan2.contentUnchanged || meta.engineVersion !== ENGINE_VERSION || meta.commit !== scan2.commit || meta.graphSha1 === void 0 || meta.symbolsSha1 === void 0) {
+    return void 0;
+  }
+  const dir = join14(repo, ".codeindex");
+  let graphBytes;
+  let symbolsBytes;
+  try {
+    graphBytes = readFileSync6(join14(dir, "graph.json"));
+    symbolsBytes = readFileSync6(join14(dir, "symbols.json"));
+  } catch {
+    return void 0;
+  }
+  if (sha1(graphBytes) !== meta.graphSha1 || sha1(symbolsBytes) !== meta.symbolsSha1) {
+    return void 0;
+  }
+  try {
+    const graph = JSON.parse(graphBytes.toString("utf8"));
+    const symbols = JSON.parse(symbolsBytes.toString("utf8"));
+    if (graph.schemaVersion !== SCHEMA_VERSION || symbols.schemaVersion !== SCHEMA_VERSION) return void 0;
+    return { scan: scan2, graph, symbols };
+  } catch {
+    return void 0;
+  }
+}
+function preloadSession(repo, opts) {
+  const persisted = readPersistedIndex(repo);
+  if (!persisted) return void 0;
+  const scan2 = scanRepo(repo, { ...opts, cache: persisted.cacheMap });
+  const arts = preloadArtifacts(repo, scan2, persisted.meta);
+  return { scan: scan2, cacheMap: toCacheMap(scan2), arts };
+}
 function getScan(repo, opts = {}) {
   const key = sessionKey(repo, opts);
   if (sessionCache && sessionCache.key === key) {
@@ -10368,6 +10419,11 @@ function getScan(repo, opts = {}) {
     }
     sessionCache = { key, scan: fresh, cacheMap: toCacheMap(fresh) };
     return fresh;
+  }
+  const preloaded = preloadSession(repo, opts);
+  if (preloaded) {
+    sessionCache = { key, scan: preloaded.scan, cacheMap: preloaded.cacheMap, arts: preloaded.arts };
+    return preloaded.scan;
   }
   const scan2 = scanRepo(repo, opts);
   sessionCache = { key, scan: scan2, cacheMap: toCacheMap(scan2) };
@@ -11450,7 +11506,7 @@ init_util();
 init_types();
 init_types();
 init_loader();
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, mkdtempSync, readFileSync as readFileSync6, renameSync, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, mkdtempSync, readFileSync as readFileSync7, renameSync, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
 import { dirname as dirname4, join as join15, resolve as resolve2 } from "path";
 init_pipeline();
 init_hash();
@@ -11651,7 +11707,7 @@ async function runCli(argv) {
     let cache;
     let meta = {};
     try {
-      const parsed = JSON.parse(readFileSync6(cachePath, "utf8"));
+      const parsed = JSON.parse(readFileSync7(cachePath, "utf8"));
       if (parsed.schemaVersion === SCHEMA_VERSION && parsed.extractorVersion === EXTRACTOR_VERSION) {
         cache = new Map(Object.entries(parsed.files));
         meta = {
@@ -11672,7 +11728,7 @@ async function runCli(argv) {
     const embedPath = join15(outDir, "embeddings.bin");
     const artifactSha = (path) => {
       try {
-        return sha1(readFileSync6(path));
+        return sha1(readFileSync7(path));
       } catch {
         return void 0;
       }
@@ -11922,7 +11978,7 @@ async function runCli(argv) {
       if (existsSync4(runtime) && expected && existsSync4(markerPath)) {
         let marker = "";
         try {
-          marker = readFileSync6(markerPath, "utf8").trim();
+          marker = readFileSync7(markerPath, "utf8").trim();
         } catch {
         }
         if (marker === expected) {
@@ -11975,7 +12031,7 @@ async function runCli(argv) {
     }
   } else if (cmd === "rules") {
     if (!flags2.config) throw new Error("rules needs --config <codeindex.rules.json>");
-    const rules = parseRules(JSON.parse(readFileSync6(flags2.config, "utf8")));
+    const rules = parseRules(JSON.parse(readFileSync7(flags2.config, "utf8")));
     const { graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2, precomputedWalk));
     const violations = checkRules(graph, rules);
     const errors = violations.filter((v) => v.severity === "error").length;
