@@ -1,4 +1,4 @@
-declare const ENGINE_VERSION = "2.15.0";
+declare const ENGINE_VERSION = "2.16.0";
 declare const SCHEMA_VERSION = 4;
 declare const EXTRACTOR_VERSION = 10;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
@@ -255,7 +255,7 @@ declare function extractAst(rel: string, ext: string, content: string, opts?: {
     maxCalls?: number;
 }): AstResult | undefined;
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.15.0/grammars-2.15.0.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.16.0/grammars-2.16.0.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -265,6 +265,38 @@ declare function fetchGrammarsTarball(url: string, expectedSha256?: string): Pro
 declare function fetchExpectedSha256(url: string): Promise<string>;
 declare function extractTarInto(rawTar: Uint8Array, destDir: string): string[];
 declare function extractGrammarsTarball(bytes: Uint8Array, destDir: string): string[];
+interface GrammarsPullResult {
+    ok: boolean;
+    status: "up-to-date" | "pulled" | "failed";
+    cacheDir: string;
+    /** One human-readable line; the CLI writes it to stderr, a library caller may log or drop it. */
+    message: string;
+}
+declare function pullGrammars(cacheDir: string, opts?: {
+    onNote?: (msg: string) => void;
+}): Promise<GrammarsPullResult>;
+
+interface WarmGrammarsResult {
+    /** Tier AFTER the warm-up (a successful pull moves "none" → "cache"). */
+    tier: GrammarsTierName;
+    /** True when at least one requested grammar is loaded ⇒ the AST tier is live. */
+    ready: boolean;
+    /** True when this call populated the shared cache over the network. */
+    pulled: boolean;
+    /** Everything written to `onNote`, in order — so a caller can persist the trail in its run artifacts. */
+    notes: string[];
+}
+interface WarmGrammarsOptions {
+    /** Grammars to load. Default: every shipped grammar. Narrow it with `grammarKeysForExts` when the repo's languages are known. */
+    keys?: Iterable<string>;
+    /** Fetch the wasms into the shared cache when nothing is resolvable. Default true; `CODEINDEX_NO_GRAMMARS_PULL=1` forces false. */
+    pull?: boolean;
+    /** Prefix for the diagnostics ("ultrasec: …"). Default "codeindex". */
+    label?: string;
+    /** Where diagnostics go. Default: process.stderr. Pass a sink to keep stdout/stderr clean. */
+    onNote?: (msg: string) => void;
+}
+declare function warmGrammars(opts?: WarmGrammarsOptions): Promise<WarmGrammarsResult>;
 
 type Resolution = {
     kind: "resolved";
@@ -747,4 +779,4 @@ declare function rrf<T>(lists: T[][], keyOf: (item: T) => string, k?: number): M
 
 declare function runCli(argv: string[]): Promise<void>;
 
-export { type ArchRule, type BuildIndexOptions, type BuiltinRule, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type CodeInfo, type CodeSymbol, type CouplingOptions, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DiffFile, type DiffSpec, EMBED_VERSION, ENGINE_VERSION, EXTRACTOR_VERSION, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type Hotspot, type Hunk, type IgnoreRule, type IndexArtifacts, MARKDOWN_EXT, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type RawCallerIndex, type RawCallerSite, type RawRef, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolIndex, type SymbolMatch, type SymbolReferences, type TestMap, type Tier, type WalkOptions, type WalkResult, type WalkedFile, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolIndex, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, communityOf, compileGlobs, complexityOfSource, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, deleteMemory, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractGrammarsTarball, extractMarkdown, extractSymbols, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, findDeadCode, findReferences, findSymbol, foldText, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keywords, languageOf, listMemories, loadEmbedModel, pagerankOf, parseGitignore, parseRules, probeEndpoint, quantize, rankHotspots, rankedKeywords, readMemory, readText, renderGraphJson, renderMermaid, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveUniqueSymbol, riskHotspots, roundHalfToEven, rrf, runCli, runMcpServer, scanRepo, searchIndex, searchSemantic, serializeEmbeddings, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, subtokens, symbolComplexity, symbolsOverview, testsForModule, tierForPath, tokenize, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, wordpiece, writeMemory };
+export { type ArchRule, type BuildIndexOptions, type BuiltinRule, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type CodeInfo, type CodeSymbol, type CouplingOptions, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DiffFile, type DiffSpec, EMBED_VERSION, ENGINE_VERSION, EXTRACTOR_VERSION, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type Hotspot, type Hunk, type IgnoreRule, type IndexArtifacts, MARKDOWN_EXT, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type RawCallerIndex, type RawCallerSite, type RawRef, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolIndex, type SymbolMatch, type SymbolReferences, type TestMap, type Tier, type WalkOptions, type WalkResult, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolIndex, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, communityOf, compileGlobs, complexityOfSource, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, deleteMemory, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractGrammarsTarball, extractMarkdown, extractSymbols, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, findDeadCode, findReferences, findSymbol, foldText, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keywords, languageOf, listMemories, loadEmbedModel, pagerankOf, parseGitignore, parseRules, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readMemory, readText, renderGraphJson, renderMermaid, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveUniqueSymbol, riskHotspots, roundHalfToEven, rrf, runCli, runMcpServer, scanRepo, searchIndex, searchSemantic, serializeEmbeddings, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, subtokens, symbolComplexity, symbolsOverview, testsForModule, tierForPath, tokenize, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, warmGrammars, wordpiece, writeMemory };

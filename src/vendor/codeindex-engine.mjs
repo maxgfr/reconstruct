@@ -14,7 +14,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.15.0";
+    ENGINE_VERSION = "2.16.0";
     SCHEMA_VERSION = 4;
     EXTRACTOR_VERSION = 10;
   }
@@ -8259,7 +8259,7 @@ var init_query = __esm({
 });
 
 // src/edit.ts
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "fs";
 import { join as join9 } from "path";
 function resolveUniqueSymbol(scan2, namePath, file) {
   let matches = findSymbol(scan2, namePath);
@@ -8273,7 +8273,7 @@ function resolveUniqueSymbol(scan2, namePath, file) {
   throw new Error(`"${namePath}" is ambiguous (${matches.length} matches: ${list}) \u2014 qualify with \`file\` or a Parent/name path`);
 }
 function readLines(abs) {
-  return readFileSync3(abs, "utf8").split("\n");
+  return readFileSync4(abs, "utf8").split("\n");
 }
 function replaceSymbolBody(scan2, namePath, body2, file) {
   const sym = resolveUniqueSymbol(scan2, namePath, file);
@@ -8317,7 +8317,7 @@ var init_edit = __esm({
 });
 
 // src/memory.ts
-import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync4, rmSync, statSync as statSync2, writeFileSync as writeFileSync3 } from "fs";
+import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync5, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync3 } from "fs";
 import { dirname as dirname3, join as join10 } from "path";
 function sanitize(name2) {
   const clean = name2.replace(/^mem:/, "").replace(/\.md$/, "");
@@ -8342,7 +8342,7 @@ function writeMemory(repo, name2, content) {
 }
 function readMemory(repo, name2) {
   try {
-    return readFileSync4(memoryPath(repo, name2), "utf8");
+    return readFileSync5(memoryPath(repo, name2), "utf8");
   } catch {
     return void 0;
   }
@@ -8354,7 +8354,7 @@ function deleteMemory(repo, name2) {
   } catch {
     return false;
   }
-  rmSync(path);
+  rmSync2(path);
   return true;
 }
 function listMemories(repo) {
@@ -8384,7 +8384,7 @@ var init_memory = __esm({
 });
 
 // src/workspaces.ts
-import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync3 } from "fs";
+import { existsSync as existsSync3, readdirSync as readdirSync3, statSync as statSync3 } from "fs";
 import { join as join11 } from "path";
 function readJson(path, label, warnings) {
   const raw = readText(path);
@@ -8437,7 +8437,7 @@ function wsGlobToRegExp(pat) {
 }
 function probeNodePkg(root, dir, kind, warnings) {
   const path = join11(root, dir, "package.json");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   const manifest = `${dir}/package.json`;
   const pkg = readJson(path, manifest, warnings);
   const out2 = {
@@ -8451,7 +8451,7 @@ function probeNodePkg(root, dir, kind, warnings) {
 }
 function probeCargo(root, dir) {
   const path = join11(root, dir, "Cargo.toml");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   const body2 = tomlSectionBody(readText(path), "package");
   const out2 = {
     name: tomlString(body2, "name") ?? dir,
@@ -8465,18 +8465,18 @@ function probeCargo(root, dir) {
 }
 function probeGoMod(root, dir) {
   const path = join11(root, dir, "go.mod");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   const name2 = readText(path).match(/^module\s+(\S+)/m)?.[1] ?? dir;
   return { name: name2, dir, kind: "go", manifest: `${dir}/go.mod` };
 }
 function probeMaven(root, dir) {
   const path = join11(root, dir, "pom.xml");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   return { name: ownArtifactId(readText(path)) ?? dir, dir, kind: "maven", manifest: `${dir}/pom.xml` };
 }
 function probePyproject(root, dir) {
   const path = join11(root, dir, "pyproject.toml");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   const toml = readText(path);
   const project = tomlSectionBody(toml, "project");
   const poetry = tomlSectionBody(toml, "tool.poetry");
@@ -8492,7 +8492,7 @@ function probePyproject(root, dir) {
 }
 function probeComposer(root, dir, warnings) {
   const path = join11(root, dir, "composer.json");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   const manifest = `${dir}/composer.json`;
   const pkg = readJson(path, manifest, warnings);
   const out2 = {
@@ -8506,7 +8506,7 @@ function probeComposer(root, dir, warnings) {
 }
 function probeNxProject(root, dir, warnings) {
   const path = join11(root, dir, "project.json");
-  if (!existsSync2(path)) return void 0;
+  if (!existsSync3(path)) return void 0;
   const manifest = `${dir}/project.json`;
   const proj = readJson(path, manifest, warnings);
   return {
@@ -8518,7 +8518,7 @@ function probeNxProject(root, dir, warnings) {
 }
 function probeGradle(root, dir) {
   for (const f of ["build.gradle", "build.gradle.kts"]) {
-    if (existsSync2(join11(root, dir, f))) {
+    if (existsSync3(join11(root, dir, f))) {
       return { name: dir, dir, kind: "gradle", manifest: `${dir}/${f}` };
     }
   }
@@ -9565,7 +9565,7 @@ var init_grep = __esm({
 
 // src/embed/model.ts
 import { createHash as createHash3 } from "crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync5 } from "fs";
+import { existsSync as existsSync4, readFileSync as readFileSync6 } from "fs";
 import { join as join13 } from "path";
 function resolveEmbedModelDir(repo) {
   const env = process.env.CODEINDEX_EMBED_DIR;
@@ -9574,7 +9574,7 @@ function resolveEmbedModelDir(repo) {
   if (repo) candidates.push(join13(repo, ".codeindex", DEFAULT_EMBED_DIRNAME));
   candidates.push(join13(process.cwd(), ".codeindex", DEFAULT_EMBED_DIRNAME));
   for (const c2 of candidates) {
-    if (existsSync3(join13(c2, "model.json"))) return c2;
+    if (existsSync4(join13(c2, "model.json"))) return c2;
   }
   return void 0;
 }
@@ -9608,8 +9608,8 @@ function parseEmbedModel(raw, source) {
 function loadEmbedModel(dir) {
   if (!dir) return void 0;
   const path = join13(dir, "model.json");
-  if (!existsSync3(path)) return void 0;
-  const raw = JSON.parse(readFileSync5(path, "utf8"));
+  if (!existsSync4(path)) return void 0;
+  const raw = JSON.parse(readFileSync6(path, "utf8"));
   return parseEmbedModel(raw, path);
 }
 function resolveEmbedPullUrl() {
@@ -10303,7 +10303,7 @@ __export(mcp_exports, {
   toCacheMap: () => toCacheMap,
   warmGrammarsForRepo: () => warmGrammarsForRepo
 });
-import { readFileSync as readFileSync6, statSync as statSync4 } from "fs";
+import { readFileSync as readFileSync7, statSync as statSync4 } from "fs";
 import { join as join14 } from "path";
 import { createInterface } from "readline";
 function str(v) {
@@ -10360,7 +10360,7 @@ function toCacheMap(scan2) {
 function readPersistedIndex(repo) {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync6(join14(repo, ".codeindex", "cache.json"), "utf8"));
+    parsed = JSON.parse(readFileSync7(join14(repo, ".codeindex", "cache.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -10384,8 +10384,8 @@ function preloadArtifacts(repo, scan2, meta) {
   let graphBytes;
   let symbolsBytes;
   try {
-    graphBytes = readFileSync6(join14(dir, "graph.json"));
-    symbolsBytes = readFileSync6(join14(dir, "symbols.json"));
+    graphBytes = readFileSync7(join14(dir, "graph.json"));
+    symbolsBytes = readFileSync7(join14(dir, "symbols.json"));
   } catch {
     return void 0;
   }
@@ -11130,8 +11130,8 @@ init_loader();
 // src/ast/grammars-pull.ts
 init_types();
 import { createHash as createHash2 } from "crypto";
-import { mkdirSync, writeFileSync } from "fs";
-import { dirname as dirname2, resolve, sep as sep2 } from "path";
+import { existsSync as existsSync2, mkdirSync, mkdtempSync, readFileSync as readFileSync3, renameSync, rmSync, writeFileSync } from "fs";
+import { dirname as dirname2, join as join3, resolve, sep as sep2 } from "path";
 import { gunzipSync } from "zlib";
 var DEFAULT_GRAMMARS_URL = `https://github.com/maxgfr/codeindex/releases/download/v${ENGINE_VERSION}/grammars-${ENGINE_VERSION}.tar.gz`;
 function resolveGrammarsPullTarget() {
@@ -11222,6 +11222,109 @@ function extractGrammarsTarball(bytes, destDir) {
   const b = asBuffer(bytes);
   const raw = b.length >= 2 && b[0] === 31 && b[1] === 139 ? gunzipSync(b) : b;
   return extractTarInto(raw, destDir);
+}
+async function pullGrammars(cacheDir, opts = {}) {
+  const note = opts.onNote ?? (() => {
+  });
+  const target = resolveGrammarsPullTarget();
+  let expected;
+  if (target.sha256Url) {
+    try {
+      expected = await fetchExpectedSha256(target.sha256Url);
+    } catch (e) {
+      note(`codeindex: could not fetch checksum (${e instanceof Error ? e.message : String(e)}) \u2014 proceeding unverified
+`);
+    }
+  }
+  const runtime = join3(cacheDir, "web-tree-sitter.wasm");
+  const markerPath = join3(dirname2(cacheDir), `${ENGINE_VERSION}.sha256`);
+  if (existsSync2(runtime) && expected && existsSync2(markerPath)) {
+    let marker = "";
+    try {
+      marker = readFileSync3(markerPath, "utf8").trim();
+    } catch {
+    }
+    if (marker === expected) {
+      return { ok: true, status: "up-to-date", cacheDir, message: `codeindex: grammars already present at ${cacheDir} (up to date)
+` };
+    }
+  }
+  note(`codeindex: fetching grammars from ${target.url} \u2192 ${cacheDir}
+`);
+  let bytes;
+  try {
+    bytes = await fetchGrammarsTarball(target.url, expected);
+  } catch (e) {
+    return {
+      ok: false,
+      status: "failed",
+      cacheDir,
+      message: `codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
+`
+    };
+  }
+  let tmp;
+  try {
+    mkdirSync(dirname2(cacheDir), { recursive: true });
+    tmp = mkdtempSync(join3(dirname2(cacheDir), ".grammars-tmp-"));
+    extractGrammarsTarball(bytes, tmp);
+    if (!existsSync2(join3(tmp, "web-tree-sitter.wasm"))) {
+      throw new Error("archive is missing web-tree-sitter.wasm");
+    }
+    if (existsSync2(cacheDir)) rmSync(cacheDir, { recursive: true, force: true });
+    renameSync(tmp, cacheDir);
+    tmp = void 0;
+    if (expected) writeFileSync(markerPath, expected + "\n");
+  } catch (e) {
+    if (tmp) {
+      try {
+        rmSync(tmp, { recursive: true, force: true });
+      } catch {
+      }
+    }
+    return {
+      ok: false,
+      status: "failed",
+      cacheDir,
+      message: `codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
+`
+    };
+  }
+  return { ok: true, status: "pulled", cacheDir, message: `codeindex: grammars extracted \u2192 ${cacheDir}
+` };
+}
+
+// src/ast/warm.ts
+init_loader();
+async function warmGrammars(opts = {}) {
+  const label = opts.label ?? "codeindex";
+  const notes = [];
+  const note = (msg) => {
+    notes.push(msg);
+    if (opts.onNote) opts.onNote(msg);
+    else process.stderr.write(msg);
+  };
+  const noPull = process.env.CODEINDEX_NO_GRAMMARS_PULL;
+  const mayPull = (opts.pull ?? true) && !(noPull && noPull.trim() && noPull !== "0");
+  const keys = [...opts.keys ?? allGrammarKeys()];
+  let pulled = false;
+  if (resolveGrammarsTier().tier === "none" && mayPull) {
+    note(`${label}: tree-sitter grammars not found locally \u2014 pulling them into the shared cache (once per machine)\u2026
+`);
+    const res = await pullGrammars(sharedGrammarsCacheDir(), { onNote: note });
+    note(res.message);
+    pulled = res.ok && res.status === "pulled";
+  }
+  await ensureGrammars(keys);
+  const tier = resolveGrammarsTier().tier;
+  const ready = keys.some((k) => grammarReady(k));
+  if (!ready) {
+    note(
+      `${label}: no tree-sitter grammars available (offline?) \u2014 extracting with the regex tier, so symbols and call sites are less precise. Run \`codeindex grammars pull\` once online to enable AST precision.
+`
+    );
+  }
+  return { tier, ready, pulled, notes };
 }
 
 // src/engine.ts
@@ -11506,8 +11609,8 @@ init_util();
 init_types();
 init_types();
 init_loader();
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, mkdtempSync, readFileSync as readFileSync7, renameSync, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
-import { dirname as dirname4, join as join15, resolve as resolve2 } from "path";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync8, writeFileSync as writeFileSync4 } from "fs";
+import { join as join15, resolve as resolve2 } from "path";
 init_pipeline();
 init_hash();
 init_graph_json();
@@ -11687,7 +11790,7 @@ async function runCli(argv) {
     return;
   }
   const flags2 = parseFlags(rest);
-  if (!existsSync4(flags2.repo)) throw new Error(`--repo path does not exist: ${flags2.repo}`);
+  if (!existsSync5(flags2.repo)) throw new Error(`--repo path does not exist: ${flags2.repo}`);
   const scans = !SCANLESS_COMMANDS.has(cmd) && !(cmd === "embed" && flags2.positional !== "build");
   let precomputedWalk;
   if (scans && !flags2.noAst) {
@@ -11707,7 +11810,7 @@ async function runCli(argv) {
     let cache;
     let meta = {};
     try {
-      const parsed = JSON.parse(readFileSync7(cachePath, "utf8"));
+      const parsed = JSON.parse(readFileSync8(cachePath, "utf8"));
       if (parsed.schemaVersion === SCHEMA_VERSION && parsed.extractorVersion === EXTRACTOR_VERSION) {
         cache = new Map(Object.entries(parsed.files));
         meta = {
@@ -11728,7 +11831,7 @@ async function runCli(argv) {
     const embedPath = join15(outDir, "embeddings.bin");
     const artifactSha = (path) => {
       try {
-        return sha1(readFileSync7(path));
+        return sha1(readFileSync8(path));
       } catch {
         return void 0;
       }
@@ -11948,7 +12051,7 @@ async function runCli(argv) {
     const cacheDir = sharedGrammarsCacheDir();
     if (sub === "status") {
       const info2 = resolveGrammarsTier();
-      const runtimePresent = info2.dir ? existsSync4(join15(info2.dir, "web-tree-sitter.wasm")) : false;
+      const runtimePresent = info2.dir ? existsSync5(join15(info2.dir, "web-tree-sitter.wasm")) : false;
       const target = resolveGrammarsPullTarget();
       const status = {
         engineVersion: ENGINE_VERSION,
@@ -11961,77 +12064,15 @@ async function runCli(argv) {
       };
       emit(JSON.stringify(status, null, 2) + "\n", flags2.out);
     } else if (sub === "pull") {
-      const target = resolveGrammarsPullTarget();
-      let expected;
-      if (target.sha256Url) {
-        try {
-          expected = await fetchExpectedSha256(target.sha256Url);
-        } catch (e) {
-          process.stderr.write(
-            `codeindex: could not fetch checksum (${e instanceof Error ? e.message : String(e)}) \u2014 proceeding unverified
-`
-          );
-        }
-      }
-      const runtime = join15(cacheDir, "web-tree-sitter.wasm");
-      const markerPath = join15(dirname4(cacheDir), `${ENGINE_VERSION}.sha256`);
-      if (existsSync4(runtime) && expected && existsSync4(markerPath)) {
-        let marker = "";
-        try {
-          marker = readFileSync7(markerPath, "utf8").trim();
-        } catch {
-        }
-        if (marker === expected) {
-          process.stderr.write(`codeindex: grammars already present at ${cacheDir} (up to date)
-`);
-          return;
-        }
-      }
-      process.stderr.write(`codeindex: fetching grammars from ${target.url} \u2192 ${cacheDir}
-`);
-      let bytes;
-      try {
-        bytes = await fetchGrammarsTarball(target.url, expected);
-      } catch (e) {
-        process.stderr.write(`codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
-`);
-        process.exitCode = 1;
-        return;
-      }
-      let tmp;
-      try {
-        mkdirSync3(dirname4(cacheDir), { recursive: true });
-        tmp = mkdtempSync(join15(dirname4(cacheDir), ".grammars-tmp-"));
-        extractGrammarsTarball(bytes, tmp);
-        if (!existsSync4(join15(tmp, "web-tree-sitter.wasm"))) {
-          throw new Error("archive is missing web-tree-sitter.wasm");
-        }
-        if (existsSync4(cacheDir)) rmSync2(cacheDir, { recursive: true, force: true });
-        renameSync(tmp, cacheDir);
-        tmp = void 0;
-        if (expected) writeFileSync4(markerPath, expected + "\n");
-      } catch (e) {
-        if (tmp) {
-          try {
-            rmSync2(tmp, { recursive: true, force: true });
-          } catch {
-          }
-        }
-        process.stderr.write(
-          `codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
-`
-        );
-        process.exitCode = 1;
-        return;
-      }
-      process.stderr.write(`codeindex: grammars extracted \u2192 ${cacheDir}
-`);
+      const res = await pullGrammars(cacheDir, { onNote: (m) => process.stderr.write(m) });
+      process.stderr.write(res.message);
+      if (!res.ok) process.exitCode = 1;
     } else {
       throw new Error("grammars needs a subcommand: status | pull");
     }
   } else if (cmd === "rules") {
     if (!flags2.config) throw new Error("rules needs --config <codeindex.rules.json>");
-    const rules = parseRules(JSON.parse(readFileSync7(flags2.config, "utf8")));
+    const rules = parseRules(JSON.parse(readFileSync8(flags2.config, "utf8")));
     const { graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2, precomputedWalk));
     const violations = checkRules(graph, rules);
     const errors = violations.filter((v) => v.severity === "error").length;
@@ -12182,6 +12223,7 @@ export {
   parseGitignore,
   parseRules,
   probeEndpoint,
+  pullGrammars,
   quantize,
   rankHotspots,
   rankedKeywords,
@@ -12228,6 +12270,7 @@ export {
   untestedModules,
   untrackedFiles,
   walk,
+  warmGrammars,
   wordpiece,
   writeMemory
 };
