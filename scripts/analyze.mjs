@@ -14873,7 +14873,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
 }
 
 // src/types.ts
-var VERSION = "2.5.0";
+var VERSION = "2.6.0";
 
 // src/analyze.ts
 function computeUnknowns(stack, routes, hints, workspaces) {
