@@ -140,6 +140,7 @@ jobs:
           LATEST: ${{ steps.detect.outputs.latest }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          git rebase --abort 2>/dev/null || true
           BRANCH="repin/${LATEST}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
