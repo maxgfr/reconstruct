@@ -4,9 +4,8 @@ name: Engine re-pin
 # rebuild it, run the same gate the CI/release workflows run, and — only if
 # every gate is green — push straight to main and kick off release.yml
 # ourselves (a bot push does not trigger other workflows on its own). If any
-# gate fails, the synced-but-unreviewed state still gets pushed to a branch
-# and opened as a PR so a human can adjudicate the golden diffs; this job
-# never regenerates a golden/snapshot itself.
+# gate fails, nothing is pushed and no PR is opened — the run just fails
+# and the next daily cron retries; a red run is the signal to investigate.
 on:
   schedule:
     - cron: "52 6 * * *"
@@ -15,7 +14,6 @@ on:
 permissions:
   contents: write
   actions: write
-  pull-requests: write
 
 concurrency: engine-repin
 
@@ -133,32 +131,3 @@ jobs:
       - name: Trigger ci.yml
         if: steps.detect.outputs.up_to_date != 'true'
         run: gh workflow run ci.yml --ref main
-
-      - name: On gate failure — push adjudication branch and open a PR
-        if: failure() && steps.push.outputs.pushed != 'true' && steps.detect.outputs.latest != ''
-        env:
-          LATEST: ${{ steps.detect.outputs.latest }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          git rebase --abort 2>/dev/null || true
-          BRANCH="repin/${LATEST}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          if ! git diff --cached --quiet || ! git diff --quiet; then
-            git add -A
-            git commit -m "chore(engine): re-pin codeindex ${LATEST} [gates failed]" -m "Automated sync only — gates failed, see ${RUN_URL}."
-          fi
-          git push origin "$BRANCH" --force-with-lease
-
-          EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
-          if [ -z "$EXISTING" ]; then
-            BODY=$(printf 'Automated re-pin to %s failed one or more gates: %s\n\nDoctrine: classify every golden diff (A1 harmless / A2 expected-behavior-change / A3 engine-bug) before regenerating any golden or snapshot — this job never regenerates one itself. If the engine is behaving incorrectly, file an issue against maxgfr/codeindex instead of adjusting the golden to match.' "$LATEST" "$RUN_URL")
-            gh pr create \
-              --title "engine re-pin ${LATEST}: gates failed — manual adjudication needed" \
-              --base main \
-              --head "$BRANCH" \
-              --body "$BODY"
-          else
-            echo "PR #$EXISTING already open for $BRANCH — not duplicating."
-          fi
