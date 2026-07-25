@@ -1,0 +1,10 @@
+{
+  "productName": "tauri-app",
+  "identifier": "com.example.tauriapp",
+  "build": { "frontendDist": "../dist", "beforeDevCommand": "vite" },
+  "app": {
+    "windows": [{ "title": "Tauri App", "width": 900, "height": 700, "resizable": true }],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": ["dmg", "msi", "appimage"] }
+}

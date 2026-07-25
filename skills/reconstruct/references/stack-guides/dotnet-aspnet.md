@@ -1,9 +1,13 @@
 # .NET / ASP.NET Core
 
-**When:** the repo has `*.csproj` / `*.sln`, `Program.cs`, `appsettings.json`. Note the engine
-detects the **`C#` language only** — there is no .NET framework signal and no route adapter, so
-`stack.frameworks` will be empty and `routes` will be `0`. That is expected: identify the stack
-yourself, record it in `00-overview/PRD.md` and `ARCHITECTURE.md`, and build the surface by hand.
+**When:** `inventory.stack.frameworks` lists `ASP.NET Core` — detected from a `*.csproj` with the
+`Microsoft.NET.Sdk.Web` SDK, or a `Program.cs` calling `WebApplication.CreateBuilder`. Look for
+`*.sln`, `appsettings.json`, `Controllers/`.
+
+**Routes are resolved deterministically** for both paradigms: Minimal APIs (with `MapGroup`
+prefixes composed transitively) and attribute-routed controllers (with the `[controller]` token
+expanded from the class name). Verify them against source as always, and note the two things the
+adapter deliberately does **not** resolve — see Gotchas.
 
 Since .NET 6, `Program.cs` is usually top-level statements with a `WebApplicationBuilder`. Older
 projects (and many enterprise ones) still have `Startup.cs` with `ConfigureServices` +
@@ -90,8 +94,11 @@ Almost always **Entity Framework Core**:
 
 ## Gotchas
 
-- **The engine detects nothing here.** `frameworks: []` and `routes: 0` are not a bug — say so
-  in `ARCHITECTURE.md` and build the tables by hand. `hints.routeCandidates` will be sparse.
+- **Two things the route adapter does not resolve**, by design — fill them in by hand:
+  **conventional routing** (`MapControllerRoute` with a `{controller}/{action}/{id?}` pattern:
+  there is no per-action template to read, so enumerate the actions and derive the URLs from the
+  pattern), and a controller with **no `[Route]` attribute** (conventionally routed — a guessed
+  path would be worse than none). `[action]` tokens are likewise left unexpanded.
 - **`[ApiController]` changes behaviour implicitly**: automatic 400 on invalid model state,
   inferred binding sources, and ProblemDetails error shape. A rebuild without the attribute
   behaves differently for every invalid request.

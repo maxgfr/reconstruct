@@ -61,6 +61,7 @@ Express API) — their routes merge.
 | `django`  | Django       | `urls.py` `path`/`re_path` (regex anchors stripped); `include("app.urls")` mounts resolved across modules |
 | `rails`   | Ruby on Rails| `config/routes.rb` verb routes + `root`; `resources` RESTful expansion (`only:`/`except:`); `namespace`/`scope` prefixes via `do`/`end` nesting |
 | `go`      | Gin, Echo, chi, Fiber | `<router>.GET("/x")` (both `GET`/`Get` casings) prefixed by `<child> := <parent>.Group("/p")` chains, resolved transitively |
+| `dotnet`  | ASP.NET Core | Minimal APIs `app.MapGet("/x")` with `var g = app.MapGroup("/p")` chains composed transitively; attribute-routed controllers `[Route("api/[controller]")]` + `[HttpGet("{id}")]` with the `[controller]` token expanded from the class name. Conventional routing and `[Route]`-less controllers are left to the agent |
 | `trpc`    | tRPC _(library)_ | procedures on `createTRPCRouter({…})` / `t.router({…})` resolved to dot-paths (`user.list`) with method QUERY/MUTATION/SUBSCRIPTION; nested routers composed across files. Activates on the `tRPC` **library** label, not a framework. Router composition it can't statically resolve (`mergeRouters`, spreads) stays an apiCandidate hint |
 
 **Deliberately deferred** (covered by the candidate hints + their stack guide

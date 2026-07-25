@@ -315,3 +315,43 @@ describe("trpc adapter", () => {
     expect(inv.routes.length).toBeGreaterThan(0);
   });
 });
+
+describe("dotnet adapter", () => {
+  const inv = analyze(opts("dotnet-api"));
+
+  it("detects ASP.NET Core from the csproj SDK", () => {
+    expect(inv.stack.frameworks).toContain("ASP.NET Core");
+    expect(inv.stack.languages).toContain("C#");
+  });
+
+  it("resolves a top-level Minimal API route", () => {
+    expect(hasRoute(inv.routes, "/health", "api", "Program.cs")).toBe(true);
+  });
+
+  it("prefixes Minimal API routes with their MapGroup path", () => {
+    // var todos = app.MapGroup("/api/todos") ; todos.MapGet("/") / MapPost("/")
+    expect(hasRoute(inv.routes, "/api/todos", "api", "Program.cs")).toBe(true);
+    expect(hasRoute(inv.routes, "/api/todos/{id}", "api", "Program.cs")).toBe(true);
+  });
+
+  it("expands the [controller] token from the class name", () => {
+    // [Route("api/[controller]")] on UsersController -> /api/users
+    expect(hasRoute(inv.routes, "/api/users", "api", "Controllers/UsersController.cs")).toBe(true);
+    expect(hasRoute(inv.routes, "/api/users/{id}", "api", "Controllers/UsersController.cs")).toBe(true);
+  });
+
+  it("keeps the HTTP verb as part of the operation identity", () => {
+    const users = inv.routes.filter((r) => r.route === "/api/users");
+    expect(users.map((r) => r.method).sort()).toEqual(["GET", "POST"]);
+    const todos = inv.routes.filter((r) => r.route === "/api/todos");
+    expect(todos.map((r) => r.method).sort()).toEqual(["GET", "POST"]);
+  });
+
+  it("resolves both paradigms in one repo without double-counting", () => {
+    expect(inv.routes).toHaveLength(8);
+  });
+
+  it("no longer reports the surface as unmapped", () => {
+    expect(inv.unknowns.join("\n")).not.toMatch(/No routes were resolved/);
+  });
+});

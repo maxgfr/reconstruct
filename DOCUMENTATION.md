@@ -302,7 +302,7 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 | i18n | [`src/adapters/i18n.ts`](./src/adapters/i18n.ts) | Locale detection and per-file translation-key counting. |
 
 Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Hono,
-Flask, FastAPI, NestJS, Django, Rails, Go, tRPC); every other stack's interface surface and data model are mapped by the **AI playbook**
+Flask, FastAPI, NestJS, Django, Rails, Go, ASP.NET Core, tRPC); every other stack's interface surface and data model are mapped by the **AI playbook**
 from the candidate hints — see [`references/analysis-playbook.md`](./skills/reconstruct/references/analysis-playbook.md)
 and the per-stack cheat-sheets in [`references/stack-guides/`](./skills/reconstruct/references/stack-guides), indexed by
 [`stack-guides/INDEX.md`](./skills/reconstruct/references/stack-guides/INDEX.md) (which maps each

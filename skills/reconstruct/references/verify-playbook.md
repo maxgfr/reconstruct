@@ -58,19 +58,30 @@ it can never read as full coverage:
 - `VERIFY.md`: a `> ⚠ **Partial coverage:**` banner
 - `VERIFY.todo.json`: `"coverage": { "total": 128, "kept": 60, "max": 60, "capped": true }`
 
-**Read `coverage` before you report anything.** If `capped` is true, either raise the cap and
-re-run —
+**A capped run does not pass the final gate.** `--check --semantic` measures coverage against
+**every** requirement in the PRDs, not against the worklist the run happened to show — so
+leaving the cap in place fails closed with the fix in the message:
+
+```
+--semantic: 68 of 128 requirement(s) were never offered for adjudication (C61, C62, …) —
+the --verify worklist was CAPPED, so the faithfulness gate only covered part of the tree.
+Re-run with `--max-verify 128` and adjudicate the rest
+```
+
+So the cap is a **batch size, not a coverage decision**: raise it and adjudicate the rest —
 
 ```bash
 node scripts/analyze.mjs --verify --max-verify 128 --out <OUT>
 ```
 
-— or say plainly in your final report which fraction of requirements the faithfulness gate
-actually covered. Silent partial coverage is the failure mode this field exists to prevent.
+— or, if you deliberately accept partial coverage, pass `--allow-unverified` (which downgrades
+it to a warning) and say plainly in your final report which fraction the gate actually covered.
+Silent partial coverage is the failure this design exists to prevent.
 
-The `--check --semantic` coverage gate re-derives the worklist **with the same cap the run
-used** (read back from `VERIFY.todo.json`), so raising the cap never desynchronises the two
-derivations.
+The gate distinguishes the two ways a requirement ends up unadjudicated, because the fixes
+differ: **never offered** (the cap — raise it) versus **offered but dropped** (verdict rows
+deleted before `--apply`, or a PRD edited after verification, which shifts claim ids — re-run
+`--verify`).
 
 ---
 
@@ -151,8 +162,9 @@ relaxation. Specifically it:
 - re-reduces the persisted verdicts (a hand-edited `ok: true` never passes);
 - re-resolves every cited `evidenceRef` against the inventory;
 - **fails closed** — a missing, unreadable, or 0-adjudication ledger is an *error*;
-- **re-derives the worklist** and fails closed on any expected requirement with no adjudicated
-  verdict, so deleting the inconvenient rows before `--apply` cannot buy a green gate;
+- **re-derives the FULL requirement set** and fails closed on any requirement with no
+  adjudicated verdict — whether it was dropped before `--apply` or never offered because the
+  worklist was capped;
 - warns on every `confidence: gap`.
 
 `--allow-unverified` downgrades the missing-ledger errors to warnings. Use it deliberately, and

@@ -121,18 +121,61 @@ describe("runVerify (requirement worklist)", () => {
   });
 });
 
-// The coverage gate re-derives the worklist to spot dropped verdict rows. It must
-// re-derive with the SAME cap the run used, or a --max-verify run would be compared
-// against a differently-sized pair set.
-describe("--check --semantic honours the cap the run actually used", () => {
-  it("passes when a capped run adjudicated exactly its own (capped) worklist", () => {
+// The faithfulness gate measures against EVERY requirement in the PRDs, not
+// against the (possibly capped) worklist the run happened to show — otherwise a
+// capped run would certify faithfulness while never looking at the remainder.
+describe("--check --semantic gates on FULL requirement coverage", () => {
+  const fold = (dir: string, opts: { allowUnverified?: boolean } = {}) => {
+    const check = { errors: [] as string[], warnings: [] as string[] } as any;
+    foldSemantic(dir, check, opts);
+    return check as { errors: string[]; warnings: string[] };
+  };
+
+  it("fails a capped run: the requirements beyond the cap were never offered", () => {
+    const dir = scratch();
+    tree(dir, PRD); // 3 requirements
+    runVerify(dir, { maxVerify: 2 }); // only 2 offered
+    applyVerdicts(dir, writeVerdicts(dir, {}));
+    const check = fold(dir);
+    expect(check.errors.join("\n")).toMatch(/never offered for adjudication/);
+    expect(check.errors.join("\n")).toMatch(/--max-verify 3/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("passes once the cap is raised to cover every requirement", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    runVerify(dir, { maxVerify: 99 });
+    applyVerdicts(dir, writeVerdicts(dir, {}));
+    const check = fold(dir);
+    expect(check.errors.join("\n")).not.toMatch(/never offered/);
+    expect(check.errors.join("\n")).not.toMatch(/have no adjudicated verdict/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("distinguishes a DROPPED verdict row from an un-offered one", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    runVerify(dir); // all 3 offered (default cap is 60)
+    const f = writeVerdicts(dir, {});
+    const parsed = JSON.parse(readFileSync(f, "utf8"));
+    parsed.pairs = parsed.pairs.slice(0, 2); // an agent drops the inconvenient row
+    writeFileSync(f, JSON.stringify(parsed));
+    applyVerdicts(dir, f);
+    const check = fold(dir);
+    expect(check.errors.join("\n")).toMatch(/the worklist DID offer/);
+    expect(check.errors.join("\n")).not.toMatch(/never offered/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("--allow-unverified downgrades partial coverage to a warning, never silence", () => {
     const dir = scratch();
     tree(dir, PRD);
     runVerify(dir, { maxVerify: 2 });
     applyVerdicts(dir, writeVerdicts(dir, {}));
-    const check = { errors: [] as string[], warnings: [] as string[] } as any;
-    foldSemantic(dir, check);
-    expect(check.errors.join("\n")).not.toMatch(/no adjudicated verdict/);
+    const check = fold(dir, { allowUnverified: true });
+    expect(check.errors.join("\n")).not.toMatch(/never offered/);
+    expect(check.warnings.join("\n")).toMatch(/never offered for adjudication/);
     rmSync(dir, { recursive: true, force: true });
   });
 });

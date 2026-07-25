@@ -289,6 +289,20 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
       if (/spring-boot/.test(safeRead(join(repo, gradle)))) frameworks.add("Spring Boot");
     }
   }
+  // .NET: the project SDK is the signal. `Microsoft.NET.Sdk.Web` is what makes a
+  // csproj an ASP.NET Core app (as opposed to a class library or console app);
+  // `WebApplication.CreateBuilder` covers a Program.cs whose csproj we did not
+  // walk to (a nested project). Without this the whole ecosystem was invisible:
+  // only the C# *language* was detected, so `frameworks` came back empty.
+  const csproj = files.find((f) => f.path.endsWith(".csproj"));
+  if (csproj) {
+    packageManagers.add("nuget");
+    const proj = safeRead(join(repo, csproj.path));
+    const program = files.find((f) => f.path.endsWith("Program.cs"));
+    if (/Microsoft\.NET\.Sdk\.Web/.test(proj) || (program && /WebApplication\s*\.\s*CreateBuilder/.test(safeRead(join(repo, program.path))))) {
+      frameworks.add("ASP.NET Core");
+    }
+  }
 
   return {
     languages,

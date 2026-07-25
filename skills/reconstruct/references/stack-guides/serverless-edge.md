@@ -35,6 +35,21 @@ Non-HTTP triggers are first-class operations — **do not skip them**: cron/sche
 (record the schedule expression **and its timezone**), queue consumers (batch size, visibility
 timeout, DLQ), object-storage events, stream consumers, webhooks.
 
+On Workers these live as **sibling exports next to `fetch`**, so a route table built from the
+router alone misses them entirely:
+
+```ts
+export default {
+  fetch: app.fetch,                                        // the HTTP surface
+  async scheduled(event: ScheduledController, env) {},     // one row per [triggers] crons entry
+  async queue(batch: MessageBatch, env) {},                // one row per [[queues.consumers]]
+};
+```
+
+Each of those is an `INTERFACES.md` row with its own trigger, payload type and failure/retry
+contract — `ScheduledController` carries the cron that fired, `MessageBatch` carries the batch
+and its per-message `retry()`/`ack()`.
+
 ## Data model
 
 Rarely a classic relational schema; capture what there is:

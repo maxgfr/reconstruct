@@ -102,11 +102,13 @@ The gate re-derives the worklist and refuses to pass on dropped rows. Either you
 before `--apply`, or you edited a PRD after verifying (which shifts claim ids). Re-run
 `--verify`, adjudicate the fresh worklist, `--apply` again.
 
-### "I verified everything but coverage looks low"
+### "N requirement(s) were never offered for adjudication"
 
-Read `VERIFY.todo.json`'s `coverage`. The worklist caps at 60 pairs; the rest were never
-adjudicated. Raise it — `--max-verify <total>` — or report the coverage you actually achieved.
-See [`verify-playbook.md`](./verify-playbook.md).
+The `--verify` worklist caps at 60 pairs, so the rest were never shown to you — and
+`--check --semantic` measures against **every** requirement, not just the ones offered. Raise the
+cap and adjudicate the rest (`--verify --max-verify <total>`), or accept partial coverage
+deliberately with `--allow-unverified` and state the real coverage in your report. The cap is a
+batch size, not a coverage decision. See [`verify-playbook.md`](./verify-playbook.md).
 
 ---
 
@@ -115,7 +117,8 @@ See [`verify-playbook.md`](./verify-playbook.md).
 ### 0 routes resolved
 
 Normal for many stacks. The engine resolves routes only for the frameworks with an adapter
-(Next.js, Express, Fastify, Hono, Flask, FastAPI, NestJS, Django, Rails, Go, tRPC). Everything
+(Next.js, Express, Fastify, Hono, Flask, FastAPI, NestJS, Django, Rails, Go, ASP.NET Core, tRPC).
+Everything
 else surfaces as `hints.routeCandidates` / `apiCandidates` for you to enumerate by hand —
 `inventory.unknowns` says so explicitly. Use the matching guide from
 [`stack-guides/INDEX.md`](./stack-guides/INDEX.md).

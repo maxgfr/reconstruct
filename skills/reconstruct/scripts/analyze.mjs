@@ -13244,6 +13244,15 @@ function detectStack(repo, files, warnings, labelBase = "") {
       if (/spring-boot/.test(safeRead(join19(repo, gradle)))) frameworks.add("Spring Boot");
     }
   }
+  const csproj = files.find((f) => f.path.endsWith(".csproj"));
+  if (csproj) {
+    packageManagers.add("nuget");
+    const proj = safeRead(join19(repo, csproj.path));
+    const program = files.find((f) => f.path.endsWith("Program.cs"));
+    if (/Microsoft\.NET\.Sdk\.Web/.test(proj) || program && /WebApplication\s*\.\s*CreateBuilder/.test(safeRead(join19(repo, program.path)))) {
+      frameworks.add("ASP.NET Core");
+    }
+  }
   return {
     languages,
     primaryLanguage: languages[0] ?? "Unknown",
@@ -14708,6 +14717,80 @@ var trpcAdapter = {
   }
 };
 
+// src/adapters/dotnet.ts
+var MAP_VERB_RE = /(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
+var MAP_METHODS_RE = /(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
+var MAP_GROUP_RE = /(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)\s*\.\s*MapGroup\(\s*(?:@?\$?)"([^"]*)"/g;
+var CLASS_ROUTE_RE = /\[\s*Route\(\s*(?:@?\$?)"([^"]*)"\s*\)\s*\]/g;
+var CLASS_DECL_RE = /\bclass\s+(\w+)\s*(?::|$|\s*\{)/gm;
+var ACTION_RE = /\[\s*Http(Get|Post|Put|Delete|Patch|Head|Options)(?:\(\s*(?:(?:@?\$?)"([^"]*)")?\s*\))?\s*\]/g;
+function expandTokens(template, className) {
+  const controller = className.replace(/Controller$/, "").toLowerCase();
+  return template.replace(/\[controller\]/gi, controller);
+}
+function classAt(decls, idx) {
+  let name2 = "";
+  for (const d of decls) {
+    if (d.index < idx) name2 = d.name;
+    else break;
+  }
+  return name2;
+}
+var dotnetAdapter = {
+  id: "dotnet",
+  frameworks: ["ASP.NET Core"],
+  detectRoutes(files, repo) {
+    const routes = [];
+    for (const [path, src] of readSources(files, repo, [".cs"])) {
+      const groups = /* @__PURE__ */ new Map();
+      for (const m of src.matchAll(MAP_GROUP_RE)) {
+        groups.set(m[1], { parent: m[2], seg: m[3] });
+      }
+      const groupPrefix = (v, seen = /* @__PURE__ */ new Set()) => {
+        const g = groups.get(v);
+        if (!g || seen.has(v)) return "";
+        seen.add(v);
+        return joinRoute(groupPrefix(g.parent, seen), g.seg);
+      };
+      for (const m of src.matchAll(MAP_VERB_RE)) {
+        routes.push({
+          route: joinRoute(groupPrefix(m[1]), m[3]),
+          file: path,
+          kind: "api",
+          method: m[2].toUpperCase()
+        });
+      }
+      for (const m of src.matchAll(MAP_METHODS_RE)) {
+        const verbs = [...m[3].matchAll(/"([A-Za-z]+)"/g)].map((v) => v[1].toUpperCase());
+        for (const method of verbs.length ? verbs : ["*"]) {
+          routes.push({ route: joinRoute(groupPrefix(m[1]), m[2]), file: path, kind: "api", method });
+        }
+      }
+      const decls = [...src.matchAll(CLASS_DECL_RE)].map((m) => ({ index: m.index ?? 0, name: m[1] }));
+      if (!decls.length) continue;
+      const classRoutes = [...src.matchAll(CLASS_ROUTE_RE)].map((m) => ({ index: m.index ?? 0, template: m[1] }));
+      for (const m of src.matchAll(ACTION_RE)) {
+        const idx = m.index ?? 0;
+        const className = classAt(decls, idx);
+        if (!className) continue;
+        let template = "";
+        for (const cr of classRoutes) {
+          if (cr.index < idx) template = cr.template;
+          else break;
+        }
+        if (!template) continue;
+        routes.push({
+          route: joinRoute(expandTokens(template, className), m[2] ?? ""),
+          file: path,
+          kind: "api",
+          method: m[1].toUpperCase()
+        });
+      }
+    }
+    return routes;
+  }
+};
+
 // src/adapters/registry.ts
 var ROUTE_ADAPTERS = [
   nextjsAdapter,
@@ -14720,7 +14803,8 @@ var ROUTE_ADAPTERS = [
   djangoAdapter,
   railsAdapter,
   goAdapter,
-  trpcAdapter
+  trpcAdapter,
+  dotnetAdapter
 ];
 function detectRoutes(files, stack, repo) {
   const active = ROUTE_ADAPTERS.filter(
@@ -15153,7 +15237,47 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
 var VERSION = "2.10.0";
 
 // src/analyze.ts
-function computeUnknowns(stack, routes, hints, workspaces) {
+var ROUTE_BEARING_FRAMEWORKS = /* @__PURE__ */ new Set([
+  "Next.js",
+  "Nuxt",
+  "Remix",
+  "React Router",
+  "SvelteKit",
+  "Astro",
+  "Angular",
+  "SolidStart",
+  "NestJS",
+  "Express",
+  "Fastify",
+  "Koa",
+  "Hono",
+  "Django",
+  "Flask",
+  "FastAPI",
+  "Ruby on Rails",
+  "Sinatra",
+  "Laravel",
+  "Symfony",
+  "Spring Boot",
+  "ASP.NET Core",
+  "Gin",
+  "Echo",
+  "Fiber",
+  "chi",
+  "Gorilla"
+]);
+var NON_HTTP_SURFACE_FRAMEWORKS = /* @__PURE__ */ new Set(["Electron", "Tauri", "React Native", "Expo", "Flutter", "React", "Vue", "Svelte", "SolidJS"]);
+var INFRA_SURFACE_CONFIGS = [
+  "wrangler.toml",
+  "wrangler.jsonc",
+  "wrangler.json",
+  "serverless.yml",
+  "serverless.yaml",
+  "template.yaml",
+  "sst.config.ts",
+  "netlify.toml"
+];
+function computeUnknowns(stack, routes, hints, workspaces, files) {
   const u = [];
   if (workspaces.length > 0) {
     u.push(
@@ -15162,12 +15286,30 @@ function computeUnknowns(stack, routes, hints, workspaces) {
   }
   if (stack.frameworks.length === 0) {
     u.push(
-      "No web framework was detected from manifests \u2014 identify the stack from `stack.languages` + `dependencies`, find the entry points (`hints.entryPoints`, else the file tree), then map the interface surface manually."
+      "No web framework was detected from manifests \u2014 identify the stack from `stack.languages` + `dependencies`, find the entry points (`hints.entryPoints`, else the file tree), then map the interface surface manually. If there is no web framework because this is a library / CLI / SDK / engine, that is a first-class case: the interface surface is the exported public API plus the CLI commands, not routes \u2014 see `references/stack-guides/library-cli-sdk.md`."
     );
   }
-  if (routes.length === 0 && (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0)) {
+  if (routes.length === 0) {
+    const routeBearing = stack.frameworks.filter((f) => ROUTE_BEARING_FRAMEWORKS.has(f));
+    const nonHttp = stack.frameworks.filter((f) => NON_HTTP_SURFACE_FRAMEWORKS.has(f));
+    if (routeBearing.length > 0) {
+      u.push(
+        `No routes were resolved although ${routeBearing.join(", ")} was detected \u2014 the engine has no route adapter for it, or its routes are declared in a way static resolution cannot see. Build the interface surface by hand from the framework's own route configuration (see \`references/stack-guides/INDEX.md\` for the matching guide) into \`architecture/INTERFACES.md\`.`
+      );
+    } else if (nonHttp.length > 0) {
+      u.push(
+        `${nonHttp.join(", ")} exposes no HTTP routes \u2014 its interface surface is something else entirely (desktop IPC channels and the preload/command contract, mobile screens and navigation, or an exported component/module API). Enumerate that surface per its guide in \`references/stack-guides/INDEX.md\`, not a route table.`
+      );
+    } else if (hints.routeCandidates.length > 0 || hints.apiCandidates.length > 0) {
+      u.push(
+        "Routes were not resolved deterministically (a framework without a dedicated route adapter, or an RPC/GraphQL surface) \u2014 derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`."
+      );
+    }
+  }
+  const infra = [...new Set(files.map((f) => f.path.split("/").pop() ?? "").filter((n) => INFRA_SURFACE_CONFIGS.includes(n)))].sort();
+  if (infra.length > 0) {
     u.push(
-      "Routes were not resolved deterministically (a framework without a dedicated route adapter, or an RPC/GraphQL surface) \u2014 derive the real interface surface from `hints.routeCandidates` / `hints.apiCandidates` into `architecture/INTERFACES.md`."
+      `Serverless/edge infrastructure config was found (${infra.join(", ")}) \u2014 the invocable surface is declared THERE, not only in code: HTTP routes/patterns, cron triggers, queue consumers, event sources and their bindings. Enumerate it from the config first, then open each handler for its event/response contract (see \`references/stack-guides/serverless-edge.md\`).`
     );
   }
   if (hints.apiCandidates.length > 0) {
@@ -15229,7 +15371,7 @@ function analyze(opts) {
   }
   const node = detectNodeVersion(opts.repo, warnings);
   const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
-  const unknowns = computeUnknowns(stack, routes, hints, workspaces);
+  const unknowns = computeUnknowns(stack, routes, hints, workspaces, files);
   const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   const stylingLibraries = detectStylingLibraries(stack.libraries);
@@ -17459,18 +17601,33 @@ function foldSemantic(outDir, check, opts = {}) {
     );
     return;
   }
-  let expected = [];
+  let all = [];
   try {
-    expected = buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs;
+    all = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
   } catch {
-    expected = [];
+    all = [];
+  }
+  const offeredIds = /* @__PURE__ */ new Set();
+  try {
+    for (const p2 of buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs) offeredIds.add(p2.claimId);
+  } catch {
   }
   const adjudicatedIds = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-  const uncovered = expected.filter((p2) => !adjudicatedIds.has(p2.claimId));
-  if (uncovered.length) {
-    const ids = uncovered.map((p2) => p2.claimId);
+  const uncovered = all.filter((p2) => !adjudicatedIds.has(p2.claimId));
+  const dropped = uncovered.filter((p2) => offeredIds.has(p2.claimId));
+  const neverOffered = uncovered.filter((p2) => !offeredIds.has(p2.claimId));
+  const preview = (ps) => {
+    const ids = ps.map((p2) => p2.claimId);
+    return `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}`;
+  };
+  if (dropped.length) {
     skip(
-      `--semantic: ${uncovered.length} requirement(s) in the feature PRDs have no adjudicated verdict in VERIFY.json (${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}) \u2014 the requirement gate never covered them; re-run --verify then --verify --apply <verdicts.json> so every requirement is adjudicated (the gate must not pass on dropped verdicts)`
+      `--semantic: ${dropped.length} requirement(s) the worklist DID offer have no adjudicated verdict in VERIFY.json (${preview(dropped)}) \u2014 the verdict rows were dropped, or a PRD was edited after verification (which shifts claim ids); re-run --verify then --verify --apply <verdicts.json> (the gate must not pass on dropped verdicts)`
+    );
+  }
+  if (neverOffered.length) {
+    skip(
+      `--semantic: ${neverOffered.length} of ${all.length} requirement(s) were never offered for adjudication (${preview(neverOffered)}) \u2014 the --verify worklist was CAPPED, so the faithfulness gate only covered part of the tree. Re-run with \`--max-verify ${all.length}\` and adjudicate the rest`
     );
   }
   if (!fresh.ok) {

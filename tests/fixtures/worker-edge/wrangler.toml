@@ -1,0 +1,24 @@
+name = "worker-edge"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+routes = [
+  { pattern = "api.example.com/*", zone_name = "example.com" }
+]
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "abc123"
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "uploads"
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[vars]
+LOG_LEVEL = "info"
+
+[env.production.vars]
+LOG_LEVEL = "warn"

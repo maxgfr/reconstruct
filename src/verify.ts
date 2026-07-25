@@ -464,20 +464,44 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   // `skip` (a coverage absence, like a missing/vacuous ledger, so `--allow-unverified`
   // downgrades it consistently); a verdict that is PRESENT and refuted still hard-fails
   // below regardless.
-  let expected: ClaimEvidencePair[] = [];
+  // The gate measures against EVERY requirement in the PRDs, not against the
+  // (possibly capped) worklist the run happened to show. Otherwise `--verify` on
+  // a tree with more requirements than the cap would certify faithfulness while
+  // silently never looking at the remainder — the exact failure `coverage` was
+  // added to make visible. The two ways a requirement ends up unadjudicated are
+  // distinct problems with distinct fixes, so they get distinct messages.
+  let all: ClaimEvidencePair[] = [];
   try {
-    expected = buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs;
+    all = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
   } catch {
-    expected = [];
+    all = [];
+  }
+  const offeredIds = new Set<string>();
+  try {
+    for (const p of buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs) offeredIds.add(p.claimId);
+  } catch {
+    // no worklist to compare against — every uncovered claim reads as never-offered
   }
   const adjudicatedIds = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-  const uncovered = expected.filter((p) => !adjudicatedIds.has(p.claimId));
-  if (uncovered.length) {
-    const ids = uncovered.map((p) => p.claimId);
+  const uncovered = all.filter((p) => !adjudicatedIds.has(p.claimId));
+  const dropped = uncovered.filter((p) => offeredIds.has(p.claimId));
+  const neverOffered = uncovered.filter((p) => !offeredIds.has(p.claimId));
+  const preview = (ps: ClaimEvidencePair[]): string => {
+    const ids = ps.map((p) => p.claimId);
+    return `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}`;
+  };
+  if (dropped.length) {
     skip(
-      `--semantic: ${uncovered.length} requirement(s) in the feature PRDs have no adjudicated verdict in VERIFY.json ` +
-        `(${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}) — the requirement gate never covered them; re-run ` +
-        `--verify then --verify --apply <verdicts.json> so every requirement is adjudicated (the gate must not pass on dropped verdicts)`,
+      `--semantic: ${dropped.length} requirement(s) the worklist DID offer have no adjudicated verdict in VERIFY.json ` +
+        `(${preview(dropped)}) — the verdict rows were dropped, or a PRD was edited after verification (which shifts claim ids); ` +
+        `re-run --verify then --verify --apply <verdicts.json> (the gate must not pass on dropped verdicts)`,
+    );
+  }
+  if (neverOffered.length) {
+    skip(
+      `--semantic: ${neverOffered.length} of ${all.length} requirement(s) were never offered for adjudication ` +
+        `(${preview(neverOffered)}) — the --verify worklist was CAPPED, so the faithfulness gate only covered part of the tree. ` +
+        `Re-run with \`--max-verify ${all.length}\` and adjudicate the rest`,
     );
   }
   if (!fresh.ok) {

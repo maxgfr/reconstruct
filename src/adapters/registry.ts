@@ -11,6 +11,7 @@ import { djangoAdapter } from "./django.js";
 import { railsAdapter } from "./rails.js";
 import { goAdapter } from "./go.js";
 import { trpcAdapter } from "./trpc.js";
+import { dotnetAdapter } from "./dotnet.js";
 
 /**
  * Every registered route adapter. To add a framework, append its adapter here
@@ -29,6 +30,7 @@ export const ROUTE_ADAPTERS: RouteAdapter[] = [
   railsAdapter,
   goAdapter,
   trpcAdapter,
+  dotnetAdapter,
 ];
 
 /**

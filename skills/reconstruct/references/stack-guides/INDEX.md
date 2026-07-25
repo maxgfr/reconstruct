@@ -30,6 +30,7 @@ non-empty.
 | `Laravel` | [laravel.md](./laravel.md) | — deliberately deferred (see [adapters.md](../adapters.md)) |
 | `Symfony` | [laravel.md](./laravel.md) (PHP idioms) + [analysis-playbook.md](../analysis-playbook.md) | — candidates only |
 | `Spring Boot` | [spring-boot.md](./spring-boot.md) | — candidates only |
+| `ASP.NET Core` | [dotnet-aspnet.md](./dotnet-aspnet.md) | ✅ Minimal APIs (`MapGroup` composed) + attribute-routed controllers |
 | `Gin`, `Echo`, `Fiber`, `chi`, `Gorilla` | [go-net-http.md](./go-net-http.md) | ✅ all five |
 | `Expo`, `React Native`, `Flutter` | [mobile-rn-expo-flutter.md](./mobile-rn-expo-flutter.md) | n/a — screens, not routes |
 | `Electron`, `Tauri` | [desktop-electron-tauri.md](./desktop-electron-tauri.md) | n/a — IPC, not routes |
@@ -50,7 +51,6 @@ non-empty.
 | --- | --- |
 | `stack.frameworks` is **empty** — a library, CLI, SDK, engine, or plugin | [library-cli-sdk.md](./library-cli-sdk.md) |
 | Handlers declared in infra config — Cloudflare Workers, Lambda/SST/CDK, Vercel functions | [serverless-edge.md](./serverless-edge.md) |
-| ASP.NET Core / .NET (only the `C#` **language** is detected today) | [dotnet-aspnet.md](./dotnet-aspnet.md) |
 | `inventory.workspaces` is non-empty, or the layout looks like several apps | [monorepo.md](./monorepo.md) — **then** the matching guide *per workspace* |
 | Nothing above fits | [analysis-playbook.md](../analysis-playbook.md) — the universal method works without a guide |
 
@@ -61,7 +61,6 @@ non-empty.
 The engine has no manifest signal for these. If you are looking at one, identify it yourself
 from the file tree and record the finding in `ARCHITECTURE.md`:
 
-- **.NET / ASP.NET Core** — `*.csproj`, `Program.cs`, `appsettings.json` → [dotnet-aspnet.md](./dotnet-aspnet.md)
 - **Phoenix / Elixir** — `mix.exs`, `lib/*_web/router.ex` (the `Elixir` *language* is detected)
 - **Rust web** — `Cargo.toml` with `axum`/`actix-web`/`rocket` (the `Rust` language is detected)
 - **WordPress / CMS themes & plugins** — `wp-content/`, `functions.php`
