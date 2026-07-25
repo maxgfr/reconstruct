@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.11.0](https://github.com/maxgfr/reconstruct/compare/v2.10.0...v2.11.0) (2026-07-25)
+
+
+### Features
+
+* **engine:** validate the stack families with fixtures, add a .NET adapter, gate full verify coverage ([13db7d7](https://github.com/maxgfr/reconstruct/commit/13db7d765c94cc050fbcc344783190906bed0eec))
+
 # [2.10.0](https://github.com/maxgfr/reconstruct/compare/v2.9.0...v2.10.0) (2026-07-25)
 
 
