@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.11.1](https://github.com/maxgfr/reconstruct/compare/v2.11.0...v2.11.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **ci:** adjudicate the golden example's full requirement set, add a local gate ([ea6bd35](https://github.com/maxgfr/reconstruct/commit/ea6bd35c8fcee10aa897c5fbae1269fdd47bc0ac))
+
 # [2.11.0](https://github.com/maxgfr/reconstruct/compare/v2.10.0...v2.11.0) (2026-07-25)
 
 
