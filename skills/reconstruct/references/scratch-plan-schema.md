@@ -287,5 +287,6 @@ never clobbered, but a bare engine run is still self-contained. `00-overview` li
 `../CONTEXT.md` and `../docs/adr/`.
 
 > A complete worked plan — a small online bookstore (6 features, 7 interfaces, 5 entities, 2 enums,
-> 2 services, 2 policies) — lives at [`tests/fixtures/scratch-plan/example.plan.json`](../tests/fixtures/scratch-plan/example.plan.json).
-> Read it for a end-to-end example of every section.
+> 2 services, 2 policies) — lives in the source repository at
+> `tests/fixtures/scratch-plan/example.plan.json` (not shipped with the installed skill).
+> Read it for an end-to-end example of every section.

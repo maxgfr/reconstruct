@@ -16454,9 +16454,7 @@ function render(inv, opts) {
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
   dataCopy(inv.schemas, "schema");
   dataCopy(inv.configs, "config");
-  if (opts.summary) {
-    artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
-  }
+  artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
   if (opts.features) {
     artifacts.push({ relPath: "FEATURES.md", content: mergeFeatures(artifacts, inv, opts) });
   }
@@ -16470,7 +16468,7 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, copyFileSync, existsSync as existsSync8 } from "fs";
+import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, copyFileSync, existsSync as existsSync8, readFileSync as readFileSync17, readdirSync as readdirSync5 } from "fs";
 import { dirname as dirname4, join as join26 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
@@ -16498,22 +16496,71 @@ function writeArtifactsIfAbsent(artifacts, outDir) {
   }
   return written;
 }
+var ENRICHMENT_WITNESS_LIMIT = 5;
+var CALLOUT = "\u{1F9E0}";
+var CALLOUT_BEARING_DOCS = [
+  "architecture/ARCHITECTURE.md",
+  "architecture/INTERFACES.md",
+  "architecture/DATA-MODEL.md",
+  "architecture/DESIGN-SYSTEM.md",
+  "BRAINSTORM.md"
+];
+var LEDGERS = ["REVIEW.json", "VERIFY.json"];
+function readIfFile(path) {
+  try {
+    return readFileSync17(path, "utf8");
+  } catch {
+    return void 0;
+  }
+}
+function detectEnrichment(outDir) {
+  if (!existsSync8(outDir)) return [];
+  const witnesses = [];
+  for (const ledger of LEDGERS) {
+    if (existsSync8(join26(outDir, ledger))) witnesses.push(`${ledger} \u2014 a semantic-gate ledger from a previous round`);
+  }
+  const resolved = (rel) => {
+    const body2 = readIfFile(join26(outDir, rel));
+    if (body2 !== void 0 && body2.trim() && !body2.includes(CALLOUT)) witnesses.push(`${rel} \u2014 every agent callout resolved`);
+  };
+  for (const rel of CALLOUT_BEARING_DOCS) resolved(rel);
+  let slugs = [];
+  try {
+    slugs = readdirSync5(join26(outDir, "features"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  } catch {
+  }
+  for (const slug of slugs) resolved(join26("features", slug, "PRD.md"));
+  return witnesses;
+}
+function formatEnrichmentRefusal(outDir, witnesses) {
+  const shown = witnesses.slice(0, ENRICHMENT_WITNESS_LIMIT);
+  const rest = witnesses.length - shown.length;
+  return `${outDir} already holds an ENRICHED reconstruction \u2014 re-running the analyzer would overwrite it.
+` + shown.map((w) => `  - ${w}`).join("\n") + (rest > 0 ? `
+  - \u2026and ${rest} more` : "") + `
+
+Pick one:
+  - continue the existing tree:   --check / --review / --verify --out ${outDir}
+  - scaffold a scoped deep-dive:  --out ${outDir}-<scope>
+  - re-scaffold and diff by hand: --out ${outDir}.new
+  - overwrite it anyway:          --force  (the enrichment above is LOST)`;
+}
 
 // src/postprocess.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync17, existsSync as existsSync9 } from "fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync18, existsSync as existsSync9 } from "fs";
 import { join as join27, relative, sep as sep3 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
   const out2 = [];
   const walk3 = (abs) => {
-    for (const entry of readdirSync5(abs, { withFileTypes: true })) {
+    for (const entry of readdirSync6(abs, { withFileTypes: true })) {
       const child = join27(abs, entry.name);
       const rel = relative(dir, child).split(sep3).join("/");
       if (entry.isDirectory()) {
         if (GROUND_TRUTH_DIRS.has(rel)) continue;
         walk3(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out2.push({ relPath: rel, content: readFileSync17(child, "utf8") });
+        out2.push({ relPath: rel, content: readFileSync18(child, "utf8") });
       }
     }
   };
@@ -16526,7 +16573,7 @@ function bundleExisting(opts) {
   if (!existsSync9(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
-  const inv = JSON.parse(readFileSync17(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync18(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -16537,11 +16584,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync18 } from "fs";
+import { readFileSync as readFileSync19 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync18(path, "utf8");
+    raw = readFileSync19(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -16856,7 +16903,7 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync10, readFileSync as readFileSync19, readdirSync as readdirSync6, statSync as statSync6 } from "fs";
+import { existsSync as existsSync10, readFileSync as readFileSync20, readdirSync as readdirSync7, statSync as statSync6 } from "fs";
 import { join as join28, relative as relative2 } from "path";
 var REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITECTURE.md", "architecture/INTERFACES.md", "architecture/DATA-MODEL.md"];
 var FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
@@ -16865,7 +16912,7 @@ function collectMarkdown(dir, base = dir) {
   const out2 = [];
   let entries;
   try {
-    entries = readdirSync6(dir);
+    entries = readdirSync7(dir);
   } catch {
     return out2;
   }
@@ -16881,7 +16928,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2)) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative2(base, full).split("\\").join("/"), content: readFileSync19(full, "utf8") });
+      out2.push({ rel: relative2(base, full).split("\\").join("/"), content: readFileSync20(full, "utf8") });
     }
   }
   return out2;
@@ -16902,7 +16949,7 @@ function fileNames(dir) {
   const out2 = [];
   let entries;
   try {
-    entries = readdirSync6(dir);
+    entries = readdirSync7(dir);
   } catch {
     return out2;
   }
@@ -16933,7 +16980,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync19(invPath, "utf8"));
+    inv = JSON.parse(readFileSync20(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -17095,7 +17142,7 @@ function formatCheckReport(r, outDir) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync11, readFileSync as readFileSync20, writeFileSync as writeFileSync6 } from "fs";
+import { existsSync as existsSync11, readFileSync as readFileSync21, writeFileSync as writeFileSync6 } from "fs";
 import { join as join29 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
@@ -17147,7 +17194,7 @@ function featureEvidence(f) {
 function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
-    invRaw = readFileSync20(join29(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync21(join29(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -17162,7 +17209,7 @@ function buildWorklist(outDir, opts = {}) {
   for (const f of inv.features ?? []) {
     const prdPath = join29(outDir, "features", f.slug, "PRD.md");
     if (!existsSync11(prdPath)) continue;
-    const reqs = requirements(readFileSync20(prdPath, "utf8"));
+    const reqs = requirements(readFileSync21(prdPath, "utf8"));
     const ev = featureEvidence(f);
     const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
     for (const req of reqs) {
@@ -17185,13 +17232,30 @@ function buildWorklist(outDir, opts = {}) {
   }
   const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
   const kept = pairs.length > max ? pairs.slice().sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId)).slice(0, max) : pairs;
-  const worklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
+  const worklist = {
+    run: outDir,
+    pairs: kept.map(({ score, ...rest }) => rest),
+    coverage: { total: pairs.length, kept: kept.length, max, capped: kept.length < pairs.length }
+  };
   return { worklist, total: pairs.length, kept: kept.length };
+}
+function capUsedFor(outDir) {
+  try {
+    const todo = JSON.parse(readFileSync21(join29(outDir, "VERIFY.todo.json"), "utf8"));
+    const max = todo?.coverage?.max;
+    if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
+  } catch {
+  }
+  return VERIFY_MAX;
 }
 function runVerify(outDir, opts = {}) {
   const { worklist, total, kept } = buildWorklist(outDir, opts);
   const todo = {
     run: outDir,
+    // Coverage rides in the MACHINE worklist, not just VERIFY.md's prose: an
+    // agent reading only the JSON must still see that a capped run adjudicates
+    // a subset — partial coverage never reads as complete.
+    coverage: worklist.coverage,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "", confidence: null }))
   };
   writeFileSync6(join29(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
@@ -17205,8 +17269,11 @@ function renderWorklistMd(wl, total, kept) {
   out2.push(
     `For each requirement, open the cited source evidence and judge whether the requirement **traces to the original code** (faithful inference) or was invented. In \`VERIFY.todo.json\`, set each \`verdict\` to supported \xB7 partial \xB7 refuted \xB7 unsupported (+ a short \`note\`), and stamp each \`confidence\` to confirmed (evidence read and decisive) \xB7 inferred (consistent but indirect \u2014 a pattern or standard behavior) \xB7 gap (evidence thin; needs a human). Save it (e.g. as \`verdicts.json\`), then run \`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`
   );
-  if (kept < total) out2.push(`
-_Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched evidence._`);
+  if (kept < total)
+    out2.push(
+      `
+> \u26A0 **Partial coverage:** showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched evidence. The ${total - kept} unshown requirement(s) are NOT adjudicated by this round. Raise the cap with \`--max-verify ${total}\` to cover them all.`
+    );
   out2.push("");
   for (const p of wl.pairs) {
     out2.push(`## ${p.claimId} \xB7 ${p.feature} \u2192 ${p.evidenceRef}`);
@@ -17219,7 +17286,7 @@ _Showing ${kept} of ${total} requirement(s) \u2014 capped at the best-matched ev
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync20(join29(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync21(join29(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -17265,7 +17332,7 @@ function resolveEvidence(ref, inv) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync20(join29(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync21(join29(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -17275,7 +17342,7 @@ function readTodoPairs(outDir) {
   }
 }
 function applyVerdicts(outDir, verdictsPath) {
-  const raw = JSON.parse(readFileSync20(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync21(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
@@ -17376,7 +17443,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync20(p, "utf8"));
+    sem = JSON.parse(readFileSync21(p, "utf8"));
   } catch (e) {
     skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
     return;
@@ -17394,7 +17461,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let expected = [];
   try {
-    expected = buildWorklist(outDir).worklist.pairs;
+    expected = buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs;
   } catch {
     expected = [];
   }
@@ -17443,7 +17510,7 @@ function formatVerifyReport(r) {
 
 // src/review.ts
 import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync12, readFileSync as readFileSync21, writeFileSync as writeFileSync7 } from "fs";
+import { existsSync as existsSync12, readFileSync as readFileSync22, writeFileSync as writeFileSync7 } from "fs";
 import { join as join30 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md"];
 var SEVERITIES2 = ["blocker", "major", "minor"];
@@ -17453,7 +17520,7 @@ function sha256(s) {
 }
 function readIfExists(path) {
   try {
-    return readFileSync21(path, "utf8");
+    return readFileSync22(path, "utf8");
   } catch {
     return "";
   }
@@ -17479,7 +17546,7 @@ function runReview(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join30(outDir, "features", f.slug, "PRD.md");
     if (!existsSync12(prdPath)) continue;
-    const prdHash = sha256(readFileSync21(prdPath, "utf8"));
+    const prdHash = sha256(readFileSync22(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -17495,7 +17562,7 @@ function runReview(outDir) {
 function readInventory(outDir) {
   let raw;
   try {
-    raw = readFileSync21(join30(outDir, "inventory.json"), "utf8");
+    raw = readFileSync22(join30(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -17510,7 +17577,7 @@ function readPrior(outDir) {
   if (!existsSync12(reviewPath)) return null;
   let rev;
   try {
-    rev = JSON.parse(readFileSync21(reviewPath, "utf8"));
+    rev = JSON.parse(readFileSync22(reviewPath, "utf8"));
   } catch {
     return null;
   }
@@ -17521,7 +17588,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync21(join30(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync22(join30(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -17636,7 +17703,7 @@ function reduceFindings(findings, ctx) {
   };
 }
 function applyFindings(outDir, findingsPath) {
-  const findings = normalizeFindings(JSON.parse(readFileSync21(findingsPath, "utf8")));
+  const findings = normalizeFindings(JSON.parse(readFileSync22(findingsPath, "utf8")));
   let round;
   let changedSet = [];
   let units = 0;
@@ -17644,7 +17711,7 @@ function applyFindings(outDir, findingsPath) {
   let currentFeatures = [];
   let baseline;
   try {
-    const todo = JSON.parse(readFileSync21(join30(outDir, "REVIEW.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync22(join30(outDir, "REVIEW.todo.json"), "utf8"));
     round = todo.round;
     changedSet = todo.changedSet ?? [];
     units = todo.units?.length ?? 0;
@@ -17662,7 +17729,7 @@ function applyFindings(outDir, findingsPath) {
   const reviewPath = join30(outDir, "REVIEW.json");
   if (existsSync12(reviewPath)) {
     try {
-      const prev = JSON.parse(readFileSync21(reviewPath, "utf8"));
+      const prev = JSON.parse(readFileSync22(reviewPath, "utf8"));
       priorFailures = prev.failures ?? [];
       priorStale = prev.staleRounds ?? 0;
       priorRound = prev.round ?? 0;
@@ -17704,7 +17771,7 @@ function foldReview(outDir, check, opts = {}) {
   }
   let rev;
   try {
-    rev = JSON.parse(readFileSync21(p, "utf8"));
+    rev = JSON.parse(readFileSync22(p, "utf8"));
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
     return;
@@ -17737,7 +17804,7 @@ function formatReviewReport(r) {
 }
 
 // src/brainstorm.ts
-import { readFileSync as readFileSync22 } from "fs";
+import { readFileSync as readFileSync23 } from "fs";
 import { join as join31 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
@@ -17809,7 +17876,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync22(join31(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync23(join31(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -17820,7 +17887,7 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync14, mkdirSync as mkdirSync5, readFileSync as readFileSync23, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync14, mkdirSync as mkdirSync5, readFileSync as readFileSync24, writeFileSync as writeFileSync8 } from "fs";
 import { join as join33, resolve as resolve4 } from "path";
 
 // src/orchestrate-templates.ts
@@ -18147,10 +18214,27 @@ then \`Workflow({ scriptPath: "${join32(outAbs, "orchestration", "<p>.workflow.m
 // src/orchestrate.ts
 var PHASES = ["enrich-map", "review-find", "review-verify", "adjudicate"];
 var SMALL_WORKLIST = 3;
-var BATCH_SIZE = 8;
+var PHASE_BATCH = {
+  "enrich-map": 1,
+  "review-find": 1,
+  "review-verify": 4,
+  adjudicate: 4
+};
+var MAX_AGENTS = 40;
+function batchSizeFor(phase, items, override) {
+  if (override !== void 0 && override > 0) return Math.floor(override);
+  const base = PHASE_BATCH[phase];
+  if (items <= 0) return base;
+  return Math.max(base, Math.ceil(items / MAX_AGENTS));
+}
+function batchNotice(phase, items, batch, override) {
+  const agents = Math.ceil(items / batch);
+  const why = override !== void 0 ? " (--batch-size)" : batch > PHASE_BATCH[phase] ? ` (capped at ${MAX_AGENTS} agents)` : "";
+  return `phase "${phase}": ${items} item(s) \u2192 ${agents} agent(s), ${batch} item(s) each${why}.`;
+}
 function readJson2(path) {
   try {
-    return JSON.parse(readFileSync23(path, "utf8"));
+    return JSON.parse(readFileSync24(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -18185,7 +18269,7 @@ function workspaceGroups(inv) {
   }
   return [...groups.values()];
 }
-function listPhases(outDir, engineAbs) {
+function listPhases(outDir, engineAbs, batchOverride) {
   const out2 = resolve4(outDir);
   const invPath = join33(out2, "inventory.json");
   const inv = readJson2(invPath);
@@ -18204,8 +18288,12 @@ function listPhases(outDir, engineAbs) {
   const ver = readJson2(verPath);
   const adjReady = !!ver && Array.isArray(ver.pairs);
   const adjIds = adjReady ? ver.pairs.map((p) => p.claimId) : [];
+  const shaped = (p) => {
+    const batch = batchSizeFor(p.name, p.items, batchOverride);
+    return { ...p, batch, agents: p.items ? Math.ceil(p.items / batch) : 0 };
+  };
   return [
-    {
+    shaped({
       name: "enrich-map",
       ready: invReady,
       worklist: invPath,
@@ -18213,8 +18301,8 @@ function listPhases(outDir, engineAbs) {
       ids: enrichIds,
       groups: enrichGroups,
       prerequisite: `node ${engineAbs} --repo <repo> --out ${out2}`
-    },
-    {
+    }),
+    shaped({
       name: "review-find",
       ready: findReady,
       worklist: todoPath,
@@ -18222,8 +18310,8 @@ function listPhases(outDir, engineAbs) {
       ids: findIds,
       groups: findIds.length ? [findIds] : [],
       prerequisite: `node ${engineAbs} --review --out ${out2}`
-    },
-    {
+    }),
+    shaped({
       name: "review-verify",
       ready: verifyReady,
       worklist: revPath,
@@ -18231,8 +18319,8 @@ function listPhases(outDir, engineAbs) {
       ids: blockerIds,
       groups: blockerIds.length ? [blockerIds] : [],
       prerequisite: `node ${engineAbs} --review --apply <findings.json> --out ${out2}`
-    },
-    {
+    }),
+    shaped({
       name: "adjudicate",
       ready: adjReady,
       worklist: verPath,
@@ -18240,7 +18328,7 @@ function listPhases(outDir, engineAbs) {
       ids: adjIds,
       groups: adjIds.length ? [adjIds] : [],
       prerequisite: `node ${engineAbs} --verify --out ${out2}`
-    }
+    })
   ];
 }
 function orchestrateRun(outDir, engineAbs, opts = {}) {
@@ -18248,7 +18336,7 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
   if (!existsSync14(out2)) {
     return { exitCode: 2, written: [], notices: [], errors: [`out dir not found: ${out2}`], phases: [] };
   }
-  const phases = listPhases(out2, engineAbs);
+  const phases = listPhases(out2, engineAbs, opts.batchSize);
   let selected = phases.filter((p) => p.ready);
   if (opts.phase !== void 0) {
     const ph = phases.find((p) => p.name === opts.phase);
@@ -18292,8 +18380,10 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
       if (ph.items <= SMALL_WORKLIST) {
         notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
       }
+      const batch = batchSizeFor(ph.name, ph.items, opts.batchSize);
+      notices.push(batchNotice(ph.name, ph.items, batch, opts.batchSize));
       const p = join33(orchDir, `${ph.name}.workflow.mjs`);
-      writeFileSync8(p, phaseWorkflowScript(ph, out2, engineAbs, BATCH_SIZE));
+      writeFileSync8(p, phaseWorkflowScript(ph, out2, engineAbs, batch));
       written.push(p);
     }
   }
@@ -18332,6 +18422,9 @@ Options:
                        review-verify | adjudicate (exit 2 if its worklist is missing)
   --eco                --orchestrate: emit only RUNBOOK.md + agents/*.md (sequential low-token path)
   --list               --orchestrate: print the {"phases":[...]} readiness JSON, write nothing
+  --batch-size <n>     --orchestrate: items per subagent (default: per-phase, see below)
+  --max-verify <n>     --verify: cap the requirement\u2194evidence worklist (default: 60)
+  --force              Overwrite an --out tree that already holds ENRICHED prose
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
@@ -18339,7 +18432,8 @@ Options:
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
   --merge              Also write RECONSTRUCTION.md (whole tree in one file)
-  --summary            Also write SUMMARY.md (one-page digest)
+  --summary            SUMMARY.md is written on every run; this only selects it
+                       for the standalone (no --repo) bundling post-step
   --features           Also write FEATURES.md (every feature PRD, nothing else)
   --specs              Also write SPECS.md (whole spec, source code stripped \u2014 implement from this)
   --json               Print the inventory JSON only, write nothing
@@ -18365,13 +18459,25 @@ Orchestration (fan the judgment phases out to subagents):
   launchable multi-agent workflow (<out>/orchestration/<phase>.workflow.mjs), the
   agents/<role>.md dispatch contracts (drafter/finder/verifier/adjudicator) and a
   sequential RUNBOOK.md fallback. Phases: enrich-map (one drafter per
-  inventory.json feature, batched by workspace), review-find (one finder per
+  inventory.json feature, grouped by workspace), review-find (one finder per
   flagged REVIEW.todo.json unit), review-verify (one independent verifier per
   open REVIEW.json blocker), adjudicate (one adjudicator per VERIFY.todo.json
   pair). Subagents RETURN fragments; the reduce (--review/--verify --apply and
   every doc merge) always stays with the orchestrator. Re-run it whenever a
   worklist changes \u2014 emission is deterministic and idempotent.
+  Fan-out width: enrich-map/review-find dispatch ONE agent per item (the unit of
+  work is a whole PRD); review-verify/adjudicate batch 4 (each item is one short
+  judgement). Past 40 agents the batch grows instead of the fleet \u2014 always
+  reported, never silent. --batch-size <n> overrides all of it.
     reconstruct --orchestrate --out <dir> [--phase <p>] [--eco] [--list]
+
+Re-running over an existing --out:
+  A normal (--repo / --scratch) run RE-RENDERS every document, so it would
+  overwrite prose an agent already wrote. The CLI detects an ENRICHED tree \u2014 a
+  document whose \u{1F9E0} callouts are all resolved, or a REVIEW.json/VERIFY.json
+  ledger \u2014 and refuses the run. To continue an existing tree use --check /
+  --review / --verify; to re-scaffold, point --out at a new directory; --force
+  overwrites and LOSES the enrichment.
 
 From scratch (greenfield):
   --scratch builds the SAME reconstruction tree from a plan.json interview
@@ -18381,7 +18487,10 @@ From scratch (greenfield):
     reconstruct --scratch --plan plan.json --out ./reconstruction --level complex
 
 Bundling:
-  --merge / --summary / --features / --specs during a normal run append the
+  SUMMARY.md (a one-page digest: stack, features in build order, interface/data
+  counts, unknowns) is written on EVERY run \u2014 read it to orient instead of
+  inventory.json, which carries one entry per analyzed file.
+  --merge / --features / --specs during a normal run append the
   file(s) to the output tree. RECONSTRUCTION.md is the whole tree in one file
   (with the embedded source); SPECS.md is the same whole tree (architecture +
   features) with the source code stripped \u2014 the self-sufficient, code-free spec
@@ -18433,7 +18542,22 @@ function defaultFidelity(mode, level) {
 function splitGlobs(value) {
   return value.split(",").map((s) => s.trim()).filter(Boolean);
 }
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply", "phase"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set([
+  "repo",
+  "out",
+  "mode",
+  "level",
+  "fidelity",
+  "granularity",
+  "plan",
+  "max-embed-bytes",
+  "include",
+  "exclude",
+  "apply",
+  "phase",
+  "max-verify",
+  "batch-size"
+]);
 function parseArgs(argv) {
   const raw = {};
   const includeGlobs = [];
@@ -18454,6 +18578,7 @@ function parseArgs(argv) {
   let orchestrate = false;
   let eco = false;
   let list = false;
+  let force = false;
   for (let i2 = 0; i2 < argv.length; i2++) {
     const arg = argv[i2];
     if (arg === "-h" || arg === "--help") {
@@ -18528,6 +18653,10 @@ function parseArgs(argv) {
       list = true;
       continue;
     }
+    if (arg === "--force") {
+      force = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
@@ -18576,6 +18705,14 @@ function parseArgs(argv) {
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
   }
+  const positive = (key) => {
+    if (raw[key] === void 0) return void 0;
+    const n = Number(raw[key]);
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) fail(`invalid --${key}: expected a positive integer`);
+    return n;
+  };
+  const maxVerify = positive("max-verify");
+  const batchSize = positive("batch-size");
   return {
     repo,
     out: out2,
@@ -18605,8 +18742,16 @@ function parseArgs(argv) {
     orchestrate,
     phase: raw.phase ?? "",
     eco,
-    list
+    list,
+    force,
+    ...maxVerify !== void 0 ? { maxVerify } : {},
+    ...batchSize !== void 0 ? { batchSize } : {}
   };
+}
+function guardEnrichedOutput(opts) {
+  if (opts.force || opts.json) return;
+  const witnesses = detectEnrichment(opts.out);
+  if (witnesses.length) fail(formatEnrichmentRefusal(opts.out, witnesses));
 }
 function main() {
   const opts = parseArgs(process.argv.slice(2));
@@ -18618,10 +18763,13 @@ function main() {
         if (!r.ok) process.exit(1);
         return;
       }
-      const wl = runVerify(opts.out);
+      const wl = runVerify(opts.out, { ...opts.maxVerify !== void 0 ? { maxVerify: opts.maxVerify } : {} });
+      const { total, kept, capped } = wl.coverage;
       process.stderr.write(
-        `reconstruct: ${wl.pairs.length} requirement\u2194evidence pair(s) \u2192 ${opts.out}/VERIFY.md & VERIFY.todo.json
-  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}
+        `reconstruct: ${kept} requirement\u2194evidence pair(s) \u2192 ${opts.out}/VERIFY.md & VERIFY.todo.json
+` + // Never let a capped worklist read as full coverage.
+        (capped ? `  \u26A0 coverage: ${kept} of ${total} requirement(s) \u2014 CAPPED; the other ${total - kept} go unadjudicated (raise with --max-verify ${total})
+` : "") + `  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}
 `
       );
       return;
@@ -18666,10 +18814,14 @@ function main() {
 `);
         process.exit(2);
       }
-      process.stdout.write(JSON.stringify({ phases: listPhases(opts.out, engineAbs) }, null, 2) + "\n");
+      process.stdout.write(JSON.stringify({ phases: listPhases(opts.out, engineAbs, opts.batchSize) }, null, 2) + "\n");
       return;
     }
-    const res = orchestrateRun(opts.out, engineAbs, { phase: opts.phase || void 0, eco: opts.eco });
+    const res = orchestrateRun(opts.out, engineAbs, {
+      phase: opts.phase || void 0,
+      eco: opts.eco,
+      ...opts.batchSize !== void 0 ? { batchSize: opts.batchSize } : {}
+    });
     if (res.exitCode !== 0) {
       for (const e of res.errors) process.stderr.write(`reconstruct --orchestrate: ${e}
 `);
@@ -18726,6 +18878,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
       process.stdout.write(JSON.stringify(inv2, null, 2) + "\n");
       return;
     }
+    guardEnrichedOutput(effOpts);
     const result = render(inv2, effOpts);
     writeOutput(result, effOpts);
     const docs = writeArtifactsIfAbsent(renderScratchDocs(plan), effOpts.out);
@@ -18737,12 +18890,11 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
       `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
       ...consistency.warnings.length ? [`  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`, ...consistency.warnings.map((w) => `    \u26A0 ${w}`)] : [],
       ...effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : [],
-      ...effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
       ...effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join34(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     read ${join34(effOpts.out, "SUMMARY.md")} to orient, then ${join34(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -18775,6 +18927,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     process.stdout.write(JSON.stringify(inv, null, 2) + "\n");
     return;
   }
+  guardEnrichedOutput(opts);
   try {
     const result = render(inv, opts);
     writeOutput(result, opts);
@@ -18793,12 +18946,13 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
-    ...opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : [],
     ...opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
     ...opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
     `  output:   ${opts.out}`,
-    `  next:     open ${join34(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    // Orient from SUMMARY.md, not inventory.json: same picture, a fraction of the
+    // tokens (inventory.json carries one entry per analyzed file).
+    `  next:     read ${join34(opts.out, "SUMMARY.md")} to orient, then ${join34(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

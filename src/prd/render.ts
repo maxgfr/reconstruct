@@ -38,12 +38,15 @@ export function render(inv: Inventory, opts: Options): RenderResult {
   dataCopy(inv.schemas, "schema");
   dataCopy(inv.configs, "config");
 
-  // Opt-in bundles. SUMMARY and FEATURES are pushed before the merge, which
+  // SUMMARY.md is written on EVERY run, not opt-in: it is the cheap orientation
+  // document (a few KB) that spares the agent reading inventory.json, whose size
+  // grows linearly with the repo (one entry per file — hundreds of KB on a large
+  // one). `--summary` survives as a no-op inline, and still selects it for the
+  // standalone post-step. SUMMARY/FEATURES are pushed before the merge, which
   // excludes them (and RECONSTRUCTION/inventory) so the single file never
   // duplicates itself.
-  if (opts.summary) {
-    artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
-  }
+  artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
+  // Opt-in bundles.
   if (opts.features) {
     artifacts.push({ relPath: "FEATURES.md", content: mergeFeatures(artifacts, inv, opts) });
   }

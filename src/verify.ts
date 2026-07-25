@@ -85,9 +85,11 @@ function featureEvidence(f: any): Ev[] {
 // (unsupported/refuted). Deterministic; the JUDGEMENT is the agent's. Capped at
 // maxVerify (highest-overlap requirements first). `runVerify` persists the
 // result; the `--check --semantic` coverage gate re-derives it (from the same
-// PRDs) to detect verdict rows dropped after adjudication — so the two must
-// stay byte-aligned. maxVerify is NOT CLI-configurable: `--verify` and the gate
-// both use the default cap, so the re-derived pairs line up with what was shown.
+// PRDs) to detect verdict rows dropped after adjudication — so the two must stay
+// byte-aligned. `runVerify` therefore RECORDS the cap it used in
+// `VERIFY.todo.json.coverage.max`, and the gate re-derives with that same cap
+// (`capUsedFor`) rather than assuming the default — which is what lets
+// `--max-verify` exist without desynchronising the two derivations.
 export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {}): BuiltWorklist {
   let invRaw: string;
   try {
@@ -142,8 +144,30 @@ export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {})
           .sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId))
           .slice(0, max)
       : pairs;
-  const worklist: VerifyWorklist = { run: outDir, pairs: kept.map(({ score, ...rest }) => rest) };
+  const worklist: VerifyWorklist = {
+    run: outDir,
+    pairs: kept.map(({ score, ...rest }) => rest),
+    coverage: { total: pairs.length, kept: kept.length, max, capped: kept.length < pairs.length },
+  };
   return { worklist, total: pairs.length, kept: kept.length };
+}
+
+/**
+ * The cap a previous `--verify` run actually used, read back from
+ * `VERIFY.todo.json`. The `--check --semantic` coverage gate re-derives the
+ * worklist to spot dropped verdict rows; deriving it with a DIFFERENT cap than
+ * the run would compare two different pair sets. Falls back to the default for
+ * trees written before coverage was persisted.
+ */
+export function capUsedFor(outDir: string): number {
+  try {
+    const todo = JSON.parse(readFileSync(join(outDir, "VERIFY.todo.json"), "utf8"));
+    const max = todo?.coverage?.max;
+    if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
+  } catch {
+    // missing or unreadable worklist — the default cap is the honest guess
+  }
+  return VERIFY_MAX;
 }
 
 // Phase A — build the requirement↔evidence worklist AND persist it
@@ -153,6 +177,10 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
   const { worklist, total, kept } = buildWorklist(outDir, opts);
   const todo = {
     run: outDir,
+    // Coverage rides in the MACHINE worklist, not just VERIFY.md's prose: an
+    // agent reading only the JSON must still see that a capped run adjudicates
+    // a subset — partial coverage never reads as complete.
+    coverage: worklist.coverage,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "", confidence: null as ConfidenceKind | null })),
   };
   writeFileSync(join(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
@@ -173,7 +201,12 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
       `(evidence thin; needs a human). Save it (e.g. as \`verdicts.json\`), then run ` +
       `\`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`,
   );
-  if (kept < total) out.push(`\n_Showing ${kept} of ${total} requirement(s) — capped at the best-matched evidence._`);
+  if (kept < total)
+    out.push(
+      `\n> ⚠ **Partial coverage:** showing ${kept} of ${total} requirement(s) — capped at the ` +
+        `best-matched evidence. The ${total - kept} unshown requirement(s) are NOT adjudicated by ` +
+        `this round. Raise the cap with \`--max-verify ${total}\` to cover them all.`,
+    );
   out.push("");
   for (const p of wl.pairs) {
     out.push(`## ${p.claimId} · ${p.feature} → ${p.evidenceRef}`);
@@ -423,8 +456,9 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   // the inconvenient, e.g. refuted, claims before `--verify --apply` — is invisible
   // to the re-reduce, and a partially-adjudicated ledger would pass on an
   // unverified requirement. Re-derive the worklist deterministically from the PRDs
-  // (the same derivation `--verify` used; maxVerify is not CLI-configurable, so the
-  // pairs line up) and fail closed on any expected requirement with no adjudicated
+  // — with the SAME cap the run used (`capUsedFor`, read back from
+  // VERIFY.todo.json), so `--max-verify` can move without desynchronising the two
+  // derivations — and fail closed on any expected requirement with no adjudicated
   // verdict. This also catches a PRD edited after verification — its claim ids then
   // shift, so the stale ledger no longer covers the re-derived set. Routed through
   // `skip` (a coverage absence, like a missing/vacuous ledger, so `--allow-unverified`
@@ -432,7 +466,7 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   // below regardless.
   let expected: ClaimEvidencePair[] = [];
   try {
-    expected = buildWorklist(outDir).worklist.pairs;
+    expected = buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs;
   } catch {
     expected = [];
   }

@@ -34,7 +34,10 @@ The high-leverage way to extend `reconstruct` is a **stack guide**, not an adapt
    `## Where the interface surface lives`, `## Data model`, `## Entry points & boot`,
    `## Config & env`, `## Gotchas`, plus a closing `> tip:`. Keep it a dense ~25–45-line
    cheat-sheet with concrete file paths and real function/decorator names.
-2. If a cheap, framework-agnostic heuristic would help the agent find the right files, add
+2. **Add a row to `references/stack-guides/INDEX.md` in the same commit.** The agent routes
+   through the index — the labels the engine emits and the guide filenames are deliberately
+   not one-to-one — so an unindexed guide is unreachable no matter how good it is.
+3. If a cheap, framework-agnostic heuristic would help the agent find the right files, add
    it to `src/detect/candidates.ts` (a *candidate*, never asserted truth) and cover it with
    a test. Run `pnpm run build` to refresh the committed bundle.
 

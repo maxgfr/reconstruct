@@ -40,7 +40,7 @@ reconstruction/
 ├── RECONSTRUCTION.md          # (--merge) the whole tree in one markdown, WITH embedded source
 ├── SPECS.md                   # (--specs) the whole spec, code-free — the file to implement from
 ├── FEATURES.md                # (--features) every feature PRD only, in build order
-├── SUMMARY.md                 # (--summary) one-page digest of the reconstruction
+├── SUMMARY.md                 # one-page digest — written on EVERY run; read it to orient
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
 │   ├── ARCHITECTURE.md        # architecture + external services, cross-cutting policies, i18n message catalog
@@ -109,13 +109,15 @@ Four optional, combinable flags collapse the multi-file tree:
 - `--features` → **`FEATURES.md`**: every feature PRD only — the product
   functionality — in build order, in one file (single H1 + table of contents).
   The features-only counterpart to `--merge`.
-- `--summary` → **`SUMMARY.md`**: a one-page digest from the inventory (stack,
-  libraries, size, features in build order, interface/data counts, locales,
-  unknowns, next steps).
+- **`SUMMARY.md`**: a one-page digest from the inventory (stack, libraries, size,
+  features in build order, interface/data counts, locales, unknowns, next steps).
+  **Written on every run** — it is the cheap orientation document, a few KB against
+  an `inventory.json` that grows linearly with the repo. `--summary` only selects it
+  for the standalone post-step below.
 
 ```bash
 # inline: produce the tree and the bundles in one run
-node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --specs --features --summary
+node scripts/analyze.mjs --repo ./my-app --out ./my-app/reconstruction --merge --specs --features
 
 # standalone post-step: (re)build the bundles from an existing output, no --repo
 node scripts/analyze.mjs --merge --specs --features --summary --out ./my-app/reconstruction
@@ -184,7 +186,29 @@ verdicts/findings (never a stored `ok`), re-resolves every cited `evidenceRef` a
 inventory, and errors when a ledger is missing or unreadable (pass `--allow-unverified` to
 downgrade that to a warning). For larger trees the enrichment and the review/fix loop both fan out
 across subagents; the protocol (map-reduce + the ledger) is in
-[`references/orchestration.md`](./skills/reconstruct/references/orchestration.md).
+[`references/orchestration.md`](./skills/reconstruct/references/orchestration.md), and the loop
+itself — rounds, stopping conditions, the known-gaps report — in
+[`references/convergence-loop.md`](./skills/reconstruct/references/convergence-loop.md).
+
+The third gate, `--verify`, checks **faithfulness**: it pairs every requirement with the evidence
+the analyzer captured and makes you adjudicate each pair (`supported` · `partial` · `refuted` ·
+`unsupported`, stamped `confirmed` · `inferred` · `gap`). Its worklist is **capped at 60 pairs**
+by default — the cap is reported on stdout, in `VERIFY.md`, and as `coverage` in
+`VERIFY.todo.json`, and `--max-verify <n>` raises it. Full contract:
+[`references/verify-playbook.md`](./skills/reconstruct/references/verify-playbook.md).
+
+### Re-running is guarded
+
+A normal `--repo`/`--scratch` run **re-renders every document**, so pointing one at a tree you
+have already enriched would destroy the prose. The CLI detects an enriched tree — a document
+whose `🧠` callouts are all resolved, or a `REVIEW.json`/`VERIFY.json` ledger — and refuses:
+
+```
+<out> already holds an ENRICHED reconstruction — re-running the analyzer would overwrite it.
+```
+
+To continue an existing tree use `--check`/`--review`/`--verify`; to re-scaffold, point `--out`
+at a new directory; `--force` overwrites and loses the enrichment.
 
 ## Brainstorm first (optional)
 
@@ -260,8 +284,12 @@ small pluggable registry. The deeper
 framework-aware depth — the full interface surface and data model — comes from the AI playbook
 in [`SKILL.md`](./skills/reconstruct/SKILL.md) + [`references/`](./skills/reconstruct/references), with per-stack cheat-sheets in
 [`references/stack-guides/`](./skills/reconstruct/references/stack-guides) (Next.js, Remix, Nuxt, SvelteKit,
-Astro, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go, Spring Boot,
-tRPC/gRPC, GraphQL, mobile). Adding agent guidance for a stack is just markdown; adding a
+Astro, Angular, Express/Fastify/Hono, NestJS, Django/Flask/FastAPI, Rails, Laravel, Go, Spring
+Boot, .NET/ASP.NET, tRPC/gRPC, GraphQL, mobile, desktop Electron/Tauri, serverless/edge, and
+**libraries/CLIs/SDKs** for repos with no web framework at all).
+[`stack-guides/INDEX.md`](./skills/reconstruct/references/stack-guides/INDEX.md) maps every
+label the engine emits onto its guide — the names are deliberately not one-to-one (`Flask` lives
+in `django-flask-fastapi.md`). Adding agent guidance for a stack is just markdown; adding a
 deterministic route adapter is a small, self-contained code PR — see
 [`references/adapters.md`](./skills/reconstruct/references/adapters.md).
 

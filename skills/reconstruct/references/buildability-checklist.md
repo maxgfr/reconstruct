@@ -95,6 +95,12 @@ specified*. Naming is not enough; capture the contract.
 Helpers the unit calls (e.g. `sendWelcomeEmail`) need their exact signatures too;
 fold them into category 3 (side effects) or 6 (services).
 
+> **See them filled in.** [`worked-example.md`](./worked-example.md) walks one small feature
+> through these categories — the write-contract table (category 4), the enumerated enum
+> (category 2) and the quantified policy (category 7) — next to the shallow version that names
+> each one without specifying it. It also catalogues the recurring ways a PRD looks complete and
+> is not.
+
 ## The consistency self-review
 
 Before `--check`, re-read every feature PRD against the architecture docs and

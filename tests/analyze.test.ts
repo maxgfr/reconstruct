@@ -117,11 +117,12 @@ describe("render", () => {
     expect(arch?.content).toContain("Proposed architecture (redesign)");
   });
 
-  it("emits no bundle files by default", () => {
+  it("emits no opt-in bundle files by default", () => {
     const opts = makeOpts();
     const paths = render(analyze(opts), opts).artifacts.map((a) => a.relPath);
     expect(paths).not.toContain("RECONSTRUCTION.md");
-    expect(paths).not.toContain("SUMMARY.md");
+    expect(paths).not.toContain("FEATURES.md");
+    expect(paths).not.toContain("SPECS.md");
   });
 
   it("emits RECONSTRUCTION.md only when --merge is set", () => {
@@ -131,11 +132,20 @@ describe("render", () => {
     expect(merged?.content).toContain("# sample-app — Reconstruction");
   });
 
-  it("emits SUMMARY.md only when --summary is set", () => {
-    const opts = makeOpts({ summary: true });
-    const summary = render(analyze(opts), opts).artifacts.find((a) => a.relPath === "SUMMARY.md");
-    expect(summary).toBeDefined();
-    expect(summary?.content).toContain("reconstruction summary");
+  // SUMMARY.md is the cheap orientation doc that spares the agent reading
+  // inventory.json (which grows linearly with the repo), so it ships on every run.
+  it("emits SUMMARY.md on every run, with or without --summary", () => {
+    for (const opts of [makeOpts(), makeOpts({ summary: true })]) {
+      const summary = render(analyze(opts), opts).artifacts.find((a) => a.relPath === "SUMMARY.md");
+      expect(summary).toBeDefined();
+      expect(summary?.content).toContain("reconstruction summary");
+    }
+  });
+
+  it("keeps SUMMARY.md out of the merged bundle (no self-duplication)", () => {
+    const opts = makeOpts({ merge: true });
+    const merged = render(analyze(opts), opts).artifacts.find((a) => a.relPath === "RECONSTRUCTION.md");
+    expect(merged?.content).not.toContain("reconstruction summary");
   });
 });
 

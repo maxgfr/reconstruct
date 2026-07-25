@@ -79,40 +79,12 @@ For anything past a handful of features, drive the review through the engine's
 The fan-out mechanics (and the parallel map-reduce *enrichment*) are in
 [`orchestration.md`](./orchestration.md).
 
-## The convergence loop — iterate to a buildable fixpoint
+## The convergence loop
 
-A reconstruction is "done" when it **converges**, not when the scaffold is filled.
-Loop both layers until the tree is clean (this is `SKILL.md` step 10):
-
-```
-round = 1
-repeat:
-  a. enrich / fix the changed units
-  b. node scripts/analyze.mjs --check  --out <OUT>     # Layer 1 (structure) — fix errors, repeat (b)
-  c. node scripts/analyze.mjs --review --out <OUT>     # Layer 2 worklist (changed units only)
-  d. finder per flagged unit + verifier per blocker → findings.json
-  e. node scripts/analyze.mjs --review --apply findings.json --out <OUT>   # → REVIEW.json
-until  REVIEW.json.ok   or   REVIEW.json.staleRounds >= 2   or   round > 5
-```
-
-Make it terminate on a *correct* fixpoint — the ledger backs each rule with a signal:
-
-- **Fresh-reviewer rule:** a blocker counts only until an independent verifier `refuted`
-  it; an unrefuted blocker stays in `REVIEW.json.residual`. Never self-certify.
-- **Only re-review what changed:** `--review` flags `needsReview` by content hash, so the
-  loop shrinks. Review exactly the flagged units.
-- **Ground every fix** in source/`data/` (code) or `CONTEXT.md`/ADRs (scratch); an
-  invented fix just swaps one finding for another.
-- **Stop at zero blockers, not zero findings.** `REVIEW.json.ok` gates "buildable"; majors
-  are worth fixing; minors are optional — record what you deliberately leave unfixed.
-- **If the same finding keeps reappearing** (`REVIEW.json.noProgress` — the same `residual`
-  ids), the contract in the architecture docs is wrong, not the feature PRD — fix
-  `INTERFACES.md` / `DATA-MODEL.md` first, then the features that hang off it stop regressing.
-- **Run it autonomously, and bound it.** The agent drives every round itself — the user
-  relaunches nothing. Terminate at `REVIEW.json.ok`, or when `staleRounds >= 2` / after ≤ 5
-  rounds; if a residual finding is a faithful property of the original (a real bug being
-  preserved), record it in `REBUILD.md`'s known-gaps list and move on instead of looping on
-  it. Report once at the end.
+This review is one layer of a loop that runs to a fixpoint. The loop itself — the round, the
+ledger fields, the rules that make it terminate *correctly*, and what to do when it stops short
+— lives in **[`convergence-loop.md`](./convergence-loop.md)**. Read it once; it is the single
+source of truth, and this rubric is what you apply inside step (d) of it.
 
 ## The nine checks
 
@@ -169,6 +141,11 @@ Make it terminate on a *correct* fixpoint — the ledger backs each rule with a 
    from this PRD plus the architecture docs alone, with no access to the original
    product and no access to the conversation that produced it?* If not, name the
    single biggest reason. *Blocker if the honest answer is "no".*
+
+> **Calibration.** [`worked-example.md`](./worked-example.md) shows a unit that passes all nine
+> next to the shallow version that passes `--check` and fails every one — plus the anti-pattern
+> catalogue (named-not-specified, happy-path-only, "etc.", enum without members, unsatisfiable
+> write). Read it before your first review: it is faster to recognise these than to derive them.
 
 ## What good output looks like
 

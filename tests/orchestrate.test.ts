@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { analyze } from "../src/analyze.js";
 import { checkOutput } from "../src/check.js";
 import { parseArgs } from "../src/cli.js";
-import { BATCH_SIZE, PHASES, SMALL_WORKLIST, listPhases, orchestrateRun } from "../src/orchestrate.js";
+import { MAX_AGENTS, PHASES, SMALL_WORKLIST, batchSizeFor, listPhases, orchestrateRun } from "../src/orchestrate.js";
 import { writeOutput } from "../src/output.js";
 import { render } from "../src/prd/render.js";
 import { applyFindings, runReview } from "../src/review.js";
@@ -181,14 +181,14 @@ describe("orchestrate — emitted workflow", () => {
     expect(snapshot()).toBe(first);
   });
 
-  it("batches large worklists and dispatches one agent per batch", () => {
+  it("batches an adjudicate worklist and dispatches one agent per batch", () => {
     const dir = fullState({ pairs: 20 });
     orchestrateRun(dir, ENGINE);
     const src = readWf(dir, "adjudicate");
     const m = src.match(/const BATCHES = (\[.*?\])\n/s);
     expect(m).not.toBeNull();
     const batches = JSON.parse(m![1]!) as string[][];
-    expect(batches.length).toBe(Math.ceil(20 / BATCH_SIZE));
+    expect(batches.length).toBe(Math.ceil(20 / batchSizeFor("adjudicate", 20)));
     expect(batches.flat().length).toBe(20);
     expect(src).toContain("pipeline(BATCHES");
     expect(src).toContain("agentType: 'general-purpose'");
@@ -201,7 +201,65 @@ describe("orchestrate — emitted workflow", () => {
     const m = readWf(dir, "adjudicate").match(/const BATCHES = (\[.*?\])\n/s);
     expect((JSON.parse(m![1]!) as string[][]).length).toBe(1);
     expect(res.notices.some((n) => n.includes("--eco"))).toBe(true);
-    expect(SMALL_WORKLIST).toBeLessThan(BATCH_SIZE);
+    expect(SMALL_WORKLIST).toBeLessThanOrEqual(batchSizeFor("adjudicate", SMALL_WORKLIST));
+  });
+
+  // The unit of work in enrich-map is a COMPLETE feature PRD. Folding several into
+  // one agent is what the emitted drafter contract ("you draft ONE feature at a
+  // time") explicitly denies, and it serialises work the host would have run
+  // concurrently.
+  it("enrich-map and review-find dispatch exactly one agent per item", () => {
+    const dir = fullState();
+    orchestrateRun(dir, ENGINE);
+    for (const phase of ["enrich-map", "review-find"] as const) {
+      const m = readWf(dir, phase).match(/const BATCHES = (\[.*?\])\n/s);
+      const batches = JSON.parse(m![1]!) as string[][];
+      expect(
+        batches.every((b) => b.length === 1),
+        `${phase} batched more than one item per agent`,
+      ).toBe(true);
+    }
+  });
+
+  it("batchSizeFor: per-phase defaults, agent cap, and --batch-size override", () => {
+    expect(batchSizeFor("enrich-map", 12)).toBe(1);
+    expect(batchSizeFor("review-find", 12)).toBe(1);
+    expect(batchSizeFor("review-verify", 12)).toBe(4);
+    expect(batchSizeFor("adjudicate", 12)).toBe(4);
+    // Past MAX_AGENTS the BATCH grows, not the fleet.
+    expect(batchSizeFor("enrich-map", MAX_AGENTS)).toBe(1);
+    expect(batchSizeFor("enrich-map", MAX_AGENTS * 2)).toBe(2);
+    expect(Math.ceil((MAX_AGENTS * 3) / batchSizeFor("enrich-map", MAX_AGENTS * 3))).toBeLessThanOrEqual(MAX_AGENTS);
+    // An explicit override wins outright, in both directions.
+    expect(batchSizeFor("enrich-map", 12, 5)).toBe(5);
+    expect(batchSizeFor("adjudicate", 12, 1)).toBe(1);
+  });
+
+  it("reports the batching decision — a cap is never silent", () => {
+    const dir = fullState({ pairs: 20 });
+    const res = orchestrateRun(dir, ENGINE);
+    const note = res.notices.find((n) => n.includes('"adjudicate"') && n.includes("agent(s)"));
+    expect(note).toBeDefined();
+    expect(note).toMatch(/20 item\(s\) → 5 agent\(s\), 4 item\(s\) each/);
+  });
+
+  it("--batch-size overrides the per-phase default and is reported as such", () => {
+    const dir = fullState({ pairs: 20 });
+    const res = orchestrateRun(dir, ENGINE, { batchSize: 10 });
+    const batches = JSON.parse(readWf(dir, "adjudicate").match(/const BATCHES = (\[.*?\])\n/s)![1]!) as string[][];
+    expect(batches.length).toBe(2);
+    expect(res.notices.some((n) => n.includes("--batch-size"))).toBe(true);
+  });
+
+  it("--list exposes the fan-out shape (batch + agents) per phase", () => {
+    const dir = fullState({ pairs: 20 });
+    const phases = listPhases(dir, ENGINE);
+    const adj = phases.find((p) => p.name === "adjudicate")!;
+    expect(adj.batch).toBe(4);
+    expect(adj.agents).toBe(5);
+    const enrich = phases.find((p) => p.name === "enrich-map")!;
+    expect(enrich.batch).toBe(1);
+    expect(enrich.agents).toBe(enrich.items);
   });
 
   it("an empty worklist is skipped with a notice, not emitted", () => {

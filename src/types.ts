@@ -91,6 +91,22 @@ export interface Options {
   eco?: boolean;
   /** With `--orchestrate`: print the `{phases:[...]}` JSON, write nothing. `--list`. */
   list?: boolean;
+  /**
+   * Overwrite an `--out` tree that already holds enriched, agent-written prose.
+   * Without it the CLI refuses such a run (a re-render would destroy the
+   * enrichment). `--force`.
+   */
+  force?: boolean;
+  /**
+   * With `--verify`: cap the requirement↔evidence worklist at N pairs
+   * (default `VERIFY_MAX`). `--max-verify`.
+   */
+  maxVerify?: number;
+  /**
+   * With `--orchestrate`: force N worklist items per subagent, overriding the
+   * per-phase default. `--batch-size`.
+   */
+  batchSize?: number;
 }
 
 /** The generation parameters recorded in `inventory.json` for provenance. */
@@ -644,6 +660,25 @@ export interface VerifyResult {
 export interface VerifyWorklist {
   run: string;
   pairs: ClaimEvidencePair[];
+  /**
+   * Coverage of this worklist. The engine caps the pairs at `VERIFY_MAX`
+   * (`--max-verify`), keeping the best-matched evidence — so a capped run
+   * adjudicates a SUBSET of the tree's requirements. Persisted into
+   * `VERIFY.todo.json` and printed by the CLI so partial coverage can never
+   * read as complete coverage.
+   */
+  coverage: VerifyCoverage;
+}
+
+export interface VerifyCoverage {
+  /** Requirement↔evidence pairs derivable from the PRDs, before the cap. */
+  total: number;
+  /** Pairs actually in this worklist. */
+  kept: number;
+  /** The cap that produced `kept` (`VERIFY_MAX` unless `--max-verify`). */
+  max: number;
+  /** `kept < total` — the worklist is a subset; re-run with a higher `--max-verify` for the rest. */
+  capped: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport, reduceVerdicts, resolveEvidence } from "../src/verify.js";
+import { runVerify, applyVerdicts, capUsedFor, foldSemantic, formatVerifyReport, reduceVerdicts, resolveEvidence } from "../src/verify.js";
 import { checkOutput } from "../src/check.js";
 
 function scratch(): string {
@@ -81,6 +81,58 @@ describe("runVerify (requirement worklist)", () => {
     tree(dir, PRD);
     const r = runVerify(dir, { maxVerify: 2 });
     expect(r.pairs.length).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // A capped worklist adjudicates a SUBSET of the tree's requirements. If that
+  // only ever appeared in VERIFY.md's prose, an agent reading the machine
+  // worklist would take partial coverage for complete coverage.
+  it("records coverage in the MACHINE worklist, not just VERIFY.md", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    runVerify(dir, { maxVerify: 2 });
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    expect(todo.coverage).toEqual({ total: 3, kept: 2, max: 2, capped: true });
+    expect(readFileSync(join(dir, "VERIFY.md"), "utf8")).toMatch(/Partial coverage/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reports capped: false and no warning when every requirement fits", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    const r = runVerify(dir);
+    expect(r.coverage).toEqual({ total: 3, kept: 3, max: 60, capped: false });
+    expect(readFileSync(join(dir, "VERIFY.md"), "utf8")).not.toMatch(/Partial coverage/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("capUsedFor reads the cap back, and defaults when the worklist predates coverage", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    expect(capUsedFor(dir)).toBe(60); // no VERIFY.todo.json yet
+    runVerify(dir, { maxVerify: 2 });
+    expect(capUsedFor(dir)).toBe(2);
+    // an older worklist without `coverage` falls back to the default
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    todo.coverage = undefined;
+    writeFileSync(join(dir, "VERIFY.todo.json"), JSON.stringify(todo));
+    expect(capUsedFor(dir)).toBe(60);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// The coverage gate re-derives the worklist to spot dropped verdict rows. It must
+// re-derive with the SAME cap the run used, or a --max-verify run would be compared
+// against a differently-sized pair set.
+describe("--check --semantic honours the cap the run actually used", () => {
+  it("passes when a capped run adjudicated exactly its own (capped) worklist", () => {
+    const dir = scratch();
+    tree(dir, PRD);
+    runVerify(dir, { maxVerify: 2 });
+    applyVerdicts(dir, writeVerdicts(dir, {}));
+    const check = { errors: [] as string[], warnings: [] as string[] } as any;
+    foldSemantic(dir, check);
+    expect(check.errors.join("\n")).not.toMatch(/no adjudicated verdict/);
     rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -24,9 +24,11 @@ a dynamic workflow engine). The protocol below does not depend on any one of the
 not a requirement. On a small repo, just do the steps inline — the fan-out earns its keep when the
 tree has more than a handful of features.
 
-> **When to fan out.** Roughly: ≤ ~5 features → enrich and review inline; more than that → fan out
-> per feature. Always fan out a monorepo (one stream per workspace). The cost of a wrong call is
-> small — the engine's gates are identical either way.
+> **When to fan out, and how wide.** See [`scale-and-context.md`](./scale-and-context.md) §4 — it
+> carries the threshold (≤ ~5 features → inline), the per-phase batch sizes the engine picks, and
+> the agent cap. The short version: `enrich-map`/`review-find` dispatch **one agent per item**;
+> `review-verify`/`adjudicate` batch 4. The cost of a wrong call is small — the gates are
+> identical either way.
 
 ---
 
@@ -146,38 +148,28 @@ feature. Fixing a blocker edits its PRD, which re-flags that feature, which lets
 next round's clean review actually clear it. (Change-tracking anchors to the last
 *applied* round, so running `--review` repeatedly without `--apply` is idempotent.)
 
-### Termination — driven by the ledger, not by feel
+### Termination
 
-```
-round = 1
-repeat the cycle above
-until  REVIEW.json.ok                         # zero gating blockers → done
-   or  REVIEW.json.staleRounds >= 2           # the same blockers survived two fix rounds
-   or  round > 5                              # hard bound so a pathological unit can't spin
-```
+Driven by the ledger, not by feel — and defined once, in
+**[`convergence-loop.md`](./convergence-loop.md)**: the stopping conditions (`ok`,
+`staleRounds >= 2`, `round > 5`), the escalation ladder when you stop short, and the
+known-gaps report. Do not improvise stopping rules here.
 
-When you stop **not** at `ok`, do not stop silently: the escalation ladder is **re-edit the unit →
-fix the shared architecture contract those blockers share (`INTERFACES.md`/`DATA-MODEL.md`) → record
-and report**. Write every remaining `REVIEW.json.failures` entry into `REBUILD.md` under
-`## Known gaps / unresolved blockers` (owning unit, the finding, what was tried) and surface it in
-the final report. If a residual blocker is a *faithful* property of the original (a real bug you are
-preserving), record it rather than looping on it. Report once, at the end.
+---
 
-When adjudicating the `--verify` requirement ledger, stamp each verdict with a `confidence` label
-alongside its `verdict`: **confirmed** (you read the cited evidence and it decisively supports the
-requirement), **inferred** (consistent with the source but indirect — a convention, a pattern, or
-standard library/DB behavior, with no false certainty), or **gap** (the evidence is thin or missing
-and a human should confirm). The label never gates — the `verdict` kind does — but it keeps a
-grounded fact machine-distinguishable from an inference, and `--check --semantic` warns when any
-verdict is labeled `gap` so thin evidence surfaces instead of reading as directly confirmed.
+## Phase 3 — adjudicating the requirement ledger
 
-`--check --semantic` folds both semantic gates — `VERIFY.json` (refuted/unsupported requirements)
-and `REVIEW.json` (unresolved blockers) — into the structural gate, additively. It re-reduces the
-persisted verdicts/findings at check time and re-resolves every cited `evidenceRef` against the
-inventory, so a stale or hand-edited `ok: true` never passes; and it **fails closed** — a missing
-or unreadable ledger is an error (run `--verify`/`--review` first, or pass `--allow-unverified` to
-downgrade it to a warning, deliberately and reported). It is the single command that answers
-"is this tree buildable, structurally **and** semantically?"
+`--verify` pairs every requirement with the evidence the analyzer captured, and the pairs fan out
+one adjudicator each (`--orchestrate --phase adjudicate`). The full contract — what becomes a
+claim, the verdict and confidence vocabularies, the citation guard, the `verdicts.json` shapes,
+and the **worklist cap that bounds coverage** — is in
+[`verify-playbook.md`](./verify-playbook.md).
+
+The one thing to carry into every adjudicator prompt: alongside `verdict`, stamp a `confidence`
+label — **confirmed** (evidence read, decisive), **inferred** (consistent but indirect: a
+convention, a pattern, standard library/DB behavior — no false certainty), or **gap** (evidence
+thin, a human should confirm). It never gates, but it keeps a grounded fact
+machine-distinguishable from an inference, and `--check --semantic` warns on every `gap`.
 
 ---
 

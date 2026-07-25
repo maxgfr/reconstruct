@@ -206,6 +206,7 @@ A run writes this tree under `--out` (default `<repo>/reconstruction`):
 ```
 reconstruction/
 ├── REBUILD.md                 # master plan: build order + validation checklist
+├── SUMMARY.md                 # one-page digest — written on EVERY run; the cheap way to orient
 ├── 00-overview/PRD.md         # product summary, stack, metrics, feature index
 ├── architecture/
 │   ├── ARCHITECTURE.md        # current (preserve) or proposed (redesign) architecture
@@ -240,6 +241,23 @@ manifest-derived `dependsOn` edges, `routeCount`, `schemas`, and per-workspace `
 `runtime` (e.g. required Node version), and `excludedCount`. The artifacts and the per-feature copies
 are produced by [`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
 [`src/output.ts`](./src/output.ts).
+
+**Read `SUMMARY.md`, not `inventory.json`, to orient.** The inventory carries one entry per
+analyzed file, so it grows linearly with the repo (tens of KB on a mid-size project, far more on
+a large one); `SUMMARY.md` is a few KB and bounded. Slice the inventory with `jq` when you need a
+specific field — see
+[`references/scale-and-context.md`](./skills/reconstruct/references/scale-and-context.md).
+
+### Re-running is guarded
+
+`writeOutput` re-renders **every** artifact, so a fresh `--repo`/`--scratch` run pointed at an
+already-enriched `--out` would destroy the prose (only `CONTEXT.md`, `docs/adr/*` and
+`BRAINSTORM.md` are written if-absent). `detectEnrichment` in
+[`src/output.ts`](./src/output.ts) spots an enriched tree — a callout-bearing document whose `🧠`
+callouts are all resolved, or a `REVIEW.json`/`VERIFY.json` ledger — and the CLI refuses the run,
+naming the safe alternatives. `--force` overrides it and loses the enrichment. The list of
+callout-bearing documents is pinned to a really-generated tree by `tests/rerun-guard.test.ts`, so
+a template that stops emitting callouts fails a test instead of silently misfiring the guard.
 
 ---
 
@@ -286,7 +304,10 @@ Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 Several web frameworks resolve routes **deterministically** (Next.js, Express, Fastify, Hono,
 Flask, FastAPI, NestJS, Django, Rails, Go, tRPC); every other stack's interface surface and data model are mapped by the **AI playbook**
 from the candidate hints — see [`references/analysis-playbook.md`](./skills/reconstruct/references/analysis-playbook.md)
-and the per-stack cheat-sheets in [`references/stack-guides/`](./skills/reconstruct/references/stack-guides). The two
+and the per-stack cheat-sheets in [`references/stack-guides/`](./skills/reconstruct/references/stack-guides), indexed by
+[`stack-guides/INDEX.md`](./skills/reconstruct/references/stack-guides/INDEX.md) (which maps each
+emitted label onto its guide — the names are deliberately not one-to-one — and covers the stacks
+with no detection signal at all, plus the no-framework library/CLI/SDK case). The two
 layers are **complementary**: an adapter gives a resolved head-start where a framework has a clear
 routing convention; the playbook + candidates cover everything else and all the deep semantic work.
 
@@ -303,6 +324,8 @@ Framework support has two seams; pick the one that fits — or both.
    (`Where the interface surface lives`, `Data model`, `Entry points & boot`, `Config & env`,
    `Gotchas`, + a closing `> tip:`). Keep it a dense cheat-sheet with real file paths and
    function/decorator names. The agent loads it on demand to fill `INTERFACES.md` / `DATA-MODEL.md`.
+   **Add a row to [`stack-guides/INDEX.md`](./skills/reconstruct/references/stack-guides/INDEX.md)**
+   in the same commit — the agent routes through the index, so an unindexed guide is unreachable.
 2. *Optional:* if a cheap, framework-agnostic signal helps the agent find the right files, add a
    candidate heuristic to [`src/detect/candidates.ts`](./src/detect/candidates.ts) (a *candidate*,
    never asserted truth), cover it with a test, and `pnpm run build`.

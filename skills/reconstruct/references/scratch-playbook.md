@@ -218,7 +218,7 @@ services and policies concrete, the message catalog complete), `CONTEXT.md` name
 fuzzy term, and `REBUILD.md`'s tiered build order is one an agent can follow from the first
 foundation to the last doc.
 
-Then run the buildability gate — it must pass:
+Then converge. `--check` is only the first gate:
 
 ```bash
 node scripts/analyze.mjs --check --out <OUT>
@@ -227,7 +227,12 @@ node scripts/analyze.mjs --check --out <OUT>
 It fails on unresolved `🧠`/placeholders, a feature that references an undocumented entity or
 operation, a feature PRD missing its spine or left content-less, or an emptied
 `DATA-MODEL.md`/`INTERFACES.md`; an uncovered locale — or a UI product whose `DESIGN-SYSTEM.md`
-is left empty — is a warning. The full category list — the ten contract categories and the
-consistency self-review — is in
-`references/buildability-checklist.md`. Work it until both the consistency review and
-`--check` are clean.
+is left empty — is a warning. The ten contract categories and the consistency self-review are in
+[`buildability-checklist.md`](./buildability-checklist.md).
+
+Once it is clean, run the full loop — AI review, then the two semantic ledgers, then the
+fail-closed final gate — per [`convergence-loop.md`](./convergence-loop.md). In scratch mode the
+ground truth for both the review and `--verify` is the interview, `CONTEXT.md` and the ADRs
+(the role `source/` + `data/` play in code mode); see
+[`verify-playbook.md`](./verify-playbook.md). The tree is done when
+`--check --semantic` exits 0.

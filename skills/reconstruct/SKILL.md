@@ -6,428 +6,156 @@ metadata:
   version: 2.9.0
 ---
 
-# Reconstruct: repo → reconstruction PRDs
+# Reconstruct: any repo — or any idea — → a buildable PRD suite
 
-Turn any repository into a folder of PRDs an AI agent can follow to **rebuild**,
-**recreate**, **clone**, or **scaffold** the project from scratch — faithfully and
-optionally with improvements. A dependency-free Node script does the **deterministic**
-scaffold (facts + candidate *hints*); you (the agent) supply the **framework-aware
-understanding** — the interface surface, the data model, and the real features — for
-**any** stack. The deterministic scaffold is universal; **the markdown is the program.**
+A dependency-free Node script does the **deterministic** scaffold (facts + candidate *hints*);
+**you** supply the framework-aware understanding — the interface surface, the data model, the
+real features — for any stack. The output is a folder of PRDs an agent can rebuild the project
+from, with no access to the original and no access to this conversation.
 
-## When to use
+**The markdown is the program.** The engine never reasons; every judgement in this skill is
+yours.
 
-- "Rebuild / recreate / clone / scaffold this project from scratch."
-- "Reverse-engineer this repo into a spec / PRDs."
-- "Document this codebase so another team or agent can rebuild it."
-- **Greenfield** — "build me a new project from scratch", "turn my idea into a build plan /
-  PRDs", "design a new app". There is no code yet: interview the user, then render the same
-  tree. → jump to [**From scratch**](#from-scratch).
+## Route the request
 
-Skip it for tiny single-file scripts, or when the user wants a running app now, not a plan.
+| The user wants | Path | Start with | Then read |
+| --- | --- | --- | --- |
+| Rebuild / clone / reverse-engineer a repo; turn code into specs | **code** | `node scripts/analyze.mjs --repo <REPO> --out <OUT>` | [procedure.md](references/procedure.md) §Path A |
+| Turn an idea into PRDs / a build plan (no code yet) | **greenfield** | **interview first** — no command | [scratch-playbook.md](references/scratch-playbook.md), [procedure.md](references/procedure.md) §Path B |
+| Decide *what* to build; explore concepts | **brainstorm** | `node scripts/analyze.mjs --brainstorm --out <DIR>` | [brainstorm-playbook.md](references/brainstorm-playbook.md) |
+| Continue / refresh a reconstruction that already exists | **resume** | `node scripts/analyze.mjs --check --out <OUT>` | [procedure.md](references/procedure.md) §Path D |
+| One file to hand an agent to implement from | **bundle** | `node scripts/analyze.mjs --specs --out <OUT>` (no `--repo`) | [scale-and-context.md](references/scale-and-context.md) §6 |
 
-## Inputs to confirm
+Use the **absolute path** to `scripts/analyze.mjs` inside the installed skill folder. `--help`
+lists every flag. Skip the skill for tiny single-file scripts, or when the user wants a running
+app now rather than a plan.
 
-1. **Target repo** (default: current dir) and **output dir** (default `<repo>/reconstruction`).
-2. **Mode** — `preserve` (keep architecture) or `redesign` (same features, fresh architecture). Default `preserve`.
-3. **Level** — `light` (faithful) or `complex` (also suggest improvements). Default `light`.
-4. **Fidelity** — `mirror` / `embed` / `describe`. If unset, derived from mode+level.
+**Inputs to confirm** (code path): target repo · output dir · **mode** `preserve` (keep the
+architecture) or `redesign` (same features, fresh architecture) · **level** `light` (faithful) or
+`complex` (also suggest improvements) · **fidelity** `mirror`/`embed`/`describe`, derived from
+mode+level if unset.
 
-## Procedure
+## The pipeline — four phases
 
-1. **Run the analyzer** (deterministic, no API key). Use the absolute path to
-   `scripts/analyze.mjs` inside the installed skill folder:
+```bash
+# 1. SCAFFOLD — deterministic, no API key
+node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL>
 
-   ```bash
-   node scripts/analyze.mjs --repo <REPO> --out <OUT> --mode <MODE> --level <LEVEL> [--fidelity <F>] [--granularity coarse|fine] [--merge] [--features] [--specs] [--summary]
-   ```
+# 2. ORIENT — SUMMARY.md (~3 KB, written every run), NOT inventory.json (grows with the repo)
+#    slice the inventory:  jq '.features[] | {slug, files: (.files|length)}' <OUT>/inventory.json
+#    identify the stack → references/stack-guides/INDEX.md maps the label to its guide
 
-   Add `--json` to inspect the raw inventory first; `--help` for all flags
-   (`--include`/`--exclude` globs scope large repos). `--merge`/`--features`/`--specs`/`--summary`
-   are optional bundles — see **Bundling the output** below.
+# 3. ENRICH — fill INTERFACES.md, DATA-MODEL.md, ARCHITECTURE.md (+ DESIGN-SYSTEM.md for a UI),
+#    then every features/<slug>/PRD.md to full spine depth. At scale, fan out:
+node scripts/analyze.mjs --orchestrate --out <OUT> --phase enrich-map
 
-2. **Read the scaffold:** `inventory.json` (facts **+ `hints` + `unknowns`**),
-   `00-overview/PRD.md`, `architecture/ARCHITECTURE.md`, the **`architecture/INTERFACES.md`**,
-   **`architecture/DATA-MODEL.md`**, and (for a UI product) **`architecture/DESIGN-SYSTEM.md`**
-   skeletons, and each `features/<slug>/PRD.md`.
-   Treat `routes`/`i18n` and everything under `hints` as **candidates to verify**, not truth.
-   If `inventory.warnings` is present (a malformed manifest, a workspace dependency cycle),
-   detection degraded there — verify those areas by hand before trusting the empty defaults.
+# 4. CONVERGE — run to the fixpoint, autonomously, in one go
+node scripts/analyze.mjs --check   --out <OUT>              # layer 1: structure
+node scripts/analyze.mjs --review  --out <OUT>              # layer 2: worklist (changed units only)
+#   → findings.json → --review --apply findings.json --out <OUT>
+node scripts/analyze.mjs --verify  --out <OUT>              # faithfulness: requirement↔evidence
+#   → verdicts.json → --verify --apply verdicts.json --out <OUT>
+node scripts/analyze.mjs --check --semantic --out <OUT>     # the final, fail-closed gate
+```
 
-3. **Identify the stack & load its guide.** Read `inventory.stack`. If a
-   `references/stack-guides/<stack>.md` matches, read it; otherwise use the generic method
-   in `references/analysis-playbook.md`. For monorepos (`inventory.workspaces` — each entry
-   carries its own `stack`, `dependencies`, `dependsOn`, `routeCount`, and `hints`), read
-   `references/stack-guides/monorepo.md` and load the matching stack guide *per workspace*;
-   verify the manifest-derived `dependsOn` graph and extend it with implicit edges. If the
-   engine detected no workspaces but the layout looks like a monorepo (several apps/services
-   with their own manifests), identify the workspaces yourself and scope re-runs with
-   `--include '<dir>/**'`.
+Phase 4 is a **loop**, not a checklist: enrich → check → review → fix → verify → gate, until
+`--check --semantic` exits 0. Its rules, ledger fields and stopping conditions are defined once,
+in **[convergence-loop.md](references/convergence-loop.md)**. Do not improvise stopping rules.
 
-   For a deep dive into one workspace, re-run the analyzer scoped to it:
-   `node scripts/analyze.mjs --repo <REPO> --include '<workspace-dir>/**' --out <OUT>-<workspace>`.
-   Implicit edges to hunt for (manifest edges miss them): HTTP base-URLs pointing at a sibling
-   app, queue/event topics one workspace publishes and another consumes, env vars consumed by
-   two or more workspaces, and generated API clients. Cross-check the finished graph against
-   `architecture/diagram.md` and `REBUILD.md`'s tier order — and heed the analyzer's
-   `workspace dependency cycle` warning: a cycle demotes the build order to path order, so
-   break it (or document the bootstrap order) in `REBUILD.md`.
+## Non-negotiables
 
-4. **Map the interface surface** → fill **`architecture/INTERFACES.md`**. Enumerate *every*
-   HTTP route, endpoint, tRPC/gRPC procedure, GraphQL operation, CLI command, and job —
-   method · path/operation · handler file. Start from `hints.routeCandidates`/`apiCandidates`,
-   then **read the source** to confirm. Cover the stack's real paradigm, not just file-based
-   routing. `hints.realtimeCandidates` points at WebSocket/SSE surfaces (enumerate their
-   channels, events, and message shapes — they rarely appear in route tables);
-   `hints.authCandidates` points at the guards/middleware that carry each operation's auth
-   rule. For each operation capture the **contract**: exact input shape, output shape,
-   auth rule, and side effects (which entities it writes, transactional or not). See
-   `references/analysis-playbook.md` (§Interface surface, §Contracts & buildability).
-
-5. **Extract the data model** → fill **`architecture/DATA-MODEL.md`**. List entities/tables,
-   key fields + types, relations, indexes, and unique constraints from the ORM/schema in
-   `hints.schemaCandidates` (raw copies in `data/schema/`), and fill the **`## Enums & domain
-   types`** section with the *complete* member list of every enum/status/role set. Then fill
-   the **`architecture/ARCHITECTURE.md`** contract sections — **External services &
-   integrations** (provider, request/response, timeout, failure), **Cross-cutting policies**
-   (rate limits and format validations, quantified), and the i18n message catalog. **For a UI
-   product**, also fill **`architecture/DESIGN-SYSTEM.md`** — design tokens with their *exact
-   values*, theming (light/dark), typography, breakpoints, iconography, motion, the
-   component-library contract (variants + states), and the accessibility target — from
-   `hints.designSystemCandidates` (it self-degrades to a stub when there is no UI). See the
-   playbook (§Data model, §Contracts & buildability) and `references/buildability-checklist.md`.
-
-6. **Group features semantically — and keep them small.** Turn the path-based skeleton into real
-   product features; rename and merge truly trivial ones, but **prefer many focused features over
-   a few broad ones**: if a unit carries more than ~5–7 user stories or touches more than ~3
-   entities, **split it**. Concrete signals — **split** when a unit serves two disjoint actor
-   sets (admin vs end-user), when its route clusters share no interface rows or entities, when
-   its halves could ship independently in either order, or when its honest name needs an "and".
-   **Merge** a unit into its neighbor (or Core) when it has a single story with no entity or
-   route of its own, or is pure glue (re-exports, wiring); config-only groups fold into
-   project-setup. Every distinct capability earns its own PRD. Link each feature to its
-   interfaces, data, and components. See the playbook (§Features).
-
-7. **Turn every `features/<slug>/PRD.md` into a complete PRD.** Each one ships with a fixed spine —
-   *Context & goal · User stories · Functional requirements · Interfaces & data · Acceptance
-   criteria · Edge cases & failure modes · Definition of done* (plus *Test plan* under `--tdd`,
-   and *Improvements/Enhancements* at `complex`). **Resolve every `> 🧠` callout exhaustively and
-   delete it:** enumerate every actor and story, number every requirement, write Given/When/Then
-   for each (including the failure paths), and list every edge case. A 🧠 callout left in place
-   means the unit is **not done**. Also write the product summary in `00-overview/PRD.md` and
-   cross-reference `INTERFACES.md`/`DATA-MODEL.md`.
-
-   At scale, run steps 4–7 as the map-reduce in `references/orchestration.md`: one drafting agent
-   per feature (each reads its `files` + `hints` and proposes interface/entity rows), then a single
-   **reduce** that merges those proposals into the canonical `INTERFACES.md`/`DATA-MODEL.md` —
-   deduping and reconciling conflicts against source — so the parallel drafts never race on the
-   shared docs. The engine emits this fan-out ready to launch:
-   `node scripts/analyze.mjs --orchestrate --out <OUT> --phase enrich-map`
-   (see **Orchestration — route by harness** below).
-
-8. **Finalize `REBUILD.md`:** confirm the dependency-tiered build order and validation
-   checklist, then tell the user how to drive the rebuild (feed feature PRDs to an agent one
-   by one, using `data/` and `source/` as ground truth).
-
-9. **Validate buildability — two layers, both must pass.**
-
-   - **Layer 1 — the deterministic gate (structure).** Run the consistency self-review (every
-     feature's entities/operations/enums/locales resolve against the architecture docs; every
-     write is satisfiable; anonymous writes target anonymous-capable entities), then run:
-
-     ```bash
-     node scripts/analyze.mjs --check --out <OUT>
-     ```
-
-     It exits non-zero on: a **missing required document** (`REBUILD.md`, `00-overview/PRD.md`,
-     or any of the three architecture docs); unresolved `🧠` callouts or `fill this in`
-     placeholders; a feature PRD **missing a spine section or leaving one empty** (a heading with
-     no content); or an architecture doc **emptied of its contract** (no entities in
-     `DATA-MODEL.md`, no operations in `INTERFACES.md`). On the **scratch path** it additionally
-     enforces reference integrity — a feature must not reference an entity/operation absent from
-     the architecture docs (on the code path the inventory carries no `dataModel`/`interfaces`, so
-     the contract-substance check above is the operative gate instead). An uncovered locale — or a
-     UI product whose `DESIGN-SYSTEM.md` is left empty — is a warning. Fix every error and resolve
-     the warnings. See `references/buildability-checklist.md`.
-
-   - **Layer 2 — the AI review (substance).** The gate proves structure but cannot judge
-     whether the prose is *actually buildable*. Once `--check` passes, **you (the agent) run a
-     semantic self-review** against `references/ai-review-rubric.md` — story completeness,
-     testable requirements, real Given/When/Then (incl. failure paths), satisfiable write
-     contracts, enum fidelity, cross-doc consistency, faithfulness, i18n, and the decisive
-     rebuild self-test. This runs *via the skill* (no API key, no `--ai` flag — the model is
-     the reviewer). `node scripts/analyze.mjs --review --out <OUT>` writes the per-feature
-     worklist (flagging only changed units); fan out one reviewer per flagged unit + one
-     independent verifier per blocker, then `--review --apply findings.json` reduces them to
-     `REVIEW.json`. A unit is done when it has **zero blockers**. Fix blockers in place, re-run
-     `--check`, repeat until clean. See `references/orchestration.md` for the fan-out protocol.
-     The engine emits it ready to launch: `--orchestrate --phase review-find` (one finder per
-     flagged unit), then — after the `--apply` reduce — `--orchestrate --phase review-verify`
-     (one independent verifier per open `REVIEW.json` blocker); see **Orchestration — route by
-     harness** below.
-
-   - **The semantic gate — fail-closed.** Once the review converges, adjudicate the
-     requirement→source ledger too, then fold everything into the single final gate:
-
-     ```bash
-     node scripts/analyze.mjs --verify --out <OUT>            # requirement↔evidence worklist
-     # adjudicate each pair against the original source → verdicts.json
-     node scripts/analyze.mjs --verify --apply verdicts.json --out <OUT>
-     node scripts/analyze.mjs --check --semantic --out <OUT>  # the final gate
-     ```
-
-     `--check --semantic` re-reduces BOTH persisted ledgers (`VERIFY.json` verdicts,
-     `REVIEW.json` findings) and re-resolves every cited `evidenceRef` against the inventory —
-     a stale or hand-edited `ok: true` never passes — and it **fails closed**: a missing or
-     unreadable ledger is an error. `--allow-unverified` downgrades that to a warning; use it
-     only deliberately, and say so in the final report. The adjudication itself fans out — one
-     adjudicator per `VERIFY.todo.json` pair — via `--orchestrate --phase adjudicate`
-     (see **Orchestration — route by harness** below); the `--apply` fold stays with you.
-
-10. **Run the convergence loop — autonomously, to completion.** A reconstruction is not done
-    when the scaffold is filled; it is done when it **converges** to buildable. **You own this
-    loop end-to-end: run it yourself, to the fixpoint, in one go.** Do not hand rounds back to
-    the user, do not ask "should I continue?", and do not stop at the first pass — the user
-    invokes the skill once and expects a finished, buildable tree out the other side. Iterate
-    both layers until the tree is clean — this loop is what turns "PRDs exist" into "a fresh
-    agent rebuilds the right software":
-
-    ```
-    round = 1
-    repeat:
-      a. enrich (or fix) the changed units                 # write/repair the prose
-      b. node scripts/analyze.mjs --check   --out <OUT>    # Layer 1: structure — fix errors, repeat (b)
-      c. node scripts/analyze.mjs --review  --out <OUT>    # Layer 2 worklist: flags only what CHANGED
-      d. review each flagged unit + verify each blocker    # per references/ai-review-rubric.md
-         → save findings.json (one finder/unit, one independent verifier/blocker)
-      e. node scripts/analyze.mjs --review --apply findings.json --out <OUT>   # reduce → REVIEW.json
-      f. when (b)–(e) are clean: node scripts/analyze.mjs --verify --out <OUT>
-         → adjudicate each requirement↔evidence pair → --verify --apply verdicts.json --out <OUT>
-      g. node scripts/analyze.mjs --check --semantic --out <OUT>   # the final, fail-closed gate
-    until  --check --semantic exits 0   (structure AND both semantic ledgers clean)
-       or  REVIEW.json.staleRounds >= 2     or     round > 5
-    ```
-
-    The review ledger makes the loop terminate on a *correct* fixpoint without guesswork:
-    `--review` content-hashes every unit so each round re-reviews **only what changed**;
-    `--review --apply` reduces the findings to `REVIEW.json` — `ok` (zero unrefuted blockers),
-    `residual` (the gating blockers, by stable id), and `noProgress`/`staleRounds` (the same
-    blockers survived a fix round). The fan-out mechanics (finder/verifier roles, the finding
-    schema, the enrichment map-reduce) live in **`references/orchestration.md`**.
-
-    Rules that make the loop terminate on a *correct* fixpoint, not a false one:
-    - **A finding is resolved only when a fresh reviewer confirms it** — keep the reviewer
-      separate from the author (an adversarial verifier prompted to *refute* buildability sets each
-      blocker's `verdict`; a `refuted` blocker drops out of `REVIEW.json.residual`). Don't self-certify.
-    - **Only re-review what changed:** `--review` content-hashes each unit and flags `needsReview`,
-      so the loop shrinks instead of re-scanning a clean tree. Review exactly the flagged units.
-    - **Ground every fix in source/`data/` (code mode) or `CONTEXT.md`/ADRs (scratch mode)** — a
-      fix that invents behaviour just trades one finding for another; faithfulness is the anchor.
-    - **Stop at zero blockers, not zero findings.** `REVIEW.json.ok` gates "buildable"; majors are
-      worth fixing, minors are optional polish — record what you deliberately leave.
-    - If the loop is not shrinking (`REVIEW.json.noProgress` — the same `residual` ids recur), the
-      contract in the architecture docs is wrong, not the feature PRD — fix `INTERFACES.md`/
-      `DATA-MODEL.md` first; the features that hang off it stop regressing.
-
-    At scale, drive the loop as a fan-out — one finder + one independent verifier per changed
-    feature — per **`references/orchestration.md`** (which also covers the parallel map-reduce
-    *enrichment*); `--orchestrate` emits each round's fan-out from the CURRENT worklists. **Terminate on the ledger, not by feel:** stop at `REVIEW.json.ok` (the
-    fixpoint), or when `staleRounds >= 2` (two rounds stuck on the same blockers) or after ≤ 5
-    rounds. When you stop **not** at `ok`, do not stop silently: the escalation ladder is re-edit
-    the unit → fix the shared architecture contract those blockers share → **record and report** —
-    write every remaining `REVIEW.json.failures` entry into `REBUILD.md` under a `## Known gaps /
-    unresolved blockers` list (owning unit, the finding, what was tried) and surface it to the
-    user. If a residual blocker is a faithful property of the original (a real bug you're
-    preserving), record it rather than looping on it. **Report once, at the end** — the final
-    `--check`/`REVIEW.json` result, the zero-blocker confirmation (or the known-gaps list), and
-    anything you deliberately left. The user should relaunch nothing; one skill invocation goes
-    scaffold → buildable.
-
-See `references/analysis-playbook.md` for the universal methodology, `references/stack-guides/`
-for per-stack cheat-sheets, `references/buildability-checklist.md` for the ten contract
-categories + the `--check` gate, `references/ai-review-rubric.md` for the layer-2 AI semantic
-review, `references/orchestration.md` for fanning the enrichment and review/fix loop out across
-subagents (the map-reduce + the `--review` ledger), `references/adapters.md` for how route
-adapters resolve `inventory.routes` from a framework's routing convention (and how to add one),
-`references/brainstorm-playbook.md` for the optional divergent phase (`--brainstorm`),
-and `references/architecture-analysis.md` / `references/rebuild-instructions.md` /
-`references/prd-complex-template.md` / `references/prd-light-template.md` for the reasoning
-checklists.
+- **`hints`, `routes` and `i18n` are candidates to verify, never truth.** Open the source and
+  confirm. Resolve every entry in `inventory.unknowns`. If `inventory.warnings` is present,
+  detection degraded there — check those areas by hand.
+- **Every `> 🧠` callout gets resolved and deleted.** One left in place means the unit is not
+  done, and `--check` fails.
+- **Be exhaustive, never illustrative.** No "etc.", no "and so on", no happy-path-only. If a
+  behaviour, role, validation rule or error state exists, it gets its own line.
+- **Capture the contract, not the name.** A rate limit without numbers, an enum without its
+  member list, a service without its request shape — none of these are buildable. The ten
+  categories: [buildability-checklist.md](references/buildability-checklist.md).
+- **Many small PRDs beat a few broad ones.** More than ~5–7 stories or ~3 entities in one unit →
+  split it. Every distinct capability earns its own PRD.
+- **Never re-run the analyzer over an enriched tree** — it re-renders every document. The CLI
+  refuses it; to continue an existing tree use `--check`/`--review`/`--verify`, and to
+  re-scaffold point `--out` at a new directory.
+- **Ground every claim** in `source/`/`data/` (code mode) or `CONTEXT.md`/ADRs (scratch mode). An
+  invented fix just trades one finding for another.
+- **Never let a cap stay silent.** `--verify` bounds its worklist (60 pairs by default) and a
+  large fan-out bounds its agent count. Read `coverage`, report what you actually covered.
+- **Own the loop end-to-end.** Run it yourself to the fixpoint — do not hand rounds back, do not
+  ask "should I continue?", do not stop at the first pass. **Report once, at the end.**
+- **The self-check:** could a fresh agent rebuild this unit *correctly* — contracts right, not
+  just the gist — from its PRD + the architecture docs alone? If not, dig further.
+  [worked-example.md](references/worked-example.md) is the depth bar.
 
 ## Orchestration — route by harness
 
-The judgment phases fan out: the enrichment map (`inventory.json.features[]`, one drafter per
-feature, batched per workspace on a monorepo), the review loop (`REVIEW.todo.json` flagged
-units → one finder each; then `REVIEW.json` open blockers → one independent verifier each) and
-the requirement adjudication (`VERIFY.todo.json` pairs → one adjudicator each) are independent
-per-unit worklists. The engine manages the fan-out — `--orchestrate` emits the orchestration
-from `--out`'s CURRENT worklists, with absolute paths and the real unit ids baked in:
+The judgment phases fan out over independent per-unit worklists. `--orchestrate` emits the
+fan-out from `<OUT>`'s **current** worklists, with absolute paths and real unit ids baked in:
 
 ```bash
 node scripts/analyze.mjs --orchestrate --out <OUT> [--phase enrich-map|review-find|review-verify|adjudicate] [--eco] [--list]
 ```
 
 | Your harness | How to run each judgment phase |
-|---|---|
-| Has the Workflow tool | `--orchestrate --out <OUT> --phase <p>`, then `Workflow({ scriptPath: "<OUT>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN drafts/findings/verdict fragments; you merge them (the single serial reduce), then run the fold command shown at the end of each workflow (`--check`, `--review --apply`, `--verify --apply`). |
-| Subagents but no Workflow tool | Same `--orchestrate`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md` (the workflow script shows batches + prompts). One writer: you fold results in. |
-| Eco mode, or no subagents | `--orchestrate --out <OUT> --eco` → follow `<OUT>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+| --- | --- |
+| Has the Workflow tool | `--orchestrate --phase <p>`, then `Workflow({ scriptPath: "<OUT>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN fragments; you merge them (the single serial reduce), then run the fold command printed at the end of each workflow. |
+| Subagents, no Workflow tool | Same `--orchestrate`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md`. One writer: you. |
+| Eco mode, or no subagents | `--orchestrate --eco` → follow `<OUT>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
 
-Fan-out is an optimization, never a requirement — the gates (`--check`, `--verify --apply`,
-`--review --apply`) are harness-independent and every phase has a sequential fallback with
-identical artifacts. Subagents never write: the emitted contracts end with the one-writer rule,
-and the reduce (every doc merge and `--apply` fold) always stays with you, the orchestrator.
-Never fan out the greenfield interview, `--brainstorm`, a reduce step, or the scratch build.
-Re-run `--orchestrate` whenever a worklist changes (emission is deterministic and idempotent);
-`--phase <p>` before its worklist exists fails and names the command that produces it.
+Fan-out is an optimization, never a requirement — the gates are harness-independent and every
+phase has a sequential fallback with identical artifacts. **Subagents never write:** the reduce
+(every doc merge, every `--apply` fold) always stays with you. Never fan out the greenfield
+interview, `--brainstorm`, a reduce step, or the scratch build. `--phase <p>` before its worklist
+exists exits 2 and names the command that produces it. Protocol:
+[orchestration.md](references/orchestration.md); sizing: [scale-and-context.md](references/scale-and-context.md).
 
-## Everything is a PRD — dig until done
+## Reference map
 
-The output is a **PRD suite**, and the markdown is the program. Optimize for depth, not coverage:
+**Start here**
 
-- **Every feature is a full PRD.** Fill the whole spine — user stories, numbered functional
-  requirements, interface & data contracts, Given/When/Then acceptance criteria, edge cases &
-  failure modes, and a definition of done. An unanswered `> 🧠` callout is an unfinished PRD.
-- **Be exhaustive, never illustrative.** No "etc.", no "and so on", no happy-path-only. If a
-  behaviour, role, validation rule, or error state exists, it gets its own line.
-- **Plein de PRD.** Prefer many small, focused feature PRDs over a few broad ones — one per
-  distinct capability. Splitting is cheaper than a vague mega-PRD.
-- **The self-check:** could a fresh agent rebuild this unit from its PRD alone — no access to the
-  original product, no access to this conversation? If not, dig further.
+| File | Read it when |
+| --- | --- |
+| [procedure.md](references/procedure.md) | Doing the work — the full step-by-step for all four paths |
+| [convergence-loop.md](references/convergence-loop.md) | Phase 4 — the loop, the ledger, when to stop |
+| [worked-example.md](references/worked-example.md) | Before writing your first PRD — the depth bar + anti-patterns |
+| [troubleshooting.md](references/troubleshooting.md) | Anything fails, refuses, or will not go green |
 
-## Brainstorm — the optional divergent phase
+**Method**
 
-The interview below **converges** on one already-chosen product. When the direction *itself* is
-undecided — the user has a problem but not a product, or an existing app they want to grow —
-brainstorm **first**: diverge to several genuinely different concepts, then converge on one. Three
-entry points, one command (`references/brainstorm-playbook.md` has the method):
+| File | Read it when |
+| --- | --- |
+| [analysis-playbook.md](references/analysis-playbook.md) | The universal method — works when no stack guide exists |
+| [stack-guides/INDEX.md](references/stack-guides/INDEX.md) | **Routing a stack label to its guide — do not guess a filename.** It indexes every cheat-sheet in `references/stack-guides/`, including the no-framework case (library/CLI/SDK) |
+| [buildability-checklist.md](references/buildability-checklist.md) | The ten contract categories + the consistency self-review |
+| [architecture-analysis.md](references/architecture-analysis.md) | Filling `ARCHITECTURE.md`, especially in `redesign` mode |
+| [scale-and-context.md](references/scale-and-context.md) | A big repo, a monorepo, or the run is costing too much context |
+| [adapters.md](references/adapters.md) | How `inventory.routes` gets resolved — and how to add a framework |
 
-- **Before greenfield** — the idea is fuzzy. Scaffold, fill it, pick a direction, then feed that
-  direction into the scratch interview (step 1 below): the chosen concept becomes `project.summary`
-  and each rejected alternative becomes a `decisions[]` entry in `plan.json`.
-- **Standalone** — just an ideation artifact for the user to react to.
-- **On an existing reconstruction** — brainstorm *evolutions*. Point `--brainstorm` at a tree that
-  already has `inventory.json`; the scaffold is **seeded** with the recovered surface (features,
-  operations, entities) so the concepts are grounded in what's built, then land as iteration PRDs
-  through the normal enrich → `--check` → `--review` loop.
+**Gates**
 
-```bash
-node scripts/analyze.mjs --brainstorm --out <DIR>          # a fresh idea → blank scaffold
-node scripts/analyze.mjs --brainstorm --out <RECON_DIR>    # an existing tree → seeded scaffold
-```
+| File | Read it when |
+| --- | --- |
+| [ai-review-rubric.md](references/ai-review-rubric.md) | Layer 2 — the nine semantic buildability checks |
+| [verify-playbook.md](references/verify-playbook.md) | `--verify` — claims, evidence, verdicts, confidence, **the cap** |
+| [orchestration.md](references/orchestration.md) | Fanning enrichment and the review loop across subagents |
 
-It writes `BRAINSTORM.md` (never clobbering an edited one) with a `> 🧠` callout per section, so an
-un-enriched brainstorm **fails `--check`** exactly like an unfinished PRD. Resolve every callout —
-problem space, ≥3 concepts (pitch / differentiators / trade-offs / risks each), a scoring table
-with a decision rule, the chosen direction, and rejected alternatives — then hand off.
+**Greenfield & ideation**
 
-## From scratch
+| File | Read it when |
+| --- | --- |
+| [scratch-playbook.md](references/scratch-playbook.md) | The greenfield interview method |
+| [scratch-plan-schema.md](references/scratch-plan-schema.md) | Writing `plan.json` — schema + worked example |
+| [CONTEXT-FORMAT.md](references/CONTEXT-FORMAT.md) · [ADR-FORMAT.md](references/ADR-FORMAT.md) | Writing the glossary / an ADR |
+| [brainstorm-playbook.md](references/brainstorm-playbook.md) | The divergent phase, before anything is decided |
 
-When there is **no repo** — the user wants to turn an idea into a build plan — elicit the facts
-through an interview and converge on the **same reconstruction tree**. Greenfield collapses two
-axes: mode is always `scratch` (nothing to preserve) and fidelity is forced to `describe` (no
-source to mirror); `--level` still applies (`light` = the MVP as described, `complex` = a deeper
-interview that also proposes alternatives, enhancements, and more ADRs).
+**Output shape**
 
-1. **Interview the user** per `references/scratch-playbook.md` — a grill-with-docs walk:
-   relentless, one question at a time, recommending an answer each time; sharpen fuzzy terms into
-   a canonical glossary; invent concrete scenarios to probe entity/feature boundaries. **If the
-   direction itself is undecided, run the Brainstorm phase above first**, then start the interview
-   from the chosen concept.
-
-2. **Write `CONTEXT.md` + ADRs as decisions crystallize.** Capture the glossary inline in
-   `CONTEXT.md` (format: `references/CONTEXT-FORMAT.md`) and offer an ADR under `docs/adr/` only
-   when a decision is hard to reverse **and** surprising **and** a real trade-off
-   (format: `references/ADR-FORMAT.md`). These live in `<OUT>` and the engine will not clobber
-   them.
-
-3. **Write `plan.json`** — the structured output of the interview, mapping 1:1 onto the inventory.
-   Capture the full contract surface so the from-scratch tree is as buildable as the
-   reverse-engineered one: `dataModel` (with `enumRef`, indexes, uniques), `enums` (full member
-   lists), `interfaces` (with input/output/sideEffects), `services`, `policies`, the
-   `i18n.messages` catalog, `designSystem` (tokens/theming/components/a11y for a UI product),
-   and each `feature.writes`. Schema + worked example:
-   `references/scratch-plan-schema.md`. The plan must be **internally consistent** — the engine
-   rejects dangling references and warns on anonymous writes to owner-FK tables.
-
-4. **Render the tree** with the deterministic engine (it scaffolds the PRDs and pre-fills the
-   `INTERFACES.md` / `DATA-MODEL.md` / enums / services / policies / message-catalog sections
-   from the plan, and **validates the plan's consistency first**; add `--tdd` for a test-first
-   build):
-
-   ```bash
-   node scripts/analyze.mjs --scratch --plan plan.json --out <OUT> --level <light|complex> [--tdd]
-   ```
-
-5. **Enrich/author the prose — to full PRD depth.** Fill each `features/<slug>/PRD.md` and the
-   architecture docs from the interview + `CONTEXT.md` + ADRs as ground truth. Complete the whole
-   PRD spine (see [**Everything is a PRD**](#everything-is-a-prd--dig-until-done)): exhaustive user
-   stories, numbered functional requirements, interface & data contracts, Given/When/Then
-   acceptance criteria, edge cases, and a definition of done — **resolve every `> 🧠` callout and
-   delete it**. Turn the pre-filled tables into a complete interface surface and data model, and
-   finalize `REBUILD.md`'s tiered order. If `--tdd`, each unit is built test-first (red → green →
-   refactor). Finally, run the gate — `node scripts/analyze.mjs --check --out <OUT>` — and the
-   consistency self-review; both must be clean (see `references/buildability-checklist.md`).
-
-## Bundling the output
-
-Four optional, combinable flags collapse the multi-file tree for sharing or review:
-
-- **`--merge`** → `RECONSTRUCTION.md`: the whole tree in one coherent markdown
-  (single H1, linked table of contents, every document with headings demoted one
-  level, ordered overview → architecture → features → build order).
-- **`--features`** → `FEATURES.md`: every feature PRD only — the product
-  functionality — in build order, in one file (single H1 + linked table of
-  contents, headings demoted one level). The features-only counterpart to
-  `--merge`; skips the overview, architecture and build-order docs.
-- **`--specs`** → `SPECS.md`: the **same whole tree as `--merge`** (overview,
-  architecture — interfaces & data model —, every feature PRD, build order) but
-  with each document's `## Source material` section (the embedded original source
-  code) stripped. Self-sufficient (it carries the contracts the feature PRDs
-  reference) yet code-free — the single file to hand an agent to **implement
-  from**.
-- **`--summary`** → `SUMMARY.md`: a one-page digest from the inventory (stack,
-  libraries, size, features in build order, interface/data counts, locales,
-  unknowns, next steps).
-
-They work two ways:
-
-1. **Inline** — add them to a normal run; the file(s) land in `<OUT>` alongside the tree.
-2. **Standalone post-step** — run them **without `--repo`** against an already-generated
-   output to (re)build just the bundles, no re-analysis:
-
-   ```bash
-   node scripts/analyze.mjs --merge --features --specs --summary --out <OUT>
-   ```
-
-   This reads `<OUT>/inventory.json` + the `.md` files and rewrites the bundle(s);
-   it errors clearly if `<OUT>` holds no `inventory.json`. Re-running is idempotent.
-
-## How to know you're done
-
-- `INTERFACES.md` lists the **whole** interface surface, each with its input/output/side-effect
-  contract; `DATA-MODEL.md` lists every entity with field-level types and constraints, and
-  every enum with its **complete** member list.
-- For a UI product, `DESIGN-SYSTEM.md` carries the visual contract — design tokens with their
-  **exact values**, theming, typography, the component-library contract (variants + states), and
-  the accessibility target — not merely named (a non-UI project says so and the gate stays quiet).
-- **Every contract category is captured, not just named** — operation contracts, write
-  contracts (every required column/FK has a source; anonymous writes use anonymous-capable
-  entities), enums, format validations, external services, quantified policies, and the i18n
-  message catalog. The ten categories are in `references/buildability-checklist.md`.
-- **Every `features/<slug>/PRD.md` is a complete PRD** — the full spine is filled (user stories,
-  numbered requirements, interface & data contracts, Given/When/Then acceptance criteria, edge
-  cases, definition of done), and **no `> 🧠` callout or `_placeholder_` remains** anywhere.
-- Features are semantic and granular — distinct capabilities are separate PRDs, not lumped.
-- Every item in `inventory.json.unknowns` is resolved.
-- `REBUILD.md` has a dependency-ordered build order + validation checklist; `data/` holds
-  translations, schema, and config verbatim (code mode).
-- **Layer 1 — the gate passes:** `node scripts/analyze.mjs --check --out <OUT>` reports no
-  errors, and the consistency self-review is clean.
-- **Layer 2 — the AI review passes:** every unit has **zero blockers** against
-  `references/ai-review-rubric.md` (the agent's semantic pass — substance, not just structure).
-- **The self-check passes:** a fresh agent could rebuild each unit *correctly* — getting the
-  contracts right, not just the gist — from its PRD + the architecture docs alone.
+| File | Read it when |
+| --- | --- |
+| [prd-light-template.md](references/prd-light-template.md) · [prd-complex-template.md](references/prd-complex-template.md) | The per-level PRD shape |
+| [rebuild-instructions.md](references/rebuild-instructions.md) | Telling the user how to drive the rebuild |
 
 ## Safety
 

@@ -3,8 +3,10 @@
 This is the methodology the AI agent follows to understand **any** stack. The
 deterministic engine gives you facts and *candidate hints*; this playbook tells you
 how to turn them into a faithful reconstruction: the real **interface surface**, the
-**data model**, and **semantic features**. Read the matching `stack-guides/<x>.md` for
-shortcuts, but the recipes here work even when no guide exists.
+**data model**, and **semantic features**. Look your stack up in
+[`stack-guides/INDEX.md`](./stack-guides/INDEX.md) for shortcuts — **do not guess a filename**,
+the labels and the guides are not one-to-one — but the recipes here work even when no guide
+exists.
 
 **Golden rule:** `inventory.json.routes`, `.i18n`, and everything under `.hints` are
 *candidates to verify* — never ground truth. Always open the source to confirm. Resolve
@@ -20,9 +22,16 @@ every entry in `inventory.json.unknowns`.
    Python/Ruby/PHP/JVM/Go, read the real deps from `inventory.dependencies` directly.)
 2. Read `inventory.hints.entryPoints` to find how the app boots (server, CLI, framework
    entry, mobile root).
-3. If `inventory.workspaces` is non-empty, it's a **monorepo** — see §Monorepo.
-4. If `inventory.stack.frameworks` is empty, infer the stack from manifests, entry points,
-   and directory shape, and record it in `00-overview` and `ARCHITECTURE.md`.
+3. **Route to the guide** via [`stack-guides/INDEX.md`](./stack-guides/INDEX.md): it maps each
+   label the engine emits onto its guide (`Flask` → `django-flask-fastapi.md`, `Gin` →
+   `go-net-http.md`, `Vue` → `nuxt-vue.md`) and lists the stacks that have no detection signal at
+   all. A repo routinely activates several guides at once — read every one that matches.
+4. If `inventory.workspaces` is non-empty, it's a **monorepo** — see §Monorepo.
+5. If `inventory.stack.frameworks` is empty, infer the stack from manifests, entry points,
+   and directory shape, and record it in `00-overview` and `ARCHITECTURE.md`. When there is no
+   web framework because the repo is a **library, CLI, SDK or engine**, that is a first-class
+   case with its own guide: [`stack-guides/library-cli-sdk.md`](./stack-guides/library-cli-sdk.md)
+   — the interface surface is the exported public API and the CLI commands, not routes.
 
 ---
 
@@ -207,5 +216,9 @@ data model never declared.
   Fix every error (unresolved `🧠`/placeholder, dangling entity/operation reference, a feature
   spine that is missing or content-less, an emptied `DATA-MODEL.md`/`INTERFACES.md`) and resolve
   the warnings (e.g. an uncovered locale). The full category list is in
-  `references/buildability-checklist.md`. A `🧠` callout left anywhere means the unit is not
-  done.
+  [`buildability-checklist.md`](./buildability-checklist.md); when an error will not clear, see
+  [`troubleshooting.md`](./troubleshooting.md). A `🧠` callout left anywhere means the unit is
+  not done.
+
+`--check` is only layer 1. Once it passes, the tree still has to converge — the AI review and
+the two semantic ledgers — per [`convergence-loop.md`](./convergence-loop.md).

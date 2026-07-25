@@ -3,7 +3,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
-import { writeOutput, writeArtifactsIfAbsent } from "./output.js";
+import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
 import { checkOutput, formatCheckReport } from "./check.js";
@@ -42,6 +42,9 @@ Options:
                        review-verify | adjudicate (exit 2 if its worklist is missing)
   --eco                --orchestrate: emit only RUNBOOK.md + agents/*.md (sequential low-token path)
   --list               --orchestrate: print the {"phases":[...]} readiness JSON, write nothing
+  --batch-size <n>     --orchestrate: items per subagent (default: per-phase, see below)
+  --max-verify <n>     --verify: cap the requirement↔evidence worklist (default: 60)
+  --force              Overwrite an --out tree that already holds ENRICHED prose
   --apply <path>       Apply an agent-filled verdicts/findings file (--verify/--review)
   --semantic           Fold VERIFY.json + REVIEW.json into --check (fail on unsupported reqs / blockers)
   --allow-unverified   With --check --semantic: downgrade a missing/unreadable ledger to a warning
@@ -49,7 +52,8 @@ Options:
   --exclude <glob>     Skip files matching glob          (repeatable, comma-ok)
   --max-embed-bytes N  Max bytes embedded per file      (default: 16000)
   --merge              Also write RECONSTRUCTION.md (whole tree in one file)
-  --summary            Also write SUMMARY.md (one-page digest)
+  --summary            SUMMARY.md is written on every run; this only selects it
+                       for the standalone (no --repo) bundling post-step
   --features           Also write FEATURES.md (every feature PRD, nothing else)
   --specs              Also write SPECS.md (whole spec, source code stripped — implement from this)
   --json               Print the inventory JSON only, write nothing
@@ -75,13 +79,25 @@ Orchestration (fan the judgment phases out to subagents):
   launchable multi-agent workflow (<out>/orchestration/<phase>.workflow.mjs), the
   agents/<role>.md dispatch contracts (drafter/finder/verifier/adjudicator) and a
   sequential RUNBOOK.md fallback. Phases: enrich-map (one drafter per
-  inventory.json feature, batched by workspace), review-find (one finder per
+  inventory.json feature, grouped by workspace), review-find (one finder per
   flagged REVIEW.todo.json unit), review-verify (one independent verifier per
   open REVIEW.json blocker), adjudicate (one adjudicator per VERIFY.todo.json
   pair). Subagents RETURN fragments; the reduce (--review/--verify --apply and
   every doc merge) always stays with the orchestrator. Re-run it whenever a
   worklist changes — emission is deterministic and idempotent.
+  Fan-out width: enrich-map/review-find dispatch ONE agent per item (the unit of
+  work is a whole PRD); review-verify/adjudicate batch 4 (each item is one short
+  judgement). Past 40 agents the batch grows instead of the fleet — always
+  reported, never silent. --batch-size <n> overrides all of it.
     reconstruct --orchestrate --out <dir> [--phase <p>] [--eco] [--list]
+
+Re-running over an existing --out:
+  A normal (--repo / --scratch) run RE-RENDERS every document, so it would
+  overwrite prose an agent already wrote. The CLI detects an ENRICHED tree — a
+  document whose 🧠 callouts are all resolved, or a REVIEW.json/VERIFY.json
+  ledger — and refuses the run. To continue an existing tree use --check /
+  --review / --verify; to re-scaffold, point --out at a new directory; --force
+  overwrites and LOSES the enrichment.
 
 From scratch (greenfield):
   --scratch builds the SAME reconstruction tree from a plan.json interview
@@ -91,7 +107,10 @@ From scratch (greenfield):
     reconstruct --scratch --plan plan.json --out ./reconstruction --level complex
 
 Bundling:
-  --merge / --summary / --features / --specs during a normal run append the
+  SUMMARY.md (a one-page digest: stack, features in build order, interface/data
+  counts, unknowns) is written on EVERY run — read it to orient instead of
+  inventory.json, which carries one entry per analyzed file.
+  --merge / --features / --specs during a normal run append the
   file(s) to the output tree. RECONSTRUCTION.md is the whole tree in one file
   (with the embedded source); SPECS.md is the same whole tree (architecture +
   features) with the source code stripped — the self-sufficient, code-free spec
@@ -154,7 +173,22 @@ function splitGlobs(value: string): string[] {
 // recognized flag is a boolean switch handled inline above. Used to reject an
 // unknown or typo'd flag loudly instead of silently swallowing it (and then
 // falling back to a default the user never asked for).
-const VALUE_FLAGS = new Set(["repo", "out", "mode", "level", "fidelity", "granularity", "plan", "max-embed-bytes", "include", "exclude", "apply", "phase"]);
+const VALUE_FLAGS = new Set([
+  "repo",
+  "out",
+  "mode",
+  "level",
+  "fidelity",
+  "granularity",
+  "plan",
+  "max-embed-bytes",
+  "include",
+  "exclude",
+  "apply",
+  "phase",
+  "max-verify",
+  "batch-size",
+]);
 
 export function parseArgs(argv: string[]): Options {
   const raw: Record<string, string> = {};
@@ -176,6 +210,7 @@ export function parseArgs(argv: string[]): Options {
   let orchestrate = false;
   let eco = false;
   let list = false;
+  let force = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -249,6 +284,10 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--list") {
       list = true;
+      continue;
+    }
+    if (arg === "--force") {
+      force = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -327,6 +366,14 @@ export function parseArgs(argv: string[]): Options {
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
   }
+  const positive = (key: string): number | undefined => {
+    if (raw[key] === undefined) return undefined;
+    const n = Number(raw[key]);
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) fail(`invalid --${key}: expected a positive integer`);
+    return n;
+  };
+  const maxVerify = positive("max-verify");
+  const batchSize = positive("batch-size");
 
   return {
     repo,
@@ -358,7 +405,22 @@ export function parseArgs(argv: string[]): Options {
     phase: raw.phase ?? "",
     eco,
     list,
+    force,
+    ...(maxVerify !== undefined ? { maxVerify } : {}),
+    ...(batchSize !== undefined ? { batchSize } : {}),
   };
+}
+
+/**
+ * Refuse to re-render over agent-written prose. `writeOutput` overwrites every
+ * artifact it renders, so pointing a fresh `--repo`/`--scratch` run at an
+ * enriched tree destroys the work with no warning and no undo. Runs that write
+ * nothing (`--json`) and explicit `--force` skip the guard.
+ */
+function guardEnrichedOutput(opts: Options): void {
+  if (opts.force || opts.json) return;
+  const witnesses = detectEnrichment(opts.out);
+  if (witnesses.length) fail(formatEnrichmentRefusal(opts.out, witnesses));
 }
 
 function main(): void {
@@ -373,9 +435,14 @@ function main(): void {
         if (!r.ok) process.exit(1);
         return;
       }
-      const wl = runVerify(opts.out);
+      const wl = runVerify(opts.out, { ...(opts.maxVerify !== undefined ? { maxVerify: opts.maxVerify } : {}) });
+      const { total, kept, capped } = wl.coverage;
       process.stderr.write(
-        `reconstruct: ${wl.pairs.length} requirement↔evidence pair(s) → ${opts.out}/VERIFY.md & VERIFY.todo.json\n` +
+        `reconstruct: ${kept} requirement↔evidence pair(s) → ${opts.out}/VERIFY.md & VERIFY.todo.json\n` +
+          // Never let a capped worklist read as full coverage.
+          (capped
+            ? `  ⚠ coverage: ${kept} of ${total} requirement(s) — CAPPED; the other ${total - kept} go unadjudicated (raise with --max-verify ${total})\n`
+            : "") +
           `  adjudicate each verdict, save as verdicts.json, then: node scripts/analyze.mjs --verify --apply verdicts.json --out ${opts.out}\n`,
       );
       return;
@@ -426,10 +493,14 @@ function main(): void {
         process.stderr.write(`reconstruct --orchestrate: out dir not found: ${opts.out}\n`);
         process.exit(2);
       }
-      process.stdout.write(JSON.stringify({ phases: listPhases(opts.out, engineAbs) }, null, 2) + "\n");
+      process.stdout.write(JSON.stringify({ phases: listPhases(opts.out, engineAbs, opts.batchSize) }, null, 2) + "\n");
       return;
     }
-    const res = orchestrateRun(opts.out, engineAbs, { phase: opts.phase || undefined, eco: opts.eco });
+    const res = orchestrateRun(opts.out, engineAbs, {
+      phase: opts.phase || undefined,
+      eco: opts.eco,
+      ...(opts.batchSize !== undefined ? { batchSize: opts.batchSize } : {}),
+    });
     if (res.exitCode !== 0) {
       for (const e of res.errors) process.stderr.write(`reconstruct --orchestrate: ${e}\n`);
       process.exit(res.exitCode);
@@ -486,6 +557,7 @@ function main(): void {
       return;
     }
 
+    guardEnrichedOutput(effOpts);
     const result = render(inv, effOpts);
     writeOutput(result, effOpts);
     // CONTEXT.md + ADRs: write only if absent so agent-authored versions win.
@@ -501,12 +573,11 @@ function main(): void {
         ? [`  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`, ...consistency.warnings.map((w) => `    ⚠ ${w}`)]
         : []),
       ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
-      ...(effOpts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
       ...(effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
       ...(effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : []),
       ...(effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
       `  output:   ${effOpts.out}`,
-      `  next:     open ${join(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
+      `  next:     read ${join(effOpts.out, "SUMMARY.md")} to orient, then ${join(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
     ];
     process.stderr.write(lines.join("\n") + "\n");
     return;
@@ -542,6 +613,7 @@ function main(): void {
     return;
   }
 
+  guardEnrichedOutput(opts);
   try {
     const result = render(inv, opts);
     writeOutput(result, opts);
@@ -571,12 +643,13 @@ function main(): void {
       : []),
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
-    ...(opts.summary ? [`  summary:  SUMMARY.md (one-page digest)`] : []),
     ...(opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
     ...(opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : []),
     ...(opts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : []),
     `  output:   ${opts.out}`,
-    `  next:     open ${join(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
+    // Orient from SUMMARY.md, not inventory.json: same picture, a fraction of the
+    // tokens (inventory.json carries one entry per analyzed file).
+    `  next:     read ${join(opts.out, "SUMMARY.md")} to orient, then ${join(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`,
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

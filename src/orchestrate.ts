@@ -21,8 +21,54 @@ export type PhaseName = (typeof PHASES)[number];
 
 /** Small worklists don't amortize a fan-out — orchestrate says so and nudges --eco. */
 export const SMALL_WORKLIST = 3;
-/** One subagent per batch of at most this many worklist items. */
-export const BATCH_SIZE = 8;
+
+/**
+ * Items per subagent, by phase.
+ *
+ * A batch is a THROUGHPUT COMPROMISE, not a feature: every item in one batch is
+ * handled serially by a single agent, from one context. The host already bounds
+ * concurrency (excess `agent()` calls queue), so batching buys nothing until the
+ * agent COUNT itself becomes the problem — hence 1 for the phases whose per-item
+ * work is a whole document.
+ *
+ * - `enrich-map` / `review-find` — the unit of work is a complete feature PRD (draft
+ *   it, or apply the nine checks to it). One agent per item, exactly as
+ *   `agents/drafter.md` ("you draft ONE feature at a time") and SKILL.md promise.
+ * - `review-verify` / `adjudicate` — the unit is one blocker or one claim↔evidence
+ *   pair: a short, bounded judgement. A handful per agent keeps the fleet sane
+ *   without crowding any single context.
+ */
+const PHASE_BATCH: Record<PhaseName, number> = {
+  "enrich-map": 1,
+  "review-find": 1,
+  "review-verify": 4,
+  adjudicate: 4,
+};
+
+/**
+ * Upper bound on subagents a single phase may dispatch. Past this the batch grows
+ * instead of the fleet — reported, never silent (`batchNotice`).
+ */
+export const MAX_AGENTS = 40;
+
+/**
+ * Items per subagent for `phase` over `items` worklist entries. `override`
+ * (`--batch-size`) wins outright; otherwise the per-phase default applies, grown
+ * only as far as `MAX_AGENTS` requires.
+ */
+export function batchSizeFor(phase: PhaseName, items: number, override?: number): number {
+  if (override !== undefined && override > 0) return Math.floor(override);
+  const base = PHASE_BATCH[phase];
+  if (items <= 0) return base;
+  return Math.max(base, Math.ceil(items / MAX_AGENTS));
+}
+
+/** How the batching decision reads in `--orchestrate` output — a cap is never silent. */
+export function batchNotice(phase: PhaseName, items: number, batch: number, override?: number): string {
+  const agents = Math.ceil(items / batch);
+  const why = override !== undefined ? " (--batch-size)" : batch > PHASE_BATCH[phase] ? ` (capped at ${MAX_AGENTS} agents)` : "";
+  return `phase "${phase}": ${items} item(s) → ${agents} agent(s), ${batch} item(s) each${why}.`;
+}
 
 export interface PhaseInfo {
   name: PhaseName;
@@ -38,6 +84,10 @@ export interface PhaseInfo {
    * loads one workspace's stack guide); every other phase has a single group.
    */
   groups: string[][];
+  /** Worklist items each subagent handles (`batchSizeFor`). */
+  batch: number;
+  /** Subagents this phase would dispatch — `ceil(items / batch)`. */
+  agents: number;
   /** The engine command that produces the worklist when it is missing. */
   prerequisite: string;
 }
@@ -89,7 +139,7 @@ export function workspaceGroups(inv: Inventory): string[][] {
   return [...groups.values()];
 }
 
-export function listPhases(outDir: string, engineAbs: string): PhaseInfo[] {
+export function listPhases(outDir: string, engineAbs: string, batchOverride?: number): PhaseInfo[] {
   const out = resolve(outDir);
 
   // enrich-map — one drafter per inventory feature (grouped by workspace).
@@ -119,8 +169,15 @@ export function listPhases(outDir: string, engineAbs: string): PhaseInfo[] {
   const adjReady = !!ver && Array.isArray(ver.pairs);
   const adjIds = adjReady ? ver.pairs!.map((p) => p.claimId) : [];
 
+  // Attach the fan-out shape every phase would take, so `--list` answers "how
+  // many agents will this cost?" without the caller re-deriving the policy.
+  const shaped = (p: Omit<PhaseInfo, "batch" | "agents">): PhaseInfo => {
+    const batch = batchSizeFor(p.name, p.items, batchOverride);
+    return { ...p, batch, agents: p.items ? Math.ceil(p.items / batch) : 0 };
+  };
+
   return [
-    {
+    shaped({
       name: "enrich-map",
       ready: invReady,
       worklist: invPath,
@@ -128,8 +185,8 @@ export function listPhases(outDir: string, engineAbs: string): PhaseInfo[] {
       ids: enrichIds,
       groups: enrichGroups,
       prerequisite: `node ${engineAbs} --repo <repo> --out ${out}`,
-    },
-    {
+    }),
+    shaped({
       name: "review-find",
       ready: findReady,
       worklist: todoPath,
@@ -137,8 +194,8 @@ export function listPhases(outDir: string, engineAbs: string): PhaseInfo[] {
       ids: findIds,
       groups: findIds.length ? [findIds] : [],
       prerequisite: `node ${engineAbs} --review --out ${out}`,
-    },
-    {
+    }),
+    shaped({
       name: "review-verify",
       ready: verifyReady,
       worklist: revPath,
@@ -146,8 +203,8 @@ export function listPhases(outDir: string, engineAbs: string): PhaseInfo[] {
       ids: blockerIds,
       groups: blockerIds.length ? [blockerIds] : [],
       prerequisite: `node ${engineAbs} --review --apply <findings.json> --out ${out}`,
-    },
-    {
+    }),
+    shaped({
       name: "adjudicate",
       ready: adjReady,
       worklist: verPath,
@@ -155,7 +212,7 @@ export function listPhases(outDir: string, engineAbs: string): PhaseInfo[] {
       ids: adjIds,
       groups: adjIds.length ? [adjIds] : [],
       prerequisite: `node ${engineAbs} --verify --out ${out}`,
-    },
+    }),
   ];
 }
 
@@ -164,6 +221,8 @@ export interface OrchestrateOptions {
   phase?: string;
   /** Emit only the RUNBOOK + contracts (the explicit low-token sequential path). */
   eco?: boolean;
+  /** Force N items per subagent, overriding the per-phase default (`--batch-size`). */
+  batchSize?: number;
 }
 
 export interface OrchestrateResult {
@@ -179,7 +238,7 @@ export function orchestrateRun(outDir: string, engineAbs: string, opts: Orchestr
   if (!existsSync(out)) {
     return { exitCode: 2, written: [], notices: [], errors: [`out dir not found: ${out}`], phases: [] };
   }
-  const phases = listPhases(out, engineAbs);
+  const phases = listPhases(out, engineAbs, opts.batchSize);
 
   let selected = phases.filter((p) => p.ready);
   if (opts.phase !== undefined) {
@@ -230,8 +289,10 @@ export function orchestrateRun(outDir: string, engineAbs: string, opts: Orchestr
       if (ph.items <= SMALL_WORKLIST) {
         notices.push(`phase "${ph.name}": only ${ph.items} item(s) — the sequential --eco path is equivalent and cheaper.`);
       }
+      const batch = batchSizeFor(ph.name, ph.items, opts.batchSize);
+      notices.push(batchNotice(ph.name, ph.items, batch, opts.batchSize));
       const p = join(orchDir, `${ph.name}.workflow.mjs`);
-      writeFileSync(p, phaseWorkflowScript(ph, out, engineAbs, BATCH_SIZE));
+      writeFileSync(p, phaseWorkflowScript(ph, out, engineAbs, batch));
       written.push(p);
     }
   }
