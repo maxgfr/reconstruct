@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.10.0](https://github.com/maxgfr/reconstruct/compare/v2.9.0...v2.10.0) (2026-07-25)
+
+
+### Features
+
+* **skill:** guard re-runs, unthrottle the fan-out, surface every cap ([6205ad5](https://github.com/maxgfr/reconstruct/commit/6205ad5958282ee29bbd12b43e848601c50f8782))
+
 # [2.9.0](https://github.com/maxgfr/reconstruct/compare/v2.8.0...v2.9.0) (2026-07-25)
 
 
