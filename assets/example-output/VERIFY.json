@@ -1,26 +1,156 @@
 {
   "ok": true,
-  "pairs": 60,
-  "adjudicated": 60,
-  "supported": 60,
+  "pairs": 82,
+  "adjudicated": 82,
+  "supported": 82,
   "partial": 0,
   "refuted": 0,
   "unsupported": 0,
   "failures": [],
   "unadjudicated": [],
   "confidence": {
-    "confirmed": 58,
-    "inferred": 2,
+    "confirmed": 78,
+    "inferred": 4,
     "gap": 0,
     "unlabeled": 0
   },
   "verdicts": [
     {
-      "claimId": "C44",
-      "claim": "[confirmed] The handler is an exported `async function GET()` in `app/api/users/route.ts` (App-Router route handler).",
-      "feature": "04-api",
-      "evidenceRef": "app/api/users/route.ts",
-      "digest": "app/api/users/route.ts · route GET /api/users",
+      "claimId": "C1",
+      "claim": "[confirmed] `GET /` renders a `<main>` element containing exactly one `<h1>` whose text is `Welcome`.",
+      "feature": "01-core",
+      "evidenceRef": "feature 01-core",
+      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C2",
+      "claim": "[confirmed] The home page renders the shared `Button` primitive with `label=\"Get started\"`, producing `<button type=\"button\">Get started</button>`.",
+      "feature": "01-core",
+      "evidenceRef": "app/page.tsx",
+      "digest": "app/page.tsx · components/Button.tsx",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C3",
+      "claim": "[confirmed] The home page hardcodes its copy (`\"Welcome\"`, `\"Get started\"`) and does NOT read the `messages/*.json` i18n catalog, so it renders English regardless of the active locale. (Faithful gap.)",
+      "feature": "01-core",
+      "evidenceRef": "app/page.tsx",
+      "digest": "app/page.tsx",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C4",
+      "claim": "[confirmed] `Button({ label }: { label: string })` renders `<button type=\"button\">{label}</button>` — one required `label` string prop, no other props, no variants, no `onClick`, no children.",
+      "feature": "01-core",
+      "evidenceRef": "components/Button.tsx",
+      "digest": "components/Button.tsx",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C5",
+      "claim": "[confirmed] `lib/auth.ts` exports `getSessionSecret(): string` returning `process.env.NEXTAUTH_SECRET ?? \"\"`; it performs no validation and never throws.",
+      "feature": "01-core",
+      "evidenceRef": "lib/auth.ts",
+      "digest": "lib/auth.ts",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C6",
+      "claim": "[confirmed] `lib/auth.ts` exports `databaseUrl(): string` returning `process.env.DATABASE_URL ?? \"\"`; it is a pure env read and is never called anywhere in the source. (Faithful gap: dead code preserved.)",
+      "feature": "01-core",
+      "evidenceRef": "lib/auth.ts",
+      "digest": "lib/auth.ts",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C7",
+      "claim": "[confirmed] `GET /` fetches no data, declares no dynamic segments, writes no entity, and requires no authentication (public).",
+      "feature": "01-core",
+      "evidenceRef": "feature 01-core",
+      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "verdict": "supported",
+      "note": "app/page.tsx: HomePage takes no params, fetches nothing, is a static segment, and no guard wraps it.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C8",
+      "claim": "**AC-1:** Given any visitor, When they GET `/`, Then the response is HTML containing `<h1>Welcome</h1>` inside a `<main>`.",
+      "feature": "01-core",
+      "evidenceRef": "feature 01-core",
+      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "verdict": "supported",
+      "note": "app/page.tsx renders <main><h1>Welcome</h1><Button/></main> — exactly the asserted shape.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C9",
+      "claim": "**AC-2:** Given the home page renders, When inspecting the DOM, Then there is exactly one `<button type=\"button\">` whose text is `Get started`.",
+      "feature": "01-core",
+      "evidenceRef": "app/page.tsx",
+      "digest": "app/page.tsx · components/Button.tsx",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C10",
+      "claim": "**AC-3:** Given the active locale is `fr`, When a visitor loads `/`, Then the copy is still English (`Welcome` / `Get started`) because the page never consults the catalog. (Faithful gap path.)",
+      "feature": "01-core",
+      "evidenceRef": "app/page.tsx",
+      "digest": "app/page.tsx",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C11",
+      "claim": "**AC-4:** Given `Button` is rendered with `label=\"X\"`, When it mounts, Then it outputs exactly `<button type=\"button\">X</button>` and nothing else.",
+      "feature": "01-core",
+      "evidenceRef": "components/Button.tsx",
+      "digest": "components/Button.tsx",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C12",
+      "claim": "**AC-5:** Given `NEXTAUTH_SECRET` is unset, When `getSessionSecret()` is called, Then it returns `\"\"` (empty string) — not `undefined` — and does not throw.",
+      "feature": "01-core",
+      "evidenceRef": "feature 01-core",
+      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C13",
+      "claim": "**AC-6:** Given `DATABASE_URL=\"postgresql://localhost:5432/sample\"`, When `databaseUrl()` is called, Then it returns that exact string.",
+      "feature": "01-core",
+      "evidenceRef": "feature 01-core",
+      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C14",
+      "claim": "**AC-7:** Given a visitor GETs `/`, When the response completes, Then no database query was issued and no entity was written.",
+      "feature": "01-core",
+      "evidenceRef": "feature 01-core",
+      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
       "confidence": "confirmed"
@@ -31,6 +161,36 @@
       "feature": "02-project-setup",
       "evidenceRef": "package.json",
       "digest": "package.json · next.config.js",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C16",
+      "claim": "[confirmed] Runtime dependencies are exactly: `next@^14.2.0`, `react@^18.3.0`, `react-dom@^18.3.0`, `zod@^3.23.0`, `tailwindcss@^3.4.0`.",
+      "feature": "02-project-setup",
+      "evidenceRef": "next.config.js",
+      "digest": "next.config.js",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C17",
+      "claim": "[confirmed] Dev dependencies are exactly: `typescript@^5.5.0`, `@types/react@^18.3.0`, `@playwright/test@^1.48.0`.",
+      "feature": "02-project-setup",
+      "evidenceRef": "feature 02-project-setup",
+      "digest": ".env.example · next.config.js · package.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C18",
+      "claim": "[confirmed] `zod`, `tailwindcss`, and `@playwright/test` are declared but never imported/configured/used anywhere in the source (no schema validation, no `tailwind.config`, no `@tailwind` directives, no test files). (Faithful gap.)",
+      "feature": "02-project-setup",
+      "evidenceRef": "next.config.js",
+      "digest": "next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
       "confidence": "confirmed"
@@ -66,6 +226,26 @@
       "confidence": "confirmed"
     },
     {
+      "claimId": "C22",
+      "claim": "[confirmed] No `tsconfig.json` and no `tailwind.config.*` exist in the source; TypeScript and Tailwind are present as dependencies only, with no config files. (Faithful gap: a real build would need a `tsconfig.json`.)",
+      "feature": "02-project-setup",
+      "evidenceRef": "next.config.js",
+      "digest": "next.config.js · package.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C23",
+      "claim": "**AC-1:** Given the repository, When `npm run dev` is invoked, Then it executes `next dev` (and `build`→`next build`, `start`→`next start`, `lint`→`next lint`).",
+      "feature": "02-project-setup",
+      "evidenceRef": "next.config.js",
+      "digest": "next.config.js",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
       "claimId": "C24",
       "claim": "**AC-2:** Given `package.json`, When reading `dependencies`, Then `next`, `react`, `react-dom`, `zod`, and `tailwindcss` are present at exactly `^14.2.0`, `^18.3.0`, `^18.3.0`, `^3.23.0`, `^3.4.0` respectively.",
       "feature": "02-project-setup",
@@ -81,6 +261,16 @@
       "feature": "02-project-setup",
       "evidenceRef": "package.json",
       "digest": "package.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C26",
+      "claim": "**AC-4:** Given the source tree, When grepping for `zod`, `@playwright/test`, and Tailwind usage, Then there are zero imports/uses (the deps are declared-but-unused). (Faithful gap path.)",
+      "feature": "02-project-setup",
+      "evidenceRef": "feature 02-project-setup",
+      "digest": ".env.example · next.config.js · package.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
       "confidence": "confirmed"
@@ -116,10 +306,50 @@
       "confidence": "confirmed"
     },
     {
+      "claimId": "C30",
+      "claim": "**AC-8:** Given the source tree, When looking for `tsconfig.json` or `tailwind.config.*`, Then neither file exists. (Faithful gap path.)",
+      "feature": "02-project-setup",
+      "evidenceRef": "next.config.js",
+      "digest": "next.config.js · package.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
       "claimId": "C31",
       "claim": "[confirmed] `prisma/schema.prisma` declares `datasource db { provider = \"postgresql\"; url = env(\"DATABASE_URL\") }`.",
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C32",
+      "claim": "[confirmed] It declares `model User` with field `id String @id @default(cuid())` — the primary key, defaulted to a Prisma-generated `cuid()`.",
+      "feature": "03-prisma",
+      "evidenceRef": "prisma/schema.prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C33",
+      "claim": "[confirmed] `User.email` is `String @unique` — required (NOT NULL) with a unique index.",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C34",
+      "claim": "[confirmed] `User.name` is `String?` — nullable/optional, no default.",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
@@ -136,6 +366,26 @@
       "confidence": "confirmed"
     },
     {
+      "claimId": "C36",
+      "claim": "[confirmed] There are **no** relations, indexes beyond the `email` unique, enums, or additional models. `User` is the only entity.",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C37",
+      "claim": "[confirmed] The `User` model is never queried: no `PrismaClient` is instantiated and no read/write is issued anywhere in the source. (Faithful gap — the model is orphaned from the interface surface.)",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "No PrismaClient import or instantiation exists anywhere in the fixture; the model is orphaned.",
+      "confidence": "confirmed"
+    },
+    {
       "claimId": "C38",
       "claim": "**AC-1:** Given `prisma/schema.prisma`, When it is read, Then the datasource is provider `postgresql` with `url = env(\"DATABASE_URL\")`.",
       "feature": "03-prisma",
@@ -143,6 +393,36 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C39",
+      "claim": "**AC-2:** Given the `User` model, When inspecting `id`, Then it is `String`, `@id`, defaulted `@default(cuid())`.",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "schema.prisma: `id String @id @default(cuid())`.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C40",
+      "claim": "**AC-3:** Given the `User` model, When inspecting `email`, Then it is `String`, `@unique`, and NOT NULL (no `?`).",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "schema.prisma: `email String @unique`, no `?` so NOT NULL.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C41",
+      "claim": "**AC-4:** Given the `User` model, When inspecting `name`, Then it is `String?` (nullable) with no default.",
+      "feature": "03-prisma",
+      "evidenceRef": "feature 03-prisma",
+      "digest": "prisma/schema.prisma",
+      "verdict": "supported",
+      "note": "schema.prisma: `name String?`, no @default.",
       "confidence": "confirmed"
     },
     {
@@ -156,216 +436,6 @@
       "confidence": "confirmed"
     },
     {
-      "claimId": "C5",
-      "claim": "[confirmed] `lib/auth.ts` exports `getSessionSecret(): string` returning `process.env.NEXTAUTH_SECRET ?? \"\"`; it performs no validation and never throws.",
-      "feature": "01-core",
-      "evidenceRef": "lib/auth.ts",
-      "digest": "lib/auth.ts",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C56",
-      "claim": "**AC-5:** Given a request with arbitrary query params or a body, When it hits `GET /api/users`, Then the params/body are ignored and the response is identical to a bare GET.",
-      "feature": "04-api",
-      "evidenceRef": "route GET /api/users",
-      "digest": "route GET /api/users · app/api/users/route.ts",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C57",
-      "claim": "[confirmed] `messages/en.json` defines namespace `home` with `title = \"Welcome\"` and `cta = \"Get started\"`, and namespace `dashboard` with `title = \"Dashboard\"`.",
-      "feature": "05-internationalization",
-      "evidenceRef": "messages/en.json",
-      "digest": "messages/en.json · messages/fr.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C58",
-      "claim": "[confirmed] `messages/fr.json` defines the same keys with French values: `home.title = \"Bienvenue\"`, `home.cta = \"Commencer\"`, `dashboard.title = \"Tableau de bord\"`.",
-      "feature": "05-internationalization",
-      "evidenceRef": "messages/en.json",
-      "digest": "messages/en.json · messages/fr.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C6",
-      "claim": "[confirmed] `lib/auth.ts` exports `databaseUrl(): string` returning `process.env.DATABASE_URL ?? \"\"`; it is a pure env read and is never called anywhere in the source. (Faithful gap: dead code preserved.)",
-      "feature": "01-core",
-      "evidenceRef": "lib/auth.ts",
-      "digest": "lib/auth.ts",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C63",
-      "claim": "**AC-1:** Given `messages/en.json`, When it is parsed, Then `home.title === \"Welcome\"`, `home.cta === \"Get started\"`, and `dashboard.title === \"Dashboard\"`.",
-      "feature": "05-internationalization",
-      "evidenceRef": "messages/en.json",
-      "digest": "messages/en.json · messages/fr.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C64",
-      "claim": "**AC-2:** Given `messages/fr.json`, When it is parsed, Then `home.title === \"Bienvenue\"`, `home.cta === \"Commencer\"`, and `dashboard.title === \"Tableau de bord\"`.",
-      "feature": "05-internationalization",
-      "evidenceRef": "messages/en.json",
-      "digest": "messages/en.json · messages/fr.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C66",
-      "claim": "**AC-4:** Given the source tree, When grepping for catalog loaders (`next-intl`, `useTranslations`, imports of `messages/*.json`), Then there are zero references — the catalogs are unused. (Faithful gap path.)",
-      "feature": "05-internationalization",
-      "evidenceRef": "messages/en.json",
-      "digest": "messages/en.json · messages/fr.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C73",
-      "claim": "**AC-2:** Given no session, cookie, or authorization header, When a visitor GETs `/dashboard`, Then it returns `200` and renders normally — no `401`/`403`, no redirect to a login page. (Faithful gap path — the \"private\" label is not enforced.)",
-      "feature": "06-dashboard",
-      "evidenceRef": "app/dashboard/page.tsx",
-      "digest": "app/dashboard/page.tsx · route /dashboard",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C74",
-      "claim": "**AC-3:** Given the active locale is `fr`, When a visitor loads `/dashboard`, Then the copy is still English (`Dashboard` / `Private area.`) because the page never reads the catalog. (Faithful gap path.)",
-      "feature": "06-dashboard",
-      "evidenceRef": "app/dashboard/page.tsx",
-      "digest": "app/dashboard/page.tsx · route /dashboard",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C10",
-      "claim": "**AC-3:** Given the active locale is `fr`, When a visitor loads `/`, Then the copy is still English (`Welcome` / `Get started`) because the page never consults the catalog. (Faithful gap path.)",
-      "feature": "01-core",
-      "evidenceRef": "app/page.tsx",
-      "digest": "app/page.tsx",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C11",
-      "claim": "**AC-4:** Given `Button` is rendered with `label=\"X\"`, When it mounts, Then it outputs exactly `<button type=\"button\">X</button>` and nothing else.",
-      "feature": "01-core",
-      "evidenceRef": "components/Button.tsx",
-      "digest": "components/Button.tsx",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C16",
-      "claim": "[confirmed] Runtime dependencies are exactly: `next@^14.2.0`, `react@^18.3.0`, `react-dom@^18.3.0`, `zod@^3.23.0`, `tailwindcss@^3.4.0`.",
-      "feature": "02-project-setup",
-      "evidenceRef": "next.config.js",
-      "digest": "next.config.js",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C18",
-      "claim": "[confirmed] `zod`, `tailwindcss`, and `@playwright/test` are declared but never imported/configured/used anywhere in the source (no schema validation, no `tailwind.config`, no `@tailwind` directives, no test files). (Faithful gap.)",
-      "feature": "02-project-setup",
-      "evidenceRef": "next.config.js",
-      "digest": "next.config.js",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C2",
-      "claim": "[confirmed] The home page renders the shared `Button` primitive with `label=\"Get started\"`, producing `<button type=\"button\">Get started</button>`.",
-      "feature": "01-core",
-      "evidenceRef": "app/page.tsx",
-      "digest": "app/page.tsx · components/Button.tsx",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C22",
-      "claim": "[confirmed] No `tsconfig.json` and no `tailwind.config.*` exist in the source; TypeScript and Tailwind are present as dependencies only, with no config files. (Faithful gap: a real build would need a `tsconfig.json`.)",
-      "feature": "02-project-setup",
-      "evidenceRef": "next.config.js",
-      "digest": "next.config.js · package.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C23",
-      "claim": "**AC-1:** Given the repository, When `npm run dev` is invoked, Then it executes `next dev` (and `build`→`next build`, `start`→`next start`, `lint`→`next lint`).",
-      "feature": "02-project-setup",
-      "evidenceRef": "next.config.js",
-      "digest": "next.config.js",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C3",
-      "claim": "[confirmed] The home page hardcodes its copy (`\"Welcome\"`, `\"Get started\"`) and does NOT read the `messages/*.json` i18n catalog, so it renders English regardless of the active locale. (Faithful gap.)",
-      "feature": "01-core",
-      "evidenceRef": "app/page.tsx",
-      "digest": "app/page.tsx",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C30",
-      "claim": "**AC-8:** Given the source tree, When looking for `tsconfig.json` or `tailwind.config.*`, Then neither file exists. (Faithful gap path.)",
-      "feature": "02-project-setup",
-      "evidenceRef": "next.config.js",
-      "digest": "next.config.js · package.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C32",
-      "claim": "[confirmed] It declares `model User` with field `id String @id @default(cuid())` — the primary key, defaulted to a Prisma-generated `cuid()`.",
-      "feature": "03-prisma",
-      "evidenceRef": "prisma/schema.prisma",
-      "digest": "prisma/schema.prisma",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C4",
-      "claim": "[confirmed] `Button({ label }: { label: string })` renders `<button type=\"button\">{label}</button>` — one required `label` string prop, no other props, no variants, no `onClick`, no children.",
-      "feature": "01-core",
-      "evidenceRef": "components/Button.tsx",
-      "digest": "components/Button.tsx",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
       "claimId": "C43",
       "claim": "**AC-6:** Given the whole source tree, When grepping for `PrismaClient`, `prisma.`, or any `user.findMany/create/…`, Then there are zero usages — the model is never queried. (Faithful gap path.)",
       "feature": "03-prisma",
@@ -373,6 +443,86 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C44",
+      "claim": "[confirmed] The handler is an exported `async function GET()` in `app/api/users/route.ts` (App-Router route handler).",
+      "feature": "04-api",
+      "evidenceRef": "app/api/users/route.ts",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C45",
+      "claim": "[confirmed] The handler ignores the incoming request entirely: it reads no query parameters, no headers, and no body.",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "route.ts: `export async function GET()` declares no request parameter at all.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C46",
+      "claim": "[confirmed] It computes `const ok = Boolean(getSessionSecret())`, where `getSessionSecret()` (from `lib/auth.ts`) returns `process.env.NEXTAUTH_SECRET ?? \"\"`. `ok` is `true` iff `NEXTAUTH_SECRET` is a **non-empty string**.",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "route.ts + lib/auth.ts: Boolean(process.env.NEXTAUTH_SECRET ?? '') is true iff non-empty.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C47",
+      "claim": "[confirmed] It returns `Response.json({ users: ok ? [\"alice\", \"bob\"] : [] })` — HTTP `200`, `Content-Type: application/json`, body shape `{ \"users\": string[] }`.",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "The literal is `Response.json({users: ...})`; status 200 and application/json come from the standard Response.json behaviour rather than from the handler itself.",
+      "confidence": "inferred"
+    },
+    {
+      "claimId": "C48",
+      "claim": "[confirmed] When `NEXTAUTH_SECRET` is non-empty, the body is `{ \"users\": [\"alice\", \"bob\"] }`; when empty/unset, the body is `{ \"users\": [] }`.",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "route.ts: `ok ? [\"alice\", \"bob\"] : []` — both branches read directly.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C49",
+      "claim": "[confirmed] The endpoint performs **no authentication or authorization**: it never returns `401`/`403` and is reachable by anyone; the env var only toggles the payload, not access. (Faithful gap.)",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "route.ts has no guard, no status override and no 401/403 path; the env var only picks the array.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C50",
+      "claim": "[confirmed] The name list is a **hardcoded literal**, not derived from the `User` entity — no database query is issued and no `PrismaClient` is used. (Faithful gap.)",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "The array is a literal in route.ts; no query and no PrismaClient anywhere.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C51",
+      "claim": "[confirmed] There is no error branch: the handler cannot fail on input and throws nothing (`ok` is a pure boolean over an env read).",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "route.ts has no try/catch and no throw; the only computation is an env read coerced to boolean.",
       "confidence": "confirmed"
     },
     {
@@ -406,6 +556,56 @@
       "confidence": "confirmed"
     },
     {
+      "claimId": "C55",
+      "claim": "**AC-4:** Given the endpoint responds, When the database is unavailable or unconfigured, Then the response is unaffected because no query is issued — the list is hardcoded. (Faithful gap path.)",
+      "feature": "04-api",
+      "evidenceRef": "feature 04-api",
+      "digest": "app/api/users/route.ts · route GET /api/users",
+      "verdict": "supported",
+      "note": "Follows from the absence of any query in route.ts — DB availability cannot reach this handler.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C56",
+      "claim": "**AC-5:** Given a request with arbitrary query params or a body, When it hits `GET /api/users`, Then the params/body are ignored and the response is identical to a bare GET.",
+      "feature": "04-api",
+      "evidenceRef": "route GET /api/users",
+      "digest": "route GET /api/users · app/api/users/route.ts",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C57",
+      "claim": "[confirmed] `messages/en.json` defines namespace `home` with `title = \"Welcome\"` and `cta = \"Get started\"`, and namespace `dashboard` with `title = \"Dashboard\"`.",
+      "feature": "05-internationalization",
+      "evidenceRef": "messages/en.json",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C58",
+      "claim": "[confirmed] `messages/fr.json` defines the same keys with French values: `home.title = \"Bienvenue\"`, `home.cta = \"Commencer\"`, `dashboard.title = \"Tableau de bord\"`.",
+      "feature": "05-internationalization",
+      "evidenceRef": "messages/en.json",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C59",
+      "claim": "[confirmed] Both locales carry the identical key set — exactly three keys each (`home.title`, `home.cta`, `dashboard.title`) — with full parity (no key present in one locale and missing in the other).",
+      "feature": "05-internationalization",
+      "evidenceRef": "feature 05-internationalization",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "messages/en.json and fr.json both carry exactly home.title, home.cta, dashboard.title.",
+      "confidence": "confirmed"
+    },
+    {
       "claimId": "C60",
       "claim": "[confirmed] The catalogs are **never loaded** by the app: no `next-intl`/`useTranslations`/`getTranslations`/JSON import references them. The pages render hardcoded literals instead. (Faithful gap.)",
       "feature": "05-internationalization",
@@ -413,6 +613,76 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C61",
+      "claim": "[confirmed] The string `\"Private area.\"` rendered on `/dashboard` has **no** catalog key in either locale — it is hardcoded and untranslatable as shipped. (Faithful gap.)",
+      "feature": "05-internationalization",
+      "evidenceRef": "feature 05-internationalization",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Neither catalog contains 'Private area.'; app/dashboard/page.tsx hardcodes it.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C62",
+      "claim": "[inferred] The declared locales (`en`, `fr`, default `en`) come from `next.config.js`'s `i18n` block, which is a Pages-Router option and is inert under this App-Router app — so there is no locale-prefixed routing to switch between the catalogs even if they were used. (See `02-project-setup`.)",
+      "feature": "05-internationalization",
+      "evidenceRef": "feature 05-internationalization",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "next.config.js does declare locales en/fr with defaultLocale en; that the `i18n` block is inert under the App Router is framework semantics, not stated by the source.",
+      "confidence": "inferred"
+    },
+    {
+      "claimId": "C63",
+      "claim": "**AC-1:** Given `messages/en.json`, When it is parsed, Then `home.title === \"Welcome\"`, `home.cta === \"Get started\"`, and `dashboard.title === \"Dashboard\"`.",
+      "feature": "05-internationalization",
+      "evidenceRef": "messages/en.json",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C64",
+      "claim": "**AC-2:** Given `messages/fr.json`, When it is parsed, Then `home.title === \"Bienvenue\"`, `home.cta === \"Commencer\"`, and `dashboard.title === \"Tableau de bord\"`.",
+      "feature": "05-internationalization",
+      "evidenceRef": "messages/en.json",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C65",
+      "claim": "**AC-3:** Given both catalogs, When their key sets are compared, Then they are identical (three keys each, full parity, no missing translation).",
+      "feature": "05-internationalization",
+      "evidenceRef": "feature 05-internationalization",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Key sets compared directly: identical, three each, no gap.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C66",
+      "claim": "**AC-4:** Given the source tree, When grepping for catalog loaders (`next-intl`, `useTranslations`, imports of `messages/*.json`), Then there are zero references — the catalogs are unused. (Faithful gap path.)",
+      "feature": "05-internationalization",
+      "evidenceRef": "messages/en.json",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C67",
+      "claim": "**AC-5:** Given `/dashboard` renders `\"Private area.\"`, When searching either catalog for that string, Then no key maps to it. (Faithful gap path.)",
+      "feature": "05-internationalization",
+      "evidenceRef": "feature 05-internationalization",
+      "digest": "messages/en.json · messages/fr.json",
+      "verdict": "supported",
+      "note": "Searching both catalogs for 'Private area.' yields no key.",
       "confidence": "confirmed"
     },
     {
@@ -466,6 +736,26 @@
       "confidence": "confirmed"
     },
     {
+      "claimId": "C73",
+      "claim": "**AC-2:** Given no session, cookie, or authorization header, When a visitor GETs `/dashboard`, Then it returns `200` and renders normally — no `401`/`403`, no redirect to a login page. (Faithful gap path — the \"private\" label is not enforced.)",
+      "feature": "06-dashboard",
+      "evidenceRef": "app/dashboard/page.tsx",
+      "digest": "app/dashboard/page.tsx · route /dashboard",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C74",
+      "claim": "**AC-3:** Given the active locale is `fr`, When a visitor loads `/dashboard`, Then the copy is still English (`Dashboard` / `Private area.`) because the page never reads the catalog. (Faithful gap path.)",
+      "feature": "06-dashboard",
+      "evidenceRef": "app/dashboard/page.tsx",
+      "digest": "app/dashboard/page.tsx · route /dashboard",
+      "verdict": "supported",
+      "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
       "claimId": "C75",
       "claim": "**AC-4:** Given the page renders, When the response completes, Then no database query ran and no entity was written.",
       "feature": "06-dashboard",
@@ -483,6 +773,36 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C77",
+      "claim": "[confirmed] It contains a one-to-two sentence description stating it is a tiny Next.js (App Router) fixture with two pages, one API route, a Prisma schema, and English/French translations, used to exercise the reconstruct analyzer.",
+      "feature": "07-documentation",
+      "evidenceRef": "feature 07-documentation",
+      "digest": "README.md",
+      "verdict": "supported",
+      "note": "README.md states exactly that, in two sentences.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C78",
+      "claim": "[confirmed] It provides **no** install/run/build/test instructions and no other sections — the description is the entire content. (Faithful: minimal by design.)",
+      "feature": "07-documentation",
+      "evidenceRef": "feature 07-documentation",
+      "digest": "README.md",
+      "verdict": "supported",
+      "note": "README.md is a heading plus the description — no other section.",
+      "confidence": "confirmed"
+    },
+    {
+      "claimId": "C79",
+      "claim": "[confirmed] It is the only documentation file in the repository.",
+      "feature": "07-documentation",
+      "evidenceRef": "feature 07-documentation",
+      "digest": "README.md",
+      "verdict": "supported",
+      "note": "README.md is the only .md file in the fixture.",
       "confidence": "confirmed"
     },
     {
@@ -511,106 +831,6 @@
       "feature": "07-documentation",
       "evidenceRef": "README.md",
       "digest": "README.md",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C9",
-      "claim": "**AC-2:** Given the home page renders, When inspecting the DOM, Then there is exactly one `<button type=\"button\">` whose text is `Get started`.",
-      "feature": "01-core",
-      "evidenceRef": "app/page.tsx",
-      "digest": "app/page.tsx · components/Button.tsx",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C1",
-      "claim": "[confirmed] `GET /` renders a `<main>` element containing exactly one `<h1>` whose text is `Welcome`.",
-      "feature": "01-core",
-      "evidenceRef": "feature 01-core",
-      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C12",
-      "claim": "**AC-5:** Given `NEXTAUTH_SECRET` is unset, When `getSessionSecret()` is called, Then it returns `\"\"` (empty string) — not `undefined` — and does not throw.",
-      "feature": "01-core",
-      "evidenceRef": "feature 01-core",
-      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C13",
-      "claim": "**AC-6:** Given `DATABASE_URL=\"postgresql://localhost:5432/sample\"`, When `databaseUrl()` is called, Then it returns that exact string.",
-      "feature": "01-core",
-      "evidenceRef": "feature 01-core",
-      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C14",
-      "claim": "**AC-7:** Given a visitor GETs `/`, When the response completes, Then no database query was issued and no entity was written.",
-      "feature": "01-core",
-      "evidenceRef": "feature 01-core",
-      "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C17",
-      "claim": "[confirmed] Dev dependencies are exactly: `typescript@^5.5.0`, `@types/react@^18.3.0`, `@playwright/test@^1.48.0`.",
-      "feature": "02-project-setup",
-      "evidenceRef": "feature 02-project-setup",
-      "digest": ".env.example · next.config.js · package.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C26",
-      "claim": "**AC-4:** Given the source tree, When grepping for `zod`, `@playwright/test`, and Tailwind usage, Then there are zero imports/uses (the deps are declared-but-unused). (Faithful gap path.)",
-      "feature": "02-project-setup",
-      "evidenceRef": "feature 02-project-setup",
-      "digest": ".env.example · next.config.js · package.json",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C33",
-      "claim": "[confirmed] `User.email` is `String @unique` — required (NOT NULL) with a unique index.",
-      "feature": "03-prisma",
-      "evidenceRef": "feature 03-prisma",
-      "digest": "prisma/schema.prisma",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C34",
-      "claim": "[confirmed] `User.name` is `String?` — nullable/optional, no default.",
-      "feature": "03-prisma",
-      "evidenceRef": "feature 03-prisma",
-      "digest": "prisma/schema.prisma",
-      "verdict": "supported",
-      "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
-    },
-    {
-      "claimId": "C36",
-      "claim": "[confirmed] There are **no** relations, indexes beyond the `email` unique, enums, or additional models. `User` is the only entity.",
-      "feature": "03-prisma",
-      "evidenceRef": "feature 03-prisma",
-      "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
       "confidence": "confirmed"

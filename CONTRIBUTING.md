@@ -53,13 +53,20 @@ If you do change `src/`:
 - Run the full gate and refresh the bundle:
 
   ```bash
-  pnpm run typecheck
-  pnpm test
-  pnpm run build        # refresh scripts/analyze.mjs (committed, zero-dep)
-  pnpm run check:build  # asserts the committed bundle matches src/
+  pnpm run build   # refresh scripts/analyze.mjs (committed, zero-dep) — do this FIRST
+  pnpm run gate    # typecheck + lint + test + check:build + verify:example + parity
   ```
 
-  CI runs all of the above on Node 24, plus a smoke run of the committed bundle, and a
+  `pnpm run gate` is the same set CI enforces, so a green gate locally means a green CI.
+  Run `pnpm run build` before it: `check:build` compares the **committed** bundle against
+  `src/`, and `verify:example` runs the committed bundle against the golden example.
+
+  Two of those are easy to forget because they exercise artifacts rather than code:
+  `verify:example` re-runs the full semantic gate over `assets/example-output` (so a change
+  to the gates must keep the golden example passing — if you tighten a gate, re-adjudicate
+  it), and `parity` checks the scratch renderer against its example plan.
+
+  CI runs the same set on Node 20/24, plus a smoke run of the committed bundle, and a
   separate Node-18 job that runs the bundle on the `engines` floor (no install).
 
 ## Pull requests
@@ -97,7 +104,7 @@ tags `v<version>` and creates the GitHub release with auto notes + an `npm pack`
 Run the same gate locally before pushing:
 
 ```bash
-pnpm run typecheck && pnpm test && pnpm run check:build   # same gate CI runs
+pnpm run build && pnpm run gate   # the same set CI enforces
 ```
 
 By contributing you agree your work is licensed under the project's [MIT license](./LICENSE).
