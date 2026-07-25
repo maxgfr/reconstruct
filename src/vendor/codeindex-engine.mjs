@@ -14,7 +14,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.16.0";
+    ENGINE_VERSION = "2.17.0";
     SCHEMA_VERSION = 4;
     EXTRACTOR_VERSION = 10;
   }
@@ -10440,8 +10440,8 @@ async function warmGrammarsForRepo(repo) {
   const { files } = walk(repo, {});
   await ensureGrammars(grammarKeysForExts(files.map((f) => f.ext)));
 }
-async function callTool(name2, args2) {
-  const repo = str(args2.repo);
+async function callTool(name2, args2, defaultRepo) {
+  const repo = str(args2.repo) ?? defaultRepo;
   if (!repo) throw new Error("`repo` is required (absolute path to the repository root)");
   const scanOpts = { scope: str(args2.scope), include: strArray(args2.include), exclude: strArray(args2.exclude) };
   if (!SCANLESS_TOOLS.has(name2)) await warmGrammarsForRepo(repo);
@@ -10636,11 +10636,26 @@ async function callTool(name2, args2) {
   }
   throw new Error(`unknown tool: ${name2}`);
 }
+function toolsFor(defaultRepo) {
+  if (!defaultRepo) return TOOLS;
+  return TOOLS.map((t) => ({
+    ...t,
+    inputSchema: {
+      ...t.inputSchema,
+      properties: {
+        ...t.inputSchema.properties,
+        repo: { type: "string", description: `Absolute path to the repository root (optional \u2014 defaults to ${defaultRepo})` }
+      },
+      required: t.inputSchema.required.filter((r) => r !== "repo")
+    }
+  }));
+}
 async function runMcpServer(opts = {}) {
   const serverInfo = {
     name: opts.serverInfo?.name ?? "codeindex",
     version: opts.serverInfo?.version ?? ENGINE_VERSION
   };
+  const tools = toolsFor(opts.defaultRepo);
   const send = (msg) => {
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n");
   };
@@ -10673,13 +10688,13 @@ async function runMcpServer(opts = {}) {
       } else if (req.method === "ping") {
         send({ id: req.id, result: {} });
       } else if (req.method === "tools/list") {
-        send({ id: req.id, result: { tools: TOOLS } });
+        send({ id: req.id, result: { tools } });
       } else if (req.method === "tools/call") {
         const params = req.params ?? {};
         const name2 = str(params.name) ?? "";
         const args2 = params.arguments ?? {};
         try {
-          const text = await callTool(name2, args2);
+          const text = await callTool(name2, args2, opts.defaultRepo);
           send({ id: req.id, result: { content: [{ type: "text", text }] } });
         } catch (e) {
           send({
@@ -10986,6 +11001,121 @@ var init_mcp = __esm({
       "delete_memory",
       "embed_status"
     ]);
+  }
+});
+
+// src/rewrite.ts
+var rewrite_exports = {};
+__export(rewrite_exports, {
+  rewriteCommand: () => rewriteCommand,
+  shellQuote: () => shellQuote,
+  tokenize: () => tokenize2
+});
+function tokenize2(line) {
+  const out2 = [];
+  let cur = "";
+  let quote;
+  let started = false;
+  for (let i2 = 0; i2 < line.length; i2++) {
+    const c2 = line[i2];
+    if (quote) {
+      if (c2 === quote) quote = void 0;
+      else cur += c2;
+      continue;
+    }
+    if (c2 === '"' || c2 === "'") {
+      quote = c2;
+      started = true;
+      continue;
+    }
+    if (c2 === " " || c2 === "	") {
+      if (started || cur) out2.push(cur);
+      cur = "";
+      started = false;
+      continue;
+    }
+    cur += c2;
+  }
+  if (quote) return void 0;
+  if (started || cur) out2.push(cur);
+  return out2;
+}
+function shellQuote(s) {
+  if (s !== "" && !/[^A-Za-z0-9_\-./=@:]/.test(s)) return s;
+  return "'" + s.replace(/'/g, `'\\''`) + "'";
+}
+function parseSearch(bin, args2) {
+  const p = { ignoreCase: false, includes: [], recursive: bin !== "grep" && bin !== "egrep" };
+  const positionals = [];
+  for (let i2 = 0; i2 < args2.length; i2++) {
+    const a = args2[i2];
+    if (a === void 0) continue;
+    if (a === "--") {
+      positionals.push(...args2.slice(i2 + 1));
+      break;
+    }
+    if (!a.startsWith("-") || a === "-") {
+      positionals.push(a);
+      continue;
+    }
+    if (a === "-i" || a === "--ignore-case") {
+      p.ignoreCase = true;
+    } else if (a === "-r" || a === "-R" || a === "--recursive") {
+      p.recursive = true;
+    } else if (a === "-n" || a === "--line-number" || a === "-H" || a === "--with-filename" || a === "--no-heading") {
+    } else if (a === "-e" || a === "--regexp") {
+      const v = args2[++i2];
+      if (v === void 0 || p.pattern !== void 0) return void 0;
+      p.pattern = v;
+    } else if (a.startsWith("--include=")) {
+      p.includes.push(a.slice("--include=".length));
+    } else if (a === "--include" || a === "-g" || a === "--glob") {
+      const v = args2[++i2];
+      if (v === void 0) return void 0;
+      p.includes.push(v);
+    } else if (a.length > 2 && /^-[a-zA-Z]+$/.test(a)) {
+      const expanded = a.slice(1).split("").map((c2) => `-${c2}`);
+      args2.splice(i2, 1, ...expanded);
+      i2--;
+    } else {
+      return void 0;
+    }
+  }
+  if (p.pattern === void 0) {
+    const first = positionals.shift();
+    if (first === void 0 || first === "") return void 0;
+    p.pattern = first;
+  }
+  if (positionals.length > 1) return void 0;
+  p.path = positionals[0];
+  return p;
+}
+function rewriteCommand(cmd, bin = "codeindex") {
+  const line = cmd.trim();
+  if (!line || SHELL_METACHARS.test(line)) return void 0;
+  const tokens = tokenize2(line);
+  if (!tokens || tokens.length < 2) return void 0;
+  const [head, ...args2] = tokens;
+  if (head === void 0 || !GREP_BINARIES.has(head)) return void 0;
+  const p = parseSearch(head, args2);
+  if (!p || p.pattern === void 0) return void 0;
+  const pattern = p.pattern;
+  if (!p.recursive) return void 0;
+  const path = p.path;
+  const out2 = [bin, "grep", shellQuote(pattern)];
+  if (path && path !== "." && path !== "./") {
+    out2.push("--scope", shellQuote(path.replace(/\/+$/, "")));
+  }
+  if (p.ignoreCase) out2.push("--ignore-case");
+  for (const g of p.includes) out2.push("--include", shellQuote(g));
+  return out2.join(" ");
+}
+var SHELL_METACHARS, GREP_BINARIES;
+var init_rewrite = __esm({
+  "src/rewrite.ts"() {
+    "use strict";
+    SHELL_METACHARS = /[|&;<>`\n\r$(){}]/;
+    GREP_BINARIES = /* @__PURE__ */ new Set(["grep", "egrep", "rg", "ripgrep"]);
   }
 });
 
@@ -11601,6 +11731,7 @@ init_deadcode();
 init_complexity();
 init_viz();
 init_mcp();
+init_rewrite();
 init_hash();
 init_sort();
 init_util();
@@ -11677,8 +11808,27 @@ Commands:
   repomap     Token-budgeted map of the highest-PageRank files (--budget-tokens)
   hotspots    Churn \xD7 size ranking of the files where work concentrates (JSON)
   coupling    Change coupling: files that change together (JSON; --since <ref>)
-  mcp         Run as an MCP server over stdio (tools: scan_summary, graph,
-              symbols, callers, workspaces, churn, grep)
+  deadcode    Dead-code candidates in two labeled tiers: 'unreferenced' (no
+              call site binds AND nothing references the name) and 'uncalled'
+              (referenced \u2014 re-export, type position \u2014 but never called)
+  complexity  Cyclomatic-complexity estimates, most-complex first. Pass a file
+              positional for one file; omit for the repo-wide top
+  risk        Complexity \xD7 git-churn ranking (JSON; --since <ref> to bound)
+  mermaid     Mermaid diagram of the module graph; pass a module positional to
+              focus on one neighborhood
+  rewrite     Map an expensive tree-wide search onto its indexed equivalent:
+              cli.mjs rewrite '<command line>'. Prints the replacement command
+              and exits 0, or exits 1 when it has no opinion (run the original).
+              Deliberately conservative \u2014 any shell metacharacter or unknown
+              flag refuses the rewrite
+  mcp         Run as an MCP server over stdio (26 tools: scan_summary, graph,
+              symbols, callers, workspaces, churn, symbols_overview,
+              find_symbol, find_references, repo_map, hotspots, coupling,
+              dead_code, complexity, mermaid, grep, search, embed_status,
+              check_rules, the memory quartet and the three symbolic-edit
+              writes). Flags: --repo <dir> pins ONE repository so the per-tool
+              repo argument becomes optional (an explicit per-call repo still
+              wins); --server-name <name> overrides the announced serverInfo
   version     Print the engine version
 
 Flags:
@@ -11708,6 +11858,8 @@ Flags:
   --recall            \`callers\`: recall-oriented binding (issue #7) \u2014 relaxes
                       the JS/TS import gate to unique repo-wide names and labels
                       each site corroborated|unique-name
+  --ignore-case       \`grep\`: case-insensitive matching
+  --max-hits <n>      \`grep\`: cap returned hits (default 200)
 `;
 function parseFlags(args2) {
   const flags2 = { repo: process.cwd(), include: [], exclude: [], gitignore: true, ignoreDirs: [], noAst: false, fuzzy: true, semantic: false };
@@ -11774,6 +11926,26 @@ function scanOptions(flags2, precomputedWalk) {
   };
 }
 var SCANLESS_COMMANDS = /* @__PURE__ */ new Set(["grep", "churn", "coupling", "workspaces", "grammars"]);
+function parseMcpFlags(argv) {
+  let defaultRepo;
+  let name2;
+  for (let i2 = 0; i2 < argv.length; i2++) {
+    const a = argv[i2];
+    if (a === "--repo") {
+      const v = argv[++i2];
+      if (!v) throw new Error("--repo requires a directory");
+      defaultRepo = resolve2(v);
+    } else if (a === "--server-name") {
+      const v = argv[++i2];
+      if (!v) throw new Error("--server-name requires a value");
+      name2 = v;
+    } else {
+      throw new Error(`unknown flag for \`mcp\`: ${a}`);
+    }
+  }
+  if (defaultRepo && !existsSync5(defaultRepo)) throw new Error(`--repo path does not exist: ${defaultRepo}`);
+  return { defaultRepo, serverInfo: name2 ? { name: name2 } : void 0 };
+}
 async function runCli(argv) {
   const [cmd, ...rest] = argv;
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
@@ -11784,9 +11956,19 @@ async function runCli(argv) {
     process.stdout.write(ENGINE_VERSION + "\n");
     return;
   }
+  if (cmd === "rewrite") {
+    const { rewriteCommand: rewriteCommand2 } = await Promise.resolve().then(() => (init_rewrite(), rewrite_exports));
+    const rewritten = rewriteCommand2(rest.join(" "));
+    if (!rewritten) {
+      process.exitCode = 1;
+      return;
+    }
+    process.stdout.write(rewritten + "\n");
+    return;
+  }
   if (cmd === "mcp") {
     const { runMcpServer: runMcpServer2 } = await Promise.resolve().then(() => (init_mcp(), mcp_exports));
-    await runMcpServer2();
+    await runMcpServer2(parseMcpFlags(rest));
     return;
   }
   const flags2 = parseFlags(rest);
@@ -12117,7 +12299,8 @@ async function runCli(argv) {
     emit(renderMermaid(graph, { module: flags2.positional }), flags2.out);
   } else if (cmd === "grep") {
     if (!flags2.positional) throw new Error("grep needs a pattern: cli.mjs grep <pattern> --repo <dir>");
-    const globs = [...flags2.include, ...flags2.exclude.map((g) => `!${g}`)];
+    const scopeGlobs = flags2.scope ? [`${flags2.scope.replace(/\/+$/, "")}/**`] : [];
+    const globs = [...scopeGlobs, ...flags2.include, ...flags2.exclude.map((g) => `!${g}`)];
     const hits = grepRepo(flags2.repo, flags2.positional, {
       globs: globs.length ? globs : void 0,
       ignoreCase: flags2.ignoreCase,
@@ -12246,6 +12429,7 @@ export {
   resolveGrammarsTier,
   resolveImport,
   resolveUniqueSymbol,
+  rewriteCommand,
   riskHotspots,
   roundHalfToEven,
   rrf,
