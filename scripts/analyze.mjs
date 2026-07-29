@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve5, join as join38 } from "path";
-import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath3 } from "url";
-import { existsSync as existsSync17, statSync as statSync8, realpathSync as realpathSync2 } from "fs";
+import { resolve as resolve7, join as join40 } from "path";
+import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath4 } from "url";
+import { existsSync as existsSync19, statSync as statSync10, realpathSync as realpathSync4 } from "fs";
 
 // src/analyze.ts
 import { basename as basename4 } from "path";
@@ -661,9 +661,9 @@ function diffFiles(dir, spec) {
     }
   }
   const byPath = new Map(out2.map((f) => [f.path, f]));
-  const num2 = sh("git", [...gitArgs(dir), "diff", "-z", "-M", "--numstat", ...rangeArgs(spec)]);
-  if (num2.ok) {
-    const toks = num2.stdout.split("\0");
+  const num22 = sh("git", [...gitArgs(dir), "diff", "-z", "-M", "--numstat", ...rangeArgs(spec)]);
+  if (num22.ok) {
+    const toks = num22.stdout.split("\0");
     let i2 = 0;
     while (i2 < toks.length) {
       const head = toks[i2++];
@@ -2095,16 +2095,16 @@ async function Module2(moduleArg = {}) {
     if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
       return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
     }
-    var str2 = "";
+    var str22 = "";
     while (idx < endPtr) {
       var u0 = heapOrArray[idx++];
       if (!(u0 & 128)) {
-        str2 += String.fromCharCode(u0);
+        str22 += String.fromCharCode(u0);
         continue;
       }
       var u1 = heapOrArray[idx++] & 63;
       if ((u0 & 224) == 192) {
-        str2 += String.fromCharCode((u0 & 31) << 6 | u1);
+        str22 += String.fromCharCode((u0 & 31) << 6 | u1);
         continue;
       }
       var u2 = heapOrArray[idx++] & 63;
@@ -2114,13 +2114,13 @@ async function Module2(moduleArg = {}) {
         u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
       }
       if (u0 < 65536) {
-        str2 += String.fromCharCode(u0);
+        str22 += String.fromCharCode(u0);
       } else {
         var ch = u0 - 65536;
-        str2 += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
+        str22 += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
       }
     }
-    return str2;
+    return str22;
   }, "UTF8ArrayToString");
   var getDylinkMetadata = /* @__PURE__ */ __name((binary2) => {
     var offset = 0;
@@ -2886,7 +2886,7 @@ async function Module2(moduleArg = {}) {
   _fd_close.sig = "ii";
   var INT53_MAX = 9007199254740992;
   var INT53_MIN = -9007199254740992;
-  var bigintToI53Checked = /* @__PURE__ */ __name((num2) => num2 < INT53_MIN || num2 > INT53_MAX ? NaN : Number(num2), "bigintToI53Checked");
+  var bigintToI53Checked = /* @__PURE__ */ __name((num22) => num22 < INT53_MIN || num22 > INT53_MAX ? NaN : Number(num22), "bigintToI53Checked");
   function _fd_seek(fd, offset, whence, newOffset) {
     offset = bigintToI53Checked(offset);
     return 70;
@@ -2904,7 +2904,7 @@ async function Module2(moduleArg = {}) {
     }
   }, "printChar");
   var _fd_write = /* @__PURE__ */ __name((fd, iov, iovcnt, pnum) => {
-    var num2 = 0;
+    var num22 = 0;
     for (var i2 = 0; i2 < iovcnt; i2++) {
       var ptr = LE_HEAP_LOAD_U32((iov >> 2) * 4);
       var len = LE_HEAP_LOAD_U32((iov + 4 >> 2) * 4);
@@ -2912,9 +2912,9 @@ async function Module2(moduleArg = {}) {
       for (var j = 0; j < len; j++) {
         printChar(fd, HEAPU8[ptr + j]);
       }
-      num2 += len;
+      num22 += len;
     }
-    LE_HEAP_STORE_U32((pnum >> 2) * 4, num2);
+    LE_HEAP_STORE_U32((pnum >> 2) * 4, num22);
     return 0;
   }, "_fd_write");
   _fd_write.sig = "iippp";
@@ -2979,10 +2979,10 @@ async function Module2(moduleArg = {}) {
     }
     quit_(1, e);
   }, "handleException");
-  var lengthBytesUTF8 = /* @__PURE__ */ __name((str2) => {
+  var lengthBytesUTF8 = /* @__PURE__ */ __name((str22) => {
     var len = 0;
-    for (var i2 = 0; i2 < str2.length; ++i2) {
-      var c2 = str2.charCodeAt(i2);
+    for (var i2 = 0; i2 < str22.length; ++i2) {
+      var c2 = str22.charCodeAt(i2);
       if (c2 <= 127) {
         len++;
       } else if (c2 <= 2047) {
@@ -2996,12 +2996,12 @@ async function Module2(moduleArg = {}) {
     }
     return len;
   }, "lengthBytesUTF8");
-  var stringToUTF8Array = /* @__PURE__ */ __name((str2, heap, outIdx, maxBytesToWrite) => {
+  var stringToUTF8Array = /* @__PURE__ */ __name((str22, heap, outIdx, maxBytesToWrite) => {
     if (!(maxBytesToWrite > 0)) return 0;
     var startIdx = outIdx;
     var endIdx = outIdx + maxBytesToWrite - 1;
-    for (var i2 = 0; i2 < str2.length; ++i2) {
-      var u = str2.codePointAt(i2);
+    for (var i2 = 0; i2 < str22.length; ++i2) {
+      var u = str22.codePointAt(i2);
       if (u <= 127) {
         if (outIdx >= endIdx) break;
         heap[outIdx++] = u;
@@ -3026,30 +3026,30 @@ async function Module2(moduleArg = {}) {
     heap[outIdx] = 0;
     return outIdx - startIdx;
   }, "stringToUTF8Array");
-  var stringToUTF8 = /* @__PURE__ */ __name((str2, outPtr, maxBytesToWrite) => stringToUTF8Array(str2, HEAPU8, outPtr, maxBytesToWrite), "stringToUTF8");
+  var stringToUTF8 = /* @__PURE__ */ __name((str22, outPtr, maxBytesToWrite) => stringToUTF8Array(str22, HEAPU8, outPtr, maxBytesToWrite), "stringToUTF8");
   var stackAlloc = /* @__PURE__ */ __name((sz) => __emscripten_stack_alloc(sz), "stackAlloc");
-  var stringToUTF8OnStack = /* @__PURE__ */ __name((str2) => {
-    var size = lengthBytesUTF8(str2) + 1;
+  var stringToUTF8OnStack = /* @__PURE__ */ __name((str22) => {
+    var size = lengthBytesUTF8(str22) + 1;
     var ret = stackAlloc(size);
-    stringToUTF8(str2, ret, size);
+    stringToUTF8(str22, ret, size);
     return ret;
   }, "stringToUTF8OnStack");
   var AsciiToString = /* @__PURE__ */ __name((ptr) => {
-    var str2 = "";
+    var str22 = "";
     while (1) {
       var ch = HEAPU8[ptr++];
-      if (!ch) return str2;
-      str2 += String.fromCharCode(ch);
+      if (!ch) return str22;
+      str22 += String.fromCharCode(ch);
     }
   }, "AsciiToString");
-  var stringToUTF16 = /* @__PURE__ */ __name((str2, outPtr, maxBytesToWrite) => {
+  var stringToUTF16 = /* @__PURE__ */ __name((str22, outPtr, maxBytesToWrite) => {
     maxBytesToWrite ??= 2147483647;
     if (maxBytesToWrite < 2) return 0;
     maxBytesToWrite -= 2;
     var startPtr = outPtr;
-    var numCharsToWrite = maxBytesToWrite < str2.length * 2 ? maxBytesToWrite / 2 : str2.length;
+    var numCharsToWrite = maxBytesToWrite < str22.length * 2 ? maxBytesToWrite / 2 : str22.length;
     for (var i2 = 0; i2 < numCharsToWrite; ++i2) {
-      var codeUnit = str2.charCodeAt(i2);
+      var codeUnit = str22.charCodeAt(i2);
       LE_HEAP_STORE_I16((outPtr >> 1) * 2, codeUnit);
       outPtr += 2;
     }
@@ -3391,8 +3391,8 @@ function parseAnyPredicate(steps, index, operator, textPredicates) {
         if (c2.name === captureName1) nodes1.push(c2.node);
         if (c2.name === captureName2) nodes2.push(c2.node);
       }
-      const compare = /* @__PURE__ */ __name((n1, n2, positive) => {
-        return positive ? n1.text === n2.text : n1.text !== n2.text;
+      const compare = /* @__PURE__ */ __name((n1, n2, positive2) => {
+        return positive2 ? n1.text === n2.text : n1.text !== n2.text;
       }, "compare");
       return matchAll ? nodes1.every((n1) => nodes2.some((n2) => compare(n1, n2, isPositive))) : nodes1.some((n1) => nodes2.some((n2) => compare(n1, n2, isPositive)));
     });
@@ -3436,8 +3436,8 @@ function parseMatchPredicate(steps, index, operator, textPredicates) {
     for (const c2 of captures) {
       if (c2.name === captureName) nodes.push(c2.node.text);
     }
-    const test = /* @__PURE__ */ __name((text, positive) => {
-      return positive ? regex.test(text) : !regex.test(text);
+    const test = /* @__PURE__ */ __name((text, positive2) => {
+      return positive2 ? regex.test(text) : !regex.test(text);
     }, "test");
     if (nodes.length === 0) return !isPositive;
     return matchAll ? nodes.every((text) => test(text, isPositive)) : nodes.some((text) => test(text, isPositive));
@@ -5849,8 +5849,8 @@ function collectAll(root, spec, defNames, maxCalls, wantImports) {
     if (wantRefs) {
       const how = spec.imports[type];
       if (how === "string") {
-        const str2 = findFirst(node, (n) => /string/.test(n.type));
-        if (str2) addRef(str2.text.replace(/^['"]|['"]$/g, ""));
+        const str22 = findFirst(node, (n) => /string/.test(n.type));
+        if (str22) addRef(str22.text.replace(/^['"]|['"]$/g, ""));
       } else if (how === "path") {
         const name2 = node.childForFieldName("name") ?? node.childForFieldName("module_name");
         addRef((name2 ?? node).text.replace(/^(import|from)\s+/, "").split(/\s+/)[0]);
@@ -9956,14 +9956,14 @@ function buildEmbeddingIndex(scan2, model) {
   return { embedVersion: EMBED_VERSION, modelId: model.modelId, dim: model.dim, records };
 }
 function serializeEmbeddings(index) {
-  const header = JSON.stringify({
+  const header2 = JSON.stringify({
     embedVersion: index.embedVersion,
     modelId: index.modelId,
     dim: index.dim,
     count: index.records.length,
     records: index.records.map((r) => ({ file: r.file, symbol: r.symbol ?? "", line: r.line ?? 0 }))
   });
-  const headerBuf = Buffer.from(header, "utf8");
+  const headerBuf = Buffer.from(header2, "utf8");
   const body2 = Buffer.alloc(index.records.length * index.dim);
   let off = 0;
   for (const r of index.records) {
@@ -9982,10 +9982,10 @@ function deserializeEmbeddings(bytes) {
     throw new Error("embeddings.bin: bad magic (not a codeindex embeddings artifact)");
   }
   const headerLen = buf.readUInt32LE(4);
-  const header = JSON.parse(buf.toString("utf8", 8, 8 + headerLen));
+  const header2 = JSON.parse(buf.toString("utf8", 8, 8 + headerLen));
   const bodyOff = 8 + headerLen;
-  const { dim } = header;
-  const records = header.records.map((m, i2) => {
+  const { dim } = header2;
+  const records = header2.records.map((m, i2) => {
     const vec = new Int8Array(dim);
     for (let d = 0; d < dim; d++) vec[d] = buf.readInt8(bodyOff + i2 * dim + d);
     const rec = { file: m.file, vec };
@@ -9993,7 +9993,7 @@ function deserializeEmbeddings(bytes) {
     if (m.line) rec.line = m.line;
     return rec;
   });
-  return { embedVersion: header.embedVersion, modelId: header.modelId, dim, records };
+  return { embedVersion: header2.embedVersion, modelId: header2.modelId, dim, records };
 }
 var MAGIC;
 var init_embed = __esm({
@@ -10379,9 +10379,9 @@ function renderRepoMap(scan2, graph, opts = {}) {
   const maxSymbols = opts.maxSymbolsPerFile ?? 8;
   const ranked = [...graph.files].filter((f) => f.fileKind === "code").sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0) || b.symbols - a.symbols || byStr(a.rel, b.rel));
   const records = new Map(scan2.files.map((f) => [f.rel, f]));
-  const header = `# repo map \u2014 ${graph.fileCount} files
+  const header2 = `# repo map \u2014 ${graph.fileCount} files
 `;
-  let out2 = header;
+  let out2 = header2;
   let files = 0;
   for (const node of ranked) {
     const rec = records.get(node.rel);
@@ -12999,7 +12999,7 @@ function parseFlags(args2) {
       if (v === void 0) throw new Error(`missing value for ${a}`);
       return v;
     };
-    const num2 = () => {
+    const num22 = () => {
       const raw = next();
       const n = Number(raw);
       if (!Number.isFinite(n) || n <= 0) throw new Error(`${a} expects a positive number, got "${raw}"`);
@@ -13015,12 +13015,12 @@ function parseFlags(args2) {
     else if (a === "--scope") flags2.scope = next();
     else if (a === "--no-gitignore") flags2.gitignore = false;
     else if (a === "--ignore-dir") flags2.ignoreDirs.push(next());
-    else if (a === "--max-files") flags2.maxFiles = num2();
-    else if (a === "--max-bytes") flags2.maxBytes = num2();
-    else if (a === "--max-calls") flags2.maxCalls = num2();
+    else if (a === "--max-files") flags2.maxFiles = num22();
+    else if (a === "--max-bytes") flags2.maxBytes = num22();
+    else if (a === "--max-calls") flags2.maxCalls = num22();
     else if (a === "--ignore-case") flags2.ignoreCase = true;
-    else if (a === "--max-hits") flags2.maxHits = num2();
-    else if (a === "--budget-tokens") flags2.budgetTokens = num2();
+    else if (a === "--max-hits") flags2.maxHits = num22();
+    else if (a === "--budget-tokens") flags2.budgetTokens = num22();
     else if (a === "--no-ast") flags2.noAst = true;
     else if (a === "--index") flags2.indexDir = next();
     else if (a === "--no-index-cache") flags2.noIndexCache = true;
@@ -13031,14 +13031,14 @@ function parseFlags(args2) {
       flags2.workers = n;
     } else if (a === "--since") flags2.since = next();
     else if (a === "--config") flags2.config = resolve2(next());
-    else if (a === "--limit") flags2.limit = num2();
+    else if (a === "--limit") flags2.limit = num22();
     else if (a === "--no-fuzzy") flags2.fuzzy = false;
     else if (a === "--semantic") flags2.semantic = true;
     else if (a === "--recall") flags2.recall = true;
     else if (a === "--run") flags2.run = true;
     else if (a === "--base") flags2.base = next();
     else if (a === "--staged") flags2.staged = true;
-    else if (a === "--depth") flags2.depth = num2();
+    else if (a === "--depth") flags2.depth = num22();
     else if (a === "--kind") flags2.kind = next();
     else if (a === "--json") flags2.json = true;
     else if (!a.startsWith("--") && flags2.positional === void 0) flags2.positional = a;
@@ -14819,8 +14819,8 @@ function detectAppRoutes(files, repo) {
     if (!rest || rest.length === 0) continue;
     const fileName = rest[rest.length - 1].replace(/\.(tsx|ts|jsx|js)$/, "");
     const dirSegs = cleanAppSegments(rest.slice(0, -1));
-    const route = "/" + dirSegs.join("/");
-    const normalized = route === "/" ? "/" : route.replace(/\/$/, "");
+    const route2 = "/" + dirSegs.join("/");
+    const normalized = route2 === "/" ? "/" : route2.replace(/\/$/, "");
     if (fileName === "page") {
       routes.push({ route: normalized, file: f.path, kind: "page" });
     } else if (fileName === "route") {
@@ -14845,8 +14845,8 @@ function detectPagesRoutes(files) {
     const fileName = rest[rest.length - 1].replace(/\.(tsx|ts|jsx|js)$/, "");
     if (PAGES_SPECIAL.has(fileName)) continue;
     const segs = [...rest.slice(0, -1), fileName].filter((s) => s !== "index");
-    const route = "/" + segs.join("/");
-    const normalized = route === "/" ? "/" : route.replace(/\/$/, "");
+    const route2 = "/" + segs.join("/");
+    const normalized = route2 === "/" ? "/" : route2.replace(/\/$/, "");
     const isApi = rest[0] === "api";
     routes.push({ route: normalized, file: f.path, kind: isApi ? "api" : "page" });
   }
@@ -14986,18 +14986,18 @@ var flaskAdapter = {
       for (const m of src.matchAll(DECORATOR_RE)) {
         const obj = m[1];
         const decorator = m[2];
-        const route = joinRoute(prefixForObj(obj), m[3]);
+        const route2 = joinRoute(prefixForObj(obj), m[3]);
         const kind = routeKind(src, m.index ?? 0);
         const methods = decorator === "route" ? methodsOf(m[4]) : [decorator.toUpperCase()];
         const verbs = methods.length ? methods : ["GET"];
-        for (const method of verbs) routes.push({ route, file: path, kind, method });
+        for (const method of verbs) routes.push({ route: route2, file: path, kind, method });
       }
       for (const m of src.matchAll(ADD_URL_RE)) {
-        const route = joinRoute(prefixForObj(m[1]), m[2]);
+        const route2 = joinRoute(prefixForObj(m[1]), m[2]);
         const kind = routeKind(src, m.index ?? 0);
         const verbs = methodsOf(m[3]);
         for (const method of verbs.length ? verbs : ["GET"]) {
-          routes.push({ route, file: path, kind, method });
+          routes.push({ route: route2, file: path, kind, method });
         }
       }
     }
@@ -15074,12 +15074,12 @@ var fastapiAdapter = {
         const decorator = m[2];
         const key = `${fileModule}::${obj}`;
         const prefix = ownPrefix.has(key) ? fullPrefix(key) : "";
-        const route = joinRoute(prefix, m[3]);
+        const route2 = joinRoute(prefix, m[3]);
         const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? methodsOf2(m[4]) : [decorator.toUpperCase()];
         if (methods.length) {
-          for (const method of methods) routes.push({ route, file: path, kind: "api", method });
+          for (const method of methods) routes.push({ route: route2, file: path, kind: "api", method });
         } else {
-          routes.push({ route, file: path, kind: "api" });
+          routes.push({ route: route2, file: path, kind: "api" });
         }
       }
     }
@@ -15098,8 +15098,8 @@ function pathsFromArg(arg) {
     const parts2 = [...t.matchAll(/["'`]([^"'`]*)["'`]/g)].map((m) => m[1]);
     return parts2.length ? parts2 : [""];
   }
-  const str2 = t.match(/^["'`]([^"'`]*)["'`]/);
-  if (str2) return [str2[1]];
+  const str4 = t.match(/^["'`]([^"'`]*)["'`]/);
+  if (str4) return [str4[1]];
   const obj = t.match(/path\s*:\s*["'`]([^"'`]*)["'`]/);
   if (obj) return [obj[1]];
   return [""];
@@ -15211,15 +15211,15 @@ var expressAdapter = {
       for (const m of src.matchAll(ROUTE_CHAIN_RE)) {
         const obj = m[1];
         if (!known(obj)) continue;
-        const route = joinRoute(prefixFor(obj), m[2]);
+        const route2 = joinRoute(prefixFor(obj), m[2]);
         const start2 = (m.index ?? 0) + m[0].length;
         const lineEnd = src.indexOf("\n", start2);
         const tail = src.slice(start2, lineEnd === -1 ? start2 + 200 : lineEnd);
         const verbs = [...tail.matchAll(CHAIN_VERB_RE)].map((v) => v[1]);
         if (verbs.length) {
-          for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf2(v) });
+          for (const v of verbs) routes.push({ route: route2, file: path, kind: "api", method: methodOf2(v) });
         } else {
-          routes.push({ route, file: path, kind: "api" });
+          routes.push({ route: route2, file: path, kind: "api" });
         }
       }
     }
@@ -15324,17 +15324,17 @@ var fastifyAdapter = {
         const slice = src.slice(m.index ?? 0, (m.index ?? 0) + 400);
         const url = slice.match(URL_RE)?.[1];
         if (url === void 0) continue;
-        const route = joinRoute(prefix, url);
+        const route2 = joinRoute(prefix, url);
         if (/\bwebsocket\s*:\s*true/.test(slice)) {
-          routes.push({ route, file: path, kind: "api", method: "WS" });
+          routes.push({ route: route2, file: path, kind: "api", method: "WS" });
           continue;
         }
         const methodM = slice.match(METHOD_RE2);
         const verbs = methodM?.[1] ? [methodM[1]] : (methodM?.[2] ?? "").split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
         if (verbs.length) {
-          for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf3(v) });
+          for (const v of verbs) routes.push({ route: route2, file: path, kind: "api", method: methodOf3(v) });
         } else {
-          routes.push({ route, file: path, kind: "api" });
+          routes.push({ route: route2, file: path, kind: "api" });
         }
       }
     }
@@ -15436,9 +15436,9 @@ var honoAdapter = {
       for (const m of src.matchAll(ON_RE)) {
         const prefix = prefixFor(m[1]);
         if (prefix === null) continue;
-        const route = joinRoute(prefix, m[4]);
+        const route2 = joinRoute(prefix, m[4]);
         const verbs = m[2] ? [m[2]] : m[3].split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
-        for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf4(v) });
+        for (const v of verbs) routes.push({ route: route2, file: path, kind: "api", method: methodOf4(v) });
       }
     }
     return routes;
@@ -15454,8 +15454,8 @@ var DRF_MOUNT_RE = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\
 function cleanRegex(pattern) {
   return pattern.replace(/^\^/, "").replace(/\$$/, "").replace(/\(\?P<(\w+)>[^)]*\)/g, "<$1>");
 }
-function isApiContext(src, route) {
-  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src) || /(^|\/)api(\/|$)/.test(route);
+function isApiContext(src, route2) {
+  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src) || /(^|\/)api(\/|$)/.test(route2);
 }
 var djangoAdapter = {
   id: "django",
@@ -15486,8 +15486,8 @@ var djangoAdapter = {
         if (view === "include") continue;
         if (view.endsWith(".site.urls") || view === "admin") continue;
         const raw = m[1] !== "path" ? cleanRegex(m[2]) : m[2];
-        const route = joinRoute(prefix, raw);
-        routes.push({ route, file: path, kind: isApiContext(src, route) ? "api" : "page" });
+        const route2 = joinRoute(prefix, raw);
+        routes.push({ route: route2, file: path, kind: isApiContext(src, route2) ? "api" : "page" });
       }
       const routerVars = new Set([...src.matchAll(DRF_ROUTER_RE)].map((m) => m[1]));
       if (!routerVars.size) continue;
@@ -15500,7 +15500,7 @@ var djangoAdapter = {
         if (!routerVars.has(router)) continue;
         const base = joinRoute(prefix, mountOf.get(router) ?? "", m[2]);
         const detail = joinRoute(base, "<pk>");
-        const add = (route, method) => routes.push({ route, file: path, kind: "api", method });
+        const add = (route2, method) => routes.push({ route: route2, file: path, kind: "api", method });
         add(base, "GET");
         add(base, "POST");
         add(detail, "GET");
@@ -15569,7 +15569,7 @@ function actionsFor(args2, singular) {
   }
   return all;
 }
-var apiKind = (route) => /(^|\/)api(\/|$)/i.test(route) ? "api" : "page";
+var apiKind = (route2) => /(^|\/)api(\/|$)/i.test(route2) ? "api" : "page";
 var railsAdapter = {
   id: "rails",
   frameworks: ["Ruby on Rails"],
@@ -15578,7 +15578,7 @@ var railsAdapter = {
     for (const [path, src] of readSources(files, repo, [".rb"])) {
       if (!path.endsWith("routes.rb")) continue;
       const frames = [];
-      const emit2 = (route, method, kind) => routes.push({ route, file: path, kind: kind ?? apiKind(route), ...method ? { method } : {} });
+      const emit2 = (route2, method, kind) => routes.push({ route: route2, file: path, kind: kind ?? apiKind(route2), ...method ? { method } : {} });
       const nestPrefix = (upto) => {
         const out2 = [];
         for (let i2 = 0; i2 < upto; i2++) {
@@ -15734,13 +15734,13 @@ var goAdapter = {
         const prefix = prefixAt(m[1], m.index ?? 0);
         const chained = m[0].match(METHODS_CHAIN_RE);
         const methods = chained ? [...chained[1].matchAll(/["`]([A-Za-z]+)["`]/g)].map((v) => v[1].toUpperCase()).filter((v) => STD_VERBS.test(v)) : [];
-        const route = joinRoute(prefix, routePath);
+        const route2 = joinRoute(prefix, routePath);
         if (verbInPattern) {
-          routes.push({ route, file: path, kind: "api", method: verbInPattern[1] });
+          routes.push({ route: route2, file: path, kind: "api", method: verbInPattern[1] });
         } else if (methods.length) {
-          for (const v of methods) routes.push({ route, file: path, kind: "api", method: v });
+          for (const v of methods) routes.push({ route: route2, file: path, kind: "api", method: v });
         } else {
-          routes.push({ route, file: path, kind: "api" });
+          routes.push({ route: route2, file: path, kind: "api" });
         }
       }
       for (const m of src.matchAll(MOUNT_RE3)) {
@@ -15772,15 +15772,15 @@ function extractObjectBody(src, fromIdx) {
   if (src[i2] !== "{") return null;
   const start2 = i2;
   let depth = 0;
-  let str2 = null;
+  let str4 = null;
   for (; i2 < src.length; i2++) {
     const c2 = src[i2];
-    if (str2) {
+    if (str4) {
       if (c2 === "\\") i2++;
-      else if (c2 === str2) str2 = null;
+      else if (c2 === str4) str4 = null;
       continue;
     }
-    if (c2 === '"' || c2 === "'" || c2 === "`") str2 = c2;
+    if (c2 === '"' || c2 === "'" || c2 === "`") str4 = c2;
     else if (c2 === "{" || c2 === "(" || c2 === "[") depth++;
     else if (c2 === "}" || c2 === ")" || c2 === "]") {
       depth--;
@@ -15792,20 +15792,20 @@ function extractObjectBody(src, fromIdx) {
 function topLevelEntries(body2) {
   const segments = [];
   let depth = 0;
-  let str2 = null;
+  let str4 = null;
   let seg = "";
   for (let i2 = 0; i2 < body2.length; i2++) {
     const c2 = body2[i2];
-    if (str2) {
+    if (str4) {
       seg += c2;
       if (c2 === "\\") {
         seg += body2[i2 + 1] ?? "";
         i2++;
-      } else if (c2 === str2) str2 = null;
+      } else if (c2 === str4) str4 = null;
       continue;
     }
     if (c2 === '"' || c2 === "'" || c2 === "`") {
-      str2 = c2;
+      str4 = c2;
       seg += c2;
       continue;
     }
@@ -16115,8 +16115,8 @@ function featureKey(path) {
   if (segs.length - i2 <= 1) return "core";
   return segs[i2];
 }
-function routeKey(route) {
-  const segs = route.split("/").filter(Boolean);
+function routeKey(route2) {
+  const segs = route2.split("/").filter(Boolean);
   let i2 = 0;
   while (i2 < segs.length && isSkippableSegment(segs[i2])) {
     i2++;
@@ -16645,12 +16645,12 @@ function cell(value) {
   return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 function filledInterfaceTable(rows) {
-  const header = ["| Method / Trigger | Path / Operation | Kind | Auth | Notes |", "| --- | --- | --- | --- | --- |"];
+  const header2 = ["| Method / Trigger | Path / Operation | Kind | Auth | Notes |", "| --- | --- | --- | --- | --- |"];
   if (!rows.length) {
-    return [...header, "", "_Add one row per operation as the surface takes shape._"].join("\n");
+    return [...header2, "", "_Add one row per operation as the surface takes shape._"].join("\n");
   }
   const body2 = rows.map((r) => `| ${cell(r.method)} | \`${cell(r.path)}\` | ${cell(r.kind ?? "")} | ${cell(r.auth ?? "")} | ${cell(r.notes ?? "")} |`);
-  return [...header, ...body2].join("\n");
+  return [...header2, ...body2].join("\n");
 }
 function filledEntityTables(entities) {
   if (!entities.length) return "_No entities yet \u2014 add them as the model takes shape._";
@@ -18250,9 +18250,9 @@ function contextDoc(plan) {
 }
 function adrDocs(plan) {
   return (plan.decisions ?? []).map((d, i2) => {
-    const num2 = String(i2 + 1).padStart(4, "0");
+    const num3 = String(i2 + 1).padStart(4, "0");
     const body2 = [d.context, d.decision, d.why].filter(Boolean).join(" ");
-    return { relPath: `docs/adr/${num2}-${slugify2(d.title)}.md`, content: `# ${d.title}
+    return { relPath: `docs/adr/${num3}-${slugify2(d.title)}.md`, content: `# ${d.title}
 
 ${body2}
 ` };
@@ -18652,9 +18652,9 @@ function resolveEvidence(ref, inv) {
   const features = inv.features ?? [];
   const feat = /^feature (\S+)( \(no captured evidence\))?$/.exec(ref);
   if (feat) return features.some((f) => f.slug === feat[1]);
-  const route = /^route (.+)$/.exec(ref);
-  if (route) {
-    const sig = route[1];
+  const route2 = /^route (.+)$/.exec(ref);
+  if (route2) {
+    const sig = route2[1];
     const sigs = /* @__PURE__ */ new Set();
     const add = (method, path2) => {
       if (typeof path2 !== "string" || !path2) return;
@@ -19765,6 +19765,1082 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
   return { exitCode: 0, written, notices, errors: [], phases };
 }
 
+// src/mcp/stdio.ts
+import { createInterface as createInterface2 } from "readline";
+
+// src/mcp/handlers.ts
+import { existsSync as existsSync17, readFileSync as readFileSync26, realpathSync as realpathSync2, statSync as statSync8 } from "fs";
+import { isAbsolute as isAbsolute2, join as join38, resolve as resolve5, sep as sep4 } from "path";
+
+// src/tree-lock.ts
+var chains = /* @__PURE__ */ new Map();
+function withTreeLock(dir, fn) {
+  const prev = chains.get(dir) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  const tail = next.then(noop, noop);
+  chains.set(dir, tail);
+  tail.then(() => {
+    if (chains.get(dir) === tail) chains.delete(dir);
+  }, noop);
+  return next;
+}
+function noop() {
+}
+
+// src/mcp/handlers.ts
+var ToolError = class extends Error {
+};
+var MAX_READ_LINES = 2e3;
+var MAX_READ_BYTES = 8 * 1024 * 1024;
+var WRITE_TOOL_NAMES = /* @__PURE__ */ new Set(["reconstruct_scaffold", "reconstruct_brainstorm"]);
+function str2(v) {
+  return typeof v === "string" && v.trim() !== "" ? v : void 0;
+}
+function num2(v) {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : void 0;
+}
+function bool(v) {
+  return v === true || v === "true";
+}
+function strArray2(v) {
+  return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : [];
+}
+function positive(v, key) {
+  const n = num2(v);
+  if (n === void 0) return void 0;
+  if (n <= 0) throw new ToolError(`\`${key}\` must be greater than 0.`);
+  return n;
+}
+function oneOf(v, allowed, key, fallback) {
+  const s = str2(v);
+  if (s === void 0) return fallback;
+  if (!allowed.includes(s)) throw new ToolError(`\`${key}\` must be one of: ${allowed.join(", ")} (got "${s}")`);
+  return s;
+}
+function requiredRepo(args2) {
+  const repo = str2(args2.repo);
+  if (!repo) throw new ToolError("`repo` is required: an absolute path to the repository to analyze.");
+  const abs = resolve5(repo);
+  if (!existsSync17(abs)) throw new ToolError(`repo not found: ${abs}`);
+  if (!statSync8(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
+  return abs;
+}
+function requiredOut(args2, defaults) {
+  const out2 = str2(args2.out) ?? defaults.defaultOut;
+  if (!out2) throw new ToolError("`out` is required: the reconstruction tree to operate on.");
+  if (!isAbsolute2(out2)) throw new ToolError("`out` must be an absolute path.");
+  const abs = resolve5(out2);
+  if (!existsSync17(join38(abs, "inventory.json"))) {
+    throw new ToolError(`no reconstruction tree at ${abs} \u2014 scaffold one first with reconstruct_scaffold (it writes there).`);
+  }
+  return abs;
+}
+function baseOptions(repo, out2, args2 = {}) {
+  return {
+    repo,
+    out: out2,
+    mode: oneOf(args2.mode, ["preserve", "redesign"], "mode", "preserve"),
+    level: oneOf(args2.level, ["light", "complex"], "level", "light"),
+    fidelity: oneOf(args2.fidelity, ["mirror", "embed", "describe"], "fidelity", "embed"),
+    granularity: oneOf(args2.granularity, ["coarse", "fine"], "granularity", "coarse"),
+    include: strArray2(args2.include),
+    exclude: strArray2(args2.exclude),
+    json: false,
+    maxEmbedBytes: positive(args2.max_embed_bytes, "max_embed_bytes") ?? 16e3,
+    merge: false,
+    summary: false,
+    features: false,
+    specs: false,
+    scratch: false,
+    plan: "",
+    tdd: false,
+    check: false,
+    // `standalone` selects the bundle-an-existing-tree path; handleBundle turns
+    // it on, everything else walks a repo.
+    standalone: false
+  };
+}
+async function callTool2(name2, args2, defaults = {}) {
+  if (WRITE_TOOL_NAMES.has(name2) && !defaults.allowWrite) {
+    throw new ToolError(`${name2} writes a reconstruction tree to disk and is disabled \u2014 start the server with --allow-write to enable it.`);
+  }
+  if (name2 === "reconstruct_inventory") return outcome(handleInventory(args2));
+  if (name2 === "reconstruct_scaffold") {
+    const repo = requiredRepo(args2);
+    const out3 = str2(args2.out) ? resolve5(str2(args2.out)) : join38(repo, "reconstruction");
+    return await withTreeLock(out3, async () => outcome(handleScaffold(args2, repo, out3)));
+  }
+  const out2 = requiredOut(args2, defaults);
+  return await withTreeLock(out2, async () => outcome(dispatch(name2, args2, out2)));
+}
+function dispatch(name2, args2, out2) {
+  switch (name2) {
+    case "reconstruct_check":
+      return handleCheck(args2, out2);
+    case "reconstruct_review":
+      return handleReview(out2);
+    case "reconstruct_verify":
+      return handleVerify(args2, out2);
+    case "reconstruct_specs":
+      return handleBundle(out2, "specs");
+    case "reconstruct_features":
+      return handleBundle(out2, "features");
+    case "reconstruct_merge":
+      return handleBundle(out2, "merge");
+    case "reconstruct_brainstorm":
+      return { out: out2, ...runBrainstorm(out2) };
+    case "reconstruct_read":
+      return handleRead(args2, out2);
+    default:
+      throw new ToolError(`unknown tool: ${name2}`);
+  }
+}
+function outcome(result) {
+  return { text: JSON.stringify(result, null, 2) + "\n", artifact: artifactFor(result) };
+}
+function artifactFor(result) {
+  if (typeof result !== "object" || result === null) return void 0;
+  const r = result;
+  return typeof r.path === "string" ? r.path : void 0;
+}
+function handleInventory(args2) {
+  const repo = requiredRepo(args2);
+  const inv = analyze(baseOptions(repo, join38(repo, "reconstruction"), args2));
+  return { repo, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
+}
+function handleScaffold(args2, repo, out2) {
+  const witnesses = detectEnrichment(out2);
+  if (witnesses.length && !bool(args2.force)) {
+    throw new ToolError(formatEnrichmentRefusal(out2, witnesses));
+  }
+  const opts = baseOptions(repo, out2, args2);
+  const inv = analyze(opts);
+  writeOutput(render(inv, opts), opts);
+  return {
+    repo,
+    out: out2,
+    path: join38(out2, "SUMMARY.md"),
+    features: inv.features?.length ?? 0,
+    next: "The scaffold is STRUCTURE with the judgement left blank. Read SUMMARY.md to orient, then resolve every callout it marks \u2014 the engine never reasons, so nothing in here is analysis until you write it."
+  };
+}
+function handleCheck(args2, out2) {
+  const res = checkOutput(out2);
+  return {
+    out: out2,
+    ok: res.errors.length === 0,
+    ...res,
+    semantic: bool(args2.semantic),
+    note: "Passing means nothing is EMPTY. It cannot see a section that is present and says nothing \u2014 that is reconstruct_review's job."
+  };
+}
+function handleReview(out2) {
+  return { out: out2, ...runReview(out2), next: "Per feature, decide what a builder would still have to guess \u2014 then write it in." };
+}
+function handleVerify(args2, out2) {
+  const res = runVerify(out2, { maxVerify: positive(args2.max_verify, "max_verify") });
+  return {
+    ...res,
+    out: out2,
+    next: "For each pair, read the original source and judge whether it really does what the PRD claims."
+  };
+}
+function handleBundle(out2, kind) {
+  const opts = { ...baseOptions("", out2), standalone: true, [kind]: true };
+  let result;
+  try {
+    result = bundleExisting(opts);
+  } catch (e) {
+    throw new ToolError(e.message);
+  }
+  writeOutput(result, opts);
+  const file = kind === "specs" ? "SPECS.md" : kind === "features" ? "FEATURES.md" : "RECONSTRUCTION.md";
+  return { out: out2, path: join38(out2, file), bundle: kind };
+}
+function handleRead(args2, out2) {
+  const raw = str2(args2.path);
+  if (!raw) throw new ToolError("`path` is required \u2014 relative to the tree, or an absolute path inside the tree or the repo.");
+  const repo = str2(args2.repo);
+  const target = isAbsolute2(raw) ? raw : join38(out2, raw);
+  let real;
+  try {
+    real = realpathSync2(target);
+  } catch {
+    throw new ToolError(`no such file: ${raw}`);
+  }
+  const roots = [out2, ...repo ? [resolve5(repo)] : []].map((d) => {
+    try {
+      return realpathSync2(d);
+    } catch {
+      return resolve5(d);
+    }
+  });
+  if (!roots.some((root) => real === root || real.startsWith(root + sep4))) {
+    throw new ToolError(`path is outside the reconstruction tree${repo ? " and the repo" : ""}: ${raw}. Use your own file tool for anything else.`);
+  }
+  const st = statSync8(real);
+  if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
+  if (st.size > MAX_READ_BYTES) throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`);
+  const lines = readFileSync26(real, "utf8").split("\n");
+  const total = lines.length;
+  const start2 = Math.max(1, Math.floor(num2(args2.start_line) ?? 1));
+  if (start2 > total) throw new ToolError(`start_line ${start2} is past the end of the file (${total} lines).`);
+  const requestedEnd = Math.floor(num2(args2.end_line) ?? total);
+  const end = Math.min(total, Math.max(start2, requestedEnd), start2 + MAX_READ_LINES - 1);
+  return {
+    path: isAbsolute2(raw) ? real : raw,
+    start_line: start2,
+    end_line: end,
+    total_lines: total,
+    truncated: end < Math.min(total, requestedEnd),
+    content: lines.slice(start2 - 1, end).join("\n")
+  };
+}
+
+// src/mcp/protocol.ts
+var PROTOCOL_VERSIONS2 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+var LATEST_PROTOCOL2 = PROTOCOL_VERSIONS2[PROTOCOL_VERSIONS2.length - 1];
+var ASSUMED_HTTP_PROTOCOL = "2025-03-26";
+var ANNOTATIONS_SINCE2 = "2025-03-26";
+var RICH_TOOLS_SINCE2 = "2025-06-18";
+var DEFAULT_MAX_RESPONSE_BYTES2 = 1e6;
+function isProtocolVersion(v) {
+  return typeof v === "string" && PROTOCOL_VERSIONS2.includes(v);
+}
+function negotiateProtocol2(requested) {
+  return isProtocolVersion(requested) ? requested : LATEST_PROTOCOL2;
+}
+function validateArgs2(schema, args2) {
+  for (const key of schema.required) {
+    const v = args2[key];
+    if (v === void 0 || v === null || v === "") return `\`${key}\` is required`;
+  }
+  for (const [key, value] of Object.entries(args2)) {
+    if (value === void 0 || value === null) continue;
+    const spec = schema.properties[key];
+    if (!spec?.type) continue;
+    const actual = Array.isArray(value) ? "array" : typeof value;
+    if (spec.type === "number") {
+      if (actual === "number") continue;
+      if (actual === "string" && value.trim() !== "" && Number.isFinite(Number(value))) continue;
+      return `\`${key}\` must be a number, got ${actual === "string" ? JSON.stringify(value) : actual}`;
+    }
+    if (spec.type === "array") {
+      if (actual !== "array") return `\`${key}\` must be an array, got ${actual}`;
+      const arr = value;
+      if (spec.items?.type === "string" && !arr.every((x) => typeof x === "string")) {
+        return `\`${key}\` must be an array of strings`;
+      }
+      if (spec.enum) {
+        const bad = arr.find((x) => typeof x === "string" && !spec.enum.includes(x));
+        if (bad !== void 0) return `\`${key}\` contains "${String(bad)}" \u2014 allowed: ${spec.enum.join(", ")}`;
+      }
+      continue;
+    }
+    if (actual !== spec.type) return `\`${key}\` must be a ${spec.type}, got ${actual}`;
+    if (spec.enum && typeof value === "string" && !spec.enum.includes(value)) {
+      return `\`${key}\` must be one of: ${spec.enum.join(", ")}`;
+    }
+  }
+  return void 0;
+}
+var NARROWER2 = {
+  reconstruct_scaffold: 'narrow with `include`/`exclude`, or drop to `fidelity: "describe"` so source is summarised rather than embedded',
+  reconstruct_inventory: "narrow with `include`/`exclude`",
+  reconstruct_verify: "lower `max_verify`",
+  reconstruct_specs: "read the bundle at the returned path instead of inlining it",
+  reconstruct_features: "read the bundle at the returned path instead of inlining it",
+  reconstruct_merge: "read the bundle at the returned path instead of inlining it",
+  reconstruct_read: "pass `start_line`/`end_line` to read a window instead of the whole file"
+};
+function capResponse2(text, tool, maxBytes, artifact) {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes <= maxBytes) return text;
+  return JSON.stringify(
+    {
+      truncated: true,
+      tool,
+      bytes,
+      maxBytes,
+      reason: "This response exceeds the configured limit and was withheld rather than sent as an unusable partial payload.",
+      narrower: NARROWER2[tool] ?? "narrow the request and call again",
+      ...artifact ? { artifact, artifactNote: "The full result is on disk here \u2014 read it directly if you need all of it." } : {}
+    },
+    null,
+    2
+  ) + "\n";
+}
+function structuredContentFor2(text, capped, hasSchema) {
+  if (capped || !hasSchema) return void 0;
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return void 0;
+  return parsed;
+}
+var LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+function isOriginAllowed(origin, allowed = []) {
+  if (origin === void 0) return true;
+  const o = origin.trim();
+  if (o === "" || o === "null") return true;
+  if (LOOPBACK_ORIGIN.test(o)) return true;
+  return allowed.some((a) => a === "*" || a.toLowerCase() === o.toLowerCase());
+}
+
+// src/mcp/tools.ts
+var outProp = { type: "string", description: "The reconstruction tree \u2014 the durable artifact holding the PRDs and the spine documents." };
+var repoProp2 = { type: "string", description: "Absolute path to the repository to analyze." };
+var JUDGMENT_NOTE = "The engine scaffolds STRUCTURE and never reasons: every judgement in a reconstruction is yours to write.";
+var TOOLS2 = [
+  {
+    name: "reconstruct_inventory",
+    title: "Inventory a repository, write nothing",
+    description: "Walk a repository and return what it is made of \u2014 stack, entry points, routes, data model candidates, i18n \u2014 as JSON, persisting nothing. Use it to size a rebuild before committing to a scaffold, or to answer 'what is in here' without creating a tree.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        include: { type: "array", items: { type: "string" }, description: "Keep only files matching these globs." },
+        exclude: { type: "array", items: { type: "string" }, description: "Drop files matching these globs." }
+      },
+      required: ["repo"]
+    }
+  },
+  {
+    name: "reconstruct_check",
+    title: "The buildability gate",
+    description: "Prove the tree is actually buildable from: no missing spine document, no unresolved callout, no empty feature PRD. Exits non-zero when someone could not build the product from what is written. A result with ok:false is a real verdict, not a tool failure. " + JUDGMENT_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        out: outProp,
+        semantic: { type: "boolean", description: "Also fold in the recorded verification verdicts." },
+        allow_unverified: { type: "boolean", description: "With semantic, warn instead of failing when no verdicts exist yet." }
+      },
+      required: ["out"]
+    }
+  },
+  {
+    name: "reconstruct_review",
+    title: "Per-feature buildability worklist",
+    description: "Emit, per feature, what a builder would still have to guess. This is the pass that turns a structurally complete tree into one someone can actually build from \u2014 the gate can see an empty section, but only you can see a section that says nothing.",
+    inputSchema: { type: "object", properties: { out: outProp }, required: ["out"] }
+  },
+  {
+    name: "reconstruct_verify",
+    title: "Requirement\u2192source worklist",
+    description: "Emit a requirement-by-source worklist for you to adjudicate: does the original code actually do what this PRD claims? This is the faithfulness pass \u2014 a reconstruction that describes a product the source never implemented is worse than no reconstruction.",
+    inputSchema: {
+      type: "object",
+      properties: { out: outProp, max_verify: { type: "number", description: "Cap on the number of requirement/evidence pairs emitted (default 60)." } },
+      required: ["out"]
+    }
+  },
+  {
+    name: "reconstruct_specs",
+    title: "The hand-to-an-agent spec bundle",
+    description: "Bundle every feature PRD with the embedded source code STRIPPED \u2014 the spec you hand to an agent that must rebuild the product without copying it. Use reconstruct_merge instead when you want the source kept in.",
+    inputSchema: { type: "object", properties: { out: outProp }, required: ["out"] }
+  },
+  {
+    name: "reconstruct_features",
+    title: "The features-only bundle",
+    description: "Bundle every feature PRD and nothing else \u2014 no spine documents, no overview. The fastest way to read what the product actually does.",
+    inputSchema: { type: "object", properties: { out: outProp }, required: ["out"] }
+  },
+  {
+    name: "reconstruct_merge",
+    title: "The whole tree as one document",
+    description: "Bundle the entire reconstruction \u2014 spine documents, overview and every feature PRD, source included \u2014 into a single markdown file.",
+    inputSchema: { type: "object", properties: { out: outProp }, required: ["out"] }
+  },
+  {
+    name: "reconstruct_read",
+    title: "Read a file from the tree or the repo",
+    description: "Read a file, or a line range of one, from the reconstruction tree or the repository it was built from. Use it to see the real source behind a PRD before writing about it. Reads are confined to those two roots; anything else is your own file tool's job.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        out: outProp,
+        repo: { type: "string", description: "The repository, if you want to read from it as well as from the tree." },
+        path: { type: "string", description: "Path relative to the tree, or an absolute path inside the tree or the repo." },
+        start_line: { type: "number", description: "First line to return, 1-based (default 1)." },
+        end_line: { type: "number", description: "Last line to return, inclusive (default: end of file, capped)." }
+      },
+      required: ["out", "path"]
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        start_line: { type: "number" },
+        end_line: { type: "number" },
+        total_lines: { type: "number" },
+        truncated: { type: "boolean" },
+        content: { type: "string" }
+      },
+      required: ["path", "start_line", "end_line", "total_lines", "truncated", "content"]
+    }
+  }
+];
+var WRITE_TOOLS = [
+  {
+    name: "reconstruct_scaffold",
+    title: "Scaffold a reconstruction tree",
+    description: "WRITES TO DISK: walk the repository and write the reconstruction tree \u2014 inventory, overview, architecture, interfaces, data model, and one PRD per feature. The scaffold is STRUCTURE with the judgement left blank: it marks what you must resolve. It REFUSES to overwrite a tree you have already enriched unless force:true, because that prose is the whole value and there is no undo. " + JUDGMENT_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        out: { type: "string", description: "Where to write the tree (default: <repo>/reconstruction)." },
+        mode: { type: "string", enum: ["preserve", "redesign"], description: "Rebuild as-is, or allow a redesign. Default: preserve." },
+        level: { type: "string", enum: ["light", "complex"], description: "How much structure to emit. Default: light." },
+        fidelity: {
+          type: "string",
+          enum: ["mirror", "embed", "describe"],
+          description: "How to carry the original code: mirror (paths), embed (inline it), describe (prose only). Default: embed."
+        },
+        granularity: { type: "string", enum: ["coarse", "fine"], description: "How aggressively trivial groups fold into Core. Default: coarse." },
+        include: { type: "array", items: { type: "string" }, description: "Keep only files matching these globs." },
+        exclude: { type: "array", items: { type: "string" }, description: "Drop files matching these globs." },
+        max_embed_bytes: { type: "number", description: "Cap on bytes of one file embedded into a PRD." },
+        force: { type: "boolean", description: "Overwrite a tree that already carries your enrichment. There is no undo." }
+      },
+      required: ["repo"]
+    }
+  },
+  {
+    name: "reconstruct_brainstorm",
+    title: "Scaffold a divergent-options board",
+    description: "WRITES TO DISK: scaffold a BRAINSTORM.md into the tree \u2014 the divergent phase before committing to one direction. Seeded from the inventory when a tree already exists, empty otherwise.",
+    inputSchema: { type: "object", properties: { out: outProp }, required: ["out"] }
+  }
+];
+var TOOL_META2 = {
+  reconstruct_inventory: { openWorld: false },
+  reconstruct_check: { openWorld: false },
+  reconstruct_review: { write: true, destructive: false, idempotent: true, openWorld: false },
+  reconstruct_verify: { write: true, destructive: false, idempotent: true, openWorld: false },
+  reconstruct_specs: { write: true, destructive: false, idempotent: true, openWorld: false },
+  reconstruct_features: { write: true, destructive: false, idempotent: true, openWorld: false },
+  reconstruct_merge: { write: true, destructive: false, idempotent: true, openWorld: false },
+  reconstruct_read: { openWorld: false },
+  // Destructive with force:true — it overwrites prose an agent spent real work
+  // writing, and nothing else in this repo can bring that back.
+  reconstruct_scaffold: { write: true, destructive: true, idempotent: false, openWorld: false },
+  reconstruct_brainstorm: { write: true, destructive: false, idempotent: true, openWorld: false }
+};
+function annotationsFor2(name2) {
+  const meta = TOOL_META2[name2];
+  if (!meta) return void 0;
+  return {
+    readOnlyHint: !meta.write,
+    ...meta.write ? { destructiveHint: meta.destructive === true, idempotentHint: meta.idempotent === true } : {},
+    openWorldHint: meta.openWorld === true
+  };
+}
+function toolsFor2(protocolVersion, opts = {}) {
+  const base = opts.allowWrite ? [...TOOLS2, ...WRITE_TOOLS] : TOOLS2;
+  const withAnnotations = protocolVersion >= ANNOTATIONS_SINCE2;
+  const withRich = protocolVersion >= RICH_TOOLS_SINCE2;
+  return base.map((t) => {
+    const decl = {
+      name: t.name,
+      description: t.description,
+      // The one tool that can destroy enrichment never inherits a target the
+      // caller didn't name.
+      inputSchema: t.name === "reconstruct_scaffold" ? t.inputSchema : applyDefaultOut(t.inputSchema, opts.defaultOut)
+    };
+    if (withRich && t.title) decl.title = t.title;
+    if (withRich && t.outputSchema) decl.outputSchema = t.outputSchema;
+    if (withAnnotations) {
+      const a = annotationsFor2(t.name);
+      if (a) decl.annotations = a;
+    }
+    return decl;
+  });
+}
+function applyDefaultOut(schema, defaultOut) {
+  const existing = schema.properties.out;
+  if (!defaultOut || !existing) return schema;
+  return {
+    type: "object",
+    properties: {
+      ...schema.properties,
+      out: { ...existing, description: `${existing.description} Optional \u2014 defaults to ${defaultOut}.` }
+    },
+    required: schema.required.filter((r) => r !== "out")
+  };
+}
+
+// src/mcp/prompts.ts
+var PromptError = class extends Error {
+};
+var outArg = { name: "out", description: "The reconstruction tree.", required: true };
+var PROMPTS = [
+  {
+    name: "enrich_feature",
+    title: "Write a feature's PRD from the real source",
+    description: "The enrichment workflow: turn one scaffolded feature folder into a PRD someone could build from, by reading what the original code actually does \u2014 not by describing what its file names suggest.",
+    arguments: [
+      outArg,
+      { name: "feature", description: "The feature slug to enrich.", required: false },
+      { name: "repo", description: "The original repository, to read source from.", required: false }
+    ]
+  },
+  {
+    name: "review_buildability",
+    title: "Find what a builder would still have to guess",
+    description: "The review workflow: go feature by feature and name what is missing \u2014 not what is absent from the template, but what someone rebuilding this would have to invent.",
+    arguments: [outArg]
+  },
+  {
+    name: "greenfield_interview",
+    title: "Interview a new product into a plan",
+    description: "The greenfield workflow: there is no repo to read, so every fact comes from the user. Elicit them in the order that makes the next question answerable, and record what is still unknown.",
+    arguments: [{ name: "idea", description: "The product idea, in one line.", required: true }]
+  }
+];
+function getPrompt(name2, args2 = {}) {
+  const decl = PROMPTS.find((p) => p.name === name2);
+  if (!decl) throw new PromptError(`unknown prompt: ${name2 || "(none given)"}`);
+  for (const arg of decl.arguments) {
+    if (arg.required && !str3(args2[arg.name])) throw new PromptError(`\`${arg.name}\` is required for prompt "${name2}"`);
+  }
+  const text = name2 === "enrich_feature" ? enrichFeature(args2) : name2 === "review_buildability" ? reviewBuildability(args2) : greenfieldInterview(args2);
+  return { description: decl.description, messages: [{ role: "user", content: { type: "text", text } }] };
+}
+var CORE_RULE = `The markdown is the program, and the engine never reasons. What reconstruct_scaffold wrote is STRUCTURE \u2014 headings, feature folders, and callouts marking what is unresolved. Every judgement in the tree is yours to write, from the real source, and a section left as the template wrote it is an empty section however complete the tree looks.`;
+var GATE = `\`reconstruct_check\` returning \`ok: false\` is a VERDICT, not a tool failure: someone could not build the product from what is written, and it says where. But passing it is a floor, not a finish \u2014 it sees an EMPTY section, never a section that says nothing.`;
+function enrichFeature(args2) {
+  const out2 = str3(args2.out);
+  const feature = str3(args2.feature);
+  const repo = str3(args2.repo);
+  return `Write the PRD for ${feature ? `the \`${feature}\` feature` : "the next unresolved feature"} in \`${out2}\`.
+
+${CORE_RULE}
+
+**Sequence:**
+
+1. \`reconstruct_read\` the feature's scaffolded PRD \u2014 it marks what is unresolved.
+2. \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : " the original source it points at"}. Read the real implementation before writing a word about it.
+3. Write the PRD: what this feature does, the rules it enforces, the states it can be in, what it does when things go wrong.
+4. \`reconstruct_check\` when the feature is done.
+
+**Write what the code DOES, not what it is called.** A file named \`validator.ts\` may validate nothing; a function named \`sync\` may be fire-and-forget. The behaviours that matter are usually the ones with no obvious name: the retry that swallows a specific error, the ordering that another module depends on, the default that only applies on the first run.
+
+**Rebuild-completeness is the bar.** Someone with this PRD and no access to the original must produce the same behaviour. Every rule, every edge case, every value that matters. Where you could not determine something from the source, say so explicitly \u2014 an honest unknown is buildable-around; a confident guess is not.
+
+${GATE}`;
+}
+function reviewBuildability(args2) {
+  const out2 = str3(args2.out);
+  return `Review \`${out2}\` for buildability.
+
+${CORE_RULE}
+
+**Sequence:**
+
+1. \`reconstruct_review\` \u2014 the per-feature worklist.
+2. For each feature: \`reconstruct_read\` its PRD and ask the only question that matters \u2014 could someone build this without seeing the original?
+3. \`reconstruct_verify\` to check the other direction: does the original source actually do what the PRD claims?
+4. \`reconstruct_check\`, then \`reconstruct_specs\` for the bundle you hand to a builder.
+
+**Look for what is missing, not what is absent.** A section present and generic is worse than one missing: the gate passes it, and the builder finds the hole at implementation time. "Handles errors appropriately" and "validates the input" are holes with prose in them.
+
+**The faithfulness direction matters as much.** A reconstruction that describes a product the source never implemented is worse than no reconstruction \u2014 it will be built, and it will be wrong. Where the PRD claims a behaviour the code does not show, that is a finding.
+
+${GATE}`;
+}
+function greenfieldInterview(args2) {
+  const idea = str3(args2.idea);
+  return `Interview this idea into a plan a reconstruction tree can be built from:
+
+> ${idea}
+
+${CORE_RULE}
+
+**There is no repo to read.** Every fact in this tree comes from the user, which makes the interview the entire input \u2014 and makes inventing an answer indistinguishable from inventing the product.
+
+**Sequence:**
+
+1. Interview the user, one question at a time.
+2. Write the plan from their answers, with every unknown recorded as an unknown.
+3. Scaffold the tree from that plan, then enrich it feature by feature.
+4. \`reconstruct_check\`, and \`reconstruct_review\` to find what a builder would still guess.
+
+**Ask in the order that makes the next question answerable.** Who uses it and what do they do today instead? What is the one thing it must do \u2014 and what is deliberately out of scope for v1? What data does it hold, and who is allowed to see it? What does it integrate with that you do not control? What has to be true for this to be a success, and what would make it a failure even if it shipped?
+
+**Follow the surprising answer rather than the script.** A constraint the user mentions in passing \u2014 a regulation, a legacy system, a team of one \u2014 usually determines more of the architecture than anything on your list. And when they do not know yet, record it as an open question: that is a real finding, not a gap to paper over.`;
+}
+function str3(v) {
+  return typeof v === "string" && v.trim() !== "" ? v : void 0;
+}
+var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
+
+// src/mcp/resources.ts
+import { existsSync as existsSync18, readdirSync as readdirSync8, readFileSync as readFileSync27, realpathSync as realpathSync3, statSync as statSync9 } from "fs";
+import { basename as basename5, dirname as dirname6, join as join39, resolve as resolve6, sep as sep5 } from "path";
+import { fileURLToPath as fileURLToPath3 } from "url";
+var SKILL_NAME = "reconstruct";
+var URI_SCHEME = "skill://";
+function resolveSkillRoot(moduleDir) {
+  const here = moduleDir ?? dirname6(fileURLToPath3(import.meta.url));
+  const candidates = [resolve6(here, ".."), resolve6(here, "..", "skills", SKILL_NAME), resolve6(here, "..", "..", "skills", SKILL_NAME)];
+  return candidates.find((dir) => existsSync18(join39(dir, "SKILL.md")));
+}
+function listResources(moduleDir) {
+  const root = resolveSkillRoot(moduleDir);
+  if (!root) return [];
+  const out2 = [describe(root, "SKILL.md", `${SKILL_NAME}: the skill`)];
+  const refDir = join39(root, "references");
+  if (!existsSync18(refDir)) return out2;
+  for (const file of readdirSync8(refDir).sort()) {
+    if (!file.endsWith(".md")) continue;
+    out2.push(describe(root, join39("references", file), `${SKILL_NAME} reference: ${basename5(file, ".md")}`));
+  }
+  return out2;
+}
+function readResource(uri, moduleDir) {
+  if (!uri.startsWith(URI_SCHEME)) {
+    throw new ResourceError(`unknown resource scheme in "${uri}" (expected ${URI_SCHEME}\u2026)`);
+  }
+  const root = resolveSkillRoot(moduleDir);
+  if (!root) throw new ResourceError("no skill payload found next to this build \u2014 nothing to read");
+  const rel = uri.slice(URI_SCHEME.length);
+  if (!rel) throw new ResourceError("empty resource path");
+  const target = resolve6(root, rel);
+  const rootReal = realpathSync3(root);
+  let targetReal;
+  try {
+    targetReal = realpathSync3(target);
+  } catch {
+    throw new ResourceError(`no such resource: ${uri}`);
+  }
+  if (targetReal !== rootReal && !targetReal.startsWith(rootReal + sep5)) {
+    throw new ResourceError(`resource path escapes the skill root: ${uri}`);
+  }
+  if (!statSync9(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
+  return { uri, mimeType: "text/markdown", text: readFileSync27(targetReal, "utf8") };
+}
+var ResourceError = class extends Error {
+};
+function describe(root, rel, fallbackTitle) {
+  const decl = {
+    uri: `${URI_SCHEME}${rel.split(sep5).join("/")}`,
+    name: rel.split(sep5).join("/"),
+    title: fallbackTitle,
+    mimeType: "text/markdown"
+  };
+  const summary = firstProse(join39(root, rel));
+  if (summary) decl.description = summary;
+  return decl;
+}
+function firstProse(file) {
+  let text;
+  try {
+    text = readFileSync27(file, "utf8");
+  } catch {
+    return void 0;
+  }
+  const body2 = text.startsWith("---\n") ? text.slice(text.indexOf("\n---", 3) + 4) : text;
+  for (const block of body2.split(/\n\s*\n/)) {
+    const line = block.trim();
+    if (!line || line.startsWith("#") || line.startsWith(">") || line.startsWith("|") || line.startsWith("```")) continue;
+    const flat = line.replace(/\s+/g, " ").replace(/[*`]/g, "");
+    return flat.length > 300 ? `${flat.slice(0, 297)}\u2026` : flat;
+  }
+  return void 0;
+}
+
+// src/mcp/server.ts
+var ERR_INVALID_REQUEST = -32600;
+var ERR_METHOD_NOT_FOUND = -32601;
+var ERR_INVALID_PARAMS = -32602;
+var ERR_INTERNAL = -32603;
+function createServer(opts = {}) {
+  const serverInfo = { name: opts.serverName ?? "reconstruct", version: VERSION };
+  const maxBytes = opts.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES2;
+  let protocol = LATEST_PROTOCOL2;
+  const cancelled = /* @__PURE__ */ new Set();
+  const CANCELLED_MAX = 1024;
+  const listTools = () => toolsFor2(protocol, { defaultOut: opts.defaultOut, allowWrite: opts.allowWrite });
+  async function handle2(msg, send) {
+    if (msg === null || typeof msg !== "object" || Array.isArray(msg)) {
+      send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: expected a JSON-RPC object" } });
+      return;
+    }
+    if (msg.id === void 0 || msg.id === null) {
+      if (msg.method === "notifications/cancelled") {
+        const target = msg.params?.requestId;
+        if (typeof target === "string" || typeof target === "number") {
+          if (cancelled.size >= CANCELLED_MAX) cancelled.delete(cancelled.values().next().value);
+          cancelled.add(String(target));
+        }
+      }
+      return;
+    }
+    const id = msg.id;
+    const reply = (out2) => {
+      if (cancelled.delete(String(id))) return;
+      send({ jsonrpc: "2.0", id, ...out2 });
+    };
+    try {
+      switch (msg.method) {
+        case "initialize": {
+          protocol = negotiateProtocol2(msg.params?.protocolVersion);
+          reply({
+            result: {
+              protocolVersion: protocol,
+              // Three primitives, because a skill is three things: the engine
+              // (tools), the method (prompts) and the documentation the method
+              // refers to (resources). A client given only the first has to
+              // invent the other two.
+              capabilities: {
+                tools: { listChanged: false },
+                resources: { subscribe: false, listChanged: false },
+                prompts: { listChanged: false }
+              },
+              serverInfo
+            }
+          });
+          return;
+        }
+        case "ping":
+          reply({ result: {} });
+          return;
+        case "tools/list":
+          reply({ result: { tools: listTools() } });
+          return;
+        case "tools/call":
+          await handleToolCall(msg, reply);
+          return;
+        case "resources/list":
+          reply({ result: { resources: listResources(opts.skillDir) } });
+          return;
+        case "resources/read": {
+          const uri = typeof msg.params?.uri === "string" ? msg.params.uri : "";
+          if (!uri) {
+            reply({ error: { code: ERR_INVALID_PARAMS, message: "`uri` is required" } });
+            return;
+          }
+          try {
+            reply({ result: { contents: [readResource(uri, opts.skillDir)] } });
+          } catch (e) {
+            if (e instanceof ResourceError) reply({ error: { code: ERR_INVALID_PARAMS, message: e.message } });
+            else reply({ error: { code: ERR_INTERNAL, message: errMessage2(e) } });
+          }
+          return;
+        }
+        case "prompts/list":
+          reply({ result: { prompts: PROMPTS } });
+          return;
+        case "prompts/get": {
+          const name2 = typeof msg.params?.name === "string" ? msg.params.name : "";
+          const args2 = msg.params?.arguments ?? {};
+          try {
+            reply({ result: getPrompt(name2, args2) });
+          } catch (e) {
+            if (e instanceof PromptError) reply({ error: { code: ERR_INVALID_PARAMS, message: e.message } });
+            else reply({ error: { code: ERR_INTERNAL, message: errMessage2(e) } });
+          }
+          return;
+        }
+        default:
+          reply({ error: { code: ERR_METHOD_NOT_FOUND, message: `method not found: ${String(msg.method)}` } });
+          return;
+      }
+    } catch (e) {
+      reply({ error: { code: ERR_INTERNAL, message: errMessage2(e) } });
+    }
+  }
+  async function handleToolCall(msg, reply) {
+    const params = msg.params ?? {};
+    const name2 = typeof params.name === "string" ? params.name : "";
+    const args2 = params.arguments ?? {};
+    const decl = listTools().find((t) => t.name === name2);
+    if (!decl) {
+      reply({ error: { code: ERR_INVALID_PARAMS, message: `unknown tool: ${name2 || "(none given)"}` } });
+      return;
+    }
+    const invalid = validateArgs2(decl.inputSchema, args2);
+    if (invalid) {
+      reply({ error: { code: ERR_INVALID_PARAMS, message: invalid } });
+      return;
+    }
+    try {
+      const { text: raw, artifact } = await callTool2(name2, args2, { defaultOut: opts.defaultOut, allowWrite: opts.allowWrite });
+      const text = capResponse2(raw, name2, maxBytes, artifact);
+      const capped = text !== raw;
+      const structured = protocol >= RICH_TOOLS_SINCE2 ? structuredContentFor2(text, capped, decl.outputSchema !== void 0) : void 0;
+      reply({ result: { content: [{ type: "text", text }], ...structured ? { structuredContent: structured } : {} } });
+    } catch (e) {
+      if (e instanceof ToolError) {
+        reply({ result: { content: [{ type: "text", text: e.message }], isError: true } });
+        return;
+      }
+      reply({ error: { code: ERR_INTERNAL, message: errMessage2(e) } });
+    }
+  }
+  return {
+    handle: handle2,
+    protocolVersion: () => protocol,
+    setProtocolVersion: (v) => {
+      protocol = v;
+    },
+    tools: listTools
+  };
+}
+function errMessage2(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+// src/mcp/stdio.ts
+var MAX_IN_FLIGHT = 4;
+async function runStdioServer(opts = {}) {
+  const input = opts.input ?? process.stdin;
+  const output = opts.output ?? process.stdout;
+  const emit2 = output.write.bind(output);
+  let restore;
+  if (!opts.captureStdout && output === process.stdout) {
+    const original = process.stdout.write;
+    process.stdout.write = ((chunk, ...rest) => process.stderr.write(chunk, ...rest));
+    restore = () => {
+      process.stdout.write = original;
+    };
+  }
+  const server = createServer(opts);
+  const send = (msg) => {
+    emit2(JSON.stringify(msg) + "\n");
+  };
+  const inFlight = /* @__PURE__ */ new Set();
+  const track = (p) => {
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p));
+    return p;
+  };
+  const drainToLimit = async () => {
+    while (inFlight.size >= MAX_IN_FLIGHT) await Promise.race(inFlight);
+  };
+  const rl = createInterface2({ input, terminal: false });
+  try {
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
+        continue;
+      }
+      await drainToLimit();
+      if (Array.isArray(parsed)) {
+        track(
+          (async () => {
+            const out2 = [];
+            await Promise.all(parsed.map((m) => server.handle(m, (r) => void out2.push(r))));
+            if (out2.length) emit2(JSON.stringify(out2) + "\n");
+          })().catch(reportInternal(send))
+        );
+        continue;
+      }
+      if (parsed === null || typeof parsed !== "object") {
+        send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: expected a JSON-RPC object" } });
+        continue;
+      }
+      track(server.handle(parsed, send).catch(reportInternal(send)));
+    }
+    await Promise.all(inFlight);
+  } finally {
+    rl.close();
+    restore?.();
+  }
+}
+function reportInternal(send) {
+  return (e) => {
+    send({ jsonrpc: "2.0", id: null, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
+  };
+}
+
+// src/mcp/http.ts
+import { createServer as createHttpServer } from "http";
+var MCP_PATH = "/mcp";
+var MAX_BODY_BYTES = 4 * 1024 * 1024;
+var CORS_HEADERS = "content-type, accept, mcp-protocol-version, mcp-session-id, authorization, last-event-id";
+var LOOPBACK_BIND = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "localhost"]);
+function startHttpServer(opts = {}) {
+  const bind = opts.bind ?? "127.0.0.1";
+  if (!LOOPBACK_BIND.has(bind) && !opts.allowRemote) {
+    return Promise.reject(
+      new Error(
+        `refusing to bind ${bind}: reconstruct's MCP server clones arbitrary git URLs and reads local files. Pass --allow-remote if that is really what you want.`
+      )
+    );
+  }
+  const server = createHttpServer((req, res) => {
+    void route(req, res, opts).catch((e) => {
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      sendJson(res, 500, { jsonrpc: "2.0", id: null, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
+    });
+  });
+  server.requestTimeout = 0;
+  server.headersTimeout = 6e4;
+  server.keepAliveTimeout = 12e4;
+  return new Promise((resolve8, reject) => {
+    server.once("error", reject);
+    server.listen(opts.port ?? 0, bind, () => {
+      server.removeListener("error", reject);
+      const addr2 = server.address();
+      const port = typeof addr2 === "object" && addr2 ? addr2.port : opts.port ?? 0;
+      const host = bind.includes(":") ? `[${bind}]` : bind;
+      resolve8({
+        server,
+        port,
+        url: `http://${host}:${port}${MCP_PATH}`,
+        close: () => new Promise((done) => {
+          server.closeAllConnections?.();
+          server.close(() => done());
+        })
+      });
+    });
+  });
+}
+async function route(req, res, opts) {
+  const path = (req.url ?? "").split("?")[0];
+  const origin = header(req, "origin");
+  if (!isOriginAllowed(origin, opts.allowOrigin)) {
+    sendJson(res, 403, { error: "origin not allowed", origin });
+    return;
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      ...corsHeaders(origin),
+      "access-control-allow-methods": "POST, GET, DELETE, OPTIONS",
+      "access-control-allow-headers": CORS_HEADERS,
+      "access-control-max-age": "86400"
+    });
+    res.end();
+    return;
+  }
+  if (path !== MCP_PATH) {
+    sendJson(res, 404, { error: `not found: ${path} (the MCP endpoint is ${MCP_PATH})` }, origin);
+    return;
+  }
+  if (req.method === "GET" || req.method === "DELETE") {
+    res.writeHead(405, { allow: "POST, OPTIONS", ...corsHeaders(origin) });
+    res.end(JSON.stringify({ error: `${req.method} is not supported: this server is stateless and offers no server-initiated stream` }));
+    return;
+  }
+  if (req.method !== "POST") {
+    res.writeHead(405, { allow: "POST, OPTIONS", ...corsHeaders(origin) });
+    res.end(JSON.stringify({ error: `${req.method} is not supported` }));
+    return;
+  }
+  const contentType = (header(req, "content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (contentType && contentType !== "application/json") {
+    sendJson(res, 415, { error: `unsupported content-type "${contentType}" \u2014 send application/json` }, origin);
+    return;
+  }
+  const accept = (header(req, "accept") ?? "").toLowerCase();
+  if (accept && !/application\/json|text\/event-stream|\*\/\*/.test(accept)) {
+    sendJson(res, 406, { error: "this endpoint replies with application/json" }, origin);
+    return;
+  }
+  const declared = header(req, "mcp-protocol-version");
+  if (declared !== void 0 && !isProtocolVersion(declared)) {
+    sendJson(res, 400, { error: `unsupported MCP-Protocol-Version: ${declared}` }, origin);
+    return;
+  }
+  const protocol = declared ?? ASSUMED_HTTP_PROTOCOL;
+  let raw;
+  try {
+    raw = await readBody(req);
+  } catch (e) {
+    if (e.message === "too large") {
+      sendJson(res, 413, { error: `request body exceeds ${MAX_BODY_BYTES} bytes` }, origin);
+      return;
+    }
+    sendJson(res, 400, { error: `could not read request body: ${e.message}` }, origin);
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, origin);
+    return;
+  }
+  const mcp = createServer(opts);
+  mcp.setProtocolVersion(protocol);
+  const out2 = [];
+  const collect2 = (m) => void out2.push(m);
+  const messages = Array.isArray(parsed) ? parsed : [parsed];
+  for (const m of messages) await mcp.handle(m, collect2);
+  if (out2.length === 0) {
+    res.writeHead(202, corsHeaders(origin));
+    res.end();
+    return;
+  }
+  sendJson(res, 200, Array.isArray(parsed) ? out2 : out2[0], origin);
+}
+function header(req, name2) {
+  const v = req.headers[name2];
+  return Array.isArray(v) ? v[0] : v;
+}
+function corsHeaders(origin) {
+  return origin ? { "access-control-allow-origin": origin, vary: "origin" } : {};
+}
+function sendJson(res, status, body2, origin, extra = {}) {
+  const text = JSON.stringify(body2);
+  res.writeHead(status, {
+    "content-type": "application/json",
+    "content-length": String(Buffer.byteLength(text, "utf8")),
+    ...corsHeaders(origin),
+    ...extra
+  });
+  res.end(text);
+}
+var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
+function readBody(req) {
+  return new Promise((resolve8, reject) => {
+    const chunks = [];
+    let size = 0;
+    let over = false;
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) over = true;
+    req.on("data", (c2) => {
+      size += c2.length;
+      if (over) {
+        if (size > DRAIN_LIMIT) {
+          req.destroy();
+          reject(new Error("too large"));
+        }
+        return;
+      }
+      if (size > MAX_BODY_BYTES) {
+        over = true;
+        chunks.length = 0;
+        return;
+      }
+      chunks.push(c2);
+    });
+    req.on("end", () => {
+      if (over) reject(new Error("too large"));
+      else resolve8(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", reject);
+    req.on("aborted", () => reject(new Error("client aborted the request")));
+  });
+}
+
 // src/cli.ts
 var HELP2 = `reconstruct v${VERSION}
 Analyze a repository and generate reconstruction PRDs to rebuild it from scratch.
@@ -19788,6 +20864,10 @@ Options:
   --verify             Write a requirement\u2192source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
+  --mcp                Serve the tree over the Model Context Protocol, for a non-Claude-Code
+                       host (Cursor, Zed, Claude Desktop). Read-only unless --allow-write.
+                       With --transport stdio|http \xB7 --out <tree> \xB7 --port \xB7 --bind \xB7
+                       --allow-origin \xB7 --allow-remote \xB7 --max-response-bytes
   --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
                        (per-phase workflows + agent contracts + RUNBOOK) into <out>/orchestration/
   --phase <name>       --orchestrate: emit one phase only \u2014 enrich-map | review-find |
@@ -19901,7 +20981,7 @@ function fail(message) {
 `);
   process.exit(1);
 }
-function oneOf(name2, value, allowed) {
+function oneOf2(name2, value, allowed) {
   if (!allowed.includes(value)) {
     fail(`invalid --${name2} "${value}" (expected: ${allowed.join(", ")})`);
   }
@@ -19928,7 +21008,14 @@ var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "apply",
   "phase",
   "max-verify",
-  "batch-size"
+  "batch-size",
+  // `--mcp` only. The flag set is global, so these are accepted (and ignored)
+  // in every other mode — the same as --phase and --batch-size already are.
+  "transport",
+  "port",
+  "bind",
+  "allow-origin",
+  "max-response-bytes"
 ]);
 function parseArgs(argv) {
   const raw = {};
@@ -19948,6 +21035,9 @@ function parseArgs(argv) {
   let allowUnverified = false;
   let brainstorm = false;
   let orchestrate = false;
+  let mcp = false;
+  let allowWrite = false;
+  let allowRemote = false;
   let eco = false;
   let list = false;
   let force = false;
@@ -20017,6 +21107,18 @@ function parseArgs(argv) {
       orchestrate = true;
       continue;
     }
+    if (arg === "--mcp") {
+      mcp = true;
+      continue;
+    }
+    if (arg === "--allow-write") {
+      allowWrite = true;
+      continue;
+    }
+    if (arg === "--allow-remote") {
+      allowRemote = true;
+      continue;
+    }
     if (arg === "--eco") {
       eco = true;
       continue;
@@ -20060,31 +21162,36 @@ function parseArgs(argv) {
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
-  const plan = raw.plan ? resolve5(raw.plan) : "";
+  const plan = raw.plan ? resolve7(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
-  const repo = resolve5(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && !orchestrate && (!existsSync17(repo) || !statSync8(repo).isDirectory())) {
+  const repo = resolve7(raw.repo ?? process.cwd());
+  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && !orchestrate && (!existsSync19(repo) || !statSync10(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
-  const level = oneOf("level", raw.level ?? "light", ["light", "complex"]);
-  const mode = scratch ? "scratch" : oneOf("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
-  const fidelity = scratch ? "describe" : oneOf("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
-  const granularity = oneOf("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
-  const out2 = resolve5(
-    raw.out ?? (standalone || check || verify || review || brainstorm || orchestrate ? process.cwd() : scratch ? join38(process.cwd(), "reconstruction") : join38(repo, "reconstruction"))
+  const level = oneOf2("level", raw.level ?? "light", ["light", "complex"]);
+  const mode = scratch ? "scratch" : oneOf2("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
+  const fidelity = scratch ? "describe" : oneOf2("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
+  const granularity = oneOf2("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
+  const out2 = resolve7(
+    raw.out ?? (standalone || check || verify || review || brainstorm || orchestrate ? process.cwd() : scratch ? join40(process.cwd(), "reconstruction") : join40(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
+  const transport = raw.transport ?? "stdio";
+  const port = raw.port ? Number(raw.port) : 7343;
+  const bind = raw.bind;
+  const allowOrigin = raw["allow-origin"];
+  const maxResponseBytes = raw["max-response-bytes"] ? Number(raw["max-response-bytes"]) : void 0;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
   }
-  const positive = (key) => {
+  const positive2 = (key) => {
     if (raw[key] === void 0) return void 0;
     const n = Number(raw[key]);
     if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) fail(`invalid --${key}: expected a positive integer`);
     return n;
   };
-  const maxVerify = positive("max-verify");
-  const batchSize = positive("batch-size");
+  const maxVerify = positive2("max-verify");
+  const batchSize = positive2("batch-size");
   return {
     repo,
     out: out2,
@@ -20112,6 +21219,8 @@ function parseArgs(argv) {
     allowUnverified,
     brainstorm,
     orchestrate,
+    mcp,
+    mcpServer: { transport, port, bind, allowOrigin, maxResponseBytes, allowWrite, allowRemote },
     phase: raw.phase ?? "",
     eco,
     list,
@@ -20125,12 +21234,12 @@ function guardEnrichedOutput(opts) {
   const witnesses = detectEnrichment(opts.out);
   if (witnesses.length) fail(formatEnrichmentRefusal(opts.out, witnesses));
 }
-function main() {
+async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.verify) {
     try {
       if (opts.apply) {
-        const r = applyVerdicts(opts.out, resolve5(opts.apply));
+        const r = applyVerdicts(opts.out, resolve7(opts.apply));
         process.stdout.write(formatVerifyReport(r) + "\n");
         if (!r.ok) process.exit(1);
         return;
@@ -20152,7 +21261,7 @@ function main() {
   if (opts.review) {
     try {
       if (opts.apply) {
-        const r = applyFindings(opts.out, resolve5(opts.apply));
+        const r = applyFindings(opts.out, resolve7(opts.apply));
         process.stdout.write(formatReviewReport(r) + "\n");
         if (!r.ok) process.exit(1);
         return;
@@ -20169,6 +21278,42 @@ function main() {
       fail(e.message);
     }
   }
+  if (opts.mcp) {
+    const srv = opts.mcpServer ?? { transport: "stdio", port: 7343, allowWrite: false, allowRemote: false };
+    const { transport, port, bind, allowOrigin, maxResponseBytes } = srv;
+    if (transport !== "stdio" && transport !== "http") fail(`invalid --transport "${transport}" (expected: stdio, http)`);
+    if (maxResponseBytes !== void 0 && (!Number.isFinite(maxResponseBytes) || maxResponseBytes <= 0)) fail("invalid --max-response-bytes");
+    const serverOpts = {
+      // A default tree makes `out` optional on every tool except the scaffold,
+      // which never inherits a target it could overwrite.
+      defaultOut: opts.out,
+      allowWrite: srv.allowWrite,
+      maxResponseBytes
+    };
+    if (transport === "stdio") {
+      await runStdioServer(serverOpts);
+      return;
+    }
+    if (!Number.isInteger(port) || port < 0 || port > 65535) fail("invalid --port");
+    const origins = allowOrigin ? allowOrigin.split(",").map((x) => x.trim()).filter(Boolean) : void 0;
+    let running;
+    try {
+      running = await startHttpServer({ ...serverOpts, port, bind, allowOrigin: origins, allowRemote: srv.allowRemote });
+    } catch (e) {
+      fail(e.message);
+    }
+    process.stderr.write(`reconstruct: MCP server listening on ${running.url}
+`);
+    process.stderr.write(`  client: claude mcp add --transport http reconstruct ${running.url}
+`);
+    for (const sig of ["SIGINT", "SIGTERM"]) {
+      process.once(sig, () => {
+        void running.close().then(() => process.exit(0));
+      });
+    }
+    await new Promise((res) => running.server.once("close", res));
+    return;
+  }
   if (opts.brainstorm) {
     const r = runBrainstorm(opts.out);
     process.stderr.write(
@@ -20179,9 +21324,9 @@ function main() {
     return;
   }
   if (opts.orchestrate) {
-    const engineAbs = realpathSync2(fileURLToPath3(import.meta.url));
+    const engineAbs = realpathSync4(fileURLToPath4(import.meta.url));
     if (opts.list) {
-      if (!existsSync17(opts.out)) {
+      if (!existsSync19(opts.out)) {
         process.stderr.write(`reconstruct --orchestrate: out dir not found: ${opts.out}
 `);
         process.exit(2);
@@ -20213,7 +21358,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
 `
       );
     } else {
-      process.stdout.write(`Follow ${join38(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+      process.stdout.write(`Follow ${join40(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
     }
     if (!opts.phase && workflows.length === 0 && !opts.eco) {
@@ -20266,7 +21411,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     read ${join38(effOpts.out, "SUMMARY.md")} to orient, then ${join38(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     read ${join40(effOpts.out, "SUMMARY.md")} to orient, then ${join40(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -20324,21 +21469,27 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  output:   ${opts.out}`,
     // Orient from SUMMARY.md, not inventory.json: same picture, a fraction of the
     // tokens (inventory.json carries one entry per analyzed file).
-    `  next:     read ${join38(opts.out, "SUMMARY.md")} to orient, then ${join38(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     read ${join40(opts.out, "SUMMARY.md")} to orient, then ${join40(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }
 function isInvokedDirectly() {
   const argv1 = process.argv[1];
   if (argv1 === void 0) return false;
-  const modulePath = fileURLToPath3(import.meta.url);
+  const modulePath = fileURLToPath4(import.meta.url);
   try {
-    if (realpathSync2(argv1) === realpathSync2(modulePath)) return true;
+    if (realpathSync4(argv1) === realpathSync4(modulePath)) return true;
   } catch {
   }
   return import.meta.url === pathToFileURL3(argv1).href;
 }
-if (isInvokedDirectly()) main();
+if (isInvokedDirectly()) {
+  main().catch((e) => {
+    process.stderr.write(`reconstruct: ${e.message}
+`);
+    process.exit(1);
+  });
+}
 export {
   parseArgs
 };

@@ -210,6 +210,76 @@ whose `🧠` callouts are all resolved, or a `REVIEW.json`/`VERIFY.json` ledger 
 To continue an existing tree use `--check`/`--review`/`--verify`; to re-scaffold, point `--out`
 at a new directory; `--force` overwrites and loses the enrichment.
 
+## Use it as an MCP server
+
+The skill shells out to the CLI and parses its output. An MCP server skips both:
+your agent calls reconstruct as typed tools, with JSON schemas in and structured
+results out. Same engine, same tree, no wrapper.
+
+```bash
+# stdio — the default, and what Claude Code / Claude Desktop / Cursor expect
+claude mcp add reconstruct -- node /abs/path/to/scripts/analyze.mjs --mcp
+
+# or over HTTP, on loopback
+node scripts/analyze.mjs --mcp --transport http --port 7343
+claude mcp add --transport http reconstruct http://127.0.0.1:7343/mcp
+```
+
+```jsonc
+// Claude Desktop takes stdio servers only — a remote URL here will not work.
+{ "mcpServers": { "reconstruct": { "command": "node", "args": ["/abs/path/to/scripts/analyze.mjs", "--mcp"] } } }
+// Cursor, HTTP:
+{ "mcpServers": { "reconstruct": { "url": "http://127.0.0.1:7343/mcp" } } }
+```
+
+It serves all three MCP primitives, because a skill is three things: the engine
+(**tools**), the method (**prompts**), and the documentation the method refers
+to (**resources**). Here that is the whole point: the markdown is the program
+and the engine never reasons, so a client given only the tools treats an empty
+scaffold as a finished spec.
+
+### Tools
+
+| Tool | What it does |
+|------|--------------|
+| `reconstruct_inventory` | What a repo is made of — stack, entry points, routes. Writes nothing |
+| `reconstruct_check` | The buildability gate: no missing document, no unresolved callout |
+| `reconstruct_review` | Per feature, what a builder would still have to guess |
+| `reconstruct_verify` | Requirement→source: does the original actually do what the PRD claims? |
+| `reconstruct_specs` | Every feature PRD, source **stripped** — the hand-to-an-agent bundle |
+| `reconstruct_features` | Every feature PRD, nothing else |
+| `reconstruct_merge` | The whole tree as one document, source included |
+| `reconstruct_read` | A file, or a line range, from the tree or the original repo |
+
+`--allow-write` additionally exposes `reconstruct_scaffold` and
+`reconstruct_brainstorm`. The scaffold is annotated **destructive**: with
+`force:true` it discards prose an agent spent real work writing, and nothing
+here can bring that back. It is also the one tool that never inherits the
+server's default `--out` — a delete-shaped operation does not get to guess its
+target.
+
+### Prompts — the workflow, not just the tools
+
+| Prompt | Arguments | What it drives |
+|--------|-----------|----------------|
+| `enrich_feature` | `out`, `feature?`, `repo?` | Read the real implementation, then write what it DOES — not what its file names suggest |
+| `review_buildability` | `out` | What is missing vs what is merely absent; plus the faithfulness direction |
+| `greenfield_interview` | `idea` | No repo to read, so every fact comes from the user — and inventing one invents the product |
+
+### Resources — the skill's own documentation
+
+`SKILL.md` and all 21 `references/*.md` are served under `skill://`, read off
+disk at request time — so a documentation fix reaches every client without a
+rebuild.
+
+Two things worth knowing:
+
+- **Nothing here reaches the network.** The whole engine is a deterministic
+  local walk; no tool is marked open-world.
+- **The HTTP transport binds `127.0.0.1` and refuses anything else** unless you
+  pass `--allow-remote`. This server reads local files; an exposed port is a
+  read-anything primitive for whoever finds it.
+
 ## Brainstorm first (optional)
 
 Not sure *what* to build yet? Run the divergent phase before converging. Ask your agent to

@@ -11,6 +11,8 @@ import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./ve
 import { runReview, applyFindings, foldReview, formatReviewReport } from "./review.js";
 import { runBrainstorm } from "./brainstorm.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
+import { runStdioServer } from "./mcp/stdio.js";
+import { startHttpServer } from "./mcp/http.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
 
@@ -36,6 +38,10 @@ Options:
   --verify             Write a requirement→source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
+  --mcp                Serve the tree over the Model Context Protocol, for a non-Claude-Code
+                       host (Cursor, Zed, Claude Desktop). Read-only unless --allow-write.
+                       With --transport stdio|http · --out <tree> · --port · --bind ·
+                       --allow-origin · --allow-remote · --max-response-bytes
   --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
                        (per-phase workflows + agent contracts + RUNBOOK) into <out>/orchestration/
   --phase <name>       --orchestrate: emit one phase only — enrich-map | review-find |
@@ -188,6 +194,13 @@ const VALUE_FLAGS = new Set([
   "phase",
   "max-verify",
   "batch-size",
+  // `--mcp` only. The flag set is global, so these are accepted (and ignored)
+  // in every other mode — the same as --phase and --batch-size already are.
+  "transport",
+  "port",
+  "bind",
+  "allow-origin",
+  "max-response-bytes",
 ]);
 
 export function parseArgs(argv: string[]): Options {
@@ -208,6 +221,11 @@ export function parseArgs(argv: string[]): Options {
   let allowUnverified = false;
   let brainstorm = false;
   let orchestrate = false;
+  // `--mcp` and its server flags. Serving the tree over MCP is a mode like any
+  // other here — this CLI selects modes by flag, not by verb.
+  let mcp = false;
+  let allowWrite = false;
+  let allowRemote = false;
   let eco = false;
   let list = false;
   let force = false;
@@ -276,6 +294,18 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--orchestrate") {
       orchestrate = true;
+      continue;
+    }
+    if (arg === "--mcp") {
+      mcp = true;
+      continue;
+    }
+    if (arg === "--allow-write") {
+      allowWrite = true;
+      continue;
+    }
+    if (arg === "--allow-remote") {
+      allowRemote = true;
       continue;
     }
     if (arg === "--eco") {
@@ -363,6 +393,12 @@ export function parseArgs(argv: string[]): Options {
           : join(repo, "reconstruction")),
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
+  // `--mcp` server knobs, read the same way as every other valued flag.
+  const transport = raw.transport ?? "stdio";
+  const port = raw.port ? Number(raw.port) : 7343;
+  const bind = raw.bind;
+  const allowOrigin = raw["allow-origin"];
+  const maxResponseBytes = raw["max-response-bytes"] ? Number(raw["max-response-bytes"]) : undefined;
   if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
     fail(`invalid --max-embed-bytes`);
   }
@@ -402,6 +438,8 @@ export function parseArgs(argv: string[]): Options {
     allowUnverified,
     brainstorm,
     orchestrate,
+    mcp,
+    mcpServer: { transport, port, bind, allowOrigin, maxResponseBytes, allowWrite, allowRemote },
     phase: raw.phase ?? "",
     eco,
     list,
@@ -423,7 +461,9 @@ function guardEnrichedOutput(opts: Options): void {
   if (witnesses.length) fail(formatEnrichmentRefusal(opts.out, witnesses));
 }
 
-function main(): void {
+// Async because `--mcp` serves a long-lived server; every other mode is
+// synchronous and returns immediately, so nothing else changes shape.
+async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
 
   // Requirement-support verification: write the worklist, or apply verdicts.
@@ -470,6 +510,55 @@ function main(): void {
     } catch (e) {
       fail((e as Error).message);
     }
+  }
+
+  // Serve the tree over the Model Context Protocol. Returns only when the
+  // server stops, so nothing below runs while it is still listening.
+  if (opts.mcp) {
+    const srv = opts.mcpServer ?? { transport: "stdio", port: 7343, allowWrite: false, allowRemote: false };
+    const { transport, port, bind, allowOrigin, maxResponseBytes } = srv;
+    if (transport !== "stdio" && transport !== "http") fail(`invalid --transport "${transport}" (expected: stdio, http)`);
+    if (maxResponseBytes !== undefined && (!Number.isFinite(maxResponseBytes) || maxResponseBytes <= 0)) fail("invalid --max-response-bytes");
+    const serverOpts = {
+      // A default tree makes `out` optional on every tool except the scaffold,
+      // which never inherits a target it could overwrite.
+      defaultOut: opts.out,
+      allowWrite: srv.allowWrite,
+      maxResponseBytes,
+    };
+
+    if (transport === "stdio") {
+      // Nothing is written to stdout here: from this point stdout carries
+      // JSON-RPC frames only, and runStdioServer guards that.
+      await runStdioServer(serverOpts);
+      return;
+    }
+
+    if (!Number.isInteger(port) || port < 0 || port > 65535) fail("invalid --port");
+    const origins = allowOrigin
+      ? allowOrigin
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : undefined;
+    let running: Awaited<ReturnType<typeof startHttpServer>>;
+    try {
+      running = await startHttpServer({ ...serverOpts, port, bind, allowOrigin: origins, allowRemote: srv.allowRemote });
+    } catch (e) {
+      fail((e as Error).message);
+    }
+    // stderr, not stdout: an HTTP server's stdout is not a protocol stream, but
+    // keeping the two transports identical here means no one has to remember
+    // which is which.
+    process.stderr.write(`reconstruct: MCP server listening on ${running.url}\n`);
+    process.stderr.write(`  client: claude mcp add --transport http reconstruct ${running.url}\n`);
+    for (const sig of ["SIGINT", "SIGTERM"] as const) {
+      process.once(sig, () => {
+        void running.close().then(() => process.exit(0));
+      });
+    }
+    await new Promise<void>((res) => running.server.once("close", res));
+    return;
   }
 
   // Divergent-phase scaffold: write BRAINSTORM.md (seeded if --out already has a
@@ -672,4 +761,9 @@ function isInvokedDirectly(): boolean {
   }
   return import.meta.url === pathToFileURL(argv1).href;
 }
-if (isInvokedDirectly()) main();
+if (isInvokedDirectly()) {
+  main().catch((e) => {
+    process.stderr.write(`reconstruct: ${(e as Error).message}\n`);
+    process.exit(1);
+  });
+}

@@ -85,6 +85,22 @@ export interface Options {
    * `<out>/orchestration/`. Reads no repo. `--orchestrate`.
    */
   orchestrate?: boolean;
+  /**
+   * Serve the tree over the Model Context Protocol instead of running a
+   * one-shot mode. Blocks for the life of the server. `--mcp`.
+   */
+  mcp?: boolean;
+  /** With `--mcp`: how to serve it. Grouped so `Options` does not sprout seven
+   *  fields that only one mode reads. */
+  mcpServer?: {
+    transport: string;
+    port: number;
+    bind?: string;
+    allowOrigin?: string;
+    maxResponseBytes?: number;
+    allowWrite: boolean;
+    allowRemote: boolean;
+  };
   /** With `--orchestrate`: emit one phase only (`--phase <name>`, else ""). */
   phase?: string;
   /** With `--orchestrate`: emit only RUNBOOK.md + agents/*.md. `--eco`. */
