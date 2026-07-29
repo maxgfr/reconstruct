@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.13.0](https://github.com/maxgfr/reconstruct/compare/v2.12.0...v2.13.0) (2026-07-29)
+
+
+### Features
+
+* **mcp:** serve reconstruct over the Model Context Protocol ([df14af7](https://github.com/maxgfr/reconstruct/commit/df14af72b83d7dcc53ae57816c005ec21aca6639))
+
 # [2.12.0](https://github.com/maxgfr/reconstruct/compare/v2.11.1...v2.12.0) (2026-07-26)
 
 

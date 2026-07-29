@@ -1,6 +1,6 @@
 {
   "name": "reconstruct",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "description": "Analyze any repository and generate reconstruction PRDs to rebuild a project from scratch. A skills.sh agent skill.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
