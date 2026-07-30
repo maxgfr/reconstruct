@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, it, expect } from "vitest";
@@ -6,6 +6,17 @@ import { listResources, readResource, resolveSkillRoot, ResourceError, SKILL_NAM
 
 const REPO_ROOT = resolve(__dirname, "..");
 const PAYLOAD = join(REPO_ROOT, "skills", SKILL_NAME);
+
+// Count .md at any depth — the same walk listResources does, written out
+// independently so the test does not pass by sharing the bug.
+function countMarkdown(dir: string): number {
+  let n = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) n += countMarkdown(join(dir, e.name));
+    else if (e.name.endsWith(".md")) n++;
+  }
+  return n;
+}
 
 const temps: string[] = [];
 function tmp(): string {
@@ -56,6 +67,30 @@ describe("resources/list", () => {
     // Sorted and unique, so a client's list is stable across calls.
     expect(new Set(uris).size).toBe(uris.length);
     expect(uris.slice(1)).toEqual([...uris.slice(1)].sort());
+  });
+
+  it("serves the NESTED references too, not just the top level", () => {
+    // references/stack-guides/ holds a per-stack cheat-sheet each, and SKILL.md
+    // routes to them by name ("do not guess a filename"). A flat listing served
+    // the index that names them while withholding the files it names, which is
+    // worse than serving neither: the client follows the pointer to nothing.
+    const uris = listResources().map((r) => r.uri);
+    expect(uris).toContain("skill://references/stack-guides/INDEX.md");
+    expect(uris.filter((u) => u.startsWith("skill://references/stack-guides/")).length).toBeGreaterThan(10);
+  });
+
+  it("reads a nested reference by its listed uri", () => {
+    const got = readResource("skill://references/stack-guides/INDEX.md");
+    expect(got.mimeType).toBe("text/markdown");
+    expect(got.text.length).toBeGreaterThan(0);
+  });
+
+  it("matches every .md on disk under references/, at any depth", () => {
+    // The count is derived rather than hard-coded, so adding a guide does not
+    // require touching this test — but dropping the recursion does fail it.
+    const listed = listResources().filter((r) => r.uri.startsWith("skill://references/")).length;
+    const onDisk = countMarkdown(join(PAYLOAD, "references"));
+    expect(listed).toBe(onDisk);
   });
 
   it("describes each resource with prose from the file, not its title repeated", () => {

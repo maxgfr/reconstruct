@@ -20399,9 +20399,17 @@ function listResources(moduleDir) {
   const out2 = [describe(root, "SKILL.md", `${SKILL_NAME}: the skill`)];
   const refDir = join39(root, "references");
   if (!existsSync18(refDir)) return out2;
-  for (const file of readdirSync8(refDir).sort()) {
-    if (!file.endsWith(".md")) continue;
-    out2.push(describe(root, join39("references", file), `${SKILL_NAME} reference: ${basename5(file, ".md")}`));
+  for (const rel of walkMarkdown(refDir, "references")) {
+    out2.push(describe(root, rel, `${SKILL_NAME} reference: ${basename5(rel, ".md")}`));
+  }
+  return out2;
+}
+function walkMarkdown(dir, prefix) {
+  const out2 = [];
+  for (const entry of readdirSync8(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
+    const rel = join39(prefix, entry.name);
+    if (entry.isDirectory()) out2.push(...walkMarkdown(join39(dir, entry.name), rel));
+    else if (entry.name.endsWith(".md")) out2.push(rel);
   }
   return out2;
 }

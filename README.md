@@ -268,7 +268,7 @@ target.
 
 ### Resources — the skill's own documentation
 
-`SKILL.md` and all 21 `references/*.md` are served under `skill://`, read off
+`SKILL.md` and all 42 `references/*.md` — including the 22 per-stack cheat-sheets under `references/stack-guides/` — are served under `skill://`, read off
 disk at request time — so a documentation fix reaches every client without a
 rebuild.
 

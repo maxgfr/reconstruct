@@ -61,9 +61,25 @@ export function listResources(moduleDir?: string): ResourceDecl[] {
 
   const refDir = join(root, "references");
   if (!existsSync(refDir)) return out;
-  for (const file of readdirSync(refDir).sort()) {
-    if (!file.endsWith(".md")) continue;
-    out.push(describe(root, join("references", file), `${SKILL_NAME} reference: ${basename(file, ".md")}`));
+  for (const rel of walkMarkdown(refDir, "references")) {
+    out.push(describe(root, rel, `${SKILL_NAME} reference: ${basename(rel, ".md")}`));
+  }
+  return out;
+}
+
+// Every .md under references/, including the nested ones.
+//
+// A flat listing would drop `references/stack-guides/` — 22 per-stack
+// cheat-sheets that SKILL.md routes to explicitly ("do not guess a filename").
+// Serving the index that names them while withholding the files it names is
+// worse than serving neither, because the client follows the pointer and finds
+// nothing.
+function walkMarkdown(dir: string, prefix: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    const rel = join(prefix, entry.name);
+    if (entry.isDirectory()) out.push(...walkMarkdown(join(dir, entry.name), rel));
+    else if (entry.name.endsWith(".md")) out.push(rel);
   }
   return out;
 }
