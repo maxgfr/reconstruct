@@ -1,8 +1,8 @@
-declare const ENGINE_VERSION = "2.20.1";
-declare const SCHEMA_VERSION = 4;
-declare const EXTRACTOR_VERSION = 10;
+declare const ENGINE_VERSION = "2.22.0";
+declare const SCHEMA_VERSION = 5;
+declare const EXTRACTOR_VERSION = 11;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
-type EdgeKind = "contains" | "doc-link" | "import" | "call" | "use" | "mention";
+type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
 type Tier = 0 | 1 | 2;
 interface CodeSymbol {
     name: string;
@@ -11,13 +11,21 @@ interface CodeSymbol {
     line: number;
     endLine?: number;
     parent?: string;
+    parentPath?: string;
     signature?: string;
+    doc?: string;
     exported: boolean;
     lang: string;
 }
 interface RawRef {
     kind: "doc-link" | "import";
     spec: string;
+}
+interface RawRelation {
+    kind: "extends" | "implements";
+    from: string;
+    to: string;
+    line: number;
 }
 interface FileRecord {
     rel: string;
@@ -40,6 +48,9 @@ interface FileRecord {
         receiver?: string;
     }[];
     importedNames?: string[];
+    truncated?: true;
+    relations?: RawRelation[];
+    terms?: string[];
 }
 interface FileNode {
     id: string;
@@ -289,6 +300,7 @@ declare function languageOf(ext: string): string;
 interface CodeInfo {
     symbols: CodeSymbol[];
     summary?: string;
+    truncated?: true;
     refs: RawRef[];
     pkg?: string;
     idents?: string[];
@@ -298,6 +310,8 @@ interface CodeInfo {
         receiver?: string;
     }[];
     importedNames?: string[];
+    terms?: string[];
+    relations?: RawRelation[];
 }
 declare function extractCode(rel: string, ext: string, content: string, opts?: {
     maxCallsPerFile?: number;
@@ -311,12 +325,16 @@ interface MarkdownInfo {
 }
 declare function extractMarkdown(content: string): MarkdownInfo;
 
+declare const CORE_GRAMMARS: Set<string>;
+declare const EXTENDED_GRAMMARS: Set<string>;
+declare const EXT_GRAMMAR: Record<string, string>;
 declare function grammarKeyForExt(ext: string): string | undefined;
 type GrammarsTierName = "adjacent" | "env" | "cache" | "none";
 interface GrammarsTier {
     tier: GrammarsTierName;
     dir?: string;
     cacheDir: string;
+    dirs: string[];
 }
 declare function sharedGrammarsCacheDir(): string;
 declare function resolveGrammarsTier(opts?: {
@@ -341,13 +359,45 @@ interface AstResult {
         receiver?: string;
     }[];
     importedNames: string[];
+    relations: RawRelation[];
+    terms: string[];
+    truncated?: true;
 }
 declare function extractAst(rel: string, ext: string, content: string, opts?: {
     maxCalls?: number;
     imports?: boolean;
+    maxSymbols?: number;
 }): AstResult | undefined;
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.20.1/grammars-2.20.1.tar.gz";
+/** One definition a tags query captured. */
+interface TagDefinition {
+    /** The `@definition.<kind>` suffix — function, class, method, module, … */
+    kind: string;
+    name: string;
+    line: number;
+}
+/** Whether a vendored query exists for a grammar, and whether it compiled. */
+interface TagsQueryStatus {
+    /** A `<key>.tags.scm` was found next to the grammar. */
+    present: boolean;
+    /** It compiled against the loaded grammar. False means the two are out of step. */
+    compiled: boolean;
+}
+/**
+ * Report a grammar's query status. `extractTags` degrades to `[]` for a query
+ * that does not compile, which is right at runtime but makes a broken query
+ * indistinguishable from one that simply matched nothing — so the audit and its
+ * tests can check the difference here instead of guessing from an empty result.
+ */
+declare function tagsQueryStatus(key: string): TagsQueryStatus;
+/**
+ * Definitions the grammar's own `tags.scm` finds in this source, deduped and
+ * sorted. Empty when the grammar publishes no query, when it fails to compile,
+ * or when no grammar is loaded for the extension.
+ */
+declare function extractTags(ext: string, content: string): TagDefinition[];
+
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.22.0/grammars-2.22.0.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -480,6 +530,134 @@ declare function buildGraph(scan: RepoScan, ctx: ResolveContext, modules: Module
 
 declare function resolveCallEdges(scan: RepoScan, importPairs: Set<string>): Edge[];
 
+/** One inheritance link with both ends bound to a declaration site. */
+interface ResolvedRelation {
+    kind: "extends" | "implements";
+    from: string;
+    fromFile: string;
+    fromLine: number;
+    to: string;
+    toFile: string;
+    toKind: string;
+}
+/**
+ * Every inheritance relation in the repo whose target resolves to a declaration
+ * here. Targets that do not (a framework base class, `std::exception`) are
+ * omitted — they are reported per-type as `unresolved` by the hierarchy below,
+ * so the information is available without inventing an edge to nothing.
+ *
+ * Deterministic: sorted, and never dependent on Map iteration order.
+ */
+declare function resolveRelations(scan: RepoScan, importPairs: Set<string>): ResolvedRelation[];
+/**
+ * File-level `extends`/`implements` edges, aggregated per (from, to, kind) pair.
+ * Self-edges are dropped: a type extending another in the same file is a real
+ * relation (the hierarchy reports it) but not a dependency between files.
+ */
+declare function resolveRelationEdges(scan: RepoScan, importPairs: Set<string>): Edge[];
+/** One end of a relation, as reported by the hierarchy. */
+interface HierarchyRef {
+    name: string;
+    file: string;
+    line: number;
+    kind: string;
+}
+interface TypeHierarchyEntry {
+    name: string;
+    file: string;
+    line: number;
+    kind: string;
+    /** Base classes/supertraits this type declares, resolved. */
+    extends: HierarchyRef[];
+    /** Interfaces/traits/mixins this type provides, resolved. */
+    implements: HierarchyRef[];
+    /** Types that extend THIS one. */
+    extendedBy: HierarchyRef[];
+    /** Types that implement THIS one — the "who implements this interface" answer. */
+    implementedBy: HierarchyRef[];
+    /** Declared supertypes with no definition in this repo (a framework base class). */
+    unresolved: {
+        kind: "extends" | "implements";
+        to: string;
+    }[];
+}
+/**
+ * The full type hierarchy, keyed by `name` (and by `name@file` for a homonym
+ * declared in more than one file, mirroring how the caller index disambiguates).
+ * Insertion order is sorted, so serializing the map is deterministic.
+ */
+declare function buildTypeHierarchy(scan: RepoScan, importPairs: Set<string>): Map<string, TypeHierarchyEntry>;
+/**
+ * Everything that implements or extends `name`, TRANSITIVELY — the practical
+ * form of "who implements this interface": a class implementing a sub-interface
+ * of the one asked about is an implementation too, and a caller should not have
+ * to walk the chain itself. Breadth-first, cycle-safe, deterministic.
+ */
+declare function implementationsOf(hierarchy: Map<string, TypeHierarchyEntry>, name: string): HierarchyRef[];
+/** The declaration `name` refers to, for callers that only have a name. */
+declare function typeEntry(hierarchy: Map<string, TypeHierarchyEntry>, name: string): TypeHierarchyEntry | undefined;
+
+type SymbolEdgeKind = "calls" | "extends" | "implements";
+interface SymbolNode {
+    /** Stable id: `file#Parent/name` for a member, `file#name` otherwise. */
+    id: string;
+    name: string;
+    kind: string;
+    file: string;
+    line: number;
+    endLine?: number;
+    exported: boolean;
+    doc?: string;
+    signature?: string;
+}
+interface SymbolEdge {
+    from: string;
+    to: string;
+    kind: SymbolEdgeKind;
+    /** How many distinct call sites back a `calls` edge. Always 1 for inheritance. */
+    weight: number;
+}
+interface SymbolGraph {
+    nodes: Map<string, SymbolNode>;
+    edges: SymbolEdge[];
+    /** id → outgoing edges, and id → incoming; both sorted. */
+    out: Map<string, SymbolEdge[]>;
+    in: Map<string, SymbolEdge[]>;
+    /** name → every node id declaring it, for looking a symbol up by bare name. */
+    byName: Map<string, string[]>;
+}
+declare function symbolId(s: Pick<CodeSymbol, "file" | "name" | "parent">): string;
+/**
+ * Build the symbol graph. `importPairs` is the resolved-import pair set the call
+ * binder uses for corroboration — pass the memoised one (derived.ts) so this
+ * shares work with the rest of a session.
+ *
+ * Deterministic: edges are aggregated into a Map keyed by (from, to, kind) and
+ * sorted before return, so two builds of one scan agree exactly.
+ */
+declare function buildSymbolGraph(scan: RepoScan, importPairs: Set<string>): SymbolGraph;
+type Direction = "out" | "in" | "both";
+interface Neighborhood {
+    /** Every declaration matching the requested name — the walk starts from all of them. */
+    root: SymbolNode[];
+    /** Reached nodes with the hop count at which each was first seen (root = 0). */
+    nodes: (SymbolNode & {
+        depth: number;
+    })[];
+    edges: SymbolEdge[];
+    /** True when the node cap stopped the walk short. */
+    truncated?: true;
+}
+/**
+ * The bounded neighborhood of a symbol. Breadth-first, so `depth` is the true
+ * hop distance; cycle-safe; capped at MAX_NODES with `truncated` set rather than
+ * quietly returning a partial answer.
+ */
+declare function neighborhood(graph: SymbolGraph, name: string, opts?: {
+    depth?: number;
+    direction?: Direction;
+}): Neighborhood;
+
 interface CallerSite {
     file: string;
     line: number;
@@ -577,7 +755,7 @@ declare function computeSurprises(graph: Graph): SurpriseEdge[];
 declare function isSurprising(graph: Graph, from: string, to: string): boolean;
 
 declare function computeSymbolRefs(scan: RepoScan): Map<string, Set<string>>;
-declare function buildSymbolIndex(scan: RepoScan, refs?: Map<string, Set<string>>): SymbolIndex;
+declare function buildSymbolIndex(scan: RepoScan, refs?: Map<string, Set<string>>, schemaVersion?: number): SymbolIndex;
 declare function renderSymbolsJson(index: SymbolIndex): string;
 
 declare function renderGraphJson(graph: Graph): string;
@@ -638,18 +816,59 @@ interface GrepOptions {
 }
 declare function grepRepo(root: string, pattern: string, opts?: GrepOptions): SearchHit[];
 
+interface ShResult {
+    ok: boolean;
+    status: number | null;
+    stdout: string;
+    stderr: string;
+    missing: boolean;
+}
+declare function sh(cmd: string, args: string[], opts?: {
+    cwd?: string;
+    input?: string;
+    timeoutMs?: number;
+    env?: Record<string, string | undefined>;
+}): ShResult;
+declare function have(cmd: string): boolean;
+declare function slugify(input: string): string;
+declare function clip(s: string, max: number): string;
+declare function clipInline(s: string, max: number): string;
+declare function escapeRegExp(s: string): string;
+declare function foldText(s: string): string;
+declare function keywords(question: string): string[];
+declare function rankedKeywords(question: string): string[];
+declare function rrf<T>(lists: T[][], keyOf: (item: T) => string, k?: number): Map<string, number>;
+declare function subtokens(raw: string): string[];
+
+declare const FIELDS: readonly ["name", "path", "heading", "summary", "doc", "body"];
+type Field = (typeof FIELDS)[number];
+type RankMode = "graph" | "lexical";
 interface SearchOptions {
     limit?: number;
     fuzzy?: boolean;
+    rank?: RankMode;
+}
+/** A specific declaration a result matched, so a caller can jump straight to it. */
+interface SymbolHit {
+    name: string;
+    kind: string;
+    line: number;
 }
 interface SearchResult {
     file: string;
     score: number;
     matchedTerms: string[];
     topSymbols: string[];
+    matchedFields?: Field[];
+    line?: number;
+    symbolHits?: SymbolHit[];
     fuzzyTerms?: string[];
 }
-declare function subtokens(raw: string): string[];
+/**
+ * Rank the scanned files against a natural-language (or identifier) query.
+ * Pure and deterministic: same scan + query + options → the same results,
+ * byte-for-byte.
+ */
 declare function searchIndex(scan: RepoScan, query: string, opts?: SearchOptions): SearchResult[];
 
 declare const EMBED_VERSION = 1;
@@ -981,29 +1200,6 @@ declare function shortHash(s: string, n?: number): string;
 declare function byStr(a: string, b: string): number;
 declare function byKey<T>(keyOf: (x: T) => string): (a: T, b: T) => number;
 
-interface ShResult {
-    ok: boolean;
-    status: number | null;
-    stdout: string;
-    stderr: string;
-    missing: boolean;
-}
-declare function sh(cmd: string, args: string[], opts?: {
-    cwd?: string;
-    input?: string;
-    timeoutMs?: number;
-    env?: Record<string, string | undefined>;
-}): ShResult;
-declare function have(cmd: string): boolean;
-declare function slugify(input: string): string;
-declare function clip(s: string, max: number): string;
-declare function clipInline(s: string, max: number): string;
-declare function escapeRegExp(s: string): string;
-declare function foldText(s: string): string;
-declare function keywords(question: string): string[];
-declare function rankedKeywords(question: string): string[];
-declare function rrf<T>(lists: T[][], keyOf: (item: T) => string, k?: number): Map<string, number>;
-
 declare function runCli(rawArgv: string[]): Promise<void>;
 
-export { type ArchRule, type BuildIndexOptions, type BuiltinRule, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DeltaChange, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, EMBED_VERSION, ENGINE_VERSION, EXTRACTOR_VERSION, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type Hotspot, type Hunk, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, MARKDOWN_EXT, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolIndex, type SymbolMatch, type SymbolReferences, type TestMap, type Tier, type WalkOptions, type WalkResult, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolIndex, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, deleteMemory, deltaFor, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractSymbols, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, findDeadCode, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, neighborsOf, pagerankOf, parseGitignore, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readMemory, readPersistedIndex, readText, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, subtokens, symbolComplexity, symbolsInHunks, symbolsOverview, testsForModule, tierForPath, toCacheMap, tokenize, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, warmGrammars, wordpiece, workerCount, writeMemory };
+export { type ArchRule, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DeltaChange, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type HierarchyRef, type Hotspot, type Hunk, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, MARKDOWN_EXT, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TestMap, type Tier, type TypeHierarchyEntry, type WalkOptions, type WalkResult, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, deleteMemory, deltaFor, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, findDeadCode, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, neighborhood, neighborsOf, pagerankOf, parseGitignore, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readMemory, readPersistedIndex, readText, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, warmGrammars, wordpiece, workerCount, writeMemory };
