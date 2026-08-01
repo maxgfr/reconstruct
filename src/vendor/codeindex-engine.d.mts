@@ -1,6 +1,6 @@
-declare const ENGINE_VERSION = "2.22.0";
+declare const ENGINE_VERSION = "2.24.2";
 declare const SCHEMA_VERSION = 5;
-declare const EXTRACTOR_VERSION = 11;
+declare const EXTRACTOR_VERSION = 12;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
 type Tier = 0 | 1 | 2;
@@ -397,7 +397,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.22.0/grammars-2.22.0.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.24.2/grammars-2.24.2.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
