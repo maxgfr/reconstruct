@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.16.0](https://github.com/maxgfr/reconstruct/compare/v2.15.0...v2.16.0) (2026-08-02)
+
+
+### Features
+
+* **engine:** re-pin codeindex v2.26.0 ([0b4d005](https://github.com/maxgfr/reconstruct/commit/0b4d005db65f0ca0504d1e02b101dbb5dc0d35ef))
+
 # [2.15.0](https://github.com/maxgfr/reconstruct/compare/v2.14.0...v2.15.0) (2026-08-01)
 
 
