@@ -14,9 +14,9 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.26.0";
+    ENGINE_VERSION = "2.27.1";
     SCHEMA_VERSION = 5;
-    EXTRACTOR_VERSION = 12;
+    EXTRACTOR_VERSION = 13;
   }
 });
 
@@ -922,7 +922,18 @@ var init_common = __esm({
       ".scss": "scss",
       ".vue": "vue",
       ".svelte": "svelte",
-      ".astro": "astro"
+      ".astro": "astro",
+      // Extended-tier AST languages (src/ast/loader.ts EXT_GRAMMAR). Without an
+      // entry here `extToLang` answered "other", which `classify` reads as non-code
+      // — so a real scan never called extractCode for them and they extracted
+      // nothing, while the quality harness (which calls extractCode directly)
+      // published a perfect score. The grammar still arrives via `grammars pull`;
+      // absent it these fall back to the regex tier like any other language.
+      ".zig": "zig",
+      ".hcl": "hcl",
+      ".tf": "terraform",
+      ".tfvars": "terraform",
+      ".sol": "solidity"
     };
     REEXPORT_EXTS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
     MAX_REEXPORTS = 400;
@@ -1686,6 +1697,65 @@ function extractMarkdown(content) {
 var init_markdown = __esm({
   "src/extract/markdown.ts"() {
     "use strict";
+  }
+});
+
+// src/extract/literals.ts
+function isInterestingString(value) {
+  if (value.length < MIN_LITERAL_LEN || value.length > MAX_LITERAL_LEN) return false;
+  return HAS_SUBSTANCE.test(value);
+}
+function isInterestingNumber(raw) {
+  const v = raw.trim();
+  if (!v || v.length > MAX_LITERAL_LEN) return false;
+  if (TRIVIAL_NUMBERS.has(v)) return false;
+  return Number.isFinite(Number(v));
+}
+function unquote(text) {
+  let s = text;
+  const raw = /^(?:[rRbBuUfF]{1,2}|@|\$)?(?:#*)?(['"`])/.exec(s);
+  if (raw) {
+    const q = raw[1];
+    const start2 = s.indexOf(q);
+    const end = s.lastIndexOf(q);
+    if (end > start2) s = s.slice(start2 + 1, end);
+  }
+  return s;
+}
+var MAX_LITERAL_LEN, MIN_LITERAL_LEN, MAX_LITERALS, TRIVIAL_NUMBERS, HAS_SUBSTANCE, LiteralCollector;
+var init_literals = __esm({
+  "src/extract/literals.ts"() {
+    "use strict";
+    init_sort();
+    MAX_LITERAL_LEN = 80;
+    MIN_LITERAL_LEN = 2;
+    MAX_LITERALS = 256;
+    TRIVIAL_NUMBERS = /* @__PURE__ */ new Set(["0", "1", "-1", "2", "-2"]);
+    HAS_SUBSTANCE = /[\p{L}\p{N}]/u;
+    LiteralCollector = class {
+      seen = /* @__PURE__ */ new Set();
+      out = [];
+      get full() {
+        return this.out.length >= MAX_LITERALS;
+      }
+      add(kind, value, line) {
+        if (this.full) return;
+        if (kind === "string" && !isInterestingString(value)) return;
+        if (kind === "number" && !isInterestingNumber(value)) return;
+        if (kind === "regex" && !value) return;
+        const key = `${kind}\0${value}\0${line}`;
+        if (this.seen.has(key)) return;
+        this.seen.add(key);
+        this.out.push({ value, line, kind });
+      }
+      addString(text, line) {
+        this.add("string", unquote(text), line);
+      }
+      result() {
+        if (!this.out.length) return void 0;
+        return this.out.sort((a, b) => byStr(a.value, b.value) || a.line - b.line || byStr(a.kind, b.kind));
+      }
+    };
   }
 });
 
@@ -7059,6 +7129,9 @@ var init_doc = __esm({
 });
 
 // src/ast/extract.ts
+function isPlainString(node) {
+  return node.namedChildren.every((c2) => STRING_PART.test(c2.type));
+}
 function collectAll(root, spec, defNames, maxCalls, wantImports) {
   const identsFound = /* @__PURE__ */ new Set();
   const wantCalls = spec.calls !== void 0;
@@ -7080,6 +7153,7 @@ function collectAll(root, spec, defNames, maxCalls, wantImports) {
       termsFound.add(t);
     }
   };
+  const literals = new LiteralCollector();
   const wantNames = spec.imports?.import_statement !== void 0;
   const namesFound = /* @__PURE__ */ new Set();
   const wantRefs = wantImports && spec.imports !== void 0;
@@ -7101,8 +7175,14 @@ function collectAll(root, spec, defNames, maxCalls, wantImports) {
     }
     if (COMMENT_NODE.test(type)) {
       for (const line of node.text.split(/\r?\n/)) addTerms2(stripCommentMarkers(line));
-    } else if (kids.length === 0 && STRING_NODE.test(type) && node.endIndex - node.startIndex <= MAX_LITERAL_LEN) {
+    } else if (kids.length === 0 && STRING_NODE.test(type) && node.endIndex - node.startIndex <= MAX_LITERAL_LEN2) {
       addTerms2(node.text.replace(/^['"`]+|['"`]+$/g, ""));
+    }
+    if (!literals.full) {
+      const line = node.startPosition.row + 1;
+      if (STRING_NODE.test(type) && isPlainString(node)) literals.addString(node.text, line);
+      else if (kids.length === 0 && NUMBER_NODE.test(type)) literals.add("number", node.text.trim(), line);
+      else if (REGEX_NODE.test(type)) literals.add("regex", node.text, line);
     }
     if (wantCalls && !(spec.kindFrom?.[type] && spec.kindFrom[type](node)) && !spec.skipCall?.(node)) {
       const how = spec.calls[type];
@@ -7152,7 +7232,8 @@ function collectAll(root, spec, defNames, maxCalls, wantImports) {
     idents: [...identsFound].sort().slice(0, MAX_REF_IDENTS),
     calls: calls.slice(0, maxCalls),
     importedNames: [...namesFound].sort(byStr).slice(0, MAX_IMPORTED_NAMES),
-    terms: [...termsFound].sort(byStr)
+    terms: [...termsFound].sort(byStr),
+    literals: literals.result() ?? []
   };
 }
 function boundNames(pattern) {
@@ -7494,7 +7575,7 @@ function extractAst(rel2, ext, content, opts = {}) {
       for (const s of symbols) if (!s.exported && exportedNames.has(s.name)) s.exported = true;
     }
     const wantImports = opts.imports !== false;
-    const { refs, idents, calls, importedNames, terms } = collectAll(
+    const { refs, idents, calls, importedNames, terms, literals } = collectAll(
       root,
       spec,
       new Set(symbols.map((s) => s.name)),
@@ -7516,6 +7597,7 @@ function extractAst(rel2, ext, content, opts = {}) {
       importedNames,
       relations,
       terms,
+      literals,
       ...symbols.length >= maxSymbols ? { truncated: true } : {}
     };
   } catch {
@@ -7524,10 +7606,11 @@ function extractAst(rel2, ext, content, opts = {}) {
     tree?.delete();
   }
 }
-var MAX_REF_IDENTS, MAX_CALLS, MAX_IMPORTED_NAMES, MAX_SYMBOLS, MAX_RELATIONS, MAX_TERMS, MAX_LITERAL_LEN, MAX_FUNC_DEPTH, NESTED_TYPE_KINDS, ANON_DEFAULT_FN, ANON_DEFAULT_CLASS, REF_IDENT_TYPE, REF_IDENT_TEXT, COMMENT_NODE, STRING_NODE;
+var MAX_REF_IDENTS, MAX_CALLS, MAX_IMPORTED_NAMES, MAX_SYMBOLS, MAX_RELATIONS, MAX_TERMS, MAX_LITERAL_LEN2, MAX_FUNC_DEPTH, NESTED_TYPE_KINDS, ANON_DEFAULT_FN, ANON_DEFAULT_CLASS, REF_IDENT_TYPE, REF_IDENT_TEXT, COMMENT_NODE, STRING_NODE, NUMBER_NODE, REGEX_NODE, STRING_PART;
 var init_extract = __esm({
   "src/ast/extract.ts"() {
     "use strict";
+    init_literals();
     init_sort();
     init_loader();
     init_node();
@@ -7542,7 +7625,7 @@ var init_extract = __esm({
     MAX_SYMBOLS = 2e3;
     MAX_RELATIONS = 256;
     MAX_TERMS = 512;
-    MAX_LITERAL_LEN = 80;
+    MAX_LITERAL_LEN2 = 80;
     MAX_FUNC_DEPTH = 2;
     NESTED_TYPE_KINDS = /* @__PURE__ */ new Set(["class", "struct", "enum", "interface", "trait", "type", "record", "union"]);
     ANON_DEFAULT_FN = /* @__PURE__ */ new Set([
@@ -7558,6 +7641,9 @@ var init_extract = __esm({
     REF_IDENT_TEXT = /^[A-Za-z_]\w{4,}$/;
     COMMENT_NODE = /(^|_)comment$/;
     STRING_NODE = /(^|_)string(_literal)?$/;
+    NUMBER_NODE = /(^|_)(integer|float|number|decimal|numeric)(_literal)?$/;
+    REGEX_NODE = /(^|_)(regex|regular_expression)(_pattern|_literal)?$/;
+    STRING_PART = /(^|_)(fragment|content|escape_sequence|character)$/;
   }
 });
 
@@ -7807,10 +7893,43 @@ function collectTermsRegex(content) {
     }
     for (const m of line.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
       const body2 = m[2];
-      if (body2.length && body2.length <= MAX_LITERAL_LEN2) add(body2);
+      if (body2.length && body2.length <= MAX_LITERAL_LEN3) add(body2);
     }
   }
   return [...found].sort();
+}
+function collectLiteralsRegex(content) {
+  const literals = new LiteralCollector();
+  let inBlock = false;
+  let lineNo = 0;
+  for (const raw of content.split("\n")) {
+    lineNo++;
+    if (literals.full) break;
+    let line = raw;
+    if (inBlock) {
+      const close = line.indexOf("*/");
+      if (close === -1) continue;
+      inBlock = false;
+      line = line.slice(close + 2);
+    }
+    const open = line.indexOf("/*");
+    if (open !== -1) {
+      const close = line.indexOf("*/", open + 2);
+      if (close === -1) {
+        inBlock = true;
+        line = line.slice(0, open);
+      } else line = line.slice(0, open) + line.slice(close + 2);
+    }
+    const lineComment = /(^|\s)(\/\/|#|--)(.*)$/.exec(line);
+    if (lineComment) line = line.slice(0, lineComment.index);
+    for (const m of line.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+      literals.add("string", m[2], lineNo);
+    }
+    for (const m of line.replace(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g, " ").matchAll(/(?<![\w.])-?\d[\d_]*(?:\.\d+)?(?![\w.])/g)) {
+      literals.add("number", m[0].replace(/_/g, ""), lineNo);
+    }
+  }
+  return literals.result();
 }
 function extractCode(rel2, ext, content, opts = {}) {
   const ast = extractAst(rel2, ext, content, { maxCalls: opts.maxCallsPerFile, imports: false });
@@ -7818,6 +7937,11 @@ function extractCode(rel2, ext, content, opts = {}) {
   const symbols = raw.slice(0, MAX_FILE_SYMBOLS);
   const known = new Set(symbols.map((s) => s.name));
   const reexports = extractReexports(rel2, content, symbols).filter((s) => !known.has(s.name));
+  const refs = extractImports(ext, content);
+  const importSpecs = new Set(refs.map((r) => r.spec));
+  const literals = (ast ? ast.literals.length ? ast.literals : void 0 : collectLiteralsRegex(content))?.filter(
+    (l) => !(l.kind === "string" && importSpecs.has(l.value))
+  );
   return {
     symbols: [...symbols, ...reexports],
     // A re-export list that hit its own ceiling is truncated too — a barrel that
@@ -7825,7 +7949,7 @@ function extractCode(rel2, ext, content, opts = {}) {
     // exists to prevent.
     ...ast?.truncated || raw.length > symbols.length || reexports.length >= MAX_REEXPORTS ? { truncated: true } : {},
     summary: topDocComment(content),
-    refs: extractImports(ext, content),
+    refs,
     // pkg anchors namespace→source-root resolution: Java's `package`, C#'s
     // `namespace` (block or file-scoped). Both feed the same resolver pattern.
     pkg: ext === ".java" ? /^\s*package\s+([\w.]+)\s*;/m.exec(content)?.[1] : ext === ".cs" ? /^\s*(?:file-scoped\s+)?namespace\s+([\w.]+)/m.exec(content)?.[1] : void 0,
@@ -7840,13 +7964,15 @@ function extractCode(rel2, ext, content, opts = {}) {
     // The AST tier reads comments and literals structurally; without a grammar
     // the line scanner above still supplies a vocabulary, so search quality does
     // not silently collapse for a language with no wasm.
-    terms: ast ? ast.terms : collectTermsRegex(content)
+    terms: ast ? ast.terms : collectTermsRegex(content),
+    literals: literals?.length ? literals : void 0
   };
 }
-var MAX_FILE_SYMBOLS, JS_TS, PY, C_CPP, MAX_USE_EXPANSION, CALL_KEYWORDS, DEF_INTRODUCERS, MAX_TERMS2, MAX_LITERAL_LEN2;
+var MAX_FILE_SYMBOLS, JS_TS, PY, C_CPP, MAX_USE_EXPANSION, CALL_KEYWORDS, DEF_INTRODUCERS, MAX_TERMS2, MAX_LITERAL_LEN3;
 var init_code = __esm({
   "src/extract/code.ts"() {
     "use strict";
+    init_literals();
     init_registry();
     init_extract();
     init_common();
@@ -7895,7 +8021,51 @@ var init_code = __esm({
     ]);
     DEF_INTRODUCERS = /(?:\bfunction|\bdef|\bfunc|\bfun|\bfn|\bclass|\bsub|\bmacro|\bproc)\s*[*]?\s*$/;
     MAX_TERMS2 = 512;
-    MAX_LITERAL_LEN2 = 80;
+    MAX_LITERAL_LEN3 = 80;
+  }
+});
+
+// src/extract/config.ts
+function extractConfigLiterals(content) {
+  const literals = new LiteralCollector();
+  let lineNo = 0;
+  for (const raw of content.split("\n")) {
+    lineNo++;
+    if (literals.full) break;
+    const line = stripTrailingComment(raw);
+    for (const m of line.matchAll(QUOTED)) literals.add("string", m[2], lineNo);
+    const bare = UNQUOTED_SCALAR.exec(line);
+    if (bare) {
+      const v = bare[1].trim();
+      if (v && !/^[[{|>&*-]/.test(v) && !HAS_QUOTE.test(v)) literals.add("string", v, lineNo);
+    }
+    for (const m of line.replace(QUOTED, " ").matchAll(BARE_NUMBER)) {
+      literals.add("number", m[0].replace(/_/g, ""), lineNo);
+    }
+  }
+  return literals.result();
+}
+function stripTrailingComment(line) {
+  let inQuote;
+  for (let i2 = 0; i2 < line.length; i2++) {
+    const c2 = line[i2];
+    if (inQuote) {
+      if (c2 === "\\") i2++;
+      else if (c2 === inQuote) inQuote = void 0;
+    } else if (c2 === '"' || c2 === "'") inQuote = c2;
+    else if (c2 === "#") return line.slice(0, i2);
+  }
+  return line;
+}
+var QUOTED, HAS_QUOTE, BARE_NUMBER, UNQUOTED_SCALAR;
+var init_config = __esm({
+  "src/extract/config.ts"() {
+    "use strict";
+    init_literals();
+    QUOTED = /(['"])((?:\\.|(?!\1)[^\\])*)\1/g;
+    HAS_QUOTE = /(['"])((?:\\.|(?!\1)[^\\])*)\1/;
+    BARE_NUMBER = /(?<![\w.$-])-?\d[\d_]*(?:\.\d+)?(?![\w.$-])/g;
+    UNQUOTED_SCALAR = /^\s*[\w.$-]+\s*[:=]\s*([^#\n]+?)\s*$/;
   }
 });
 
@@ -8045,6 +8215,10 @@ function scanRepo(root, opts = {}) {
         record.truncated = code.truncated;
         record.relations = code.relations;
         record.terms = code.terms;
+        record.literals = code.literals;
+      } else if (kind === "config") {
+        record.title = basename(f.rel);
+        record.literals = extractConfigLiterals(content);
       } else {
         record.title = basename(f.rel);
       }
@@ -8084,6 +8258,7 @@ var init_scan = __esm({
     init_sort();
     init_markdown();
     init_code();
+    init_config();
   }
 });
 
@@ -11373,6 +11548,137 @@ var init_graph_json = __esm({
   }
 });
 
+// src/literals.ts
+function isDistinctive2(value, kind) {
+  if (kind !== "string") return true;
+  return value.length >= DISTINCTIVE_MIN_LEN || HAS_SEPARATOR.test(value);
+}
+function isFunctionValued(signature) {
+  if (!signature) return false;
+  for (let i2 = 0; i2 < signature.length; i2++) {
+    if (signature[i2] !== "=") continue;
+    if (signature[i2 + 1] === "=" || signature[i2 + 1] === ">") continue;
+    if ("=!<>+-*/%&|^".includes(signature[i2 - 1] ?? "")) continue;
+    return FUNCTION_RHS.test(signature.slice(i2 + 1));
+  }
+  return false;
+}
+function holderFor(symbols, line) {
+  let best;
+  for (const s of symbols) {
+    if (!HOLDER_KINDS.has(s.kind)) continue;
+    if (isFunctionValued(s.signature)) continue;
+    const end = s.endLine ?? s.line;
+    if (end - s.line > MAX_HOLDER_SPAN) continue;
+    if (line < s.line || line > end) continue;
+    if (!best || s.line > best.line) best = s;
+  }
+  return best;
+}
+function findLiteralDuplications(scan2, opts = {}) {
+  const minFiles = opts.minFiles ?? DEFAULTS.minFiles;
+  const minCount = opts.minCount ?? DEFAULTS.minCount;
+  const groups = /* @__PURE__ */ new Map();
+  for (const f of scan2.files) {
+    if (!f.literals?.length) continue;
+    if (!opts.includeTests && isTestPath(f.rel)) continue;
+    for (const lit of f.literals) {
+      if (opts.kinds && !opts.kinds.has(lit.kind)) continue;
+      if (!isDistinctive2(lit.value, lit.kind)) continue;
+      const key = `${lit.kind}\0${lit.value}`;
+      let g = groups.get(key);
+      if (!g) groups.set(key, g = { value: lit.value, kind: lit.kind, sites: [] });
+      const holder = holderFor(f.symbols, lit.line);
+      g.sites.push(
+        holder ? { file: f.rel, line: lit.line, holder: holder.name, holderExported: holder.exported } : { file: f.rel, line: lit.line }
+      );
+    }
+  }
+  const duplications = [];
+  for (const g of groups.values()) {
+    const files = new Set(g.sites.map((s) => s.file));
+    if (files.size < minFiles || g.sites.length < minCount) continue;
+    const holders = g.sites.filter((s) => s.holder);
+    const literals = g.sites.filter((s) => !s.holder);
+    const distinctHolderNames = new Set(holders.map((h) => h.holder));
+    const distinctHolders = new Set(holders.map((h) => `${h.file}\0${h.holder}`));
+    let tier = distinctHolders.size >= 2 ? "competing" : holders.length > 0 ? "bypassed" : "uncentralized";
+    if (g.kind === "number") {
+      if (distinctHolderNames.size !== 1 || literals.length === 0) continue;
+      tier = "bypassed";
+    }
+    if (tier === "bypassed" && literals.length === 0) continue;
+    duplications.push({
+      value: g.value,
+      kind: g.kind,
+      tier,
+      holders: holders.sort(siteOrder),
+      literals: literals.sort(siteOrder),
+      files: files.size,
+      count: g.sites.length
+    });
+  }
+  duplications.sort(
+    (a, b) => tierRank(a.tier) - tierRank(b.tier) || b.files - a.files || b.count - a.count || byStr(a.value, b.value)
+  );
+  return { duplications, families: groupFamilies(duplications) };
+}
+function siteOrder(a, b) {
+  return byStr(a.file, b.file) || a.line - b.line;
+}
+function tierRank(t) {
+  return t === "competing" ? 0 : t === "bypassed" ? 1 : 2;
+}
+function groupFamilies(dups) {
+  const byPrefix = /* @__PURE__ */ new Map();
+  for (const d of dups) {
+    if (d.kind !== "string" || !PATH_LIKE.test(d.value)) continue;
+    const prefix = pathPrefix(d.value);
+    if (!prefix) continue;
+    const list = byPrefix.get(prefix);
+    if (list) list.push(d);
+    else byPrefix.set(prefix, [d]);
+  }
+  const families = [];
+  for (const [prefix, members] of byPrefix) {
+    if (members.length < FAMILY_MIN_MEMBERS) continue;
+    const files = /* @__PURE__ */ new Set();
+    let count = 0;
+    for (const m of members) {
+      for (const s of [...m.holders, ...m.literals]) files.add(s.file);
+      count += m.count;
+    }
+    families.push({ prefix, members, files: files.size, count });
+  }
+  families.sort((a, b) => b.files - a.files || b.count - a.count || byStr(a.prefix, b.prefix));
+  return families;
+}
+function pathPrefix(value) {
+  const body2 = value.startsWith("/") ? value.slice(1) : value;
+  const cut = body2.search(/[/:]/);
+  if (cut <= 0) return void 0;
+  const prefix = (value.startsWith("/") ? "/" : "") + body2.slice(0, cut);
+  return prefix.length >= FAMILY_MIN_PREFIX ? prefix : void 0;
+}
+var LITERAL_DUPLICATION_CAP, DEFAULTS, HOLDER_KINDS, MAX_HOLDER_SPAN, DISTINCTIVE_MIN_LEN, HAS_SEPARATOR, PATH_LIKE, FAMILY_MIN_MEMBERS, FAMILY_MIN_PREFIX, FUNCTION_RHS;
+var init_literals2 = __esm({
+  "src/literals.ts"() {
+    "use strict";
+    init_tests_map();
+    init_sort();
+    LITERAL_DUPLICATION_CAP = 24;
+    DEFAULTS = { minFiles: 2, minCount: 3 };
+    HOLDER_KINDS = /* @__PURE__ */ new Set(["const", "constant", "variable", "enum", "enumerator", "property", "field", "static"]);
+    MAX_HOLDER_SPAN = 12;
+    DISTINCTIVE_MIN_LEN = 6;
+    HAS_SEPARATOR = /[/:._-]/;
+    PATH_LIKE = /^[/@a-z0-9][\w./:@-]*$/i;
+    FAMILY_MIN_MEMBERS = 2;
+    FAMILY_MIN_PREFIX = 4;
+    FUNCTION_RHS = /^\s*(?:async\b|function\b|\(|[A-Za-z_$][\w$]*\s*=>)/;
+  }
+});
+
 // src/pipeline.ts
 function buildIndexArtifacts(repo, opts = {}) {
   return buildArtifactsFromScan(scanRepo(repo, opts), opts);
@@ -11397,6 +11703,8 @@ function buildArtifactsFromScan(scan2, opts = {}) {
   }
   const surprises = computeSurprises(graph);
   if (surprises.length) graph.surprises = surprises;
+  const { duplications } = findLiteralDuplications(scan2);
+  if (duplications.length) graph.literalDuplications = duplications.slice(0, LITERAL_DUPLICATION_CAP);
   const symbols = buildSymbolIndex(scan2, symbolRefsFor(scan2), opts.meta?.schemaVersion);
   return { scan: scan2, graph, symbols };
 }
@@ -11411,6 +11719,7 @@ var init_pipeline = __esm({
     init_centrality();
     init_tests_map();
     init_surprise();
+    init_literals2();
     init_symbols_json();
   }
 });
@@ -11907,8 +12216,14 @@ function parseRules(input) {
       throw new Error(`${at} (${r.name}): \`comment\` must be a string`);
     if (r.builtin !== void 0) {
       if (!BUILTINS.has(r.builtin))
-        throw new Error(`${at} (${r.name}): \`builtin\` must be "cycles" or "orphans"`);
-      return { name: r.name, builtin: r.builtin, severity: r.severity, comment: r.comment };
+        throw new Error(`${at} (${r.name}): \`builtin\` must be "cycles", "orphans" or "literals"`);
+      return {
+        name: r.name,
+        builtin: r.builtin,
+        severity: r.severity,
+        comment: r.comment,
+        ...r.tiers !== void 0 ? { tiers: r.tiers } : {}
+      };
     }
     const glob = (field) => {
       const v = r[field];
@@ -12017,6 +12332,17 @@ function checkRules(graph, rules) {
         for (const c2 of findImportCycles(graph)) {
           emit2(rule, { from: c2.start, to: c2.path.join(" -> "), kind: "cycle" });
         }
+      } else if (rule.builtin === "literals") {
+        const wanted = new Set(rule.tiers?.length ? rule.tiers : GATED_TIERS);
+        for (const d of graph.literalDuplications ?? []) {
+          if (!wanted.has(d.tier)) continue;
+          const origin = d.holders[0] ?? d.literals[0];
+          emit2(rule, {
+            from: `${origin.file}:${origin.line}`,
+            to: `${d.tier} ${JSON.stringify(d.value)} (${d.count} sites, ${d.files} files)`,
+            kind: "literal"
+          });
+        }
       } else {
         for (const f of graph.files) {
           if (f.fileKind !== "code" || f.degIn !== 0 || f.degOut !== 0) continue;
@@ -12040,7 +12366,7 @@ function checkRules(graph, rules) {
   out2.sort((a, b) => byStr(a.rule, b.rule) || byStr(a.from, b.from) || byStr(a.to, b.to) || byStr(a.kind, b.kind));
   return out2;
 }
-var EDGE_KINDS, SEVERITIES, BUILTINS, ENTRYPOINT_STEMS;
+var EDGE_KINDS, SEVERITIES, BUILTINS, GATED_TIERS, ENTRYPOINT_STEMS;
 var init_rules = __esm({
   "src/rules.ts"() {
     "use strict";
@@ -12048,7 +12374,8 @@ var init_rules = __esm({
     init_sort();
     EDGE_KINDS = /* @__PURE__ */ new Set(["contains", "doc-link", "import", "call", "use", "mention"]);
     SEVERITIES = /* @__PURE__ */ new Set(["error", "warn"]);
-    BUILTINS = /* @__PURE__ */ new Set(["cycles", "orphans"]);
+    BUILTINS = /* @__PURE__ */ new Set(["cycles", "orphans", "literals"]);
+    GATED_TIERS = ["competing", "bypassed"];
     ENTRYPOINT_STEMS = /* @__PURE__ */ new Set([
       "index",
       "main",
@@ -12596,6 +12923,22 @@ var init_tools = __esm({
         }
       },
       {
+        name: "duplicated_literals",
+        description: "Values with no single source of truth: one literal written out across many files. Three labeled tiers \u2014 'competing' (two or more exported constants hold the same value), 'bypassed' (a constant holds it and other files rewrite it anyway), 'uncentralized' (nothing holds it). Path-like values are also grouped into namespace families, so a whole route space reports once instead of once per route. Covers config files (JSON/YAML/TOML) as well as code, which is where the dangerous cases live: a threshold declared in TypeScript and again in a rules JSON is checked by no compiler. Use it to answer 'what breaks if this value changes' and 'is there already a helper for this'.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            ...repoProp,
+            ...scopeProps,
+            minFiles: { type: "number", description: "Distinct files a value must span (default 2)" },
+            minCount: { type: "number", description: "Total occurrences required (default 3)" },
+            includeTests: { type: "boolean", description: "Count test files too (default false)" },
+            limit: { type: "number", description: "Cap duplications (default: all)" }
+          },
+          required: ["repo"]
+        }
+      },
+      {
         name: "complexity",
         description: "Cyclomatic-complexity estimates (branch-token counting over AST line spans), most-complex first. Pass `file` for one file's symbols, omit for the repo-wide top. Combine with hotspots: the `risk` field of this tool's sibling ranks complexity \xD7 churn.",
         inputSchema: {
@@ -12804,6 +13147,14 @@ var init_tools = __esm({
         properties: { ok: { type: "boolean" }, couplings: { type: "array", items: anyObj } },
         required: ["ok", "couplings"]
       },
+      duplicated_literals: {
+        type: "object",
+        properties: {
+          duplications: { type: "array", items: anyObj },
+          families: { type: "array", items: anyObj }
+        },
+        required: ["duplications", "families"]
+      },
       embed_status: {
         type: "object",
         properties: {
@@ -12859,6 +13210,7 @@ var init_tools = __esm({
       list_memories: { title: "List memories" },
       delete_memory: { title: "Delete memory", write: true, destructive: true, idempotent: true },
       dead_code: { title: "Dead-code candidates" },
+      duplicated_literals: { title: "Values with no single source of truth" },
       complexity: { title: "Complexity" },
       mermaid: { title: "Mermaid module diagram" },
       grep: { title: "Grep file contents" },
@@ -13145,6 +13497,26 @@ async function callTool(name2, args2, defaultRepo) {
     if (limit === void 0 || all.length <= limit) return JSON.stringify(all, null, 2);
     return JSON.stringify({ total: all.length, shown: limit, truncated: true, candidates: all.slice(0, limit) }, null, 2);
   }
+  if (name2 === "duplicated_literals") {
+    const report = findLiteralDuplications(getScan(repo, scanOpts, walked), {
+      minFiles: num(args2.minFiles),
+      minCount: num(args2.minCount),
+      includeTests: args2.includeTests === true
+    });
+    const limit = num(args2.limit);
+    if (limit === void 0 || report.duplications.length <= limit) return JSON.stringify(report, null, 2);
+    return JSON.stringify(
+      {
+        total: report.duplications.length,
+        shown: limit,
+        truncated: true,
+        duplications: report.duplications.slice(0, limit),
+        families: report.families
+      },
+      null,
+      2
+    );
+  }
   if (name2 === "complexity") {
     const scan2 = getScan(repo, scanOpts, walked);
     if (args2.risk === true) {
@@ -13382,6 +13754,7 @@ var init_mcp = __esm({
     init_coupling();
     init_repomap();
     init_deadcode();
+    init_literals2();
     init_complexity();
     init_viz();
     init_query();
@@ -13713,7 +14086,16 @@ var CODE_EXTS = /* @__PURE__ */ new Set([
   ".sh",
   ".bash",
   ".zig",
-  ".elm"
+  ".elm",
+  ".hcl",
+  ".tf",
+  ".tfvars",
+  ".sol",
+  ".hh",
+  ".sc",
+  ".pyi",
+  ".rake",
+  ".cxx"
 ]);
 var STYLE_EXTS = /* @__PURE__ */ new Set([".css", ".scss", ".sass", ".less", ".styl", ".pcss"]);
 var DOC_EXTS = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
@@ -14400,6 +14782,7 @@ init_rules();
 init_coupling();
 init_repomap();
 init_deadcode();
+init_literals2();
 init_complexity();
 init_viz();
 
@@ -14813,6 +15196,7 @@ init_grep();
 init_coupling();
 init_repomap();
 init_deadcode();
+init_literals2();
 init_complexity();
 init_viz();
 init_bm25();
@@ -14865,12 +15249,21 @@ Commands:
                                  asset into the shared cache (sha256-verified,
                                  atomic). Override the source with
                                  CODEINDEX_GRAMMARS_URL
-  rules       Architecture rules (forbidden edges, cycles, orphans) validated
-              against the link-graph: --config <codeindex.rules.json>; exits 1
-              on any error-severity violation (a CI gate)
+  rules       Architecture rules (forbidden edges, cycles, orphans, literals)
+              validated against the link-graph: --config <codeindex.rules.json>;
+              exits 1 on any error-severity violation (a CI gate)
   repomap     Token-budgeted map of the highest-PageRank files (--budget-tokens)
   hotspots    Churn \xD7 size ranking of the files where work concentrates (JSON)
   coupling    Change coupling: files that change together (JSON; --since <ref>)
+  literals    Values with no single source of truth: one literal written out
+              across many files, in three labeled tiers \u2014 'competing' (two or
+              more exported constants hold it), 'bypassed' (a constant holds
+              it and other files rewrite it anyway), 'uncentralized' (nothing
+              holds it). Groups path-like values into namespace families so a
+              whole route space reports once, not forty times. Reads code AND
+              config files (JSON/YAML/TOML), because the duplications that hurt
+              are the ones crossing a language boundary no compiler checks.
+              (--min-files, --min-count, --include-tests)
   deadcode    Dead-code candidates in two labeled tiers: 'unreferenced' (no
               call site binds AND nothing references the name) and 'uncalled'
               (referenced \u2014 re-export, type position \u2014 but never called)
@@ -14891,7 +15284,7 @@ Commands:
               and exits 0, or exits 1 when it has no opinion (run the original).
               Deliberately conservative \u2014 any shell metacharacter or unknown
               flag refuses the rewrite
-  mcp         Run as an MCP server over stdio (26 tools: scan_summary, graph,
+  mcp         Run as an MCP server over stdio (30 tools: scan_summary, graph,
               symbols, callers, workspaces, churn, symbols_overview,
               find_symbol, find_references, repo_map, hotspots, coupling,
               dead_code, complexity, mermaid, grep, search, embed_status,
@@ -14945,6 +15338,10 @@ Flags (accepted before OR after the subcommand: '--repo X scan' and
                       each site corroborated|unique-name
   --ignore-case       \`grep\`: case-insensitive matching
   --max-hits <n>      \`grep\`: cap returned hits (default 200)
+  --min-files <n>     \`literals\`: distinct files a value must span (default 2)
+  --min-count <n>     \`literals\`: total occurrences required (default 3)
+  --include-tests     \`literals\`: count test files too. Off by default \u2014 a test
+                      restating a value is usually asserting it deliberately
 `;
 function parseFlags(args2) {
   const flags2 = { repo: process.cwd(), include: [], exclude: [], gitignore: true, ignoreDirs: [], noAst: false, fuzzy: true, semantic: false };
@@ -14977,6 +15374,9 @@ function parseFlags(args2) {
     else if (a === "--ignore-case") flags2.ignoreCase = true;
     else if (a === "--max-hits") flags2.maxHits = num2();
     else if (a === "--budget-tokens") flags2.budgetTokens = num2();
+    else if (a === "--min-files") flags2.minFiles = num2();
+    else if (a === "--min-count") flags2.minCount = num2();
+    else if (a === "--include-tests") flags2.includeTests = true;
     else if (a === "--no-ast") flags2.noAst = true;
     else if (a === "--index") flags2.indexDir = next();
     else if (a === "--no-index-cache") flags2.noIndexCache = true;
@@ -15070,6 +15470,8 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "--max-calls",
   "--max-hits",
   "--budget-tokens",
+  "--min-files",
+  "--min-count",
   "--since",
   "--config",
   "--limit",
@@ -15501,6 +15903,13 @@ async function runCli(rawArgv) {
     emit(JSON.stringify({ ok, couplings }, null, 2) + "\n", flags2.out);
   } else if (cmd === "deadcode") {
     emit(JSON.stringify(findDeadCode(readScan()), null, 2) + "\n", flags2.out);
+  } else if (cmd === "literals") {
+    const report = findLiteralDuplications(readScan(), {
+      minFiles: flags2.minFiles,
+      minCount: flags2.minCount,
+      includeTests: flags2.includeTests
+    });
+    emit(JSON.stringify(report, null, 2) + "\n", flags2.out);
   } else if (cmd === "complexity") {
     const scan2 = readScan();
     emit(JSON.stringify(symbolComplexity(scan2, flags2.positional), null, 2) + "\n", flags2.out);
@@ -15625,6 +16034,7 @@ export {
   fetchExpectedSha256,
   fetchGrammarsTarball,
   findDeadCode,
+  findLiteralDuplications,
   findReferences,
   findSymbol,
   foldText,
