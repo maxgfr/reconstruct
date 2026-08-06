@@ -18911,7 +18911,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
 }
 
 // src/types.ts
-var VERSION = "2.16.0";
+var VERSION = "2.17.0";
 
 // src/analyze.ts
 var ROUTE_BEARING_FRAMEWORKS = /* @__PURE__ */ new Set([
