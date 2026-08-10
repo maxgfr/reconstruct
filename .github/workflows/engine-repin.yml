@@ -159,18 +159,18 @@ jobs:
         run: |
           set -euo pipefail
           RUN="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          gh label create engine-repin --color B60205 --description "The automated engine re-pin needs a human" --force >/dev/null 2>&1 || true
+          gh label create engine-repin --color B60205 --description "This automated pin needs a human" --force >/dev/null 2>&1 || true
           NUM=$(gh issue list --state open --label engine-repin --limit 1 --json number --jq '.[0].number // empty')
           # Built with printf rather than a multi-line literal: this file's own
           # indentation would otherwise be carried into the body and render the
           # whole message as a code block.
           BODY=$(printf '%s\n\n%s\n' \
-            "The daily engine re-pin failed: ${RUN}" \
+            "The daily engine-repin run failed: ${RUN}" \
             "Nothing was pushed, so main is not broken — the pin is simply frozen where it was, and this repo stays behind the engine until someone looks.")
           if [ -n "$NUM" ]; then
             gh issue comment "$NUM" --body "$BODY"
           else
-            gh issue create --title "Engine re-pin is failing" --label engine-repin --body "$BODY"
+            gh issue create --title "${{ github.workflow }} is failing" --label engine-repin --body "$BODY"
           fi
 
       - name: Close the tracking issue once a run is green
