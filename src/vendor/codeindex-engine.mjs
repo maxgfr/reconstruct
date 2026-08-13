@@ -14,7 +14,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.27.1";
+    ENGINE_VERSION = "2.28.0";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 13;
   }
@@ -82,6 +82,14 @@ function keywords(question) {
     if (seen.has(lower)) continue;
     seen.add(lower);
     out2.push(raw);
+  }
+  return out2;
+}
+function droppedKeywords(question) {
+  const out2 = [];
+  for (const raw of foldText(question).split(/[^A-Za-z0-9_]+/)) {
+    if (!raw) continue;
+    if (raw.length < 2 || STOPWORDS.has(raw.toLowerCase())) out2.push(raw);
   }
   return out2;
 }
@@ -1759,7 +1767,7 @@ var init_literals = __esm({
   }
 });
 
-// node_modules/.pnpm/web-tree-sitter@0.26.11/node_modules/web-tree-sitter/web-tree-sitter.js
+// node_modules/.pnpm/web-tree-sitter@0.26.12/node_modules/web-tree-sitter/web-tree-sitter.js
 function assertInternal(x) {
   if (x !== INTERNAL) throw new Error("Illegal constructor");
 }
@@ -1967,13 +1975,13 @@ async function Module2(moduleArg = {}) {
       }
       readAsync = /* @__PURE__ */ __name(async (url) => {
         if (isFileURI(url)) {
-          return new Promise((resolve3, reject) => {
+          return new Promise((resolve5, reject) => {
             var xhr = new XMLHttpRequest();
             xhr.open("GET", url, true);
             xhr.responseType = "arraybuffer";
             xhr.onload = () => {
               if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
-                resolve3(xhr.response);
+                resolve5(xhr.response);
                 return;
               }
               reject(xhr.status);
@@ -2169,9 +2177,9 @@ async function Module2(moduleArg = {}) {
     __name(receiveInstantiationResult, "receiveInstantiationResult");
     var info2 = getWasmImports();
     if (Module["instantiateWasm"]) {
-      return new Promise((resolve3, reject) => {
+      return new Promise((resolve5, reject) => {
         Module["instantiateWasm"](info2, (mod, inst) => {
-          resolve3(receiveInstance(mod, inst));
+          resolve5(receiveInstance(mod, inst));
         });
       });
     }
@@ -3502,8 +3510,8 @@ async function Module2(moduleArg = {}) {
   if (runtimeInitialized) {
     moduleRtn = Module;
   } else {
-    moduleRtn = new Promise((resolve3, reject) => {
-      readyPromiseResolve = resolve3;
+    moduleRtn = new Promise((resolve5, reject) => {
+      readyPromiseResolve = resolve5;
       readyPromiseReject = reject;
     });
   }
@@ -3687,7 +3695,7 @@ function parsePattern(index, stepType, stepValueId, captureNames, stringValues, 
 }
 var __defProp2, __name, Edit, SIZE_OF_SHORT, SIZE_OF_INT, SIZE_OF_CURSOR, SIZE_OF_NODE, SIZE_OF_POINT, SIZE_OF_RANGE, ZERO_POINT, INTERNAL, C, LookaheadIterator, Tree, TreeCursor, Node, LANGUAGE_FUNCTION_REGEX, Language, web_tree_sitter_default, Module3, TRANSFER_BUFFER, LANGUAGE_VERSION, MIN_COMPATIBLE_VERSION, Parser, PREDICATE_STEP_TYPE_CAPTURE, PREDICATE_STEP_TYPE_STRING, QUERY_WORD_REGEX, CaptureQuantifier, isCaptureStep, isStringStep, QueryErrorKind, QueryError, Query;
 var init_web_tree_sitter = __esm({
-  "node_modules/.pnpm/web-tree-sitter@0.26.11/node_modules/web-tree-sitter/web-tree-sitter.js"() {
+  "node_modules/.pnpm/web-tree-sitter@0.26.12/node_modules/web-tree-sitter/web-tree-sitter.js"() {
     "use strict";
     __defProp2 = Object.defineProperty;
     __name = (target, value) => __defProp2(target, "name", { value, configurable: true });
@@ -9849,6 +9857,27 @@ function buildTrigramIndex(docs) {
   return index;
 }
 function searchIndex(scan2, query, opts = {}) {
+  return runSearch(scan2, query, opts).results;
+}
+function explainQuery(scan2, query, opts = {}) {
+  return runSearch(scan2, query, opts);
+}
+function emptyExplanation(query, verdict, note) {
+  return {
+    results: [],
+    explain: {
+      query,
+      terms: [],
+      droppedStopwords: droppedKeywords(query),
+      unresolvedTerms: [],
+      verdict,
+      note,
+      bridgedOnlyResults: 0,
+      resultCount: 0
+    }
+  };
+}
+function runSearch(scan2, query, opts = {}) {
   const terms = [];
   const seen = /* @__PURE__ */ new Set();
   for (const kw of keywords(query)) {
@@ -9858,11 +9887,18 @@ function searchIndex(scan2, query, opts = {}) {
       terms.push(t);
     }
   }
-  if (!terms.length) return [];
+  if (!terms.length) {
+    const dropped = droppedKeywords(query);
+    return emptyExplanation(
+      query,
+      "none",
+      dropped.length ? `Nothing was searched for: every token in this query (${dropped.join(", ")}) is a stopword or too short to index. Search with the identifiers or domain words you are actually looking for.` : "Nothing was searched for: the query carried no indexable token."
+    );
+  }
   const queryWantsTests = terms.some((t) => TEST_INTENT.test(t));
   const docs = bm25DocsFor(scan2);
   const n = docs.length;
-  if (!n) return [];
+  if (!n) return emptyExplanation(query, "none", "This index contains no files.");
   const avgLen = {};
   for (const f of FIELDS) {
     let total = 0;
@@ -9924,7 +9960,7 @@ function searchIndex(scan2, query, opts = {}) {
     const matchedFields = /* @__PURE__ */ new Set();
     const symbolTerms = /* @__PURE__ */ new Set();
     const fuzzyHit = /* @__PURE__ */ new Set();
-    let exact = false;
+    let exactNameHit = false;
     const weightedTf = (term) => {
       let wtf = 0;
       for (const f of FIELDS) {
@@ -9942,7 +9978,7 @@ function searchIndex(scan2, query, opts = {}) {
       if (wtf > 0) {
         matched.push(t);
         symbolTerms.add(t);
-        if (d.exactNames.has(t)) exact = true;
+        if (d.exactNames.has(t)) exactNameHit = true;
         score += idfOf(df.get(t)) * (wtf / (K1 + wtf));
         continue;
       }
@@ -9955,7 +9991,7 @@ function searchIndex(scan2, query, opts = {}) {
       }
     }
     if (!matched.length && !fuzzyHit.size) continue;
-    if (exact) score *= EXACT_NAME_BOOST;
+    if (exactNameHit) score *= EXACT_NAME_BOOST;
     if (d.isTest && !queryWantsTests) score *= TEST_DEMOTION;
     if (prior) {
       score *= 1 + 0.35 * Math.log1p(prior.get(d.file) ?? 0);
@@ -9979,10 +10015,60 @@ function searchIndex(scan2, query, opts = {}) {
       result.line = Math.min(...hits.map((h) => h.line));
     }
     if (fuzzyHit.size) result.fuzzyTerms = [...fuzzyHit].sort(byStr);
+    if (!matched.length) result.bridgedOnly = true;
     results.push(result);
   }
   results.sort((a, b) => b.score - a.score || byStr(a.file, b.file));
-  return results.slice(0, opts.limit ?? DEFAULT_LIMIT);
+  const kept = (opts.exact ? results.filter((r) => !r.bridgedOnly) : results).slice(0, opts.limit ?? DEFAULT_LIMIT);
+  return { results: kept, explain: explainOf(query, terms, df, fuzzyCandidates, kept) };
+}
+function explainOf(query, terms, df, fuzzyCandidates, kept) {
+  const diagnostics = terms.map((term) => {
+    const frequency = df.get(term) ?? 0;
+    const candidates = frequency === 0 ? fuzzyCandidates.get(term) ?? [] : [];
+    if (!candidates.length) return { term, df: frequency };
+    const via = candidates[0].dice === STEM_WEIGHT ? "stem" : "trigram";
+    return { term, df: frequency, bridge: { via, to: candidates.map((c2) => c2.term), dice: candidates[0].dice } };
+  });
+  const unresolvedTerms = diagnostics.filter((d) => d.df === 0 && !d.bridge).map((d) => d.term).sort(byStr);
+  const wholeIdentifier = !/\s/.test(query.trim()) && terms.length ? { term: terms[0], df: df.get(terms[0]) ?? 0 } : void 0;
+  const bridgedOnlyResults = kept.filter((r) => r.bridgedOnly).length;
+  const allBridged = kept.length > 0 && bridgedOnlyResults === kept.length;
+  const missingIdentifier = wholeIdentifier?.df === 0;
+  const verdict = !kept.length ? "none" : missingIdentifier || allBridged ? "weak" : "match";
+  const explain = {
+    query,
+    terms: diagnostics,
+    droppedStopwords: droppedKeywords(query),
+    unresolvedTerms,
+    ...wholeIdentifier ? { wholeIdentifier } : {},
+    verdict,
+    bridgedOnlyResults,
+    resultCount: kept.length
+  };
+  const note = noteFor(explain, missingIdentifier, allBridged);
+  if (note) explain.note = note;
+  return explain;
+}
+function noteFor(explain, missingIdentifier, allBridged) {
+  const { verdict, wholeIdentifier, resultCount, terms } = explain;
+  if (verdict === "match") return void 0;
+  if (!resultCount) {
+    return explain.unresolvedTerms.length ? `No file matches. ${explain.unresolvedTerms.length === 1 ? "The term" : "The terms"} ${explain.unresolvedTerms.join(", ")} appear nowhere in this index.` : "No file matches this query.";
+  }
+  if (missingIdentifier && wholeIdentifier) {
+    const parts2 = terms.filter((t) => t.term !== wholeIdentifier.term && t.df > 0).map((t) => t.term).join(", ");
+    const near = terms.find((t) => t.term === wholeIdentifier.term)?.bridge?.to ?? [];
+    const because = parts2 ? ` The ${resultCount} result${resultCount === 1 ? "" : "s"} below match only its parts (${parts2}).` : "";
+    const suggestion = near.length ? ` Closest indexed name${near.length === 1 ? "" : "s"}: ${near.join(", ")}.` : "";
+    return `No file in this index defines or mentions "${wholeIdentifier.term}".${because}${suggestion} If you expected it here, check you are indexing the right branch or commit.`;
+  }
+  if (allBridged) {
+    const bridged = terms.filter((t) => t.bridge);
+    const spelled = bridged.map((t) => `"${t.term}" \u2192 ${t.bridge.to.join(", ")}`).join("; ");
+    return `Nothing matched verbatim. Every result below came from a near match: ${spelled}. Re-run with --exact to see only literal matches.`;
+  }
+  return void 0;
 }
 var K1, DEFAULT_LIMIT, TOP_SYMBOLS, FUZZY_DICE_THRESHOLD, FUZZY_CAP, STEM_WEIGHT, FIELDS, FIELD_WEIGHT, FIELD_B, EXACT_NAME_BOOST, TEST_DEMOTION, TEST_INTENT;
 var init_bm25 = __esm({
@@ -10517,6 +10603,15 @@ function findSymbol(scan2, namePath, opts = {}) {
       if (!content) continue;
       m.body = content.split("\n").slice(m.line - 1, end).join("\n");
     }
+  }
+  if (opts.concise) {
+    return capped.map((m) => ({
+      name: m.name,
+      kind: m.kind,
+      file: m.file,
+      line: m.line,
+      ...m.body !== void 0 ? { body: m.body } : {}
+    }));
   }
   return capped;
 }
@@ -12193,6 +12288,722 @@ var init_endpoint = __esm({
   }
 });
 
+// src/repomap.ts
+function renderRepoMap(scan2, graph, opts = {}) {
+  const budgetChars = (opts.budgetTokens ?? 1024) * CHARS_PER_TOKEN;
+  const maxSymbols = opts.maxSymbolsPerFile ?? 8;
+  const ranked = [...graph.files].filter((f) => f.fileKind === "code").sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0) || b.symbols - a.symbols || byStr(a.rel, b.rel));
+  const records = new Map(scan2.files.map((f) => [f.rel, f]));
+  const header = `# repo map \u2014 ${graph.fileCount} files
+`;
+  let out2 = header;
+  let files = 0;
+  for (const node of ranked) {
+    const rec = records.get(node.rel);
+    if (!rec) continue;
+    const symbols = [...rec.symbols].filter((s) => s.kind !== "reexport" && s.kind !== "reexport-all").sort((a, b) => Number(b.exported) - Number(a.exported) || a.line - b.line).slice(0, maxSymbols);
+    let block = `
+${node.rel}:
+`;
+    for (const s of symbols) {
+      const sig = (s.signature ?? `${s.kind} ${s.name}`).replace(/\s+/g, " ").trim().slice(0, 120);
+      block += `  ${s.line}: ${sig}
+`;
+    }
+    if (out2.length + block.length > budgetChars) break;
+    out2 += block;
+    files++;
+  }
+  return `${out2}
+(${files} of ${ranked.length} code files shown, ~${Math.ceil(out2.length / CHARS_PER_TOKEN)} tokens)
+`;
+}
+var CHARS_PER_TOKEN;
+var init_repomap = __esm({
+  "src/repomap.ts"() {
+    "use strict";
+    init_sort();
+    CHARS_PER_TOKEN = 4;
+  }
+});
+
+// src/coupling.ts
+function changeCoupling(dir, opts = {}) {
+  const maxCommitFiles = opts.maxCommitFiles ?? 30;
+  const minTogether = opts.minTogether ?? 3;
+  const maxPairs = opts.maxPairs ?? 100;
+  const range = opts.since ? [`${opts.since}..HEAD`] : [];
+  const res = sh("git", ["-C", dir, "-c", "core.quotePath=false", "log", ...range, "--pretty=format:%x1e", "--name-only"]);
+  if (!res.ok) return { ok: false, couplings: [] };
+  const totals = /* @__PURE__ */ new Map();
+  const pairs = /* @__PURE__ */ new Map();
+  for (const block of res.stdout.split("")) {
+    const files = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!files.length || files.length > maxCommitFiles) continue;
+    const unique = [...new Set(files)].sort(byStr);
+    for (const f of unique) totals.set(f, (totals.get(f) ?? 0) + 1);
+    for (let i2 = 0; i2 < unique.length; i2++) {
+      for (let j = i2 + 1; j < unique.length; j++) {
+        const key = `${unique[i2]}${SEP4}${unique[j]}`;
+        pairs.set(key, (pairs.get(key) ?? 0) + 1);
+      }
+    }
+  }
+  const out2 = [];
+  for (const [key, together] of pairs) {
+    if (together < minTogether) continue;
+    const [a, b] = key.split(SEP4);
+    const totalA = totals.get(a) ?? together;
+    const totalB = totals.get(b) ?? together;
+    out2.push({ a, b, together, totalA, totalB, strength: Number((together / Math.min(totalA, totalB)).toFixed(3)) });
+  }
+  out2.sort((x, y) => y.strength - x.strength || y.together - x.together || byStr(x.a, y.a) || byStr(x.b, y.b));
+  return { ok: true, couplings: out2.slice(0, maxPairs) };
+}
+function rankHotspots(scan2, churn, top = 20) {
+  const out2 = scan2.files.filter((f) => f.kind === "code").map((f) => {
+    const commits = churn.get(f.rel) ?? 0;
+    return { rel: f.rel, lines: f.lines, commits, score: Number((commits * Math.log2(f.lines + 1)).toFixed(2)) };
+  });
+  out2.sort((a, b) => b.score - a.score || b.lines - a.lines || byStr(a.rel, b.rel));
+  return out2.slice(0, top);
+}
+var SEP4;
+var init_coupling = __esm({
+  "src/coupling.ts"() {
+    "use strict";
+    init_util();
+    init_sort();
+    SEP4 = "\0";
+  }
+});
+
+// src/onboard.ts
+import { existsSync as existsSync7, readFileSync as readFileSync9 } from "fs";
+import { join as join17, resolve as resolve2 } from "path";
+function tagline(root) {
+  for (const name2 of README_NAMES) {
+    const path = join17(root, name2);
+    if (!existsSync7(path)) continue;
+    let text;
+    try {
+      text = readFileSync9(path, "utf8");
+    } catch {
+      continue;
+    }
+    for (const raw of text.split(/\n\s*\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#") || line.startsWith("<")) continue;
+      if (/^(\[!\[|!\[|\[)/.test(line) && !/[.:]\s/.test(line)) continue;
+      const cleaned = line.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, "").replace(/\s+/g, " ").trim();
+      if (cleaned.length > 20) return cleaned.slice(0, 400);
+    }
+    break;
+  }
+  return void 0;
+}
+function onboardBrief(scan2, graph, opts = {}) {
+  const lines = [];
+  const name2 = resolve2(scan2.root).replace(/\/+$/, "").split("/").pop() || "repository";
+  lines.push(`# ${name2}`, "");
+  const summary = tagline(scan2.root);
+  if (summary) lines.push(summary, "");
+  const languages = Object.entries(graph.languages).sort((a, b) => b[1] - a[1] || byStr(a[0], b[0])).slice(0, 6).map(([lang, count]) => `${lang} ${count}`).join(", ");
+  lines.push(`**${graph.fileCount} indexed files** \xB7 ${languages}`, "");
+  const workspaces = detectWorkspaces(scan2.root);
+  if (workspaces.packages.length > 1) {
+    lines.push(`## Layout \u2014 monorepo, ${workspaces.packages.length} packages`, "");
+    for (const pkg of workspaces.packages.slice(0, 20)) lines.push(`- \`${pkg.dir}\` \u2014 ${pkg.name}`);
+    if (workspaces.packages.length > 20) lines.push(`- \u2026and ${workspaces.packages.length - 20} more`);
+    if (workspaces.cycle?.length) lines.push("", `\u26A0 dependency cycle: ${workspaces.cycle.join(" \u2192 ")}`);
+    lines.push("");
+  }
+  lines.push("## Key files", "", renderRepoMap(scan2, graph, { budgetTokens: opts.budgetTokens ?? 900 }).trim(), "");
+  const { churn, ok: churnOk } = gitChurn(scan2.root);
+  if (churnOk && churn.size) {
+    const hotspots = rankHotspots(scan2, churn, 8);
+    if (hotspots.length) {
+      lines.push("## Where work concentrates", "", "Files ranked by commits \xD7 size \u2014 where changes and defects cluster.", "");
+      for (const spot of hotspots) lines.push(`- \`${spot.rel}\` \u2014 ${spot.commits} commits, ${spot.lines} lines`);
+      lines.push("");
+    }
+  }
+  lines.push(
+    "## Next",
+    "",
+    "- `search <query>` \u2014 BM25 over names, paths, doc comments and prose; `explain_search` says whether it really matched",
+    "- `find_symbol <Name>` / `symbols_overview <file>` \u2014 read structure without reading files",
+    "- `find_references <Name>` \u2014 three labelled tiers; add `lsp: true` when a language server is configured",
+    ""
+  );
+  const brief = lines.join("\n");
+  if (opts.remember === false) return { brief };
+  const memoryName = opts.memoryName ?? "onboarding";
+  writeMemory(scan2.root, memoryName, brief);
+  return { brief, memory: memoryName };
+}
+var README_NAMES;
+var init_onboard = __esm({
+  "src/onboard.ts"() {
+    "use strict";
+    init_repomap();
+    init_workspaces();
+    init_coupling();
+    init_git();
+    init_memory();
+    init_sort();
+    README_NAMES = ["README.md", "README.markdown", "README.rst", "README.txt", "README"];
+  }
+});
+
+// src/lsp/protocol.ts
+function encodeMessage(msg) {
+  const body2 = JSON.stringify(msg);
+  return `Content-Length: ${byteLength(body2)}${HEADER_END}${body2}`;
+}
+function byteLength(s) {
+  return new TextEncoder().encode(s).byteLength;
+}
+function createFramer() {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  let buffer = new Uint8Array(0);
+  const append = (chunk) => {
+    const next = new Uint8Array(buffer.length + chunk.length);
+    next.set(buffer);
+    next.set(chunk, buffer.length);
+    buffer = next;
+  };
+  const headerEnd = () => {
+    for (let i2 = 0; i2 + 3 < buffer.length; i2++) {
+      if (buffer[i2] === 13 && buffer[i2 + 1] === 10 && buffer[i2 + 2] === 13 && buffer[i2 + 3] === 10) return i2;
+    }
+    return -1;
+  };
+  return {
+    push(chunk) {
+      append(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
+      const out2 = [];
+      for (; ; ) {
+        const end = headerEnd();
+        if (end < 0) return out2;
+        const headers = decoder.decode(buffer.subarray(0, end));
+        const match = /content-length:\s*(\d+)/i.exec(headers);
+        if (!match) {
+          buffer = buffer.subarray(end + 4);
+          continue;
+        }
+        const length = Number(match[1]);
+        if (!Number.isSafeInteger(length) || length < 0 || length > MAX_FRAME_BYTES) {
+          buffer = buffer.subarray(end + 4);
+          continue;
+        }
+        const start2 = end + 4;
+        if (buffer.length < start2 + length) return out2;
+        const body2 = decoder.decode(buffer.subarray(start2, start2 + length));
+        buffer = buffer.subarray(start2 + length);
+        try {
+          out2.push(JSON.parse(body2));
+        } catch {
+        }
+      }
+    }
+  };
+}
+function fileUri(root, rel2) {
+  const abs = `${root.replace(/\/+$/, "")}/${rel2.replace(/^\/+/, "")}`;
+  const drive = /^([A-Za-z]):/.exec(abs);
+  const path = drive ? `/${abs}` : abs;
+  return "file://" + path.split("/").map((segment, i2) => i2 === 0 ? segment : encodeURIComponent(segment)).join("/");
+}
+function relFromUri(root, uri) {
+  if (!uri.startsWith("file://")) return void 0;
+  let path = decodeURIComponent(uri.slice("file://".length));
+  if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
+  const base = root.replace(/\/+$/, "");
+  if (path === base) return "";
+  if (!path.startsWith(`${base}/`)) return void 0;
+  return path.slice(base.length + 1);
+}
+function locationsToRefs(root, raw) {
+  const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
+  const seen = /* @__PURE__ */ new Set();
+  const out2 = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const uri = item.uri ?? item.targetUri;
+    if (!uri) continue;
+    const file = relFromUri(root, uri);
+    if (file === void 0 || file === "") continue;
+    const start2 = (item.range ?? item.targetSelectionRange ?? item.targetRange)?.start;
+    const line = typeof start2?.line === "number" ? start2.line + 1 : 1;
+    const character = typeof start2?.character === "number" ? start2.character : void 0;
+    const key = `${file}:${line}:${character ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out2.push(character === void 0 ? { file, line } : { file, line, character });
+  }
+  return out2.sort((a, b) => byStr(a.file, b.file) || a.line - b.line || (a.character ?? 0) - (b.character ?? 0));
+}
+var MAX_FRAME_BYTES, HEADER_END;
+var init_protocol = __esm({
+  "src/lsp/protocol.ts"() {
+    "use strict";
+    init_sort();
+    MAX_FRAME_BYTES = 32 * 1024 * 1024;
+    HEADER_END = "\r\n\r\n";
+  }
+});
+
+// src/lsp/client.ts
+async function openLspSession(transport, options) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT;
+  const startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT;
+  const framer = createFramer();
+  const pending = /* @__PURE__ */ new Map();
+  const open = /* @__PURE__ */ new Set();
+  let nextId = 1;
+  let dead;
+  const failAll = (error) => {
+    dead = error;
+    for (const [, p] of pending) {
+      clearTimeout(p.timer);
+      p.reject(error);
+    }
+    pending.clear();
+  };
+  transport.onData((chunk) => {
+    for (const message of framer.push(chunk)) {
+      if (typeof message.id !== "number") continue;
+      const waiter = pending.get(message.id);
+      if (!waiter) continue;
+      pending.delete(message.id);
+      clearTimeout(waiter.timer);
+      if (message.error) waiter.reject(new Error(`${message.error.message} (code ${message.error.code})`));
+      else waiter.resolve(message.result);
+    }
+  });
+  transport.onExit((code) => failAll(new Error(`language server exited (code ${code ?? "unknown"})`)));
+  const notify = (method, params) => {
+    if (dead) return;
+    transport.write(encodeMessage({ jsonrpc: "2.0", method, params }));
+  };
+  const request = (method, params, budget = timeoutMs) => {
+    if (dead) return Promise.reject(dead);
+    const id = nextId++;
+    return new Promise((resolve5, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new LspTimeout(method, budget));
+      }, budget);
+      timer.unref?.();
+      pending.set(id, { resolve: resolve5, reject, timer });
+      transport.write(encodeMessage({ jsonrpc: "2.0", id, method, params }));
+    });
+  };
+  const initResult = await request(
+    "initialize",
+    {
+      processId: null,
+      rootUri: fileUri(options.root, ""),
+      workspaceFolders: [{ uri: fileUri(options.root, ""), name: "repo" }],
+      capabilities: {
+        textDocument: {
+          references: { dynamicRegistration: false },
+          definition: { dynamicRegistration: false, linkSupport: true },
+          implementation: { dynamicRegistration: false, linkSupport: true }
+        }
+      },
+      ...options.initializationOptions !== void 0 ? { initializationOptions: options.initializationOptions } : {}
+    },
+    startupTimeoutMs
+  );
+  notify("initialized", {});
+  const provides = (key) => {
+    const value = initResult?.capabilities?.[key];
+    return value === true || typeof value === "object" && value !== null;
+  };
+  const capabilities = {
+    references: provides("referencesProvider"),
+    definition: provides("definitionProvider"),
+    implementation: provides("implementationProvider"),
+    typeHierarchy: provides("typeHierarchyProvider")
+  };
+  const positionOf = (rel2, line, character) => ({
+    textDocument: { uri: fileUri(options.root, rel2) },
+    // The engine counts lines from 1; LSP counts from 0.
+    position: { line: Math.max(0, line - 1), character }
+  });
+  return {
+    capabilities,
+    didOpen(rel2, text, languageId) {
+      if (open.has(rel2)) return;
+      open.add(rel2);
+      notify("textDocument/didOpen", {
+        textDocument: { uri: fileUri(options.root, rel2), languageId, version: 1, text }
+      });
+    },
+    async references(rel2, line, character) {
+      if (!capabilities.references) return [];
+      const raw = await request("textDocument/references", {
+        ...positionOf(rel2, line, character),
+        context: { includeDeclaration: true }
+      });
+      return locationsToRefs(options.root, raw);
+    },
+    async definition(rel2, line, character) {
+      if (!capabilities.definition) return [];
+      return locationsToRefs(options.root, await request("textDocument/definition", positionOf(rel2, line, character)));
+    },
+    async shutdown() {
+      try {
+        for (const rel2 of open) notify("textDocument/didClose", { textDocument: { uri: fileUri(options.root, rel2) } });
+        open.clear();
+        await request("shutdown", null, Math.min(timeoutMs, 2e3));
+        notify("exit", void 0);
+      } catch {
+      } finally {
+        failAll(new Error("session closed"));
+        transport.close();
+      }
+    }
+  };
+}
+var LspTimeout, DEFAULT_TIMEOUT, DEFAULT_STARTUP_TIMEOUT;
+var init_client = __esm({
+  "src/lsp/client.ts"() {
+    "use strict";
+    init_protocol();
+    LspTimeout = class extends Error {
+      constructor(method, ms) {
+        super(`${method} exceeded ${ms}ms`);
+        this.name = "LspTimeout";
+      }
+    };
+    DEFAULT_TIMEOUT = 5e3;
+    DEFAULT_STARTUP_TIMEOUT = 15e3;
+  }
+});
+
+// src/lsp/config.ts
+import { existsSync as existsSync8, readFileSync as readFileSync10 } from "fs";
+import { join as join18, resolve as resolve3 } from "path";
+function resolveLspConfigPath(repo) {
+  const env = process.env.CODEINDEX_LSP_CONFIG;
+  if (env !== void 0) {
+    const trimmed = env.trim();
+    if (!trimmed || trimmed === "0" || trimmed.toLowerCase() === "off") return { path: void 0, source: "none" };
+    return { path: resolve3(trimmed), source: "env" };
+  }
+  const inRepo = join18(repo, LSP_CONFIG_DIR, LSP_CONFIG_NAME);
+  if (existsSync8(inRepo)) return { path: inRepo, source: "repo" };
+  const inCwd = join18(process.cwd(), LSP_CONFIG_DIR, LSP_CONFIG_NAME);
+  if (inCwd !== inRepo && existsSync8(inCwd)) return { path: inCwd, source: "cwd" };
+  return { path: void 0, source: "none" };
+}
+function parseLspConfig(payload) {
+  if (!payload || typeof payload !== "object") throw new Error("lsp.json must be a JSON object");
+  const raw = payload;
+  if (raw.version !== 1) throw new Error(`lsp.json: unsupported version ${JSON.stringify(raw.version)} (expected 1)`);
+  if (!Array.isArray(raw.servers)) throw new Error("lsp.json: `servers` must be an array");
+  const ids = /* @__PURE__ */ new Set();
+  const servers = raw.servers.map((entry, i2) => {
+    if (!entry || typeof entry !== "object") throw new Error(`lsp.json: servers[${i2}] must be an object`);
+    const s = entry;
+    const id = typeof s.id === "string" && s.id.trim() ? s.id.trim() : void 0;
+    if (!id) throw new Error(`lsp.json: servers[${i2}].id must be a non-empty string`);
+    if (ids.has(id)) throw new Error(`lsp.json: duplicate server id ${JSON.stringify(id)}`);
+    ids.add(id);
+    if (typeof s.command !== "string" || !s.command.trim()) throw new Error(`lsp.json: servers[${i2}].command must be a non-empty string`);
+    if (!Array.isArray(s.languages) || !s.languages.length || s.languages.some((l) => typeof l !== "string")) {
+      throw new Error(`lsp.json: servers[${i2}].languages must be a non-empty array of strings`);
+    }
+    if (s.args !== void 0 && (!Array.isArray(s.args) || s.args.some((a) => typeof a !== "string"))) {
+      throw new Error(`lsp.json: servers[${i2}].args must be an array of strings`);
+    }
+    return {
+      id,
+      languages: s.languages,
+      ...typeof s.languageId === "string" ? { languageId: s.languageId } : {},
+      command: s.command,
+      ...Array.isArray(s.args) ? { args: s.args } : {},
+      ...s.env && typeof s.env === "object" ? { env: s.env } : {},
+      ...s.initializationOptions !== void 0 ? { initializationOptions: s.initializationOptions } : {},
+      ...typeof s.timeoutMs === "number" ? { timeoutMs: s.timeoutMs } : {},
+      ...typeof s.startupTimeoutMs === "number" ? { startupTimeoutMs: s.startupTimeoutMs } : {}
+    };
+  });
+  return { version: 1, servers };
+}
+function loadLspConfig(repo) {
+  const { path } = resolveLspConfigPath(repo);
+  if (!path || !existsSync8(path)) return void 0;
+  let payload;
+  try {
+    payload = JSON.parse(readFileSync10(path, "utf8"));
+  } catch (e) {
+    throw new Error(`${path}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return parseLspConfig(payload);
+}
+function serverForLang(config, lang) {
+  return config.servers.find((s) => s.languages.includes(lang));
+}
+function timeoutFor(server) {
+  return positiveEnv("CODEINDEX_LSP_TIMEOUT_MS") ?? server.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+}
+function startupTimeoutFor(server) {
+  return positiveEnv("CODEINDEX_LSP_STARTUP_TIMEOUT_MS") ?? server.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
+}
+function positiveEnv(name2) {
+  const raw = process.env[name2];
+  if (raw === void 0) return void 0;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : void 0;
+}
+var LSP_CONFIG_NAME, LSP_CONFIG_DIR, DEFAULT_TIMEOUT_MS, DEFAULT_STARTUP_TIMEOUT_MS;
+var init_config2 = __esm({
+  "src/lsp/config.ts"() {
+    "use strict";
+    LSP_CONFIG_NAME = "lsp.json";
+    LSP_CONFIG_DIR = ".codeindex";
+    DEFAULT_TIMEOUT_MS = 5e3;
+    DEFAULT_STARTUP_TIMEOUT_MS = 15e3;
+  }
+});
+
+// src/lsp/refs.ts
+import { readFileSync as readFileSync11 } from "fs";
+import { join as join19 } from "path";
+function lspUnavailable(server, reason) {
+  return { server, ok: false, reason, refs: [], agreement: { both: [], lspOnly: [], staticOnly: [] } };
+}
+function columnOfSymbol(root, rel2, line, name2) {
+  try {
+    const lines = readFileSync11(join19(root, rel2), "utf8").split(/\r?\n/);
+    const index = lines[line - 1]?.indexOf(name2) ?? -1;
+    return index < 0 ? 0 : index;
+  } catch {
+    return 0;
+  }
+}
+function agreementOf(refs, statik) {
+  const lspFiles = new Set(refs.map((r) => r.file));
+  const staticFiles = /* @__PURE__ */ new Set([
+    ...statik.callSites.map((c2) => c2.file),
+    ...statik.referencingFiles,
+    // Declaration sites are references in the LSP sense (includeDeclaration),
+    // so counting them keeps the two sides comparing the same population.
+    ...statik.defs.map((d) => d.file)
+  ]);
+  const both = [];
+  const lspOnly = [];
+  const staticOnly = [];
+  for (const file of lspFiles) (staticFiles.has(file) ? both : lspOnly).push(file);
+  for (const file of staticFiles) if (!lspFiles.has(file)) staticOnly.push(file);
+  return { both: both.sort(byStr), lspOnly: lspOnly.sort(byStr), staticOnly: staticOnly.sort(byStr) };
+}
+async function annotateWithLsp(scan2, name2, statik, session, serverId, languageId) {
+  if (!session.capabilities.references) {
+    return { ...statik, lsp: lspUnavailable(serverId, "server does not provide textDocument/references") };
+  }
+  if (!statik.defs.length) {
+    return { ...statik, lsp: lspUnavailable(serverId, `no declaration of ${name2} to anchor a request on`) };
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const refs = [];
+  try {
+    for (const def of statik.defs) {
+      const text = readTextOrEmpty(scan2.root, def.file);
+      if (!text) continue;
+      session.didOpen(def.file, text, languageId);
+      const character = columnOfSymbol(scan2.root, def.file, def.line, name2);
+      for (const ref of await session.references(def.file, def.line, character)) {
+        const key = `${ref.file}:${ref.line}:${ref.character ?? ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        refs.push(ref);
+      }
+    }
+  } catch (e) {
+    return {
+      ...statik,
+      lsp: {
+        server: serverId,
+        ok: false,
+        reason: e instanceof Error ? e.message : String(e),
+        refs: refs.sort(refOrder),
+        agreement: agreementOf(refs, statik)
+      }
+    };
+  }
+  refs.sort(refOrder);
+  return { ...statik, lsp: { server: serverId, ok: true, refs, agreement: agreementOf(refs, statik) } };
+}
+function refOrder(a, b) {
+  return byStr(a.file, b.file) || a.line - b.line || (a.character ?? 0) - (b.character ?? 0);
+}
+function readTextOrEmpty(root, rel2) {
+  try {
+    return readFileSync11(join19(root, rel2), "utf8");
+  } catch {
+    return "";
+  }
+}
+var init_refs = __esm({
+  "src/lsp/refs.ts"() {
+    "use strict";
+    init_sort();
+  }
+});
+
+// src/lsp/spawn.ts
+import { spawn } from "child_process";
+function spawnLspTransport(server, cwd) {
+  let child;
+  try {
+    child = spawn(server.command, server.args ?? [], {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      ...server.env ? { env: { ...process.env, ...server.env } } : {}
+    });
+  } catch {
+    return void 0;
+  }
+  let exited = false;
+  const dataListeners = [];
+  const exitListeners = [];
+  const fireExit = (code) => {
+    if (exited) return;
+    exited = true;
+    for (const listener of exitListeners) listener(code);
+  };
+  child.on("error", () => fireExit(null));
+  child.on("close", (code) => fireExit(code));
+  child.stdout?.on("data", (chunk) => {
+    for (const listener of dataListeners) listener(chunk);
+  });
+  child.stderr?.on("data", () => {
+  });
+  return {
+    write(chunk) {
+      if (exited) return;
+      try {
+        child.stdin?.write(chunk);
+      } catch {
+        fireExit(null);
+      }
+    },
+    onData(cb) {
+      dataListeners.push(cb);
+    },
+    onExit(cb) {
+      if (exited) cb(null);
+      else exitListeners.push(cb);
+    },
+    close() {
+      try {
+        child.stdin?.end();
+      } catch {
+      }
+      const timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+        }
+      }, 2e3);
+      timer.unref?.();
+      child.on("close", () => clearTimeout(timer));
+    }
+  };
+}
+var init_spawn = __esm({
+  "src/lsp/spawn.ts"() {
+    "use strict";
+  }
+});
+
+// src/lsp/index.ts
+async function lspStatus(scan2, repo, probe = false) {
+  const { path, source } = resolveLspConfigPath(repo);
+  const config = loadLspConfig(repo);
+  if (!config) return { lspVersion: 1, mode: "none", configPath: path ?? null, source, servers: [], unmappedLanguages: [] };
+  const counts = /* @__PURE__ */ new Map();
+  for (const file of scan2.files) counts.set(file.lang, (counts.get(file.lang) ?? 0) + 1);
+  const servers = [];
+  for (const server of config.servers) {
+    const status = {
+      id: server.id,
+      languages: server.languages,
+      command: server.command,
+      onPath: have(server.command),
+      filesInRepo: server.languages.reduce((sum, lang) => sum + (counts.get(lang) ?? 0), 0)
+    };
+    if (probe) {
+      const session = await tryOpen(server, scan2.root);
+      if (session.ok) {
+        status.reachable = true;
+        status.capabilities = session.session.capabilities;
+        await session.session.shutdown();
+      } else {
+        status.reachable = false;
+        status.error = session.reason;
+      }
+    }
+    servers.push(status);
+  }
+  const claimed = new Set(config.servers.flatMap((s) => s.languages));
+  const unmappedLanguages = [...counts.keys()].filter((lang) => !claimed.has(lang) && lang !== "other").sort();
+  return { lspVersion: 1, mode: "configured", configPath: path ?? null, source, servers, unmappedLanguages };
+}
+async function tryOpen(server, root) {
+  if (!have(server.command)) return { ok: false, reason: `${server.command} is not on PATH` };
+  const transport = spawnLspTransport(server, root);
+  if (!transport) return { ok: false, reason: `could not start ${server.command}` };
+  try {
+    const session = await openLspSession(transport, {
+      root,
+      timeoutMs: timeoutFor(server),
+      startupTimeoutMs: startupTimeoutFor(server),
+      ...server.initializationOptions !== void 0 ? { initializationOptions: server.initializationOptions } : {}
+    });
+    return { ok: true, session };
+  } catch (e) {
+    transport.close();
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+async function referencesWithLsp(scan2, repo, name2, statik) {
+  let config;
+  try {
+    config = loadLspConfig(repo);
+  } catch (e) {
+    return { ...statik, lsp: lspUnavailable("(config)", e instanceof Error ? e.message : String(e)) };
+  }
+  if (!config) return statik;
+  const lang = statik.defs[0]?.lang;
+  if (!lang) return { ...statik, lsp: lspUnavailable("(none)", `no declaration of ${name2} to anchor a request on`) };
+  const server = serverForLang(config, lang);
+  if (!server) return { ...statik, lsp: lspUnavailable("(none)", `no server configured for ${lang}`) };
+  const opened = await tryOpen(server, scan2.root);
+  if (!opened.ok) return { ...statik, lsp: lspUnavailable(server.id, opened.reason) };
+  try {
+    return await annotateWithLsp(scan2, name2, statik, opened.session, server.id, server.languageId ?? server.languages[0]);
+  } finally {
+    await opened.session.shutdown();
+  }
+}
+var init_lsp = __esm({
+  "src/lsp/index.ts"() {
+    "use strict";
+    init_util();
+    init_client();
+    init_config2();
+    init_refs();
+    init_spawn();
+  }
+});
+
 // src/rules.ts
 function isEntrypointLike(rel2) {
   const base = rel2.split("/").pop();
@@ -12395,96 +13206,6 @@ var init_rules = __esm({
   }
 });
 
-// src/coupling.ts
-function changeCoupling(dir, opts = {}) {
-  const maxCommitFiles = opts.maxCommitFiles ?? 30;
-  const minTogether = opts.minTogether ?? 3;
-  const maxPairs = opts.maxPairs ?? 100;
-  const range = opts.since ? [`${opts.since}..HEAD`] : [];
-  const res = sh("git", ["-C", dir, "-c", "core.quotePath=false", "log", ...range, "--pretty=format:%x1e", "--name-only"]);
-  if (!res.ok) return { ok: false, couplings: [] };
-  const totals = /* @__PURE__ */ new Map();
-  const pairs = /* @__PURE__ */ new Map();
-  for (const block of res.stdout.split("")) {
-    const files = block.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (!files.length || files.length > maxCommitFiles) continue;
-    const unique = [...new Set(files)].sort(byStr);
-    for (const f of unique) totals.set(f, (totals.get(f) ?? 0) + 1);
-    for (let i2 = 0; i2 < unique.length; i2++) {
-      for (let j = i2 + 1; j < unique.length; j++) {
-        const key = `${unique[i2]}${SEP4}${unique[j]}`;
-        pairs.set(key, (pairs.get(key) ?? 0) + 1);
-      }
-    }
-  }
-  const out2 = [];
-  for (const [key, together] of pairs) {
-    if (together < minTogether) continue;
-    const [a, b] = key.split(SEP4);
-    const totalA = totals.get(a) ?? together;
-    const totalB = totals.get(b) ?? together;
-    out2.push({ a, b, together, totalA, totalB, strength: Number((together / Math.min(totalA, totalB)).toFixed(3)) });
-  }
-  out2.sort((x, y) => y.strength - x.strength || y.together - x.together || byStr(x.a, y.a) || byStr(x.b, y.b));
-  return { ok: true, couplings: out2.slice(0, maxPairs) };
-}
-function rankHotspots(scan2, churn, top = 20) {
-  const out2 = scan2.files.filter((f) => f.kind === "code").map((f) => {
-    const commits = churn.get(f.rel) ?? 0;
-    return { rel: f.rel, lines: f.lines, commits, score: Number((commits * Math.log2(f.lines + 1)).toFixed(2)) };
-  });
-  out2.sort((a, b) => b.score - a.score || b.lines - a.lines || byStr(a.rel, b.rel));
-  return out2.slice(0, top);
-}
-var SEP4;
-var init_coupling = __esm({
-  "src/coupling.ts"() {
-    "use strict";
-    init_util();
-    init_sort();
-    SEP4 = "\0";
-  }
-});
-
-// src/repomap.ts
-function renderRepoMap(scan2, graph, opts = {}) {
-  const budgetChars = (opts.budgetTokens ?? 1024) * CHARS_PER_TOKEN;
-  const maxSymbols = opts.maxSymbolsPerFile ?? 8;
-  const ranked = [...graph.files].filter((f) => f.fileKind === "code").sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0) || b.symbols - a.symbols || byStr(a.rel, b.rel));
-  const records = new Map(scan2.files.map((f) => [f.rel, f]));
-  const header = `# repo map \u2014 ${graph.fileCount} files
-`;
-  let out2 = header;
-  let files = 0;
-  for (const node of ranked) {
-    const rec = records.get(node.rel);
-    if (!rec) continue;
-    const symbols = [...rec.symbols].filter((s) => s.kind !== "reexport" && s.kind !== "reexport-all").sort((a, b) => Number(b.exported) - Number(a.exported) || a.line - b.line).slice(0, maxSymbols);
-    let block = `
-${node.rel}:
-`;
-    for (const s of symbols) {
-      const sig = (s.signature ?? `${s.kind} ${s.name}`).replace(/\s+/g, " ").trim().slice(0, 120);
-      block += `  ${s.line}: ${sig}
-`;
-    }
-    if (out2.length + block.length > budgetChars) break;
-    out2 += block;
-    files++;
-  }
-  return `${out2}
-(${files} of ${ranked.length} code files shown, ~${Math.ceil(out2.length / CHARS_PER_TOKEN)} tokens)
-`;
-}
-var CHARS_PER_TOKEN;
-var init_repomap = __esm({
-  "src/repomap.ts"() {
-    "use strict";
-    init_sort();
-    CHARS_PER_TOKEN = 4;
-  }
-});
-
 // src/deadcode.ts
 function findDeadCode(scan2) {
   const callers = callerIndexFor(scan2);
@@ -12594,8 +13315,8 @@ var init_viz = __esm({
 });
 
 // src/mcp/protocol.ts
-import { existsSync as existsSync7 } from "fs";
-import { join as join17 } from "path";
+import { existsSync as existsSync9 } from "fs";
+import { join as join20 } from "path";
 import { pathToFileURL as pathToFileURL2 } from "url";
 function validateArgs(schema, args2) {
   const props = schema.properties ?? {};
@@ -12637,7 +13358,7 @@ function negotiateProtocol(requested) {
 function capResponse(text, tool, repo, maxBytes) {
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes <= maxBytes) return text;
-  const artifact = ARTIFACT_FOR[tool] ? join17(repo, INDEX_DIR, ARTIFACT_FOR[tool]) : void 0;
+  const artifact = ARTIFACT_FOR[tool] ? join20(repo, INDEX_DIR, ARTIFACT_FOR[tool]) : void 0;
   return JSON.stringify(
     {
       truncated: true,
@@ -12646,7 +13367,7 @@ function capResponse(text, tool, repo, maxBytes) {
       maxBytes,
       reason: "This response exceeds the configured limit and was withheld rather than sent as an unusable partial payload.",
       narrower: NARROWER[tool] ?? "narrow the request with `scope`, `include`/`exclude`, or a `limit`",
-      ...artifact && existsSync7(artifact) ? { artifact, artifactNote: "The full result is already on disk here \u2014 read it directly if you need all of it." } : artifact ? { artifactNote: `Run \`codeindex index --repo ${repo} --out ${join17(repo, INDEX_DIR)}\` to get this as a file.` } : {}
+      ...artifact && existsSync9(artifact) ? { artifact, artifactNote: "The full result is already on disk here \u2014 read it directly if you need all of it." } : artifact ? { artifactNote: `Run \`codeindex index --repo ${repo} --out ${join20(repo, INDEX_DIR)}\` to get this as a file.` } : {}
     },
     null,
     2
@@ -12671,7 +13392,7 @@ function resourceLinkFor(text, tool) {
   };
 }
 var PROTOCOL_VERSIONS, LATEST_PROTOCOL, ANNOTATIONS_SINCE, RICH_TOOLS_SINCE, DEFAULT_MAX_RESPONSE_BYTES, NARROWER, ARTIFACT_FOR;
-var init_protocol = __esm({
+var init_protocol2 = __esm({
   "src/mcp/protocol.ts"() {
     "use strict";
     init_preload();
@@ -12702,11 +13423,27 @@ function annotationsFor(name2) {
     openWorldHint: meta.openWorld === true
   };
 }
-function toolsFor(defaultRepo, protocolVersion = PROTOCOL_VERSIONS[0]) {
+function profileNames() {
+  return ["all", ...Object.keys(TOOL_PROFILES).sort()];
+}
+function toolsInProfiles(spec) {
+  const names = spec.split(",").map((s) => s.trim()).filter(Boolean);
+  const out2 = /* @__PURE__ */ new Set();
+  for (const name2 of names) {
+    if (name2 === "all") return new Set(TOOLS.map((t) => t.name));
+    const profile = TOOL_PROFILES[name2];
+    if (!profile) throw new Error(`unknown tool profile "${name2}" \u2014 one of: ${profileNames().join(", ")}`);
+    for (const tool of profile) out2.add(tool);
+  }
+  return out2;
+}
+function toolsFor(defaultRepo, protocolVersion = PROTOCOL_VERSIONS[0], profile) {
   const withAnnotations = protocolVersion >= ANNOTATIONS_SINCE;
   const withRich = protocolVersion >= RICH_TOOLS_SINCE;
-  if (!defaultRepo && !withAnnotations && !withRich) return TOOLS;
-  return TOOLS.map((t) => ({
+  const allowed = profile ? toolsInProfiles(profile) : void 0;
+  const TOOLS_ = allowed ? TOOLS.filter((t) => allowed.has(t.name)) : TOOLS;
+  if (!defaultRepo && !withAnnotations && !withRich) return TOOLS_;
+  return TOOLS_.map((t) => ({
     ...t,
     ...withRich && TOOL_META[t.name] ? { title: TOOL_META[t.name].title } : {},
     ...withRich && OUTPUT_SCHEMAS[t.name] ? { outputSchema: OUTPUT_SCHEMAS[t.name] } : {},
@@ -12724,11 +13461,11 @@ function toolsFor(defaultRepo, protocolVersion = PROTOCOL_VERSIONS[0]) {
     }
   }));
 }
-var repoProp, scopeProps, TOOLS, strArr, anyObj, OUTPUT_SCHEMAS, TOOL_META;
+var repoProp, scopeProps, TOOLS, strArr, anyObj, OUTPUT_SCHEMAS, TOOL_META, TOOL_PROFILES;
 var init_tools = __esm({
   "src/mcp/tools.ts"() {
     "use strict";
-    init_protocol();
+    init_protocol2();
     repoProp = { repo: { type: "string", description: "Absolute path to the repository root" } };
     scopeProps = {
       scope: { type: "string", description: "Restrict to one directory (repo-relative)" },
@@ -12796,7 +13533,7 @@ var init_tools = __esm({
       },
       {
         name: "find_symbol",
-        description: "Find symbol declarations by name or name path ('Class/method' matches a method inside Class). Options: substring matching, includeBody to return the declaration's source. Exact-name matches rank first.",
+        description: `Find symbol declarations by name or name path ('Class/method' matches a method inside Class). Each match carries its COMPLETE SIGNATURE (parameters and return type) by default, because "what shape is it" is the question that follows "where is it" almost every time and one round trip beats two. Options: substring matching, includeBody for the declaration's source, concise to drop everything but name/kind/file/line when you genuinely only want a location. Exact-name matches rank first.`,
         inputSchema: {
           type: "object",
           properties: {
@@ -12804,6 +13541,10 @@ var init_tools = __esm({
             namePath: { type: "string", description: "Symbol name or Parent/child path" },
             substring: { type: "boolean" },
             includeBody: { type: "boolean" },
+            concise: {
+              type: "boolean",
+              description: "Return only name/kind/file/line \u2014 drop the signature, line span, visibility and language. Roughly 2.5x smaller; use it when you are resolving a path and nothing more (default false)."
+            },
             maxResults: { type: "number", description: "Cap matches (default 50)" }
           },
           required: ["repo", "namePath"]
@@ -12814,8 +13555,40 @@ var init_tools = __esm({
         description: "Who references a symbol? Three labeled tiers: defs (declarations), callSites (line-precise, import-corroborated call bindings), referencingFiles (file-level identifier/doc mentions \u2014 may include homonyms). Confidence decreases across tiers; the labels let you decide what to trust.",
         inputSchema: {
           type: "object",
-          properties: { ...repoProp, name: { type: "string", description: "Symbol name" } },
+          properties: {
+            ...repoProp,
+            name: { type: "string", description: "Symbol name" },
+            lsp: {
+              type: "boolean",
+              description: "Also ask a configured language server (see lsp_status) and append an `lsp` block: its references plus an `agreement` matrix (both / lspOnly / staticOnly). The three static tiers are unchanged either way. `staticOnly` is where the homonyms are. No config, no binary, a crash or a timeout all degrade to the static answer with a stated reason (default false)."
+            }
+          },
           required: ["repo", "name"]
+        }
+      },
+      {
+        name: "lsp_status",
+        description: "Is the optional LSP tier configured, and would it answer? Reports the config path and its source, each server with whether its command is on PATH and how many files in this repo it claims, and the languages no server covers. Opt-in by asset: the tier is active only when <repo>/.codeindex/lsp.json exists (or CODEINDEX_LSP_CONFIG points at one). `probe: true` additionally starts each server to read the capabilities it really advertises. The tier never touches graph.json/symbols.json \u2014 it annotates query answers only.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            ...repoProp,
+            probe: { type: "boolean", description: "Start each server and read its real capabilities (default false: no spawn)" }
+          },
+          required: ["repo"]
+        }
+      },
+      {
+        name: "onboard",
+        description: "One call that says what this repository IS: its own tagline, size and language mix, monorepo layout when there is one, a token-budgeted map of the highest-PageRank files with their key signatures, and where git says work concentrates. Composes scan_summary + workspaces + repo_map + hotspots so the first four round trips of a session become one, and persists the result as the `onboarding` memory (read_memory) so the next session does not repeat them. Set remember:false to skip the write.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            ...repoProp,
+            budgetTokens: { type: "number", description: "Token budget for the key-files section (default 900)" },
+            remember: { type: "boolean", description: "Persist the brief as the `onboarding` memory (default true)" }
+          },
+          required: ["repo"]
         }
       },
       {
@@ -12990,10 +13763,34 @@ var init_tools = __esm({
               type: "string",
               description: `Structural prior: "graph" multiplies the lexical score by the file's PageRank over the resolved import graph; "lexical" (default) scores on text alone. Unproven on the judged corpus \u2014 see SearchOptions.rank.`
             },
+            exact: {
+              type: "boolean",
+              description: "Drop results that carry no verbatim query-term match \u2014 the ones the stem/trigram bridge produced (default false)."
+            },
+            explain: {
+              type: "boolean",
+              description: "Wrap the response as `{ results, explain }` with the query verdict (default false = bare array). See explain_search."
+            },
             semantic: {
               type: "boolean",
               description: 'RRF-fuse an embedding tier with lexical (default false). Precedence: the HTTP endpoint (CODEINDEX_EMBED_ENDPOINT) if set, else a local static model. The response reports the effective tier as a top-level `tier` field ("endpoint"/"static" on success, "lexical" plus `degradedReason` when neither is available/reachable) instead of degrading silently \u2014 see embed_status.'
             }
+          },
+          required: ["repo", "query"]
+        }
+      },
+      {
+        name: "explain_search",
+        description: 'Search, and say whether the query actually found anything. Returns `{ results, explain }` where explain.verdict is "match" (a verbatim term matched), "weak" (results exist but rest on a near match, or the identifier you asked for has document frequency 0) or "none". Use this instead of `search` whenever an empty-feeling or surprising result matters: a query for an identifier that is NOT in the indexed tree still returns confident-looking rows built from its subtokens \u2014 searching "nullGipStep7" in a repo that only has "nullGipStep2" ranks files matching "null" and "gip" \u2014 and only the verdict distinguishes that from a real hit. Also names the terms dropped as stopwords, the terms that exist nowhere, and what each near match bridged to.',
+        inputSchema: {
+          type: "object",
+          properties: {
+            ...repoProp,
+            ...scopeProps,
+            query: { type: "string", description: "Natural-language or identifier query" },
+            limit: { type: "number", description: "Max results (default 20)" },
+            fuzzy: { type: "boolean", description: "Stem/trigram fallback for zero-document-frequency terms (default true)" },
+            exact: { type: "boolean", description: "Drop results carrying no verbatim term match (default false)" }
           },
           required: ["repo", "query"]
         }
@@ -13137,6 +13934,45 @@ var init_tools = __esm({
         },
         required: ["defs", "callSites", "referencingFiles"]
       },
+      lsp_status: {
+        type: "object",
+        properties: {
+          lspVersion: { type: "number" },
+          mode: { type: "string", enum: ["none", "configured"] },
+          configPath: { type: ["string", "null"] },
+          source: { type: "string", enum: ["env", "repo", "cwd", "none"] },
+          servers: { type: "array", items: anyObj },
+          unmappedLanguages: strArr
+        },
+        required: ["lspVersion", "mode", "source", "servers", "unmappedLanguages"]
+      },
+      onboard: {
+        type: "object",
+        properties: { brief: { type: "string" }, memory: { type: "string" } },
+        required: ["brief"]
+      },
+      explain_search: {
+        type: "object",
+        properties: {
+          results: { type: "array", items: anyObj },
+          explain: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+              terms: { type: "array", items: anyObj },
+              droppedStopwords: strArr,
+              unresolvedTerms: strArr,
+              wholeIdentifier: anyObj,
+              verdict: { type: "string", enum: ["match", "weak", "none"] },
+              note: { type: "string" },
+              bridgedOnlyResults: { type: "number" },
+              resultCount: { type: "number" }
+            },
+            required: ["query", "terms", "droppedStopwords", "unresolvedTerms", "verdict", "bridgedOnlyResults", "resultCount"]
+          }
+        },
+        required: ["results", "explain"]
+      },
       hotspots: {
         type: "object",
         properties: { churnOk: { type: "boolean" }, hotspots: { type: "array", items: anyObj } },
@@ -13200,6 +14036,7 @@ var init_tools = __esm({
       find_symbol: { title: "Find symbol" },
       find_references: { title: "Find references" },
       repo_map: { title: "Repository map" },
+      onboard: { title: "Project brief", write: true, destructive: false, idempotent: true },
       hotspots: { title: "Hotspots" },
       coupling: { title: "Change coupling" },
       replace_symbol_body: { title: "Replace symbol body", write: true, destructive: true, idempotent: true },
@@ -13215,18 +14052,35 @@ var init_tools = __esm({
       mermaid: { title: "Mermaid module diagram" },
       grep: { title: "Grep file contents" },
       search: { title: "Lexical search", openWorld: true },
+      explain_search: { title: "Search with a verdict", openWorld: true },
+      // openWorld: it spawns a process the user configured, whose answer this
+      // engine does not determine — the same honesty `search` and `embed_status`
+      // already carry for reaching outside their own artifacts.
+      lsp_status: { title: "LSP tier status", openWorld: true },
       embed_status: { title: "Embedding tier status", openWorld: true },
       type_hierarchy: { title: "Type hierarchy" },
       implementations: { title: "Implementations" },
       call_graph: { title: "Call graph neighborhood" },
       check_rules: { title: "Check architecture rules" }
     };
+    TOOL_PROFILES = {
+      // Land in an unfamiliar repository and get your bearings.
+      orient: ["scan_summary", "repo_map", "onboard", "workspaces", "mermaid", "read_memory", "list_memories"],
+      // Locate a thing.
+      find: ["search", "explain_search", "grep", "find_symbol", "symbols", "symbols_overview"],
+      // Decide whether changing it is safe.
+      impact: ["find_references", "callers", "call_graph", "dead_code", "type_hierarchy", "implementations", "lsp_status"],
+      // Change it.
+      edit: ["find_symbol", "symbols_overview", "replace_symbol_body", "insert_after_symbol", "insert_before_symbol"],
+      // Where the work and the risk concentrate.
+      risk: ["hotspots", "churn", "coupling", "complexity", "check_rules", "duplicated_literals", "dead_code"]
+    };
   }
 });
 
 // src/mcp/session.ts
 import { statSync as statSync5 } from "fs";
-import { join as join18 } from "path";
+import { join as join21 } from "path";
 function scanFingerprint(scan2) {
   return sha1(scan2.files.map((f) => `${f.rel}:${f.hash}`).join("\n"));
 }
@@ -13240,7 +14094,7 @@ async function memoizedEmbeddingIndex(key, build) {
 function memoizedEmbedModel(modelDir) {
   let stat;
   try {
-    stat = statSync5(join18(modelDir, "model.json"));
+    stat = statSync5(join21(modelDir, "model.json"));
   } catch {
     return void 0;
   }
@@ -13354,6 +14208,7 @@ __export(mcp_exports, {
   PROTOCOL_VERSIONS: () => PROTOCOL_VERSIONS,
   TOOLS: () => TOOLS,
   TOOL_META: () => TOOL_META,
+  TOOL_PROFILES: () => TOOL_PROFILES,
   annotationsFor: () => annotationsFor,
   capResponse: () => capResponse,
   getArtifacts: () => getArtifacts,
@@ -13362,18 +14217,20 @@ __export(mcp_exports, {
   memoizedEmbedModel: () => memoizedEmbedModel,
   memoizedEmbeddingIndex: () => memoizedEmbeddingIndex,
   negotiateProtocol: () => negotiateProtocol,
+  profileNames: () => profileNames,
   resourceLinkFor: () => resourceLinkFor,
   runMcpServer: () => runMcpServer,
   scanFingerprint: () => scanFingerprint,
   structuredContentFor: () => structuredContentFor,
   toCacheMap: () => toCacheMap,
   toolsFor: () => toolsFor,
+  toolsInProfiles: () => toolsInProfiles,
   validateArgs: () => validateArgs,
   warmGrammarsForRepo: () => warmGrammarsForRepo,
   warmGrammarsForWalk: () => warmGrammarsForWalk
 });
-import { readFileSync as readFileSync9 } from "fs";
-import { isAbsolute, join as join19 } from "path";
+import { readFileSync as readFileSync12 } from "fs";
+import { isAbsolute, join as join22 } from "path";
 import { createInterface } from "readline";
 function str(v) {
   return typeof v === "string" && v ? v : void 0;
@@ -13451,6 +14308,7 @@ async function callTool(name2, args2, defaultRepo) {
     const matches = findSymbol(getScan(repo, scanOpts, walked), namePath, {
       substring: args2.substring === true,
       includeBody: args2.includeBody === true,
+      concise: args2.concise === true,
       maxResults: num(args2.maxResults)
     });
     return JSON.stringify(matches, null, 2);
@@ -13458,7 +14316,13 @@ async function callTool(name2, args2, defaultRepo) {
   if (name2 === "find_references") {
     const symName = str(args2.name);
     if (!symName) throw new Error("`name` is required");
-    return JSON.stringify(findReferences(getScan(repo, scanOpts, walked), symName), null, 2);
+    const scan2 = getScan(repo, scanOpts, walked);
+    const statik = findReferences(scan2, symName);
+    if (args2.lsp === true) return JSON.stringify(await referencesWithLsp(scan2, repo, symName, statik), null, 2);
+    return JSON.stringify(statik, null, 2);
+  }
+  if (name2 === "lsp_status") {
+    return JSON.stringify(await lspStatus(getScan(repo, scanOpts, walked), repo, args2.probe === true), null, 2);
   }
   if (name2 === "replace_symbol_body" || name2 === "insert_after_symbol" || name2 === "insert_before_symbol") {
     const namePath = str(args2.namePath);
@@ -13529,6 +14393,18 @@ async function callTool(name2, args2, defaultRepo) {
     const { graph } = getArtifacts(repo, scanOpts, walked);
     return renderMermaid(graph, { module: str(args2.module), maxEdges: num(args2.maxEdges) });
   }
+  if (name2 === "onboard") {
+    const scan2 = getScan(repo, scanOpts, walked);
+    const { graph } = getArtifacts(repo, scanOpts, walked);
+    return JSON.stringify(
+      onboardBrief(scan2, graph, {
+        ...typeof args2.budgetTokens === "number" ? { budgetTokens: args2.budgetTokens } : {},
+        ...args2.remember === false ? { remember: false } : {}
+      }),
+      null,
+      2
+    );
+  }
   if (name2 === "repo_map") {
     const { scan: scan2, graph } = getArtifacts(repo, scanOpts, walked);
     return renderRepoMap(scan2, graph, { budgetTokens: typeof args2.budgetTokens === "number" ? args2.budgetTokens : void 0 });
@@ -13560,18 +14436,19 @@ async function callTool(name2, args2, defaultRepo) {
     const scan2 = getScan(repo, scanOpts, walked);
     const limit = typeof args2.limit === "number" ? args2.limit : void 0;
     const fuzzy = typeof args2.fuzzy === "boolean" ? args2.fuzzy : void 0;
+    const exactOpt = args2.exact === true ? { exact: true } : {};
     if (args2.semantic === true) {
       const endpoint = resolveEmbedEndpoint();
       if (endpoint) {
         try {
           const index = await memoizedEmbeddingIndex({ mode: "endpoint", identity: endpoint, scan: scan2 }, () => buildEndpointIndex(scan2));
           const queryVec = await encodeQueryViaEndpoint(query);
-          const results2 = searchSemantic(scan2, query, index, { queryVec, limit, fuzzy });
-          return JSON.stringify({ results: results2, tier: "endpoint" }, null, 2);
+          const results3 = searchSemantic(scan2, query, index, { queryVec, limit, fuzzy });
+          return JSON.stringify({ results: results3, tier: "endpoint" }, null, 2);
         } catch (e) {
-          const results2 = searchIndex(scan2, query, { limit, fuzzy, ...rankOpt });
+          const results3 = searchIndex(scan2, query, { limit, fuzzy, ...rankOpt });
           return JSON.stringify(
-            { results: results2, tier: "lexical", degradedReason: `embedding endpoint failed: ${errMessage(e)}` },
+            { results: results3, tier: "lexical", degradedReason: `embedding endpoint failed: ${errMessage(e)}` },
             null,
             2
           );
@@ -13584,17 +14461,32 @@ async function callTool(name2, args2, defaultRepo) {
           { mode: "static", identity: `${modelDir}#${model.modelId}`, scan: scan2 },
           () => buildEmbeddingIndex(scan2, model)
         );
-        const results2 = searchSemantic(scan2, query, index, { model, limit, fuzzy });
-        return JSON.stringify({ results: results2, tier: "static" }, null, 2);
+        const results3 = searchSemantic(scan2, query, index, { model, limit, fuzzy });
+        return JSON.stringify({ results: results3, tier: "static" }, null, 2);
       }
-      const results = searchIndex(scan2, query, { limit, fuzzy, ...rankOpt });
+      const results2 = searchIndex(scan2, query, { limit, fuzzy, ...rankOpt });
       return JSON.stringify(
-        { results, tier: "lexical", degradedReason: "no embedding endpoint or static model configured \u2014 see embed_status" },
+        { results: results2, tier: "lexical", degradedReason: "no embedding endpoint or static model configured \u2014 see embed_status" },
         null,
         2
       );
     }
-    return JSON.stringify(searchIndex(scan2, query, { limit, fuzzy, ...rankOpt }), null, 2);
+    const { results, explain } = explainQuery(scan2, query, { limit, fuzzy, ...exactOpt, ...rankOpt });
+    return JSON.stringify(args2.explain === true ? { results, explain } : results, null, 2);
+  }
+  if (name2 === "explain_search") {
+    const query = str(args2.query);
+    if (!query) throw new Error("`query` is required");
+    const scan2 = getScan(repo, scanOpts, walked);
+    const limit = typeof args2.limit === "number" ? args2.limit : void 0;
+    const fuzzy = typeof args2.fuzzy === "boolean" ? args2.fuzzy : void 0;
+    const { results, explain } = explainQuery(scan2, query, {
+      limit,
+      fuzzy,
+      ...args2.exact === true ? { exact: true } : {},
+      ...rankOpt
+    });
+    return JSON.stringify({ results, explain }, null, 2);
   }
   if (name2 === "embed_status") {
     const modelDir = resolveEmbedModelDir(repo);
@@ -13645,9 +14537,9 @@ async function callTool(name2, args2, defaultRepo) {
     const configPath = str(args2.configPath);
     let payload = args2.rules;
     if (payload === void 0 && configPath) {
-      const abs = isAbsolute(configPath) ? configPath : join19(repo, configPath);
+      const abs = isAbsolute(configPath) ? configPath : join22(repo, configPath);
       try {
-        payload = JSON.parse(readFileSync9(abs, "utf8"));
+        payload = JSON.parse(readFileSync12(abs, "utf8"));
       } catch (e) {
         throw new Error(`cannot read rules from ${abs}: ${errMessage(e)}`);
       }
@@ -13665,7 +14557,7 @@ async function runMcpServer(opts = {}) {
     version: opts.serverInfo?.version ?? ENGINE_VERSION
   };
   let protocolVersion = PROTOCOL_VERSIONS[0];
-  let tools = toolsFor(opts.defaultRepo, protocolVersion);
+  let tools = toolsFor(opts.defaultRepo, protocolVersion, opts.profile);
   const send = (msg) => {
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n");
   };
@@ -13688,7 +14580,7 @@ async function runMcpServer(opts = {}) {
     try {
       if (req.method === "initialize") {
         protocolVersion = negotiateProtocol(req.params?.protocolVersion);
-        tools = toolsFor(opts.defaultRepo, protocolVersion);
+        tools = toolsFor(opts.defaultRepo, protocolVersion, opts.profile);
         send({
           id: req.id,
           result: {
@@ -13758,6 +14650,8 @@ var init_mcp = __esm({
     init_complexity();
     init_viz();
     init_query();
+    init_lsp();
+    init_onboard();
     init_edit();
     init_memory();
     init_bm25();
@@ -13768,10 +14662,10 @@ var init_mcp = __esm({
     init_endpoint();
     init_walk();
     init_tools();
-    init_protocol();
+    init_protocol2();
     init_session();
     init_tools();
-    init_protocol();
+    init_protocol2();
     init_session();
     SCANLESS_TOOLS = /* @__PURE__ */ new Set([
       "workspaces",
@@ -13984,7 +14878,7 @@ runExtractWorker(workerData.input, (o) => parentPort.postMessage(o)).catch((e) =
   try {
     const outputs = await Promise.all(
       shards.map(
-        (jobsForShard) => new Promise((resolve3, reject) => {
+        (jobsForShard) => new Promise((resolve5, reject) => {
           const w = new Worker(bootstrap, {
             eval: true,
             workerData: { input: { jobs: jobsForShard, grammarKeys: wanted, maxCallsPerFile: opts.maxCallsPerFile } }
@@ -13998,7 +14892,7 @@ runExtractWorker(workerData.input, (o) => parentPort.postMessage(o)).catch((e) =
             fn();
           };
           w.once("message", (m) => {
-            settle(() => resolve3(m));
+            settle(() => resolve5(m));
             void w.terminate();
           });
           w.once("error", (e) => settle(() => reject(e)));
@@ -14778,6 +15672,13 @@ init_encode();
 init_embed();
 init_search();
 init_endpoint();
+init_onboard();
+init_lsp();
+init_config2();
+init_client();
+init_spawn();
+init_protocol();
+init_refs();
 init_rules();
 init_coupling();
 init_repomap();
@@ -15177,8 +16078,8 @@ init_util();
 init_types();
 init_types();
 init_loader();
-import { existsSync as existsSync8, mkdirSync as mkdirSync3, readFileSync as readFileSync10, writeFileSync as writeFileSync4 } from "fs";
-import { join as join20, resolve as resolve2 } from "path";
+import { existsSync as existsSync10, mkdirSync as mkdirSync3, readFileSync as readFileSync13, writeFileSync as writeFileSync4 } from "fs";
+import { join as join23, resolve as resolve4 } from "path";
 init_pipeline();
 init_hash();
 init_graph_json();
@@ -15206,6 +16107,8 @@ init_embed();
 init_search();
 init_endpoint();
 init_util();
+init_lsp();
+init_tools();
 var HELP = `codeindex engine v${ENGINE_VERSION} \u2014 deterministic repo indexing
 
 Usage: engine.mjs <command> [flags]
@@ -15239,6 +16142,15 @@ Commands:
                                the source with CODEINDEX_EMBED_URL
                 embed serve    Print (or --run) the docker command that starts the
                                containerized embedding server (rich tier)
+  lsp         Optional LSP tier (opt-in by asset \u2014 the tier is active only when
+              <repo>/.codeindex/lsp.json exists, or CODEINDEX_LSP_CONFIG points
+              at one). It annotates QUERY answers only and never touches
+              graph.json/symbols.json:
+                lsp status     Config path and source, each server with whether
+                               its command is on PATH and how many files it
+                               claims, and the languages nothing covers (JSON).
+                               --probe also starts each server to read the
+                               capabilities it really advertises
   grammars    Tree-sitter wasm grammars (optional AST tier; regex without them).
               Two tiers: CORE ships with the bundle; EXTENDED (kotlin, elixir,
               zig, solidity, hcl/terraform) arrives only via \`grammars pull\`.
@@ -15284,17 +16196,22 @@ Commands:
               and exits 0, or exits 1 when it has no opinion (run the original).
               Deliberately conservative \u2014 any shell metacharacter or unknown
               flag refuses the rewrite
-  mcp         Run as an MCP server over stdio (30 tools: scan_summary, graph,
+  mcp         Run as an MCP server over stdio (33 tools: scan_summary, graph,
               symbols, callers, workspaces, churn, symbols_overview,
-              find_symbol, find_references, repo_map, hotspots, coupling,
-              dead_code, complexity, mermaid, grep, search, embed_status,
-              check_rules, the memory quartet and the three symbolic-edit
-              writes). Flags: --repo <dir> pins ONE repository so the per-tool
-              repo argument becomes optional (an explicit per-call repo still
-              wins); --server-name <name> overrides the announced serverInfo;
-              --max-response-bytes <n> caps a single tool response (default 1e6;
-              a response under the cap is byte-identical, one over it is
-              replaced by an actionable notice instead of an unusable blob)
+              find_symbol, find_references, lsp_status, onboard, repo_map,
+              hotspots, coupling, dead_code, complexity, mermaid, grep, search,
+              explain_search, embed_status, check_rules, the memory quartet and
+              the three symbolic-edit writes). Flags: --repo <dir> pins ONE
+              repository so the per-tool repo argument becomes optional (an
+              explicit per-call repo still wins); --server-name <name> overrides
+              the announced serverInfo; --max-response-bytes <n> caps a single
+              tool response (default 1e6; a response under the cap is
+              byte-identical, one over it is replaced by an actionable notice
+              instead of an unusable blob); --tools <profile[,profile]>
+              advertises a named subset (all | orient | find | impact | edit |
+              risk, default all) \u2014 every advertised tool's schema costs an agent
+              context on EVERY turn, and a tool left out is still answerable
+              when called by name
   version     Print the engine version
 
 Flags (accepted before OR after the subcommand: '--repo X scan' and
@@ -15329,10 +16246,16 @@ Flags (accepted before OR after the subcommand: '--repo X scan' and
   --limit <n>         Max results for \`search\` (default 20)
   --no-fuzzy          \`search\`: disable trigram fuzzy fallback for query terms
                       with zero document frequency (default: enabled)
+  --exact             \`search\`: drop results that carry no verbatim term match
+                      (the ones the stem/trigram bridge produced)
+  --explain           \`search\`: emit { results, explain } \u2014 which terms matched,
+                      which bridged, and whether the query really found anything
   --semantic          \`search\`: RRF-fuse an embedding tier with lexical \u2014 the
                       HTTP endpoint if CODEINDEX_EMBED_ENDPOINT is set, else a
                       local static model (lexical-only when neither is available)
   --run               \`embed serve\`: run the docker command instead of printing it
+  --probe             \`lsp status\`: start each server and read the capabilities
+                      it really advertises (default: no spawn)
   --recall            \`callers\`: recall-oriented binding (issue #7) \u2014 relaxes
                       the JS/TS import gate to unique repo-wide names and labels
                       each site corroborated|unique-name
@@ -15358,10 +16281,10 @@ function parseFlags(args2) {
       if (!Number.isFinite(n) || n <= 0) throw new Error(`${a} expects a positive number, got "${raw}"`);
       return n;
     };
-    if (a === "--repo") flags2.repo = resolve2(next());
+    if (a === "--repo") flags2.repo = resolve4(next());
     else if (a === "--out") {
       const v = next();
-      flags2.out = v === "-" ? "-" : resolve2(v);
+      flags2.out = v === "-" ? "-" : resolve4(v);
     } else if (a === "--project-root") flags2.projectRoot = next();
     else if (a === "--include") flags2.include.push(next());
     else if (a === "--exclude") flags2.exclude.push(next());
@@ -15386,12 +16309,15 @@ function parseFlags(args2) {
       if (!Number.isInteger(n) || n < 0) throw new Error(`--workers expects a non-negative integer, got "${raw}"`);
       flags2.workers = n;
     } else if (a === "--since") flags2.since = next();
-    else if (a === "--config") flags2.config = resolve2(next());
+    else if (a === "--config") flags2.config = resolve4(next());
     else if (a === "--limit") flags2.limit = num2();
     else if (a === "--no-fuzzy") flags2.fuzzy = false;
+    else if (a === "--exact") flags2.exact = true;
+    else if (a === "--explain") flags2.explain = true;
     else if (a === "--semantic") flags2.semantic = true;
     else if (a === "--recall") flags2.recall = true;
     else if (a === "--run") flags2.run = true;
+    else if (a === "--probe") flags2.probe = true;
     else if (a === "--base") flags2.base = next();
     else if (a === "--staged") flags2.staged = true;
     else if (a === "--depth") flags2.depth = num2();
@@ -15435,12 +16361,13 @@ function parseMcpFlags(argv) {
   let defaultRepo;
   let name2;
   let maxResponseBytes;
+  let profile;
   for (let i2 = 0; i2 < argv.length; i2++) {
     const a = argv[i2];
     if (a === "--repo") {
       const v = argv[++i2];
       if (!v) throw new Error("--repo requires a directory");
-      defaultRepo = resolve2(v);
+      defaultRepo = resolve4(v);
     } else if (a === "--server-name") {
       const v = argv[++i2];
       if (!v) throw new Error("--server-name requires a value");
@@ -15450,12 +16377,17 @@ function parseMcpFlags(argv) {
       const n = Number(v);
       if (!v || !Number.isFinite(n) || n <= 0) throw new Error("--max-response-bytes requires a positive number");
       maxResponseBytes = n;
+    } else if (a === "--tools") {
+      const v = argv[++i2];
+      if (!v) throw new Error(`--tools requires a profile: ${profileNames().join(", ")}`);
+      toolsInProfiles(v);
+      profile = v === "all" ? void 0 : v;
     } else {
       throw new Error(`unknown flag for \`mcp\`: ${a}`);
     }
   }
-  if (defaultRepo && !existsSync8(defaultRepo)) throw new Error(`--repo path does not exist: ${defaultRepo}`);
-  return { defaultRepo, serverInfo: name2 ? { name: name2 } : void 0, maxResponseBytes };
+  if (defaultRepo && !existsSync10(defaultRepo)) throw new Error(`--repo path does not exist: ${defaultRepo}`);
+  return { defaultRepo, serverInfo: name2 ? { name: name2 } : void 0, maxResponseBytes, profile };
 }
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "--repo",
@@ -15476,6 +16408,7 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "--config",
   "--limit",
   "--server-name",
+  "--tools",
   "--workers",
   "--index",
   "--max-response-bytes"
@@ -15523,7 +16456,7 @@ async function runCli(rawArgv) {
     return;
   }
   const flags2 = parseFlags(rest);
-  if (!existsSync8(flags2.repo)) throw new Error(`--repo path does not exist: ${flags2.repo}`);
+  if (!existsSync10(flags2.repo)) throw new Error(`--repo path does not exist: ${flags2.repo}`);
   const scans = !SCANLESS_COMMANDS.has(cmd) && !(cmd === "embed" && flags2.positional !== "build");
   let precomputedWalk;
   if (scans && !flags2.noAst) {
@@ -15557,11 +16490,11 @@ async function runCli(rawArgv) {
     if (!flags2.out) throw new Error("index needs --out <dir>");
     const outDir = flags2.out;
     mkdirSync3(outDir, { recursive: true });
-    const cachePath = join20(outDir, "cache.json");
+    const cachePath = join23(outDir, "cache.json");
     let cache;
     let meta = {};
     try {
-      const parsed = JSON.parse(readFileSync10(cachePath, "utf8"));
+      const parsed = JSON.parse(readFileSync13(cachePath, "utf8"));
       if (parsed.schemaVersion === SCHEMA_VERSION && parsed.extractorVersion === EXTRACTOR_VERSION) {
         cache = new Map(Object.entries(parsed.files));
         meta = {
@@ -15582,12 +16515,12 @@ async function runCli(rawArgv) {
     });
     const modelDir = resolveEmbedModelDir(flags2.repo);
     const model = modelDir ? loadEmbedModel(modelDir) : void 0;
-    const graphPath = join20(outDir, "graph.json");
-    const symbolsPath = join20(outDir, "symbols.json");
-    const embedPath = join20(outDir, "embeddings.bin");
+    const graphPath = join23(outDir, "graph.json");
+    const symbolsPath = join23(outDir, "symbols.json");
+    const embedPath = join23(outDir, "embeddings.bin");
     const artifactSha = (path) => {
       try {
-        return sha1(readFileSync10(path));
+        return sha1(readFileSync13(path));
       } catch {
         return void 0;
       }
@@ -15660,7 +16593,7 @@ async function runCli(rawArgv) {
   } else if (cmd === "scip") {
     const scan2 = readScan();
     const bytes = renderScip(scan2, { projectRoot: flags2.projectRoot });
-    const out2 = flags2.out ?? resolve2("index.scip");
+    const out2 = flags2.out ?? resolve4("index.scip");
     if (out2 === "-") process.stdout.write(Buffer.from(bytes));
     else {
       writeFileSync4(out2, bytes);
@@ -15707,10 +16640,21 @@ async function runCli(rawArgv) {
   } else if (cmd === "search") {
     if (!flags2.positional) throw new Error('search needs a query: cli.mjs search "<query>" --repo <dir>');
     const scan2 = readScan();
+    const searchOpts = {
+      limit: flags2.limit,
+      fuzzy: flags2.fuzzy,
+      ...flags2.exact ? { exact: true } : {},
+      ...flags2.rank ? { rank: flags2.rank } : {}
+    };
+    const warnIfWeak = () => {
+      const { explain } = explainQuery(scan2, flags2.positional, searchOpts);
+      if (explain.note) process.stderr.write(`codeindex: ${explain.note}
+`);
+    };
     if (flags2.semantic) {
       const endpoint = resolveEmbedEndpoint();
       const lexical = () => {
-        const results = searchIndex(scan2, flags2.positional, { limit: flags2.limit, fuzzy: flags2.fuzzy, ...flags2.rank ? { rank: flags2.rank } : {} });
+        const results = searchIndex(scan2, flags2.positional, searchOpts);
         emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
       };
       if (endpoint) {
@@ -15740,9 +16684,12 @@ async function runCli(rawArgv) {
           emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
         }
       }
+      warnIfWeak();
     } else {
-      const results = searchIndex(scan2, flags2.positional, { limit: flags2.limit, fuzzy: flags2.fuzzy, ...flags2.rank ? { rank: flags2.rank } : {} });
-      emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
+      const { results, explain } = explainQuery(scan2, flags2.positional, searchOpts);
+      emit(JSON.stringify(flags2.explain ? { results, explain } : results, null, 2) + "\n", flags2.out);
+      if (explain.note) process.stderr.write(`codeindex: ${explain.note}
+`);
     }
   } else if (cmd === "embed") {
     const sub = flags2.positional;
@@ -15799,14 +16746,14 @@ async function runCli(rawArgv) {
       mkdirSync3(flags2.out, { recursive: true });
       const scan2 = readScan();
       const index = buildEmbeddingIndex(scan2, model);
-      writeFileSync4(join20(flags2.out, "embeddings.bin"), serializeEmbeddings(index));
+      writeFileSync4(join23(flags2.out, "embeddings.bin"), serializeEmbeddings(index));
       process.stderr.write(`codeindex: ${index.records.length} embedding records \u2192 ${flags2.out}/embeddings.bin (model ${model.modelId})
 `);
     } else if (sub === "pull") {
       const { url, sha256 } = resolveEmbedPullUrl();
-      const destDir = process.env.CODEINDEX_EMBED_DIR ?? join20(flags2.repo, ".codeindex", "models");
+      const destDir = process.env.CODEINDEX_EMBED_DIR ?? join23(flags2.repo, ".codeindex", "models");
       mkdirSync3(destDir, { recursive: true });
-      process.stderr.write(`codeindex: fetching model from ${url} \u2192 ${join20(destDir, "model.json")}
+      process.stderr.write(`codeindex: fetching model from ${url} \u2192 ${join23(destDir, "model.json")}
 `);
       let body2;
       try {
@@ -15827,18 +16774,22 @@ async function runCli(rawArgv) {
         process.exitCode = 1;
         return;
       }
-      writeFileSync4(join20(destDir, "model.json"), body2);
-      process.stderr.write(`codeindex: model written to ${join20(destDir, "model.json")}
+      writeFileSync4(join23(destDir, "model.json"), body2);
+      process.stderr.write(`codeindex: model written to ${join23(destDir, "model.json")}
 `);
     } else {
       throw new Error("embed needs a subcommand: status | build | pull | serve");
     }
+  } else if (cmd === "lsp") {
+    const sub = flags2.positional;
+    if (sub !== "status") throw new Error("lsp needs a subcommand: status");
+    emit(JSON.stringify(await lspStatus(readScan(), flags2.repo, flags2.probe === true), null, 2) + "\n", flags2.out);
   } else if (cmd === "grammars") {
     const sub = flags2.positional;
     const cacheDir = sharedGrammarsCacheDir();
     if (sub === "status") {
       const info2 = resolveGrammarsTier();
-      const present = (name2) => info2.dirs.some((d) => existsSync8(join20(d, name2)));
+      const present = (name2) => info2.dirs.some((d) => existsSync10(join23(d, name2)));
       const runtimePresent = present("web-tree-sitter.wasm");
       const target = resolveGrammarsPullTarget();
       const resolvedIn = (keys) => [...keys].filter((k) => present(`${k}.wasm`)).sort();
@@ -15870,7 +16821,7 @@ async function runCli(rawArgv) {
     }
   } else if (cmd === "rules") {
     if (!flags2.config) throw new Error("rules needs --config <codeindex.rules.json>");
-    const rules = parseRules(JSON.parse(readFileSync10(flags2.config, "utf8")));
+    const rules = parseRules(JSON.parse(readFileSync13(flags2.config, "utf8")));
     const { graph } = readArtifacts();
     const violations = checkRules(graph, rules);
     const errors = violations.filter((v) => v.severity === "error").length;
@@ -15970,9 +16921,12 @@ export {
   EXTRACTOR_VERSION,
   EXT_GRAMMAR,
   INDEX_DIR,
+  LspTimeout,
   MARKDOWN_EXT,
+  MAX_FRAME_BYTES,
   RISK_WEIGHTS,
   SCHEMA_VERSION,
+  agreementOf,
   allGrammarKeys,
   applyCentrality,
   basicTokenize,
@@ -15999,6 +16953,7 @@ export {
   classify,
   clip,
   clipInline,
+  columnOfSymbol,
   communityOf,
   compileGlobs,
   complexityOfSource,
@@ -16007,6 +16962,7 @@ export {
   computeSurprises,
   computeSymbolRefs,
   computeTestMap,
+  createFramer,
   deleteMemory,
   deltaFor,
   deserializeEmbeddings,
@@ -16019,9 +16975,11 @@ export {
   embeddingUnits,
   enclosingSymbol,
   encode,
+  encodeMessage,
   encodeQueryViaEndpoint,
   ensureGrammars,
   escapeRegExp,
+  explainQuery,
   extToLang,
   extractAst,
   extractCode,
@@ -16033,6 +16991,7 @@ export {
   extractTarInto,
   fetchExpectedSha256,
   fetchGrammarsTarball,
+  fileUri,
   findDeadCode,
   findLiteralDuplications,
   findReferences,
@@ -16066,10 +17025,17 @@ export {
   languageOf,
   listMemories,
   loadEmbedModel,
+  loadLspConfig,
+  locationsToRefs,
+  lspStatus,
+  lspUnavailable,
   neighborhood,
   neighborsOf,
+  onboardBrief,
+  openLspSession,
   pagerankOf,
   parseGitignore,
+  parseLspConfig,
   parseRules,
   preloadArtifacts,
   preloadSession,
@@ -16081,6 +17047,8 @@ export {
   readMemory,
   readPersistedIndex,
   readText,
+  referencesWithLsp,
+  relFromUri,
   renderGraphJson,
   renderMermaid,
   renderMermaidClustered,
@@ -16098,6 +17066,7 @@ export {
   resolveGrammarsPullTarget,
   resolveGrammarsTier,
   resolveImport,
+  resolveLspConfigPath,
   resolveRelationEdges,
   resolveRelations,
   resolveUniqueSymbol,
@@ -16115,11 +17084,13 @@ export {
   searchIndex,
   searchSemantic,
   serializeEmbeddings,
+  serverForLang,
   sh,
   sha1,
   sharedGrammarsCacheDir,
   shortHash,
   slugify,
+  spawnLspTransport,
   subtokens,
   symbolComplexity,
   symbolId,

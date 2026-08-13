@@ -1,4 +1,4 @@
-declare const ENGINE_VERSION = "2.27.1";
+declare const ENGINE_VERSION = "2.28.0";
 declare const SCHEMA_VERSION = 5;
 declare const EXTRACTOR_VERSION = 13;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
@@ -421,7 +421,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.27.1/grammars-2.27.1.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.0/grammars-2.28.0.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -715,6 +715,21 @@ interface FindSymbolOptions {
     substring?: boolean;
     includeBody?: boolean;
     maxResults?: number;
+    /**
+     * Return only what LOCATES a declaration — name, kind, file, line — dropping
+     * the signature, line span, visibility and language.
+     *
+     * The default answer carries the complete signature because "what shape is
+     * it" is the question that follows "where is it" almost every time, and one
+     * round trip beats two. But it is not free: measured on `Route` in
+     * create-t3-turbo, the full answer is 1,561 bytes against 640 for a
+     * locate-only one — and when the caller genuinely only wants a path, the
+     * signature is context spent on a question nobody asked.
+     *
+     * So it is the CALLER's choice rather than ours, and the default does not
+     * move: an agent that knows it is only resolving a path can say so.
+     */
+    concise?: boolean;
 }
 declare function findSymbol(scan: RepoScan, namePath: string, opts?: FindSymbolOptions): SymbolMatch[];
 interface SymbolReferences {
@@ -870,6 +885,7 @@ type RankMode = "graph" | "lexical";
 interface SearchOptions {
     limit?: number;
     fuzzy?: boolean;
+    exact?: boolean;
     rank?: RankMode;
 }
 /** A specific declaration a result matched, so a caller can jump straight to it. */
@@ -887,6 +903,56 @@ interface SearchResult {
     line?: number;
     symbolHits?: SymbolHit[];
     fuzzyTerms?: string[];
+    bridgedOnly?: true;
+}
+/**
+ * Whether the query really found anything, as one word.
+ *
+ * `weak` is the case this whole diagnostic exists for. Searching `nullGipStep7`
+ * against a repo that has `nullGipStep2` returns twenty results at scores no
+ * different from a real hit, because `subtokens` splits the identifier into
+ * ["nullgipstep7", "null", "gip", "step7"] and the subtokens match plenty of
+ * files on their own. The one token that mattered — the whole identifier — has
+ * df 0, no bridge, and appeared in NO output field at all. A caller could not
+ * tell "found it" from "found nothing and improvised".
+ */
+type QueryVerdict = "match" | "weak" | "none";
+interface TermDiagnostic {
+    term: string;
+    df: number;
+    /** How a df==0 term still earned score, when it did. Absent when df > 0. */
+    bridge?: {
+        via: "stem" | "trigram";
+        to: string[];
+        dice: number;
+    };
+}
+interface QueryExplanation {
+    query: string;
+    /** Post keywords() + subtokens(), in query order. */
+    terms: TermDiagnostic[];
+    /** Raw tokens keywords() discarded as stopwords or 1-char noise, in order. */
+    droppedStopwords: string[];
+    /** df==0 AND no stem/trigram bridge — present in the repo nowhere, sorted. */
+    unresolvedTerms: string[];
+    /**
+     * For a single-token query, the whole lowercased identifier with its df.
+     * df 0 here means the thing asked for is not in this tree, whatever the
+     * rows below say.
+     */
+    wholeIdentifier?: {
+        term: string;
+        df: number;
+    };
+    verdict: QueryVerdict;
+    /** A sentence a human or an agent can act on. Absent when verdict is "match". */
+    note?: string;
+    bridgedOnlyResults: number;
+    resultCount: number;
+}
+interface ExplainedSearch {
+    results: SearchResult[];
+    explain: QueryExplanation;
 }
 /**
  * Rank the scanned files against a natural-language (or identifier) query.
@@ -894,6 +960,14 @@ interface SearchResult {
  * byte-for-byte.
  */
 declare function searchIndex(scan: RepoScan, query: string, opts?: SearchOptions): SearchResult[];
+/**
+ * `searchIndex` plus the diagnostics it throws away, in ONE pass.
+ *
+ * `explainQuery(scan, q, o).results` is `searchIndex(scan, q, o)`, asserted by
+ * a test rather than promised by a comment — they are literally the same code
+ * path, which is why the ranking cannot drift between them.
+ */
+declare function explainQuery(scan: RepoScan, query: string, opts?: SearchOptions): ExplainedSearch;
 
 declare const EMBED_VERSION = 1;
 interface StaticEmbedModel {
@@ -968,6 +1042,252 @@ declare function embedViaEndpoint(texts: string[], opts?: EmbedEndpointOptions):
 declare function probeEndpoint(base: string, opts?: EmbedEndpointOptions): Promise<boolean>;
 declare function encodeQueryViaEndpoint(query: string, opts?: EmbedEndpointOptions): Promise<Int8Array>;
 declare function buildEndpointIndex(scan: RepoScan, opts?: EmbedEndpointOptions): Promise<EmbeddingIndex>;
+
+interface OnboardOptions {
+    /** Token budget for the repo-map section (default 900). */
+    budgetTokens?: number;
+    /** Persist the brief as a memory (default true). */
+    remember?: boolean;
+    /** Memory name (default "onboarding"). */
+    memoryName?: string;
+}
+interface OnboardBrief {
+    /** The rendered brief, markdown. */
+    brief: string;
+    /** Where it was persisted, when it was. */
+    memory?: string;
+}
+/**
+ * Compose a project brief from the analyses this engine already computes.
+ *
+ * Deterministic apart from the git section, which is skipped wholesale when
+ * this is not a git checkout rather than emitted empty — a heading with nothing
+ * under it reads as "no churn", which is a different claim from "not measured".
+ */
+declare function onboardBrief(scan: RepoScan, graph: Graph, opts?: OnboardOptions): OnboardBrief;
+
+interface LspServerConfig {
+    /** Stable id, used in `source` labels and in `lsp status`. */
+    id: string;
+    /** Engine `lang` strings (see src/lang/registry.ts), not LSP language ids. */
+    languages: string[];
+    /** What `didOpen` announces. Defaults to the first entry of `languages`. */
+    languageId?: string;
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    initializationOptions?: unknown;
+    /** Per-request budget, ms (default 5000). */
+    timeoutMs?: number;
+    /** How long `initialize` may take, ms (default 15000). */
+    startupTimeoutMs?: number;
+}
+interface LspConfig {
+    version: 1;
+    servers: LspServerConfig[];
+}
+type LspConfigSource = "env" | "repo" | "cwd" | "none";
+interface ResolvedLspConfigPath {
+    path: string | undefined;
+    source: LspConfigSource;
+}
+/**
+ * Resolution ladder, mirroring resolveEmbedModelDir: an explicit env var wins
+ * outright, then the repo, then the working directory.
+ *
+ * `CODEINDEX_LSP_CONFIG` set to an empty string, `0` or `off` DISABLES the tier
+ * even when a repo config exists — the escape hatch for a CI job that must not
+ * spawn anything, without deleting a file the rest of the team relies on.
+ */
+declare function resolveLspConfigPath(repo: string): ResolvedLspConfigPath;
+/** Validate a parsed payload, throwing with the field that is wrong. */
+declare function parseLspConfig(payload: unknown): LspConfig;
+/**
+ * The config for a repository, or undefined when the tier was not asked for.
+ *
+ * NEVER THROWS on an absent file — absent is the normal case and must cost
+ * nothing. A file that exists but is malformed DOES throw, because at that
+ * point someone asked for the tier and silently ignoring their config is worse
+ * than failing: they would spend the afternoon wondering why nothing improved.
+ */
+declare function loadLspConfig(repo: string): LspConfig | undefined;
+/** The server that claims a language, or undefined. First match wins. */
+declare function serverForLang(config: LspConfig, lang: string): LspServerConfig | undefined;
+
+interface LspMessage {
+    jsonrpc: "2.0";
+    id?: number | string;
+    method?: string;
+    params?: unknown;
+    result?: unknown;
+    error?: {
+        code: number;
+        message: string;
+    };
+}
+/** A reference the LSP reported, normalised to the engine's 1-based lines. */
+interface LspRef {
+    /** Repo-relative, posix separators — the same key every other artifact uses. */
+    file: string;
+    line: number;
+    character?: number;
+}
+/**
+ * The largest frame this client will assemble, in bytes.
+ *
+ * Not a performance knob: a malformed or hostile `Content-Length` is otherwise
+ * an unbounded allocation driven by a process the user configured but did not
+ * write. 32 MiB is far above any real `textDocument/references` response.
+ */
+declare const MAX_FRAME_BYTES: number;
+declare function encodeMessage(msg: LspMessage): string;
+/**
+ * An incremental frame reader.
+ *
+ * Feed it whatever arrives; it returns the messages that are complete. Buffers
+ * BYTES rather than a string, because decoding each chunk on arrival is what
+ * corrupts a multi-byte character split across two chunks.
+ */
+declare function createFramer(): {
+    push(chunk: Uint8Array | string): LspMessage[];
+};
+/** `file:///abs/path` for a repo-relative path, percent-encoding each segment. */
+declare function fileUri(root: string, rel: string): string;
+/** The inverse, or undefined when the URI points outside the repository. */
+declare function relFromUri(root: string, uri: string): string | undefined;
+/**
+ * Normalise whatever `textDocument/references` or `textDocument/definition`
+ * returned into engine coordinates.
+ *
+ * Handles all three shapes the spec permits — a single Location, an array of
+ * Locations, and an array of LocationLinks — because which one you get is a
+ * per-server, per-request choice, and a client that assumes one silently
+ * returns nothing against the others.
+ *
+ * LSP lines are 0-based; every line number in this engine is 1-based. Output is
+ * deduped and sorted so an LSP answer is as deterministic as a static one, even
+ * though the server's ordering is not guaranteed.
+ */
+declare function locationsToRefs(root: string, raw: unknown): LspRef[];
+
+interface LspTransport {
+    write(chunk: string): void;
+    onData(cb: (chunk: Uint8Array | string) => void): void;
+    /** Fired when the far side goes away, however it went away. */
+    onExit(cb: (code: number | null) => void): void;
+    close(): void;
+}
+interface LspSessionOptions {
+    /** Absolute repository root; every URI is built against it. */
+    root: string;
+    timeoutMs?: number;
+    startupTimeoutMs?: number;
+    initializationOptions?: unknown;
+}
+interface LspCapabilities {
+    references: boolean;
+    definition: boolean;
+    implementation: boolean;
+    typeHierarchy: boolean;
+}
+interface LspSession {
+    readonly capabilities: LspCapabilities;
+    didOpen(rel: string, text: string, languageId: string): void;
+    references(rel: string, line: number, character: number): Promise<LspRef[]>;
+    definition(rel: string, line: number, character: number): Promise<LspRef[]>;
+    shutdown(): Promise<void>;
+}
+/** Thrown when a request outlives its budget. Named so callers can tell it apart. */
+declare class LspTimeout extends Error {
+    constructor(method: string, ms: number);
+}
+declare function openLspSession(transport: LspTransport, options: LspSessionOptions): Promise<LspSession>;
+
+interface LspAgreement {
+    /** Files both tiers report — corroborated by two independent methods. */
+    both: string[];
+    /** Files only the language server found — the static tier under-recalled. */
+    lspOnly: string[];
+    /** Files only the static tier found — where the homonyms are. */
+    staticOnly: string[];
+}
+interface LspBlock {
+    server: string;
+    ok: boolean;
+    /** Why it could not answer. Present only when `ok` is false. */
+    reason?: string;
+    refs: LspRef[];
+    agreement: LspAgreement;
+}
+interface LspReferences extends SymbolReferences {
+    lsp?: LspBlock;
+}
+/** An `lsp` block for a tier that could not run, with the reason named. */
+declare function lspUnavailable(server: string, reason: string): LspBlock;
+/**
+ * A symbol's column on its declaration line.
+ *
+ * CodeSymbol carries `line`/`endLine` and no column (src/types.ts), because a
+ * column is worth nothing to any other consumer and persisting one would widen
+ * every artifact. LSP needs `{line, character}`, so it is derived HERE, from
+ * the source, and never stored.
+ *
+ * Returns 0 when the name is not on that line — a position a server will simply
+ * find no references for, which is the right failure: an empty LSP answer that
+ * leaves the static tiers untouched.
+ */
+declare function columnOfSymbol(root: string, rel: string, line: number, name: string): number;
+/** Cross the two answers into the agreement matrix, deterministically. */
+declare function agreementOf(refs: LspRef[], statik: SymbolReferences): LspAgreement;
+
+interface LspServerStatus {
+    id: string;
+    languages: string[];
+    command: string;
+    /** `have(command)` — resolvable on PATH. No spawn. */
+    onPath: boolean;
+    /** Files in this scan whose language this server claims. */
+    filesInRepo: number;
+    /** --probe only: did `initialize` succeed, and what did it advertise. */
+    reachable?: boolean;
+    capabilities?: {
+        references: boolean;
+        definition: boolean;
+        implementation: boolean;
+        typeHierarchy: boolean;
+    };
+    error?: string;
+}
+interface LspStatus {
+    lspVersion: 1;
+    mode: "none" | "configured";
+    configPath: string | null;
+    source: LspConfigSource;
+    servers: LspServerStatus[];
+    /** Languages present in the repo that no configured server claims. */
+    unmappedLanguages: string[];
+}
+/**
+ * What the tier would do, without doing it.
+ *
+ * The default answer is cheap and spawns NOTHING: config, `have()`, and file
+ * counts. `probe` is the part that starts each server to read its real
+ * capabilities — the analogue of `probeEndpoint` in `embed status`, and like it,
+ * the only part that touches the outside world.
+ */
+declare function lspStatus(scan: RepoScan, repo: string, probe?: boolean): Promise<LspStatus>;
+/**
+ * `findReferences`, annotated by a language server when one can answer.
+ *
+ * The caller passes the static answer in, so this function CANNOT change it —
+ * a structural guarantee rather than a promise. The server is chosen by the
+ * language of the declarations that were found, which is why a repo with a
+ * TypeScript server configured still gets its Go references answered
+ * statically, silently and correctly.
+ */
+declare function referencesWithLsp(scan: RepoScan, repo: string, name: string, statik: SymbolReferences): Promise<LspReferences>;
+
+declare function spawnLspTransport(server: LspServerConfig, cwd: string): LspTransport | undefined;
 
 type RuleSeverity = "error" | "warn";
 interface ForbiddenEdgeRule {
@@ -1232,6 +1552,7 @@ interface McpServerOptions {
     };
     defaultRepo?: string;
     maxResponseBytes?: number;
+    profile?: string;
 }
 declare function runMcpServer(opts?: McpServerOptions): Promise<void>;
 
@@ -1245,4 +1566,4 @@ declare function byKey<T>(keyOf: (x: T) => string): (a: T, b: T) => number;
 
 declare function runCli(rawArgv: string[]): Promise<void>;
 
-export { type ArchRule, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeLiteral, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DeltaChange, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type HierarchyRef, type Hotspot, type Hunk, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, type LiteralDuplication, type LiteralFamily, type LiteralSite, type LiteralsOptions, type LiteralsReport, MARKDOWN_EXT, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TestMap, type Tier, type TypeHierarchyEntry, type WalkOptions, type WalkResult, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, deleteMemory, deltaFor, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, findDeadCode, findLiteralDuplications, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, neighborhood, neighborsOf, pagerankOf, parseGitignore, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readMemory, readPersistedIndex, readText, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, warmGrammars, wordpiece, workerCount, writeMemory };
+export { type ArchRule, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeLiteral, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DeltaChange, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type ExplainedSearch, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type HierarchyRef, type Hotspot, type Hunk, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, type LiteralDuplication, type LiteralFamily, type LiteralSite, type LiteralsOptions, type LiteralsReport, type LspAgreement, type LspBlock, type LspCapabilities, type LspConfig, type LspConfigSource, type LspMessage, type LspRef, type LspReferences, type LspServerConfig, type LspServerStatus, type LspSession, type LspSessionOptions, type LspStatus, LspTimeout, type LspTransport, MARKDOWN_EXT, MAX_FRAME_BYTES, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, type OnboardBrief, type OnboardOptions, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, type QueryExplanation, type QueryVerdict, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TermDiagnostic, type TestMap, type Tier, type TypeHierarchyEntry, type WalkOptions, type WalkResult, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, agreementOf, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, columnOfSymbol, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, createFramer, deleteMemory, deltaFor, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeMessage, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, explainQuery, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, fileUri, findDeadCode, findLiteralDuplications, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, loadLspConfig, locationsToRefs, lspStatus, lspUnavailable, neighborhood, neighborsOf, onboardBrief, openLspSession, pagerankOf, parseGitignore, parseLspConfig, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readMemory, readPersistedIndex, readText, referencesWithLsp, relFromUri, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveLspConfigPath, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, serverForLang, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, spawnLspTransport, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, warmGrammars, wordpiece, workerCount, writeMemory };
