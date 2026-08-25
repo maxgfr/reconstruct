@@ -599,7 +599,9 @@ async function main(): Promise<void> {
     const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
     if (workflows.length) {
       process.stdout.write(
-        `\n${workflows.map((w) => `Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })`).join("\n")}\n` +
+        `\n${workflows.map((w) => `Claude Code Workflow: ${w}`).join("\n")}\n` +
+          `Codex/other hosts: dispatch the generated orchestration/agents/*.md contracts with native subagents.\n` +
+          `No subagents: rerun with --eco and follow orchestration/RUNBOOK.md.\n` +
           `Then fold the returned fragments in yourself (single serial reducer) and run the fold command shown at the end of each workflow.\n`,
       );
     } else {

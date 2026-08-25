@@ -100,8 +100,8 @@ node scripts/analyze.mjs --orchestrate --out <OUT> [--phase enrich-map|review-fi
 
 | Your harness | How to run each judgment phase |
 | --- | --- |
-| Has the Workflow tool | `--orchestrate --phase <p>`, then `Workflow({ scriptPath: "<OUT>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN fragments; you merge them (the single serial reduce), then run the fold command printed at the end of each workflow. |
-| Subagents, no Workflow tool | Same `--orchestrate`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md`. One writer: you. |
+| Codex or another host with subagents | `--orchestrate --phase <p>`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md`. Subagents return fragments; you perform the single serial merge and run the fold command. |
+| Claude Code with the Workflow tool | `--orchestrate --phase <p>`, then launch `<OUT>/orchestration/<p>.workflow.mjs` with `Workflow`. Subagents return fragments; you perform the single serial merge and run the printed fold command. |
 | Eco mode, or no subagents | `--orchestrate --eco` → follow `<OUT>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
 
 Fan-out is an optimization, never a requirement — the gates are harness-independent and every

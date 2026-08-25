@@ -22852,7 +22852,7 @@ function phaseWorkflowScript(ph, outAbs, engineAbs, batchSize) {
   return [
     `export const meta = ${JSON.stringify(meta)}`,
     ``,
-    `// NOT a plain Node script: launch via the Workflow tool \u2014 Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
+    `// Claude Code: launch this with the Workflow tool. Codex/other hosts: dispatch the sibling agents/*.md contracts with native subagents; use --eco when subagents are unavailable.`,
     `// Emitted by \`reconstruct --orchestrate\` from the CURRENT worklist. The worklist is the source`,
     `// of truth: if it changes, re-run \`--orchestrate --phase ${ph.name}\` before launching.`,
     ``,
@@ -22985,7 +22985,8 @@ Never fanned out (orchestrator-only, always serial): the greenfield interview, \
 (the divergent phase), every reduce/merge step, and the scratch build itself.
 
 With subagents available, prefer the emitted workflows instead: \`--orchestrate --out ${outAbs} --phase <p>\`
-then \`Workflow({ scriptPath: "${join40(outAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
+then launch the generated workflow with Claude Code's Workflow tool. Under Codex or another host,
+dispatch the generated \`agents/*.md\` contracts with native subagents. You stay the sole writer either way.
 `;
 }
 
@@ -24767,7 +24768,9 @@ ${res.written.map((w) => `  ${w}`).join("\n")}
     if (workflows.length) {
       process.stdout.write(
         `
-${workflows.map((w) => `Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })`).join("\n")}
+${workflows.map((w) => `Claude Code Workflow: ${w}`).join("\n")}
+Codex/other hosts: dispatch the generated orchestration/agents/*.md contracts with native subagents.
+No subagents: rerun with --eco and follow orchestration/RUNBOOK.md.
 Then fold the returned fragments in yourself (single serial reducer) and run the fold command shown at the end of each workflow.
 `
       );

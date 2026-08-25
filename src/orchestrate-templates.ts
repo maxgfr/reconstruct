@@ -232,7 +232,7 @@ export function phaseWorkflowScript(ph: PhaseInfo, outAbs: string, engineAbs: st
   return [
     `export const meta = ${JSON.stringify(meta)}`,
     ``,
-    `// NOT a plain Node script: launch via the Workflow tool — Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
+    `// Claude Code: launch this with the Workflow tool. Codex/other hosts: dispatch the sibling agents/*.md contracts with native subagents; use --eco when subagents are unavailable.`,
     `// Emitted by \`reconstruct --orchestrate\` from the CURRENT worklist. The worklist is the source`,
     `// of truth: if it changes, re-run \`--orchestrate --phase ${ph.name}\` before launching.`,
     ``,
@@ -369,6 +369,7 @@ Never fanned out (orchestrator-only, always serial): the greenfield interview, \
 (the divergent phase), every reduce/merge step, and the scratch build itself.
 
 With subagents available, prefer the emitted workflows instead: \`--orchestrate --out ${outAbs} --phase <p>\`
-then \`Workflow({ scriptPath: "${join(outAbs, "orchestration", "<p>.workflow.mjs")}" })\` — you stay the sole writer either way.
+then launch the generated workflow with Claude Code's Workflow tool. Under Codex or another host,
+dispatch the generated \`agents/*.md\` contracts with native subagents. You stay the sole writer either way.
 `;
 }
