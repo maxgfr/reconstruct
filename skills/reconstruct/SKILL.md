@@ -3,7 +3,7 @@ name: reconstruct
 description: 'Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). ALSO brainstorm product directions before building — "brainstorm ideas", "explore concepts", "compare approaches", "what should we build" — a divergent phase that generates several concepts and converges on one. Keywords: reconstruct, rebuild, clone, reverse engineer, from scratch, greenfield, build plan, new project, idea to PRD, brainstorm, ideation, explore concepts, compare approaches.'
 license: MIT
 metadata:
-  version: 2.18.0
+  version: 2.18.1
 ---
 
 # Reconstruct: any repo — or any idea — → a buildable PRD suite
