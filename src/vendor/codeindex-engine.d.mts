@@ -1,6 +1,6 @@
-declare const ENGINE_VERSION = "2.28.0";
+declare const ENGINE_VERSION = "2.28.1";
 declare const SCHEMA_VERSION = 5;
-declare const EXTRACTOR_VERSION = 13;
+declare const EXTRACTOR_VERSION = 14;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
 type Tier = 0 | 1 | 2;
@@ -421,7 +421,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.0/grammars-2.28.0.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.1/grammars-2.28.1.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -1553,6 +1553,7 @@ interface McpServerOptions {
     defaultRepo?: string;
     maxResponseBytes?: number;
     profile?: string;
+    watch?: boolean;
 }
 declare function runMcpServer(opts?: McpServerOptions): Promise<void>;
 
