@@ -1,9 +1,9 @@
 {
-  "tag": "v2.28.1",
-  "engineVersion": "2.28.1",
+  "tag": "v2.28.2",
+  "engineVersion": "2.28.2",
   "sha256": {
-    "codeindex-engine.mjs": "5e9d4c3c872e2c6e09b2903b60a7b65807dc74ae1ad70f7153278e968cce8f27",
-    "codeindex-engine.d.mts": "06f7d9122e58faa81c81137aab849f25672a3c80cd6c1308b311ec6868596cf6"
+    "codeindex-engine.mjs": "ba5e1f6b50e4c2151bf8c5db5e4f09b9dbdbec9adf8f8d6839972acb573a3465",
+    "codeindex-engine.d.mts": "b006527c2ef066b07a113c33daf5bc1620e796a30d48bc77da5c3881a3a5da9a"
   },
-  "syncedAt": "2026-08-31T14:29:22.791Z"
+  "syncedAt": "2026-09-02T11:45:50.108Z"
 }

@@ -1,4 +1,4 @@
-declare const ENGINE_VERSION = "2.28.1";
+declare const ENGINE_VERSION = "2.28.2";
 declare const SCHEMA_VERSION = 5;
 declare const EXTRACTOR_VERSION = 14;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
@@ -421,7 +421,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.1/grammars-2.28.1.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.2/grammars-2.28.2.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -526,6 +526,8 @@ interface ResolveContext {
     }[];
     csharpNamespaces: Map<string, string[]>;
     warnings: string[];
+    jsMemo?: Map<string, Resolution>;
+    dirFilesMemo?: Map<string, string[]>;
 }
 declare function buildResolveContext(scan: RepoScan): ResolveContext;
 declare function resolveDocLink(fromRel: string, spec: string, ctx: ResolveContext): Resolution;
