@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.20.0](https://github.com/maxgfr/reconstruct/compare/v2.19.0...v2.20.0) (2026-09-02)
+
+
+### Features
+
+* **engine:** re-pin vendored engines ([d0fc463](https://github.com/maxgfr/reconstruct/commit/d0fc4634c44cad419495ff29db3ce78377e5248f))
+
 # [2.19.0](https://github.com/maxgfr/reconstruct/compare/v2.18.1...v2.19.0) (2026-08-31)
 
 
