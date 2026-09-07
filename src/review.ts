@@ -28,6 +28,58 @@ function archHash(outDir: string): string {
   return sha256(ARCH_DOCS.map((rel) => `# ${rel}\n` + readIfExists(join(outDir, rel))).join("\n"));
 }
 
+/** The content a review round adjudicates: the shared contract + every PRD it covered. */
+type ContentBaseline = NonNullable<ReviewResult["baseline"]>;
+
+/** One hash over a whole baseline — the round stamp a findings file can echo back. */
+function baselineHash(b: ContentBaseline): string {
+  const feats = b.features
+    .map((f) => `${f.feature}:${f.prdHash}`)
+    .sort()
+    .join("\n");
+  return sha256(`${b.archHash}\n${feats}`);
+}
+
+/**
+ * The tree's content baseline as it stands on disk RIGHT NOW — the thing the
+ * last adjudicated round's `baseline` must still describe for the review gate to
+ * mean anything. `null` when there is no readable inventory to enumerate.
+ */
+function currentBaseline(outDir: string): ContentBaseline | null {
+  let inv: Inventory;
+  try {
+    inv = readInventory(outDir);
+  } catch {
+    return null;
+  }
+  const features: ContentBaseline["features"] = [];
+  for (const f of inv.features ?? []) {
+    const prdPath = join(outDir, "features", f.slug, "PRD.md");
+    if (!existsSync(prdPath)) continue;
+    features.push({ feature: f.slug, prdHash: sha256(readFileSync(prdPath, "utf8")) });
+  }
+  return { archHash: archHash(outDir), features };
+}
+
+/**
+ * How the tree drifted from a baseline — `null` when it did not. Added and
+ * removed features count: a review that never saw a unit cannot vouch for it,
+ * and a baseline naming units that are gone no longer describes this tree.
+ */
+function baselineDrift(baseline: ContentBaseline, current: ContentBaseline): string | null {
+  const was = new Map(baseline.features.map((f) => [f.feature, f.prdHash]));
+  const now = new Map(current.features.map((f) => [f.feature, f.prdHash]));
+  const changed = [...now].filter(([k, v]) => was.has(k) && was.get(k) !== v).map(([k]) => k);
+  const added = [...now.keys()].filter((k) => !was.has(k));
+  const removed = [...was.keys()].filter((k) => !now.has(k));
+  const parts: string[] = [];
+  if (baseline.archHash !== current.archHash) parts.push("the shared architecture docs changed");
+  if (changed.length) parts.push(`${changed.length} feature PRD(s) changed (${changed.join(", ")})`);
+  if (added.length) parts.push(`${added.length} feature(s) added since (${added.join(", ")})`);
+  if (removed.length) parts.push(`${removed.length} reviewed feature(s) removed since (${removed.join(", ")})`);
+  return parts.length ? parts.join("; ") : null;
+}
+
 /** Normalize a finding's problem text so the same issue hashes to the same id. */
 function normalizeProblem(s: string): string {
   return s
@@ -69,7 +121,16 @@ export function runReview(outDir: string): ReviewWorklist {
     units.push({ feature: f.slug, prdHash, archHash: arch, needsReview, findings: [] });
   }
 
-  const worklist: ReviewWorklist = { run: outDir, round, changedSet, units };
+  const worklist: ReviewWorklist = {
+    run: outDir,
+    round,
+    // The content this round asks the reviewer to judge, in one hash. A findings
+    // file may echo it so `--review --apply` can tell last round's findings from
+    // this round's (see `applyFindings`).
+    contentHash: baselineHash({ archHash: arch, features: units.map((u) => ({ feature: u.feature, prdHash: u.prdHash })) }),
+    changedSet,
+    units,
+  };
   writeFileSync(join(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
   writeFileSync(join(outDir, "REVIEW.md"), renderWorklistMd(worklist));
   return worklist;
@@ -292,7 +353,8 @@ export function reduceFindings(
 // changed-set) and the prior REVIEW.json (residual, staleRounds), and persist
 // REVIEW.json.
 export function applyFindings(outDir: string, findingsPath: string): ReviewResult {
-  const findings = normalizeFindings(JSON.parse(readFileSync(findingsPath, "utf8")));
+  const raw = JSON.parse(readFileSync(findingsPath, "utf8"));
+  const findings = normalizeFindings(raw);
 
   let round: number | undefined;
   let changedSet: string[] = [];
@@ -300,8 +362,13 @@ export function applyFindings(outDir: string, findingsPath: string): ReviewResul
   let reviewedFeatures: string[] = [];
   let currentFeatures: string[] = [];
   let baseline: ReviewResult["baseline"];
+  let todo: ReviewWorklist | undefined;
   try {
-    const todo = JSON.parse(readFileSync(join(outDir, "REVIEW.todo.json"), "utf8")) as ReviewWorklist;
+    todo = JSON.parse(readFileSync(join(outDir, "REVIEW.todo.json"), "utf8")) as ReviewWorklist;
+  } catch {
+    /* no worklist on disk — reduce with defaults */
+  }
+  if (todo) {
     round = todo.round;
     changedSet = todo.changedSet ?? [];
     units = todo.units?.length ?? 0;
@@ -312,8 +379,28 @@ export function applyFindings(outDir: string, findingsPath: string): ReviewResul
       archHash: todo.units?.[0]?.archHash ?? "",
       features: (todo.units ?? []).map((u) => ({ feature: u.feature, prdHash: u.prdHash })),
     };
-  } catch {
-    /* no worklist on disk — reduce with defaults */
+    // A baseline is a claim that a reviewer JUDGED this content. Committing one
+    // for a worklist the tree has already moved past would certify prose nobody
+    // read — and `--check --semantic` would then pass on it. Fail closed instead:
+    // the fix is another `--review` round over the current content.
+    const current = currentBaseline(outDir);
+    const drift = current ? baselineDrift(baseline, current) : null;
+    if (drift) {
+      throw new Error(
+        `${join(outDir, "REVIEW.todo.json")} is stale: ${drift}. These findings judge content the tree has moved past, ` +
+          `so applying them would commit a review baseline nobody reviewed. Re-run \`--review\` and re-review the flagged unit(s) (fail-closed).`,
+      );
+    }
+    // A findings file that echoes the worklist stamp it was produced from is
+    // checked against this round's — that is what distinguishes last round's
+    // findings from this one's when the content hash alone cannot.
+    const echoed = typeof raw?.contentHash === "string" ? raw.contentHash : undefined;
+    if (echoed && todo.contentHash && echoed !== todo.contentHash) {
+      throw new Error(
+        `${findingsPath} is stale: its contentHash names a different review round than ${join(outDir, "REVIEW.todo.json")}. ` +
+          `Re-review the current worklist and re-apply (fail-closed).`,
+      );
+    }
   }
 
   let priorFailures: ReviewResult["failures"] = [];
@@ -366,9 +453,11 @@ export function recomputeReviewGate(rev: ReviewResult): string[] {
 // Fold the buildability-review ledger into a `--check` result when `--semantic`
 // is set. Strictly additive on the structural gate, and trustless on the ledger:
 // the open-blocker set is RECOMPUTED from `failures[]` ∪ gating `findings[]` at
-// check time — a hand-edited or stale `ok: true` never passes. Fails closed: a
-// missing or unreadable REVIEW.json is an error unless `allowUnverified`
-// explicitly downgrades it.
+// check time — a hand-edited or stale `ok: true` never passes. The ledger is also
+// re-bound to the tree: the last adjudicated `baseline` must still describe the
+// PRDs and architecture docs on disk. Fails closed: a missing, unreadable or
+// baseline-less REVIEW.json is an error unless `allowUnverified` explicitly
+// downgrades it.
 export function foldReview(outDir: string, check: CheckResult, opts: { allowUnverified?: boolean } = {}): void {
   const p = join(outDir, "REVIEW.json");
   const skip = (msg: string): void => {
@@ -385,6 +474,34 @@ export function foldReview(outDir: string, check: CheckResult, opts: { allowUnve
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${(e as Error).message})`);
     return;
+  }
+  // CONTENT binding. `--review` already content-hashes every PRD, so it knows
+  // when a unit is due — but the GATE used to read only the stored blocker set,
+  // never asking whether that set still describes the tree. So a PRD rewritten
+  // after the last adjudicated round passed `--check --semantic` while `--review`
+  // was, in the same tree, reporting the very same unit as unreviewed. Diff the
+  // last adjudicated `baseline` against the tree on disk and fail closed on any
+  // drift — a changed, added or removed feature, or a moved architecture doc
+  // (which can regress every feature's contract at once).
+  const current = currentBaseline(outDir);
+  if (!rev.baseline || !Array.isArray(rev.baseline.features)) {
+    // A baseline-less ledger predates content binding. It cannot be re-checked
+    // against anything, so it cannot certify this tree — migrate by re-running
+    // the round, or downgrade the gap explicitly.
+    skip(
+      "--semantic: REVIEW.json carries no content baseline — this ledger predates content binding, so the gate cannot prove the review " +
+        "covered the PRDs as they stand; re-run `--review` then `--review --apply <findings.json>` to record one",
+    );
+  } else if (!current) {
+    skip("--semantic: the review baseline cannot be checked against the tree (no readable inventory.json to enumerate the feature PRDs)");
+  } else {
+    const drift = baselineDrift(rev.baseline, current);
+    if (drift) {
+      skip(
+        `--semantic: the AI buildability review is stale — ${drift} since the last adjudicated round, so REVIEW.json says nothing about ` +
+          "the current PRDs; re-run `--review` then `--review --apply <findings.json>`",
+      );
+    }
   }
   const residual = recomputeReviewGate(rev);
   if (residual.length) {

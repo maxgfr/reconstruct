@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
@@ -58,6 +59,17 @@ function requirements(prd: string): string[] {
   return out;
 }
 
+/**
+ * The content a verdict is bound to: the feature it came from, the COMPLETE
+ * requirement text, and the evidence the worklist offered for it. `claimId` is
+ * NOT an input — the id is an ordinal that survives an edit, which is exactly
+ * why it cannot be the binding. Full text (not the 400-char stored `claim`) so
+ * an edit past the truncation still moves the fingerprint.
+ */
+export function claimFingerprint(p: { feature: string; fullClaim: string; evidenceRef: string; digest: string }): string {
+  return createHash("sha256").update(`${p.feature}\n${p.evidenceRef}\n${p.digest}\n${p.fullClaim}`).digest("hex").slice(0, 16);
+}
+
 interface Ev {
   ref: string;
   text: string;
@@ -90,6 +102,9 @@ function featureEvidence(f: any): Ev[] {
 // `VERIFY.todo.json.coverage.max`, and the gate re-derives with that same cap
 // (`capUsedFor`) rather than assuming the default — which is what lets
 // `--max-verify` exist without desynchronising the two derivations.
+// Each pair also carries a `fingerprint` over its full claim text + offered
+// evidence: the ordinal `claimId` is the stable public handle, the fingerprint is
+// what a verdict is actually BOUND to (see `ClaimEvidencePair.fingerprint`).
 export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {}): BuiltWorklist {
   let invRaw: string;
   try {
@@ -131,6 +146,7 @@ export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {})
         feature: f.slug,
         evidenceRef,
         digest,
+        fingerprint: claimFingerprint({ feature: f.slug, fullClaim: req, evidenceRef, digest }),
         score: best ? best.s : 0,
       });
     }
@@ -305,6 +321,66 @@ function readTodoPairs(outDir: string): Map<string, ClaimEvidencePair> | undefin
   }
 }
 
+/**
+ * The pairs the CURRENT PRDs derive, keyed by claimId — `undefined` when the
+ * tree is unreadable (no/!JSON inventory). Deriving with the run's own cap keeps
+ * the comparison against VERIFY.todo.json like-for-like.
+ */
+function currentPairs(outDir: string, max: number): Map<string, ClaimEvidencePair> | undefined {
+  try {
+    const byClaim = new Map<string, ClaimEvidencePair>();
+    for (const p of buildWorklist(outDir, { maxVerify: max }).worklist.pairs) byClaim.set(p.claimId, p);
+    return byClaim;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fail closed when the worklist on disk no longer describes the PRDs on disk.
+ *
+ * `--verify --apply` used to backfill each fragment row's claim/evidence from
+ * VERIFY.todo.json by claimId alone. If a PRD moved between `--verify` and the
+ * fold, that STAMPED the current content onto a judgement made about the old
+ * prose — the ledger then reads as a verdict on text nobody adjudicated. So the
+ * worklist must first be proven to be a re-derivation of the current tree.
+ * A worklist with no fingerprints predates content binding and cannot be
+ * proven either way, so it is stale by the same fail-closed rule.
+ */
+function assertWorklistFresh(outDir: string, todo: Map<string, ClaimEvidencePair>): void {
+  const current = currentPairs(outDir, capUsedFor(outDir));
+  if (!current) throw new Error("Cannot derive the current PRDs and inventory to validate VERIFY.todo.json; restore the run before applying verdicts.");
+  const drift: string[] = [];
+  const unbound: string[] = [];
+  for (const [claimId, p] of todo) {
+    const cur = current.get(claimId);
+    if (!cur) {
+      drift.push(`${claimId} is no longer derived from the PRDs`);
+      continue;
+    }
+    if (!p.fingerprint) {
+      unbound.push(claimId);
+      continue;
+    }
+    if (p.fingerprint !== cur.fingerprint) drift.push(`${claimId} now names different content`);
+  }
+  for (const claimId of current.keys()) if (!todo.has(claimId)) drift.push(`${claimId} is new since the worklist was written`);
+  const preview = (xs: string[]): string => `${xs.slice(0, 6).join("; ")}${xs.length > 6 ? "; …" : ""}`;
+  if (drift.length) {
+    throw new Error(
+      `${join(outDir, "VERIFY.todo.json")} is stale: ${drift.length} pair(s) no longer match the PRDs (${preview(drift)}) — ` +
+        `the verdicts judge content that has since changed. Re-run \`--verify\` and re-adjudicate (fail-closed).`,
+    );
+  }
+  if (unbound.length) {
+    throw new Error(
+      `${join(outDir, "VERIFY.todo.json")} is stale: ${unbound.length} pair(s) carry no content fingerprint (${preview(unbound)}) — ` +
+        `this worklist predates content binding, so the fold cannot prove the verdicts judge the CURRENT PRDs. ` +
+        `Re-run \`--verify\` and re-adjudicate (fail-closed).`,
+    );
+  }
+}
+
 // Phase B — read an agent-filled verdicts file (`{ pairs: Verdict[] }`, a
 // `{ verdicts: Verdict[] }` object — the shape the orchestrate-emitted
 // adjudicator fragments return — or a bare array), validate it FAIL-CLOSED,
@@ -322,6 +398,12 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
     throw new Error(`${verdictsPath}: no verdict rows found — expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
   }
   const todo = readTodoPairs(outDir);
+  // Prove the worklist still describes the tree BEFORE any backfill, so a stale
+  // run can never launder old judgements into current content.
+  if (todo) assertWorklistFresh(outDir, todo);
+  // A fresh derivation validates an existing row fingerprint; it cannot supply
+  // a generation-time binding to an old row whose worklist has been lost.
+  const bind = todo ?? currentPairs(outDir, Number.MAX_SAFE_INTEGER);
   const problems: string[] = [];
   const unknown: string[] = [];
   const verdicts: Verdict[] = [];
@@ -336,9 +418,29 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       problems.push(`row ${i + 1} (${v.claimId}): invalid verdict "${String(v.verdict)}" — expected ${VALID.join("|")} or null`);
       continue;
     }
-    const base = todo?.get(v.claimId);
+    const base = bind?.get(v.claimId);
     if (todo && !base) {
       unknown.push(v.claimId);
+      continue;
+    }
+    if (!todo && base && (!v.fingerprint || v.fingerprint !== base.fingerprint)) {
+      problems.push(`row ${i + 1} (${v.claimId}): missing or stale content fingerprint — restore the saved worklist or re-run --verify and re-adjudicate`);
+      continue;
+    }
+    // A row that describes itself must describe THIS worklist's pair. The claim
+    // text and the feature identify the content judged; a row disagreeing with
+    // the current derivation was written against another run. (`evidenceRef` is
+    // deliberately excluded — an adjudicator may legitimately cite a narrower
+    // ref than the one offered; `resolveEvidence` is what validates that.)
+    const stale = base
+      ? (["claim", "feature", "fingerprint"] as const).filter((field) => {
+          const got = v[field];
+          const want = base[field];
+          return typeof got === "string" && want !== undefined && got !== want;
+        })
+      : [];
+    if (stale.length) {
+      problems.push(`row ${i + 1} (${v.claimId}): stale ${stale.join("/")} — it does not match the current worklist pair`);
       continue;
     }
     const verdict = VALID.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
@@ -352,10 +454,13 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       verdict,
       note: typeof v.note === "string" ? v.note : "",
       ...(confidence ? { confidence } : {}),
+      // A fragment inherits only a saved worklist's binding. Without that
+      // worklist, preserve the row's existing binding after comparison above.
+      ...((todo ? base?.fingerprint : base ? v.fingerprint : undefined) ? { fingerprint: todo ? base!.fingerprint : v.fingerprint } : {}),
     });
   }
   if (problems.length) {
-    throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) — fix them and re-apply (fail-closed):\n  - ${problems.join("\n  - ")}`);
+    throw new Error(`${verdictsPath}: ${problems.length} malformed or stale row(s) — fix them and re-apply (fail-closed):\n  - ${problems.join("\n  - ")}`);
   }
   if (verdicts.length === 0) {
     throw new Error(
@@ -418,8 +523,11 @@ export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResu
 // `--semantic` is set. Strictly additive on the structural gate, and trustless on
 // the ledger: the pass/fail is RE-REDUCED from `verdicts[]` (each citation
 // re-resolved against the inventory) at check time — a hand-edited or stale
-// `ok: true` never passes. Fails closed: a missing, unreadable or verdict-less
-// VERIFY.json is an error unless `allowUnverified` explicitly downgrades it.
+// `ok: true` never passes. Every verdict is also re-BOUND to the content it
+// judged, via the fingerprint of the pair the current PRDs derive for its id, so
+// a claim rewritten under a surviving `Cn` cannot inherit the old verdict. Fails
+// closed: a missing, unreadable or verdict-less VERIFY.json is an error unless
+// `allowUnverified` explicitly downgrades it.
 export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUnverified?: boolean } = {}): void {
   const p = join(outDir, "VERIFY.json");
   const skip = (msg: string): void => {
@@ -482,14 +590,53 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   } catch {
     // no worklist to compare against — every uncovered claim reads as never-offered
   }
-  const adjudicatedIds = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-  const uncovered = all.filter((p) => !adjudicatedIds.has(p.claimId));
+  // CONTENT binding. Ids alone are not coverage: `claimId` is an ordinal, so an
+  // edit that preserves the requirement count leaves `C4` named `C4` and the old
+  // verdict silently re-certifies the NEW prose. Each adjudicated verdict must
+  // therefore carry the fingerprint of the pair the current PRDs derive for that
+  // id — full claim text plus the evidence offered for it, so an edit past the
+  // 400-char `claim` truncation, a reorder, or evidence that moved under an
+  // unchanged claim all break the match. A verdict with no fingerprint predates
+  // content binding: it cannot certify the current tree either, so it is reported
+  // rather than trusted. Both are coverage absences (nobody judged THIS content),
+  // so they route through `skip` like the dropped/never-offered cases.
+  const currentById = new Map(all.map((p) => [p.claimId, p]));
+  const boundIds = new Set<string>();
+  const staleIds: string[] = [];
+  const unboundIds: string[] = [];
+  for (const v of sem.verdicts) {
+    if (!v.verdict) continue;
+    const cur = currentById.get(v.claimId);
+    if (!cur) continue; // an id the PRDs no longer derive — surfaces as `ignored`, never as coverage
+    // A pair the engine itself could not fingerprint falls back to id coverage.
+    if (!cur.fingerprint) boundIds.add(v.claimId);
+    else if (typeof v.fingerprint !== "string" || !v.fingerprint) unboundIds.push(v.claimId);
+    else if (v.fingerprint !== cur.fingerprint) staleIds.push(v.claimId);
+    else boundIds.add(v.claimId);
+  }
+  const accounted = new Set([...boundIds, ...staleIds, ...unboundIds]);
+  const uncovered = all.filter((p) => !accounted.has(p.claimId));
   const dropped = uncovered.filter((p) => offeredIds.has(p.claimId));
   const neverOffered = uncovered.filter((p) => !offeredIds.has(p.claimId));
   const preview = (ps: ClaimEvidencePair[]): string => {
     const ids = ps.map((p) => p.claimId);
     return `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}`;
   };
+  const previewIds = (ids: string[]): string => `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}`;
+  if (staleIds.length) {
+    skip(
+      `--semantic: ${staleIds.length} verdict(s) were adjudicated against content that has since changed ` +
+        `(${previewIds(staleIds)}) — the requirement text or the evidence captured for it no longer matches what was judged, ` +
+        `so the stored verdict says nothing about the CURRENT PRDs; re-run --verify then --verify --apply <verdicts.json>`,
+    );
+  }
+  if (unboundIds.length) {
+    skip(
+      `--semantic: ${unboundIds.length} adjudicated verdict(s) carry no content fingerprint ` +
+        `(${previewIds(unboundIds)}) — this ledger predates content binding, so the gate cannot prove the verdicts judge ` +
+        `the PRDs as they stand; re-run --verify then --verify --apply <verdicts.json> to re-bind them`,
+    );
+  }
   if (dropped.length) {
     skip(
       `--semantic: ${dropped.length} requirement(s) the worklist DID offer have no adjudicated verdict in VERIFY.json ` +

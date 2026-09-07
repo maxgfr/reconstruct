@@ -1,6 +1,7 @@
 import { resolve, join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, statSync, realpathSync } from "node:fs";
+import { compareBehavior } from "./behavior.js";
 import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal } from "./output.js";
@@ -23,8 +24,13 @@ Usage:
   reconstruct [--repo <path>] [--out <path>] [options]
   reconstruct --scratch --plan <plan.json> [--out <path>] [options]
   reconstruct --orchestrate [--phase <p>] [--eco] [--list] --out <path>
+  reconstruct --compare <cases.json> --original <dir> --rebuilt <dir> [--run-tests] [--json]
 
 Options:
+  --compare <path>     Compare explicit local cases: exact stdout/stderr/exit only
+  --original <path>    Original working tree for --compare
+  --rebuilt <path>     Rebuilt working tree for --compare
+  --run-tests         Authorize local command execution for --compare (not sandboxed)
   --repo <path>        Repository to analyze            (default: current dir)
   --out <path>         Output directory                 (default: <repo>/reconstruction)
   --mode <mode>        preserve | redesign              (default: preserve)
@@ -180,6 +186,9 @@ function splitGlobs(value: string): string[] {
 // unknown or typo'd flag loudly instead of silently swallowing it (and then
 // falling back to a default the user never asked for).
 const VALUE_FLAGS = new Set([
+  "compare",
+  "original",
+  "rebuilt",
   "repo",
   "out",
   "mode",
@@ -208,6 +217,7 @@ export function parseArgs(argv: string[]): Options {
   const includeGlobs: string[] = [];
   const excludeGlobs: string[] = [];
   let json = false;
+  let runTests = false;
   let merge = false;
   let summary = false;
   let features = false;
@@ -232,6 +242,10 @@ export function parseArgs(argv: string[]): Options {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
+    if (arg === "--run-tests") {
+      runTests = true;
+      continue;
+    }
     if (arg === "-h" || arg === "--help") {
       process.stdout.write(HELP);
       process.exit(0);
@@ -354,10 +368,15 @@ export function parseArgs(argv: string[]): Options {
   // Reject the combination instead of picking a winner. (`--semantic` modifies
   // `--check`; `--apply` modifies `--verify`/`--review`; `--phase`/`--eco`/`--list`
   // modify `--orchestrate` — those are not actions.)
-  const actions = [check, verify, review, brainstorm, orchestrate].filter(Boolean).length;
+  const actions = [check, verify, review, brainstorm, orchestrate, raw.compare].filter(Boolean).length;
   if (actions > 1) {
     fail(`--check, --verify, --review, --brainstorm and --orchestrate are mutually exclusive — run one at a time`);
   }
+  if (raw.compare && (scratch || mcp || merge || summary || features || specs || raw.repo || raw.apply || semantic || allowUnverified)) {
+    fail("--compare cannot be combined with other modes or semantic/apply options.");
+  }
+  if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
+  if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");
 
   // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle
   // post-step. Validate up front so the rest of the resolution can assume it.
@@ -412,6 +431,7 @@ export function parseArgs(argv: string[]): Options {
   const batchSize = positive("batch-size");
 
   return {
+    ...(raw.compare ? { compare: resolve(raw.compare), original: resolve(raw.original!), rebuilt: resolve(raw.rebuilt!), runTests } : {}),
     repo,
     out,
     mode,
@@ -465,6 +485,21 @@ function guardEnrichedOutput(opts: Options): void {
 // synchronous and returns immediately, so nothing else changes shape.
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
+
+  if (opts.compare) {
+    try {
+      const result = compareBehavior(opts.compare, { originalDir: opts.original!, rebuiltDir: opts.rebuilt!, runTests: opts.runTests });
+      process.stdout.write(
+        opts.json
+          ? JSON.stringify(result, null, 2) + "\n"
+          : `${result.scope}\n${result.cases.map((c) => `${c.id}: ${c.status}${c.reason ? ` — ${c.reason}` : ""}`).join("\n")}\n`,
+      );
+      if (!result.ok) process.exit(1);
+      return;
+    } catch (e) {
+      fail((e as Error).message);
+    }
+  }
 
   // Requirement-support verification: write the worklist, or apply verdicts.
   if (opts.verify) {

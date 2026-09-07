@@ -1,6 +1,7 @@
 ---
 name: reconstruct
-description: 'Use when the user wants to rebuild, recreate, clone, or reverse-engineer an existing repository from scratch, or turn a codebase into specs/PRDs — e.g. "rebuild this project", "reverse engineer this repo", "generate a PRD/spec from this code", "recreate this app". ALSO use for greenfield asks — "build a new project from scratch", "turn my idea into PRDs / a build plan", "design a new app", "greenfield" — where there is no code yet and the facts are elicited through an interview. Works on any stack (JS/TS, Python, Ruby, Go, PHP, Java, mobile…). ALSO brainstorm product directions before building — "brainstorm ideas", "explore concepts", "compare approaches", "what should we build" — a divergent phase that generates several concepts and converges on one. Keywords: reconstruct, rebuild, clone, reverse engineer, from scratch, greenfield, build plan, new project, idea to PRD, brainstorm, ideation, explore concepts, compare approaches.'
+description: "Brainstorm a new product or reverse-engineer a repository into specifications, PRDs, and a reconstruction plan."
+disable-model-invocation: true
 license: MIT
 metadata:
   version: 2.21.0
@@ -25,6 +26,7 @@ yours.
 | Decide *what* to build; explore concepts | **brainstorm** | `node scripts/analyze.mjs --brainstorm --out <DIR>` | [brainstorm-playbook.md](references/brainstorm-playbook.md) |
 | Continue / refresh a reconstruction that already exists | **resume** | `node scripts/analyze.mjs --check --out <OUT>` | [procedure.md](references/procedure.md) §Path D |
 | One file to hand an agent to implement from | **bundle** | `node scripts/analyze.mjs --specs --out <OUT>` (no `--repo`) | [scale-and-context.md](references/scale-and-context.md) §6 |
+| Compare a rebuilt program with the original on local cases | **behavior** | Inspect the fixture and obtain command-execution authorization first | [behavior-compare.md](references/behavior-compare.md) |
 
 Use the **absolute path** to `scripts/analyze.mjs` inside the installed skill folder. `--help`
 lists every flag. Skip the skill for tiny single-file scripts, or when the user wants a running
@@ -160,4 +162,10 @@ exists exits 2 and names the command that produces it. Protocol:
 ## Safety
 
 The analyzer only **reads** the target repo and **copies** files into the output. It never
-executes the analyzed project's code. Review `scripts/` before running on untrusted repos.
+executes the analyzed project's code during analysis. The separate opt-in
+`--compare <cases.json> --original <dir> --rebuilt <dir> --run-tests` mode executes
+fixture commands with local user privileges. Read every command and obtain explicit
+authorization before using `--run-tests`; without it, cases remain `not-tested` and
+the gate fails. Report only the exercised cases and exact stdout/stderr/exit equality,
+never global equivalence. The source-faithfulness and buildability ledgers remain
+independent gates. Review `scripts/` before running on untrusted repos.

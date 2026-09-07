@@ -1,5 +1,12 @@
 # reconstruct
 
+## Manual skill invocation
+
+Invoke `$reconstruct` explicitly in Codex or `/reconstruct` in Claude Code.
+The shipped skill disables automatic activation in both hosts; CLI commands
+remain unchanged. Other hosts may not honor these settings. Existing installed
+copies need to be updated to receive this invocation policy.
+
 [![CI](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml/badge.svg)](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml)
 
 > Turn any repository — or a greenfield idea — into **reconstruction PRDs** an AI agent can
@@ -28,9 +35,10 @@ npx skills add maxgfr/reconstruct
 npx skills add -g maxgfr/reconstruct
 ```
 
-This installs the skill into your agent (Claude Code, Cursor, Codex, …). Then just ask:
+This installs the skill into your agent. Invoke it explicitly:
 
-> "Use the reconstruct skill on this repo in redesign + complex mode."
+> Codex: `$reconstruct on this repo in redesign + complex mode`.
+> Claude Code: `/reconstruct on this repo in redesign + complex mode`.
 
 ## What it produces
 
@@ -293,7 +301,7 @@ the greenfield interview below, or lands as iteration PRDs — see
 
 ## From scratch (greenfield)
 
-No repo yet? Turn an **idea** into the same reconstruction tree. Just ask your agent:
+No repo yet? Invoke `$reconstruct` (Codex) or `/reconstruct` (Claude Code) to turn an **idea** into the same reconstruction tree:
 
 > "Use reconstruct to turn my idea into a build plan."
 
@@ -370,6 +378,25 @@ and the manifest-derived `dependsOn` graph; features group per workspace and the
 follows the workspace topological order (shared packages before the apps that consume them).
 See [`references/stack-guides/monorepo.md`](./skills/reconstruct/references/stack-guides/monorepo.md).
 
+## Compare original and rebuilt behavior
+
+Use an explicit local `cases.json` with `schemaVersion: 1` and nonempty `cases`:
+each case has `id`, shared `stdin`, `original` and `rebuilt` objects containing
+`command` plus `args`, and optional `timeoutMs` (default 5000).
+
+```sh
+node scripts/analyze.mjs --compare cases.json --original ./original --rebuilt ./rebuilt --run-tests --json
+```
+
+Read the fixture and explicitly authorize execution first. Without `--run-tests`,
+nothing executes and the result is `not-tested`/exit 1. A pass requires identical
+stdout/stderr bytes and exit 0 for each case (or an explicitly declared
+`expectedExitCode` for negative cases). Timeout, missing commands, empty suites
+and output overflow fail. The JSON includes current observations and fixture
+SHA-256; it proves only the listed exercised cases, not whole-program equivalence
+or source faithfulness. This is local code execution, not a sandbox. See the
+[fixture schema, limits and workflow](skills/reconstruct/references/behavior-compare.md).
+
 ## Development
 
 ```bash
@@ -382,8 +409,10 @@ pnpm run typecheck
 ## Security
 
 The analyzer only **reads** the target repo's filesystem and **copies** files into the
-output. It never executes the analyzed project's code. Review `scripts/` before running
-on untrusted repositories.
+output. Analysis never executes the analyzed project's code. The separate
+`--compare --run-tests` mode explicitly executes local fixture commands; read them
+and authorize execution first. It is not sandboxed. Review `scripts/` before
+running on untrusted repositories.
 
 ## License
 

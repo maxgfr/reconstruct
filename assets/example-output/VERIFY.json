@@ -23,7 +23,8 @@
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "a36acbeb4b271466"
     },
     {
       "claimId": "C2",
@@ -33,7 +34,8 @@
       "digest": "app/page.tsx · components/Button.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "1e5ed99ab52f290c"
     },
     {
       "claimId": "C3",
@@ -43,7 +45,8 @@
       "digest": "app/page.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "251c0f0713c45c38"
     },
     {
       "claimId": "C4",
@@ -53,7 +56,8 @@
       "digest": "components/Button.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "eba219e4af6a2e2d"
     },
     {
       "claimId": "C5",
@@ -63,7 +67,8 @@
       "digest": "lib/auth.ts",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "64b0eff9b7c2015f"
     },
     {
       "claimId": "C6",
@@ -73,7 +78,8 @@
       "digest": "lib/auth.ts",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "969eeecdd33768a2"
     },
     {
       "claimId": "C7",
@@ -83,7 +89,8 @@
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "app/page.tsx: HomePage takes no params, fetches nothing, is a static segment, and no guard wraps it.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "060c1c1062dc6cdd"
     },
     {
       "claimId": "C8",
@@ -93,7 +100,8 @@
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "app/page.tsx renders <main><h1>Welcome</h1><Button/></main> — exactly the asserted shape.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "b079f25112cc8653"
     },
     {
       "claimId": "C9",
@@ -103,7 +111,8 @@
       "digest": "app/page.tsx · components/Button.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "96b8e0750428afda"
     },
     {
       "claimId": "C10",
@@ -113,7 +122,8 @@
       "digest": "app/page.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4570654f446229f2"
     },
     {
       "claimId": "C11",
@@ -123,7 +133,8 @@
       "digest": "components/Button.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "3e0930054d3cdafe"
     },
     {
       "claimId": "C12",
@@ -133,7 +144,8 @@
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "ede63a40d7fdd4cd"
     },
     {
       "claimId": "C13",
@@ -143,7 +155,8 @@
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "86417b03b0cbecb5"
     },
     {
       "claimId": "C14",
@@ -153,7 +166,8 @@
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "67e40f24dd5dbbfe"
     },
     {
       "claimId": "C15",
@@ -163,7 +177,8 @@
       "digest": "package.json · next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4a24f9bcb07d2d27"
     },
     {
       "claimId": "C16",
@@ -173,7 +188,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4fceb79a9c5108af"
     },
     {
       "claimId": "C17",
@@ -183,7 +199,8 @@
       "digest": ".env.example · next.config.js · package.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "b696aa6de82a2184"
     },
     {
       "claimId": "C18",
@@ -193,7 +210,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "ef77220ee7bb2575"
     },
     {
       "claimId": "C19",
@@ -203,7 +221,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "27b86c4290851782"
     },
     {
       "claimId": "C20",
@@ -213,7 +232,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Traces to next.config.js i18n block; inertness under the App Router is established framework behavior (see stack-guides/nextjs.md), inferred not literal.",
-      "confidence": "inferred"
+      "confidence": "inferred",
+      "fingerprint": "ec141855985fe3c8"
     },
     {
       "claimId": "C21",
@@ -223,7 +243,8 @@
       "digest": ".env.example",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "1c5150e68c269b3b"
     },
     {
       "claimId": "C22",
@@ -233,7 +254,8 @@
       "digest": "next.config.js · package.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "763fc6af3b8193fb"
     },
     {
       "claimId": "C23",
@@ -243,7 +265,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "c1753940f9e6ed1a"
     },
     {
       "claimId": "C24",
@@ -253,7 +276,8 @@
       "digest": "package.json · next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "c86c8413e532449d"
     },
     {
       "claimId": "C25",
@@ -263,7 +287,8 @@
       "digest": "package.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "08ce9da569ea9aa2"
     },
     {
       "claimId": "C26",
@@ -273,7 +298,8 @@
       "digest": ".env.example · next.config.js · package.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "f7ac1547ae89acd7"
     },
     {
       "claimId": "C27",
@@ -283,7 +309,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "6fddc24f7ca4f0b0"
     },
     {
       "claimId": "C28",
@@ -293,7 +320,8 @@
       "digest": "next.config.js",
       "verdict": "supported",
       "note": "Traces to next.config.js i18n block; inertness under the App Router is established framework behavior (see stack-guides/nextjs.md), inferred not literal.",
-      "confidence": "inferred"
+      "confidence": "inferred",
+      "fingerprint": "62eb4ad8422f7217"
     },
     {
       "claimId": "C29",
@@ -303,7 +331,8 @@
       "digest": ".env.example",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "5b8f9f64d2d39e6a"
     },
     {
       "claimId": "C30",
@@ -313,7 +342,8 @@
       "digest": "next.config.js · package.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "a4c4dccb80fb108e"
     },
     {
       "claimId": "C31",
@@ -323,7 +353,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "ae2a9b8ef69985dc"
     },
     {
       "claimId": "C32",
@@ -333,7 +364,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "3ae2296da7313d36"
     },
     {
       "claimId": "C33",
@@ -343,7 +375,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "cc0adfcf76f6e8ec"
     },
     {
       "claimId": "C34",
@@ -353,7 +386,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "344728b9e5226cd5"
     },
     {
       "claimId": "C35",
@@ -363,7 +397,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "9f01136fe022cb2a"
     },
     {
       "claimId": "C36",
@@ -373,7 +408,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "af76083cc4f3e48c"
     },
     {
       "claimId": "C37",
@@ -383,7 +419,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "No PrismaClient import or instantiation exists anywhere in the fixture; the model is orphaned.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "e11f8af0b72e20e1"
     },
     {
       "claimId": "C38",
@@ -393,7 +430,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "810565fbe9f56625"
     },
     {
       "claimId": "C39",
@@ -403,7 +441,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "schema.prisma: `id String @id @default(cuid())`.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "dfc1b2dbbfb7b667"
     },
     {
       "claimId": "C40",
@@ -413,7 +452,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "schema.prisma: `email String @unique`, no `?` so NOT NULL.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "63871c27b6369934"
     },
     {
       "claimId": "C41",
@@ -423,7 +463,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "schema.prisma: `name String?`, no @default.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "89c29e19d869b615"
     },
     {
       "claimId": "C42",
@@ -433,7 +474,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "68be0f16c0435398"
     },
     {
       "claimId": "C43",
@@ -443,7 +485,8 @@
       "digest": "prisma/schema.prisma",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "5ec32ccea0265794"
     },
     {
       "claimId": "C44",
@@ -453,7 +496,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "d5e3fa86b2c1cdd2"
     },
     {
       "claimId": "C45",
@@ -463,7 +507,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "route.ts: `export async function GET()` declares no request parameter at all.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "9abe7b97f3a4a28a"
     },
     {
       "claimId": "C46",
@@ -473,7 +518,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "route.ts + lib/auth.ts: Boolean(process.env.NEXTAUTH_SECRET ?? '') is true iff non-empty.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "ff02df90eb464896"
     },
     {
       "claimId": "C47",
@@ -483,7 +529,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "The literal is `Response.json({users: ...})`; status 200 and application/json come from the standard Response.json behaviour rather than from the handler itself.",
-      "confidence": "inferred"
+      "confidence": "inferred",
+      "fingerprint": "9c4cc6bc1817c160"
     },
     {
       "claimId": "C48",
@@ -493,7 +540,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "route.ts: `ok ? [\"alice\", \"bob\"] : []` — both branches read directly.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "bce679c958743f30"
     },
     {
       "claimId": "C49",
@@ -503,7 +551,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "route.ts has no guard, no status override and no 401/403 path; the env var only picks the array.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "0d84b609c81d1484"
     },
     {
       "claimId": "C50",
@@ -513,7 +562,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "The array is a literal in route.ts; no query and no PrismaClient anywhere.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "485f0c0dedc8b22b"
     },
     {
       "claimId": "C51",
@@ -523,7 +573,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "route.ts has no try/catch and no throw; the only computation is an env read coerced to boolean.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "25fbda65d22dfa1e"
     },
     {
       "claimId": "C52",
@@ -533,7 +584,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "68acf4f4529a0529"
     },
     {
       "claimId": "C53",
@@ -543,7 +595,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "ef3840acd303d101"
     },
     {
       "claimId": "C54",
@@ -553,7 +606,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "cafa018e8472e96b"
     },
     {
       "claimId": "C55",
@@ -563,7 +617,8 @@
       "digest": "app/api/users/route.ts · route GET /api/users",
       "verdict": "supported",
       "note": "Follows from the absence of any query in route.ts — DB availability cannot reach this handler.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "98e5bed2fe80ebe0"
     },
     {
       "claimId": "C56",
@@ -573,7 +628,8 @@
       "digest": "route GET /api/users · app/api/users/route.ts",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4a831b8008f98083"
     },
     {
       "claimId": "C57",
@@ -583,7 +639,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "e9314883d016f96b"
     },
     {
       "claimId": "C58",
@@ -593,7 +650,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "23e5cd690bf4826a"
     },
     {
       "claimId": "C59",
@@ -603,7 +661,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "messages/en.json and fr.json both carry exactly home.title, home.cta, dashboard.title.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4756c95230eac8aa"
     },
     {
       "claimId": "C60",
@@ -613,7 +672,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4ad5cb8938201a4a"
     },
     {
       "claimId": "C61",
@@ -623,7 +683,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Neither catalog contains 'Private area.'; app/dashboard/page.tsx hardcodes it.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "8e2f81e98dc6e04b"
     },
     {
       "claimId": "C62",
@@ -633,7 +694,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "next.config.js does declare locales en/fr with defaultLocale en; that the `i18n` block is inert under the App Router is framework semantics, not stated by the source.",
-      "confidence": "inferred"
+      "confidence": "inferred",
+      "fingerprint": "1e505c18335ff51a"
     },
     {
       "claimId": "C63",
@@ -643,7 +705,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "956952197dcb1c05"
     },
     {
       "claimId": "C64",
@@ -653,7 +716,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "a6f37e9f8e01b2a6"
     },
     {
       "claimId": "C65",
@@ -663,7 +727,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Key sets compared directly: identical, three each, no gap.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "6e98c1e2694352bb"
     },
     {
       "claimId": "C66",
@@ -673,7 +738,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "73372b05d026a187"
     },
     {
       "claimId": "C67",
@@ -683,7 +749,8 @@
       "digest": "messages/en.json · messages/fr.json",
       "verdict": "supported",
       "note": "Searching both catalogs for 'Private area.' yields no key.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "b6b74bd2699754d6"
     },
     {
       "claimId": "C68",
@@ -693,7 +760,8 @@
       "digest": "app/dashboard/page.tsx · route /dashboard",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "a821cb58b615a6b6"
     },
     {
       "claimId": "C69",
@@ -703,7 +771,8 @@
       "digest": "app/dashboard/page.tsx · route /dashboard",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "d9d166f6b201b70b"
     },
     {
       "claimId": "C70",
@@ -713,7 +782,8 @@
       "digest": "app/dashboard/page.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "a7ce898bf0a6a8f8"
     },
     {
       "claimId": "C71",
@@ -723,7 +793,8 @@
       "digest": "app/dashboard/page.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4e68c18224f34f15"
     },
     {
       "claimId": "C72",
@@ -733,7 +804,8 @@
       "digest": "app/dashboard/page.tsx · route /dashboard",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "b63252f62f994f19"
     },
     {
       "claimId": "C73",
@@ -743,7 +815,8 @@
       "digest": "app/dashboard/page.tsx · route /dashboard",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "949d88c008058c65"
     },
     {
       "claimId": "C74",
@@ -753,7 +826,8 @@
       "digest": "app/dashboard/page.tsx · route /dashboard",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "b34eb171e7a3e4d7"
     },
     {
       "claimId": "C75",
@@ -763,7 +837,8 @@
       "digest": "app/dashboard/page.tsx",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "13372401c1862acd"
     },
     {
       "claimId": "C76",
@@ -773,7 +848,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4093ed7de83bcc3b"
     },
     {
       "claimId": "C77",
@@ -783,7 +859,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "README.md states exactly that, in two sentences.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "4915db65ba6f393e"
     },
     {
       "claimId": "C78",
@@ -793,7 +870,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "README.md is a heading plus the description — no other section.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "73b082cc320df518"
     },
     {
       "claimId": "C79",
@@ -803,7 +881,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "README.md is the only .md file in the fixture.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "aa4e4089d0c92d17"
     },
     {
       "claimId": "C80",
@@ -813,7 +892,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "f680504005633d45"
     },
     {
       "claimId": "C81",
@@ -823,7 +903,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "6da57da5b14931bc"
     },
     {
       "claimId": "C82",
@@ -833,7 +914,8 @@
       "digest": "README.md",
       "verdict": "supported",
       "note": "Read directly in the cited source; decisive.",
-      "confidence": "confirmed"
+      "confidence": "confirmed",
+      "fingerprint": "1295aa344f8af222"
     }
   ]
 }

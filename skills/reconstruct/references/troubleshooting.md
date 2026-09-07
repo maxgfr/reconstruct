@@ -98,9 +98,33 @@ Your `verdicts.json` had no valid `verdict` tokens. Valid values are `supported`
 
 ### "N requirement(s) have no adjudicated verdict"
 
-The gate re-derives the worklist and refuses to pass on dropped rows. Either you deleted rows
-before `--apply`, or you edited a PRD after verifying (which shifts claim ids). Re-run
-`--verify`, adjudicate the fresh worklist, `--apply` again.
+The gate re-derives the worklist and refuses to pass on dropped rows: you deleted rows before
+`--apply`. Re-run `--verify`, adjudicate the fresh worklist, `--apply` again.
+
+### "N verdict(s) were adjudicated against content that has since changed"
+
+A PRD moved after it was verified. Verdicts are bound to a fingerprint of the **complete**
+requirement text plus its evidence — not to `Cn`, which is only an ordinal — so rewriting a
+claim in place (or reordering, inserting, deleting, or moving the evidence under it) invalidates
+the old judgement instead of silently re-certifying the new prose. Re-run `--verify`, adjudicate,
+`--apply`.
+
+The same drift makes `--verify --apply` itself error with *"VERIFY.todo.json is stale"*: it will
+not stamp current content onto an old judgement. Re-derive the worklist first.
+
+### "N adjudicated verdict(s) carry no content fingerprint" / "REVIEW.json carries no content baseline"
+
+The ledger predates content binding, so nothing proves it describes the tree as it stands.
+Re-run the round (`--verify` → `--verify --apply`, `--review` → `--review --apply`) to record the
+binding, or accept the gap explicitly with `--allow-unverified` and say so in your report. It is
+never treated as assured by default.
+
+### "the AI buildability review is stale"
+
+`REVIEW.json`'s `baseline` no longer describes the tree: a reviewed PRD changed, a feature was
+added that the last adjudicated round never saw, a reviewed feature was removed, or a shared
+`architecture/` doc moved. Run `--review`, review the flagged unit(s), `--review --apply`. Note
+this is independent of the faithfulness gate — a fresh `--verify` will not clear it.
 
 ### "N requirement(s) were never offered for adjudication"
 

@@ -127,6 +127,25 @@ stale or hand-edited `ok: true` never passes. A missing or unreadable ledger is 
 not a pass. `--allow-unverified` downgrades that to a warning; use it only deliberately, and
 say so in the final report.
 
+Both ledgers are also **bound to the content they judged**, so a clean ledger over prose that
+has since moved is not a pass:
+
+- **Buildability.** `REVIEW.json` records the `baseline` — the shared-architecture hash plus
+  every reviewed unit's PRD hash — of the last *adjudicated* round. The gate diffs it against
+  the tree: a changed PRD, an **added** feature the round never saw, a **removed** one it still
+  names, or a moved `architecture/` doc all fail it. This is the same drift `--review` reports
+  as a unit needing review, so the two can no longer disagree. `--review --apply` likewise
+  refuses findings written against a worklist the PRDs have moved past, rather than minting a
+  baseline for content nobody read.
+- **Faithfulness.** Each verdict is bound to a fingerprint of the complete requirement text and
+  its evidence — see [`verify-playbook.md`](./verify-playbook.md).
+
+The two gates are **independent**: re-running `--review` does not revalidate a stale
+`VERIFY.json`, and re-running `--verify` does not revalidate a stale `REVIEW.json`. A ledger
+that predates content binding (no `baseline` / no `fingerprint`) is reported as unprovable, not
+assumed good; re-run the round to record one, or downgrade it explicitly with
+`--allow-unverified`.
+
 At scale, drive each round as a fan-out — see [`orchestration.md`](./orchestration.md); the
 engine emits it ready to launch (`--orchestrate --phase review-find | review-verify |
 adjudicate`).

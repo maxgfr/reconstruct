@@ -45,7 +45,7 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     expect((data.description as string).length).toBeLessThanOrEqual(1024);
   });
 
-  it("carries the brainstorm triggers", () => {
+  it("describes the brainstorm capability", () => {
     const data = parse(frontmatter) as Record<string, unknown>;
     expect((data.description as string).toLowerCase()).toContain("brainstorm");
   });

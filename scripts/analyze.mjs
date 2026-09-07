@@ -5,6 +5,99 @@ import { resolve as resolve10, join as join43 } from "path";
 import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath4 } from "url";
 import { existsSync as existsSync23, statSync as statSync14, realpathSync as realpathSync5 } from "fs";
 
+// src/behavior.ts
+import { spawnSync } from "child_process";
+import { createHash } from "crypto";
+import { readFileSync, realpathSync, statSync } from "fs";
+var OUTPUT_CAP = 65536;
+function validCommand(value) {
+  if (!value || typeof value !== "object") return false;
+  const c2 = value;
+  return typeof c2.command === "string" && c2.command.trim().length > 0 && !c2.command.includes("\0") && Array.isArray(c2.args) && c2.args.every((arg) => typeof arg === "string" && !arg.includes("\0"));
+}
+function readCases(path) {
+  if (statSync(path).size > 1048576) throw new Error("Behavior cases file exceeds 1 MiB.");
+  const text = readFileSync(path, "utf8");
+  const doc = JSON.parse(text);
+  if (!doc || doc.schemaVersion !== 1 || !Array.isArray(doc.cases) || doc.cases.length === 0 || doc.cases.length > 100) {
+    throw new Error("Behavior schemaVersion 1 requires 1\u2013100 explicit cases.");
+  }
+  const ids = /* @__PURE__ */ new Set();
+  for (const c2 of doc.cases) {
+    if (!c2 || typeof c2.id !== "string" || !c2.id.trim() || ids.has(c2.id)) throw new Error("Behavior case IDs must be nonempty and unique.");
+    ids.add(c2.id);
+    if (typeof c2.stdin !== "string" || Buffer.byteLength(c2.stdin) > OUTPUT_CAP || !validCommand(c2.original) || !validCommand(c2.rebuilt)) {
+      throw new Error(`Case ${c2.id}: explicit stdin (at most 64 KiB) and original/rebuilt command + args are required.`);
+    }
+    if (c2.timeoutMs !== void 0 && (!Number.isInteger(c2.timeoutMs) || c2.timeoutMs < 1 || c2.timeoutMs > 6e5)) {
+      throw new Error(`Case ${c2.id}: timeoutMs must be an integer between 1 and 600000.`);
+    }
+    if (c2.expectedExitCode !== void 0 && (!Number.isInteger(c2.expectedExitCode) || c2.expectedExitCode < 0 || c2.expectedExitCode > 255)) {
+      throw new Error(`Case ${c2.id}: expectedExitCode must be an integer between 0 and 255.`);
+    }
+  }
+  return { cases: doc.cases, fingerprint: createHash("sha256").update(text).digest("hex") };
+}
+function observe(command, cwd, input, timeout) {
+  const windows = process.platform === "win32";
+  const options = { cwd, input, timeout, maxBuffer: OUTPUT_CAP, killSignal: "SIGKILL", detached: !windows };
+  const r = spawnSync(command.command, command.args, options);
+  let cleanupError;
+  if (!windows && r.pid) {
+    try {
+      process.kill(-r.pid, "SIGKILL");
+    } catch (error2) {
+      if (error2.code !== "ESRCH") cleanupError = error2.message;
+    }
+  }
+  const stdout = r.stdout ?? Buffer.alloc(0), stderr = r.stderr ?? Buffer.alloc(0);
+  const error = r.error;
+  return {
+    ...command,
+    exitCode: r.status,
+    signal: r.signal,
+    stdout: stdout.subarray(0, OUTPUT_CAP).toString("utf8"),
+    stderr: stderr.subarray(0, OUTPUT_CAP).toString("utf8"),
+    stdoutBase64: stdout.subarray(0, OUTPUT_CAP).toString("base64"),
+    stderrBase64: stderr.subarray(0, OUTPUT_CAP).toString("base64"),
+    ...error || cleanupError ? { error: (error?.message ?? cleanupError).slice(0, 1e3) } : {},
+    timedOut: error?.code === "ETIMEDOUT",
+    truncated: error?.code === "ENOBUFS" || stdout.length > OUTPUT_CAP || stderr.length > OUTPUT_CAP
+  };
+}
+function compareBehavior(casesPath, opts) {
+  const { cases, fingerprint } = readCases(casesPath);
+  const originalDir = realpathSync(opts.originalDir), rebuiltDir = realpathSync(opts.rebuiltDir);
+  if (!statSync(originalDir).isDirectory() || !statSync(rebuiltDir).isDirectory() || originalDir === rebuiltDir) {
+    throw new Error("Behavior comparison requires two distinct existing directories.");
+  }
+  const results = cases.map((c2) => {
+    if (!opts.runTests) return { id: c2.id, stdin: c2.stdin, status: "not-tested", reason: "Execution requires explicit --run-tests authorization." };
+    const original = observe(c2.original, originalDir, c2.stdin, c2.timeoutMs ?? 5e3);
+    const rebuilt = observe(c2.rebuilt, rebuiltDir, c2.stdin, c2.timeoutMs ?? 5e3);
+    const healthy = (o) => !o.error && !o.signal && !o.timedOut && !o.truncated && o.exitCode === (c2.expectedExitCode ?? 0);
+    const passed = healthy(original) && healthy(rebuilt) && original.stdoutBase64 === rebuilt.stdoutBase64 && original.stderrBase64 === rebuilt.stderrBase64 && original.exitCode === rebuilt.exitCode;
+    return {
+      id: c2.id,
+      stdin: c2.stdin,
+      status: passed ? "passed" : "failed",
+      original,
+      rebuilt,
+      ...!passed ? { reason: "Observable stdout/stderr/exit differs, unexpected exit, or execution was incomplete (error/timeout/output limit)." } : {}
+    };
+  });
+  return {
+    schemaVersion: 1,
+    ok: results.every((c2) => c2.status === "passed"),
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    fixtureFingerprint: fingerprint,
+    originalDir,
+    rebuiltDir,
+    scope: "Only the listed exercised cases and their exact stdout, stderr and exit codes are compared. No global equivalence, side-effect, timing, network or UI fidelity is claimed. Commands run with local user privileges; this is not a sandbox.",
+    cases: results
+  };
+}
+
 // src/analyze.ts
 import { basename as basename5 } from "path";
 
@@ -13,11 +106,11 @@ import { closeSync, openSync, readSync, readdirSync as readdirSync4, readFileSyn
 import { join as join23, extname as extname2, resolve as resolve6 } from "path";
 
 // src/vendor/codeindex-engine.mjs
-import { spawnSync } from "child_process";
-import { readdirSync, statSync, lstatSync, readFileSync, realpathSync, existsSync } from "fs";
+import { spawnSync as spawnSync2 } from "child_process";
+import { readdirSync, statSync as statSync2, lstatSync, readFileSync as readFileSync2, realpathSync as realpathSync2, existsSync } from "fs";
 import { join, resolve, sep, extname } from "path";
-import { createHash } from "crypto";
-import { readFileSync as readFileSync2, existsSync as existsSync2, statSync as statSync2 } from "fs";
+import { createHash as createHash2 } from "crypto";
+import { readFileSync as readFileSync22, existsSync as existsSync2, statSync as statSync22 } from "fs";
 import { homedir } from "os";
 import { dirname, join as join2 } from "path";
 import { fileURLToPath } from "url";
@@ -35,7 +128,7 @@ import { posix as posix2 } from "path";
 import { join as join8 } from "path";
 import { join as join9 } from "path";
 import { join as join10 } from "path";
-import { chmodSync, mkdtempSync as mkdtempSync2, readFileSync as readFileSync6, realpathSync as realpathSync2, renameSync as renameSync2, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync2 } from "fs";
+import { chmodSync, mkdtempSync as mkdtempSync2, readFileSync as readFileSync6, realpathSync as realpathSync22, renameSync as renameSync2, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync2 } from "fs";
 import { basename as basename3, dirname as dirname4, join as join11 } from "path";
 import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync7, rmSync as rmSync3, statSync as statSync5, writeFileSync as writeFileSync3 } from "fs";
 import { dirname as dirname5, join as join12 } from "path";
@@ -62,7 +155,7 @@ import { createInterface } from "readline";
 import { basename as basename2 } from "path";
 import { existsSync as existsSync4, readFileSync as readFileSync4 } from "fs";
 import { join as join5 } from "path";
-import { createHash as createHash2 } from "crypto";
+import { createHash as createHash22 } from "crypto";
 import { existsSync as existsSync5, mkdirSync, mkdtempSync, readFileSync as readFileSync5, renameSync, rmSync, writeFileSync } from "fs";
 import { dirname as dirname3, join as join6, resolve as resolve2, sep as sep2 } from "path";
 import { gunzipSync } from "zlib";
@@ -95,7 +188,7 @@ var init_types = __esm({
   }
 });
 function sh(cmd, args2, opts = {}) {
-  const res = spawnSync(cmd, args2, {
+  const res = spawnSync2(cmd, args2, {
     cwd: opts.cwd,
     input: opts.input,
     encoding: "utf8",
@@ -426,16 +519,16 @@ function gitDirOf(dir, entries) {
   const path = join(dir, GIT_ENTRY);
   try {
     if (marker.isDirectory()) return path;
-    const st = statSync(path);
+    const st = statSync2(path);
     if (st.isDirectory()) return path;
     if (!st.isFile() || st.size > MAX_GITFILE_BYTES) return void 0;
-    const content = readFileSync(path, "utf8");
+    const content = readFileSync2(path, "utf8");
     if (!content.startsWith(GITFILE_PREFIX)) return void 0;
     const target = content.slice(GITFILE_PREFIX.length).replace(/[\r\n]+$/, "");
     if (!target) return void 0;
     const gitDir = resolve(dir, target);
     const common = join(gitDir, "commondir");
-    return existsSync(common) ? resolve(gitDir, readFileSync(common, "utf8").trim()) : gitDir;
+    return existsSync(common) ? resolve(gitDir, readFileSync2(common, "utf8").trim()) : gitDir;
   } catch {
     return void 0;
   }
@@ -459,7 +552,7 @@ function walk(root, opts = {}) {
   let excluded = 0;
   let rootReal;
   try {
-    rootReal = realpathSync(root);
+    rootReal = realpathSync2(root);
   } catch {
     return { files: out2, capped, excluded };
   }
@@ -472,7 +565,7 @@ function walk(root, opts = {}) {
     const frame = stack.pop();
     let real;
     try {
-      real = realpathSync(frame.dir);
+      real = realpathSync2(frame.dir);
     } catch {
       continue;
     }
@@ -510,7 +603,7 @@ function walk(root, opts = {}) {
       if (entry.isDirectory() && isIgnoredDirectory(name2, ignoreDirs)) continue;
       let st;
       try {
-        st = isLink ? statSync(abs) : lstatSync(abs);
+        st = isLink ? statSync2(abs) : lstatSync(abs);
       } catch {
         continue;
       }
@@ -545,7 +638,7 @@ function walk(root, opts = {}) {
       }
       if (isLink) {
         try {
-          if (!contained(realpathSync(abs))) continue;
+          if (!contained(realpathSync2(abs))) continue;
         } catch {
           continue;
         }
@@ -561,7 +654,7 @@ function walk(root, opts = {}) {
 }
 function readText(abs) {
   try {
-    const buf = readFileSync(abs);
+    const buf = readFileSync2(abs);
     if (buf.length >= 2 && buf[0] === 255 && buf[1] === 254) {
       return buf.subarray(2, 2 + (buf.length - 2 & ~1)).toString("utf16le");
     }
@@ -843,7 +936,7 @@ var init_git = __esm({
   }
 });
 function sha1(s) {
-  return createHash("sha1").update(s).digest("hex");
+  return createHash2("sha1").update(s).digest("hex");
 }
 function shortHash(s, n = 8) {
   return sha1(s).slice(0, n);
@@ -5969,7 +6062,7 @@ async function ensureGrammars(keys) {
   if (!runtimeReady) {
     const runtime = firstIn("web-tree-sitter.wasm");
     if (!runtime) return;
-    await Parser.init({ wasmBinary: readFileSync2(runtime) });
+    await Parser.init({ wasmBinary: readFileSync22(runtime) });
     runtimeReady = true;
     parser = new Parser();
   }
@@ -5978,7 +6071,7 @@ async function ensureGrammars(keys) {
     const wasm = firstIn(`${key}.wasm`);
     const fingerprint = wasm ? (() => {
       try {
-        const st = statSync2(wasm);
+        const st = statSync22(wasm);
         return `${wasm}:${st.size}:${st.mtimeMs}`;
       } catch {
         return `${wasm}:unreadable`;
@@ -5990,7 +6083,7 @@ async function ensureGrammars(keys) {
       continue;
     }
     try {
-      loaded.set(key, await Language.load(new Uint8Array(readFileSync2(wasm))));
+      loaded.set(key, await Language.load(new Uint8Array(readFileSync22(wasm))));
       failed.delete(key);
     } catch {
       failed.set(key, fingerprint);
@@ -11206,7 +11299,7 @@ function readLines(abs) {
   return readFileSync6(abs, "utf8").split("\n");
 }
 function atomicWriteText(abs, content, cleanup = rmSync2) {
-  const target = realpathSync2(abs);
+  const target = realpathSync22(abs);
   const mode = statSync4(target).mode;
   let tempDir;
   try {
@@ -15728,7 +15821,7 @@ async function fetchGrammarsTarball(url, expectedSha256) {
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (expectedSha256) {
-    const got = createHash2("sha256").update(buf).digest("hex");
+    const got = createHash22("sha256").update(buf).digest("hex");
     if (got !== expectedSha256) {
       throw new Error(`sha256 mismatch: expected ${expectedSha256}, got ${got}`);
     }
@@ -21864,7 +21957,7 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, copyFileSync, existsSync as existsSync14, readFileSync as readFileSync22, readdirSync as readdirSync5 } from "fs";
+import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, copyFileSync, existsSync as existsSync14, readFileSync as readFileSync23, readdirSync as readdirSync5 } from "fs";
 import { dirname as dirname6, join as join33 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
@@ -21904,7 +21997,7 @@ var CALLOUT_BEARING_DOCS = [
 var LEDGERS = ["REVIEW.json", "VERIFY.json"];
 function readIfFile(path) {
   try {
-    return readFileSync22(path, "utf8");
+    return readFileSync23(path, "utf8");
   } catch {
     return void 0;
   }
@@ -21943,7 +22036,7 @@ Pick one:
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync23, existsSync as existsSync15 } from "fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync24, existsSync as existsSync15 } from "fs";
 import { join as join34, relative, sep as sep3 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
@@ -21956,7 +22049,7 @@ function readMarkdownTree(dir) {
         if (GROUND_TRUTH_DIRS.has(rel2)) continue;
         walk3(child);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        out2.push({ relPath: rel2, content: readFileSync23(child, "utf8") });
+        out2.push({ relPath: rel2, content: readFileSync24(child, "utf8") });
       }
     }
   };
@@ -21969,7 +22062,7 @@ function bundleExisting(opts) {
   if (!existsSync15(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
-  const inv = JSON.parse(readFileSync23(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync24(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -21980,11 +22073,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync24 } from "fs";
+import { readFileSync as readFileSync25 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync24(path, "utf8");
+    raw = readFileSync25(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -22299,7 +22392,7 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync16, readFileSync as readFileSync25, readdirSync as readdirSync7, statSync as statSync11 } from "fs";
+import { existsSync as existsSync16, readFileSync as readFileSync26, readdirSync as readdirSync7, statSync as statSync11 } from "fs";
 import { join as join35, relative as relative2 } from "path";
 var REQUIRED_DOCS = ["REBUILD.md", "00-overview/PRD.md", "architecture/ARCHITECTURE.md", "architecture/INTERFACES.md", "architecture/DATA-MODEL.md"];
 var FEATURE_SPINE = ["## Functional requirements", "## Acceptance criteria", "## Definition of done"];
@@ -22324,7 +22417,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2)) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative2(base, full).split("\\").join("/"), content: readFileSync25(full, "utf8") });
+      out2.push({ rel: relative2(base, full).split("\\").join("/"), content: readFileSync26(full, "utf8") });
     }
   }
   return out2;
@@ -22376,7 +22469,7 @@ function checkOutput(outDir) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync25(invPath, "utf8"));
+    inv = JSON.parse(readFileSync26(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -22538,7 +22631,8 @@ function formatCheckReport(r, outDir) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync17, readFileSync as readFileSync26, writeFileSync as writeFileSync6 } from "fs";
+import { createHash as createHash4 } from "crypto";
+import { existsSync as existsSync17, readFileSync as readFileSync27, writeFileSync as writeFileSync6 } from "fs";
 import { join as join36 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
@@ -22576,6 +22670,12 @@ function requirements(prd) {
   }
   return out2;
 }
+function claimFingerprint(p) {
+  return createHash4("sha256").update(`${p.feature}
+${p.evidenceRef}
+${p.digest}
+${p.fullClaim}`).digest("hex").slice(0, 16);
+}
 function featureEvidence(f) {
   const out2 = [];
   for (const file of f.files ?? []) out2.push({ ref: file, text: String(file) });
@@ -22590,7 +22690,7 @@ function featureEvidence(f) {
 function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
-    invRaw = readFileSync26(join36(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync27(join36(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -22605,7 +22705,7 @@ function buildWorklist(outDir, opts = {}) {
   for (const f of inv.features ?? []) {
     const prdPath = join36(outDir, "features", f.slug, "PRD.md");
     if (!existsSync17(prdPath)) continue;
-    const reqs = requirements(readFileSync26(prdPath, "utf8"));
+    const reqs = requirements(readFileSync27(prdPath, "utf8"));
     const ev = featureEvidence(f);
     const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
     for (const req of reqs) {
@@ -22622,6 +22722,7 @@ function buildWorklist(outDir, opts = {}) {
         feature: f.slug,
         evidenceRef,
         digest,
+        fingerprint: claimFingerprint({ feature: f.slug, fullClaim: req, evidenceRef, digest }),
         score: best ? best.s : 0
       });
     }
@@ -22637,7 +22738,7 @@ function buildWorklist(outDir, opts = {}) {
 }
 function capUsedFor(outDir) {
   try {
-    const todo = JSON.parse(readFileSync26(join36(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync27(join36(outDir, "VERIFY.todo.json"), "utf8"));
     const max = todo?.coverage?.max;
     if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
   } catch {
@@ -22682,7 +22783,7 @@ function renderWorklistMd(wl, total, kept) {
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync26(join36(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync27(join36(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -22728,7 +22829,7 @@ function resolveEvidence(ref, inv) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync26(join36(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync27(join36(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -22737,13 +22838,54 @@ function readTodoPairs(outDir) {
     return void 0;
   }
 }
+function currentPairs(outDir, max) {
+  try {
+    const byClaim = /* @__PURE__ */ new Map();
+    for (const p of buildWorklist(outDir, { maxVerify: max }).worklist.pairs) byClaim.set(p.claimId, p);
+    return byClaim;
+  } catch {
+    return void 0;
+  }
+}
+function assertWorklistFresh(outDir, todo) {
+  const current = currentPairs(outDir, capUsedFor(outDir));
+  if (!current) throw new Error("Cannot derive the current PRDs and inventory to validate VERIFY.todo.json; restore the run before applying verdicts.");
+  const drift = [];
+  const unbound = [];
+  for (const [claimId, p] of todo) {
+    const cur = current.get(claimId);
+    if (!cur) {
+      drift.push(`${claimId} is no longer derived from the PRDs`);
+      continue;
+    }
+    if (!p.fingerprint) {
+      unbound.push(claimId);
+      continue;
+    }
+    if (p.fingerprint !== cur.fingerprint) drift.push(`${claimId} now names different content`);
+  }
+  for (const claimId of current.keys()) if (!todo.has(claimId)) drift.push(`${claimId} is new since the worklist was written`);
+  const preview = (xs) => `${xs.slice(0, 6).join("; ")}${xs.length > 6 ? "; \u2026" : ""}`;
+  if (drift.length) {
+    throw new Error(
+      `${join36(outDir, "VERIFY.todo.json")} is stale: ${drift.length} pair(s) no longer match the PRDs (${preview(drift)}) \u2014 the verdicts judge content that has since changed. Re-run \`--verify\` and re-adjudicate (fail-closed).`
+    );
+  }
+  if (unbound.length) {
+    throw new Error(
+      `${join36(outDir, "VERIFY.todo.json")} is stale: ${unbound.length} pair(s) carry no content fingerprint (${preview(unbound)}) \u2014 this worklist predates content binding, so the fold cannot prove the verdicts judge the CURRENT PRDs. Re-run \`--verify\` and re-adjudicate (fail-closed).`
+    );
+  }
+}
 function applyVerdicts(outDir, verdictsPath) {
-  const raw = JSON.parse(readFileSync26(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync27(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
   }
   const todo = readTodoPairs(outDir);
+  if (todo) assertWorklistFresh(outDir, todo);
+  const bind = todo ?? currentPairs(outDir, Number.MAX_SAFE_INTEGER);
   const problems = [];
   const unknown = [];
   const verdicts = [];
@@ -22756,9 +22898,22 @@ function applyVerdicts(outDir, verdictsPath) {
       problems.push(`row ${i2 + 1} (${v.claimId}): invalid verdict "${String(v.verdict)}" \u2014 expected ${VALID.join("|")} or null`);
       continue;
     }
-    const base = todo?.get(v.claimId);
+    const base = bind?.get(v.claimId);
     if (todo && !base) {
       unknown.push(v.claimId);
+      continue;
+    }
+    if (!todo && base && (!v.fingerprint || v.fingerprint !== base.fingerprint)) {
+      problems.push(`row ${i2 + 1} (${v.claimId}): missing or stale content fingerprint \u2014 restore the saved worklist or re-run --verify and re-adjudicate`);
+      continue;
+    }
+    const stale = base ? ["claim", "feature", "fingerprint"].filter((field) => {
+      const got = v[field];
+      const want = base[field];
+      return typeof got === "string" && want !== void 0 && got !== want;
+    }) : [];
+    if (stale.length) {
+      problems.push(`row ${i2 + 1} (${v.claimId}): stale ${stale.join("/")} \u2014 it does not match the current worklist pair`);
       continue;
     }
     const verdict = VALID.includes(v.verdict) ? v.verdict : void 0;
@@ -22771,11 +22926,14 @@ function applyVerdicts(outDir, verdictsPath) {
       digest: typeof v.digest === "string" ? v.digest : base?.digest ?? "",
       verdict,
       note: typeof v.note === "string" ? v.note : "",
-      ...confidence ? { confidence } : {}
+      ...confidence ? { confidence } : {},
+      // A fragment inherits only a saved worklist's binding. Without that
+      // worklist, preserve the row's existing binding after comparison above.
+      ...(todo ? base?.fingerprint : base ? v.fingerprint : void 0) ? { fingerprint: todo ? base.fingerprint : v.fingerprint } : {}
     });
   }
   if (problems.length) {
-    throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) \u2014 fix them and re-apply (fail-closed):
+    throw new Error(`${verdictsPath}: ${problems.length} malformed or stale row(s) \u2014 fix them and re-apply (fail-closed):
   - ${problems.join("\n  - ")}`);
   }
   if (verdicts.length === 0) {
@@ -22839,7 +22997,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync26(p, "utf8"));
+    sem = JSON.parse(readFileSync27(p, "utf8"));
   } catch (e) {
     skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
     return;
@@ -22866,14 +23024,38 @@ function foldSemantic(outDir, check, opts = {}) {
     for (const p2 of buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs) offeredIds.add(p2.claimId);
   } catch {
   }
-  const adjudicatedIds = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-  const uncovered = all.filter((p2) => !adjudicatedIds.has(p2.claimId));
+  const currentById = new Map(all.map((p2) => [p2.claimId, p2]));
+  const boundIds = /* @__PURE__ */ new Set();
+  const staleIds = [];
+  const unboundIds = [];
+  for (const v of sem.verdicts) {
+    if (!v.verdict) continue;
+    const cur = currentById.get(v.claimId);
+    if (!cur) continue;
+    if (!cur.fingerprint) boundIds.add(v.claimId);
+    else if (typeof v.fingerprint !== "string" || !v.fingerprint) unboundIds.push(v.claimId);
+    else if (v.fingerprint !== cur.fingerprint) staleIds.push(v.claimId);
+    else boundIds.add(v.claimId);
+  }
+  const accounted = /* @__PURE__ */ new Set([...boundIds, ...staleIds, ...unboundIds]);
+  const uncovered = all.filter((p2) => !accounted.has(p2.claimId));
   const dropped = uncovered.filter((p2) => offeredIds.has(p2.claimId));
   const neverOffered = uncovered.filter((p2) => !offeredIds.has(p2.claimId));
   const preview = (ps) => {
     const ids = ps.map((p2) => p2.claimId);
     return `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}`;
   };
+  const previewIds = (ids) => `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}`;
+  if (staleIds.length) {
+    skip(
+      `--semantic: ${staleIds.length} verdict(s) were adjudicated against content that has since changed (${previewIds(staleIds)}) \u2014 the requirement text or the evidence captured for it no longer matches what was judged, so the stored verdict says nothing about the CURRENT PRDs; re-run --verify then --verify --apply <verdicts.json>`
+    );
+  }
+  if (unboundIds.length) {
+    skip(
+      `--semantic: ${unboundIds.length} adjudicated verdict(s) carry no content fingerprint (${previewIds(unboundIds)}) \u2014 this ledger predates content binding, so the gate cannot prove the verdicts judge the PRDs as they stand; re-run --verify then --verify --apply <verdicts.json> to re-bind them`
+    );
+  }
   if (dropped.length) {
     skip(
       `--semantic: ${dropped.length} requirement(s) the worklist DID offer have no adjudicated verdict in VERIFY.json (${preview(dropped)}) \u2014 the verdict rows were dropped, or a PRD was edited after verification (which shifts claim ids); re-run --verify then --verify --apply <verdicts.json> (the gate must not pass on dropped verdicts)`
@@ -22920,18 +23102,18 @@ function formatVerifyReport(r) {
 }
 
 // src/review.ts
-import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync18, readFileSync as readFileSync27, writeFileSync as writeFileSync7 } from "fs";
+import { createHash as createHash5 } from "crypto";
+import { existsSync as existsSync18, readFileSync as readFileSync28, writeFileSync as writeFileSync7 } from "fs";
 import { join as join37 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md"];
 var SEVERITIES2 = ["blocker", "major", "minor"];
 var CATEGORIES = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
 function sha256(s) {
-  return createHash4("sha256").update(s).digest("hex");
+  return createHash5("sha256").update(s).digest("hex");
 }
 function readIfExists(path) {
   try {
-    return readFileSync27(path, "utf8");
+    return readFileSync28(path, "utf8");
   } catch {
     return "";
   }
@@ -22939,6 +23121,39 @@ function readIfExists(path) {
 function archHash(outDir) {
   return sha256(ARCH_DOCS.map((rel2) => `# ${rel2}
 ` + readIfExists(join37(outDir, rel2))).join("\n"));
+}
+function baselineHash(b) {
+  const feats = b.features.map((f) => `${f.feature}:${f.prdHash}`).sort().join("\n");
+  return sha256(`${b.archHash}
+${feats}`);
+}
+function currentBaseline(outDir) {
+  let inv;
+  try {
+    inv = readInventory(outDir);
+  } catch {
+    return null;
+  }
+  const features = [];
+  for (const f of inv.features ?? []) {
+    const prdPath = join37(outDir, "features", f.slug, "PRD.md");
+    if (!existsSync18(prdPath)) continue;
+    features.push({ feature: f.slug, prdHash: sha256(readFileSync28(prdPath, "utf8")) });
+  }
+  return { archHash: archHash(outDir), features };
+}
+function baselineDrift(baseline, current) {
+  const was = new Map(baseline.features.map((f) => [f.feature, f.prdHash]));
+  const now = new Map(current.features.map((f) => [f.feature, f.prdHash]));
+  const changed = [...now].filter(([k, v]) => was.has(k) && was.get(k) !== v).map(([k]) => k);
+  const added = [...now.keys()].filter((k) => !was.has(k));
+  const removed = [...was.keys()].filter((k) => !now.has(k));
+  const parts2 = [];
+  if (baseline.archHash !== current.archHash) parts2.push("the shared architecture docs changed");
+  if (changed.length) parts2.push(`${changed.length} feature PRD(s) changed (${changed.join(", ")})`);
+  if (added.length) parts2.push(`${added.length} feature(s) added since (${added.join(", ")})`);
+  if (removed.length) parts2.push(`${removed.length} reviewed feature(s) removed since (${removed.join(", ")})`);
+  return parts2.length ? parts2.join("; ") : null;
 }
 function normalizeProblem(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -22957,7 +23172,7 @@ function runReview(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join37(outDir, "features", f.slug, "PRD.md");
     if (!existsSync18(prdPath)) continue;
-    const prdHash = sha256(readFileSync27(prdPath, "utf8"));
+    const prdHash = sha256(readFileSync28(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -22965,7 +23180,16 @@ function runReview(outDir) {
     if (needsReview) changedSet.push(f.slug);
     units.push({ feature: f.slug, prdHash, archHash: arch, needsReview, findings: [] });
   }
-  const worklist = { run: outDir, round, changedSet, units };
+  const worklist = {
+    run: outDir,
+    round,
+    // The content this round asks the reviewer to judge, in one hash. A findings
+    // file may echo it so `--review --apply` can tell last round's findings from
+    // this round's (see `applyFindings`).
+    contentHash: baselineHash({ archHash: arch, features: units.map((u) => ({ feature: u.feature, prdHash: u.prdHash })) }),
+    changedSet,
+    units
+  };
   writeFileSync7(join37(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
   writeFileSync7(join37(outDir, "REVIEW.md"), renderWorklistMd2(worklist));
   return worklist;
@@ -22973,7 +23197,7 @@ function runReview(outDir) {
 function readInventory(outDir) {
   let raw;
   try {
-    raw = readFileSync27(join37(outDir, "inventory.json"), "utf8");
+    raw = readFileSync28(join37(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -22988,7 +23212,7 @@ function readPrior(outDir) {
   if (!existsSync18(reviewPath)) return null;
   let rev;
   try {
-    rev = JSON.parse(readFileSync27(reviewPath, "utf8"));
+    rev = JSON.parse(readFileSync28(reviewPath, "utf8"));
   } catch {
     return null;
   }
@@ -22999,7 +23223,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync27(join37(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync28(join37(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -23114,15 +23338,20 @@ function reduceFindings(findings, ctx) {
   };
 }
 function applyFindings(outDir, findingsPath) {
-  const findings = normalizeFindings(JSON.parse(readFileSync27(findingsPath, "utf8")));
+  const raw = JSON.parse(readFileSync28(findingsPath, "utf8"));
+  const findings = normalizeFindings(raw);
   let round;
   let changedSet = [];
   let units = 0;
   let reviewedFeatures = [];
   let currentFeatures = [];
   let baseline;
+  let todo;
   try {
-    const todo = JSON.parse(readFileSync27(join37(outDir, "REVIEW.todo.json"), "utf8"));
+    todo = JSON.parse(readFileSync28(join37(outDir, "REVIEW.todo.json"), "utf8"));
+  } catch {
+  }
+  if (todo) {
     round = todo.round;
     changedSet = todo.changedSet ?? [];
     units = todo.units?.length ?? 0;
@@ -23132,7 +23361,19 @@ function applyFindings(outDir, findingsPath) {
       archHash: todo.units?.[0]?.archHash ?? "",
       features: (todo.units ?? []).map((u) => ({ feature: u.feature, prdHash: u.prdHash }))
     };
-  } catch {
+    const current = currentBaseline(outDir);
+    const drift = current ? baselineDrift(baseline, current) : null;
+    if (drift) {
+      throw new Error(
+        `${join37(outDir, "REVIEW.todo.json")} is stale: ${drift}. These findings judge content the tree has moved past, so applying them would commit a review baseline nobody reviewed. Re-run \`--review\` and re-review the flagged unit(s) (fail-closed).`
+      );
+    }
+    const echoed = typeof raw?.contentHash === "string" ? raw.contentHash : void 0;
+    if (echoed && todo.contentHash && echoed !== todo.contentHash) {
+      throw new Error(
+        `${findingsPath} is stale: its contentHash names a different review round than ${join37(outDir, "REVIEW.todo.json")}. Re-review the current worklist and re-apply (fail-closed).`
+      );
+    }
   }
   let priorFailures = [];
   let priorStale = 0;
@@ -23140,7 +23381,7 @@ function applyFindings(outDir, findingsPath) {
   const reviewPath = join37(outDir, "REVIEW.json");
   if (existsSync18(reviewPath)) {
     try {
-      const prev = JSON.parse(readFileSync27(reviewPath, "utf8"));
+      const prev = JSON.parse(readFileSync28(reviewPath, "utf8"));
       priorFailures = prev.failures ?? [];
       priorStale = prev.staleRounds ?? 0;
       priorRound = prev.round ?? 0;
@@ -23182,10 +23423,25 @@ function foldReview(outDir, check, opts = {}) {
   }
   let rev;
   try {
-    rev = JSON.parse(readFileSync27(p, "utf8"));
+    rev = JSON.parse(readFileSync28(p, "utf8"));
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
     return;
+  }
+  const current = currentBaseline(outDir);
+  if (!rev.baseline || !Array.isArray(rev.baseline.features)) {
+    skip(
+      "--semantic: REVIEW.json carries no content baseline \u2014 this ledger predates content binding, so the gate cannot prove the review covered the PRDs as they stand; re-run `--review` then `--review --apply <findings.json>` to record one"
+    );
+  } else if (!current) {
+    skip("--semantic: the review baseline cannot be checked against the tree (no readable inventory.json to enumerate the feature PRDs)");
+  } else {
+    const drift = baselineDrift(rev.baseline, current);
+    if (drift) {
+      skip(
+        `--semantic: the AI buildability review is stale \u2014 ${drift} since the last adjudicated round, so REVIEW.json says nothing about the current PRDs; re-run \`--review\` then \`--review --apply <findings.json>\``
+      );
+    }
   }
   const residual = recomputeReviewGate(rev);
   if (residual.length) {
@@ -23215,7 +23471,7 @@ function formatReviewReport(r) {
 }
 
 // src/brainstorm.ts
-import { readFileSync as readFileSync28 } from "fs";
+import { readFileSync as readFileSync29 } from "fs";
 import { join as join38 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
@@ -23287,7 +23543,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync28(join38(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync29(join38(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -23298,7 +23554,7 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync20, mkdirSync as mkdirSync5, readFileSync as readFileSync29, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync20, mkdirSync as mkdirSync5, readFileSync as readFileSync30, writeFileSync as writeFileSync8 } from "fs";
 import { join as join40, resolve as resolve7 } from "path";
 
 // src/orchestrate-templates.ts
@@ -23646,7 +23902,7 @@ function batchNotice(phase, items, batch, override) {
 }
 function readJson2(path) {
   try {
-    return JSON.parse(readFileSync29(path, "utf8"));
+    return JSON.parse(readFileSync30(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -23809,7 +24065,7 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 import { createInterface as createInterface2 } from "readline";
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync21, readFileSync as readFileSync30, realpathSync as realpathSync3, statSync as statSync12 } from "fs";
+import { existsSync as existsSync21, readFileSync as readFileSync31, realpathSync as realpathSync3, statSync as statSync12 } from "fs";
 import { isAbsolute as isAbsolute2, join as join41, resolve as resolve8, sep as sep4 } from "path";
 
 // src/tree-lock.ts
@@ -24022,7 +24278,7 @@ function handleRead(args2, out2) {
   const st = statSync12(real);
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
   if (st.size > MAX_READ_BYTES) throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`);
-  const lines = readFileSync30(real, "utf8").split("\n");
+  const lines = readFileSync31(real, "utf8").split("\n");
   const total = lines.length;
   const start2 = Math.max(1, Math.floor(num2(args2.start_line) ?? 1));
   if (start2 > total) throw new ToolError(`start_line ${start2} is past the end of the file (${total} lines).`);
@@ -24423,7 +24679,7 @@ function str3(v) {
 var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
-import { existsSync as existsSync22, readdirSync as readdirSync8, readFileSync as readFileSync31, realpathSync as realpathSync4, statSync as statSync13 } from "fs";
+import { existsSync as existsSync22, readdirSync as readdirSync8, readFileSync as readFileSync32, realpathSync as realpathSync4, statSync as statSync13 } from "fs";
 import { basename as basename6, dirname as dirname7, join as join42, resolve as resolve9, sep as sep5 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var SKILL_NAME = "reconstruct";
@@ -24473,7 +24729,7 @@ function readResource(uri, moduleDir) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
   if (!statSync13(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
-  return { uri, mimeType: "text/markdown", text: readFileSync31(targetReal, "utf8") };
+  return { uri, mimeType: "text/markdown", text: readFileSync32(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
@@ -24491,7 +24747,7 @@ function describe(root, rel2, fallbackTitle) {
 function firstProse(file) {
   let text;
   try {
-    text = readFileSync31(file, "utf8");
+    text = readFileSync32(file, "utf8");
   } catch {
     return void 0;
   }
@@ -24897,8 +25153,13 @@ Usage:
   reconstruct [--repo <path>] [--out <path>] [options]
   reconstruct --scratch --plan <plan.json> [--out <path>] [options]
   reconstruct --orchestrate [--phase <p>] [--eco] [--list] --out <path>
+  reconstruct --compare <cases.json> --original <dir> --rebuilt <dir> [--run-tests] [--json]
 
 Options:
+  --compare <path>     Compare explicit local cases: exact stdout/stderr/exit only
+  --original <path>    Original working tree for --compare
+  --rebuilt <path>     Rebuilt working tree for --compare
+  --run-tests         Authorize local command execution for --compare (not sandboxed)
   --repo <path>        Repository to analyze            (default: current dir)
   --out <path>         Output directory                 (default: <repo>/reconstruction)
   --mode <mode>        preserve | redesign              (default: preserve)
@@ -25043,6 +25304,9 @@ function splitGlobs(value) {
   return value.split(",").map((s) => s.trim()).filter(Boolean);
 }
 var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
+  "compare",
+  "original",
+  "rebuilt",
   "repo",
   "out",
   "mode",
@@ -25070,6 +25334,7 @@ function parseArgs(argv) {
   const includeGlobs = [];
   const excludeGlobs = [];
   let json = false;
+  let runTests = false;
   let merge = false;
   let summary = false;
   let features = false;
@@ -25091,6 +25356,10 @@ function parseArgs(argv) {
   let force = false;
   for (let i2 = 0; i2 < argv.length; i2++) {
     const arg = argv[i2];
+    if (arg === "--run-tests") {
+      runTests = true;
+      continue;
+    }
     if (arg === "-h" || arg === "--help") {
       process.stdout.write(HELP2);
       process.exit(0);
@@ -25203,10 +25472,15 @@ function parseArgs(argv) {
     }
     fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
-  const actions = [check, verify, review, brainstorm, orchestrate].filter(Boolean).length;
+  const actions = [check, verify, review, brainstorm, orchestrate, raw.compare].filter(Boolean).length;
   if (actions > 1) {
     fail(`--check, --verify, --review, --brainstorm and --orchestrate are mutually exclusive \u2014 run one at a time`);
   }
+  if (raw.compare && (scratch || mcp || merge || summary || features || specs || raw.repo || raw.apply || semantic || allowUnverified)) {
+    fail("--compare cannot be combined with other modes or semantic/apply options.");
+  }
+  if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
+  if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
@@ -25241,6 +25515,7 @@ function parseArgs(argv) {
   const maxVerify = positive2("max-verify");
   const batchSize = positive2("batch-size");
   return {
+    ...raw.compare ? { compare: resolve10(raw.compare), original: resolve10(raw.original), rebuilt: resolve10(raw.rebuilt), runTests } : {},
     repo,
     out: out2,
     mode,
@@ -25284,6 +25559,20 @@ function guardEnrichedOutput(opts) {
 }
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.compare) {
+    try {
+      const result = compareBehavior(opts.compare, { originalDir: opts.original, rebuiltDir: opts.rebuilt, runTests: opts.runTests });
+      process.stdout.write(
+        opts.json ? JSON.stringify(result, null, 2) + "\n" : `${result.scope}
+${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.reason}` : ""}`).join("\n")}
+`
+      );
+      if (!result.ok) process.exit(1);
+      return;
+    } catch (e) {
+      fail(e.message);
+    }
+  }
   if (opts.verify) {
     try {
       if (opts.apply) {

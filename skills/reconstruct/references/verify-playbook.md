@@ -80,8 +80,8 @@ Silent partial coverage is the failure this design exists to prevent.
 
 The gate distinguishes the two ways a requirement ends up unadjudicated, because the fixes
 differ: **never offered** (the cap — raise it) versus **offered but dropped** (verdict rows
-deleted before `--apply`, or a PRD edited after verification, which shifts claim ids — re-run
-`--verify`).
+deleted before `--apply` — re-run `--verify`). A requirement whose *prose* changed after
+verification is a third case, covered by the content binding below.
 
 ---
 
@@ -148,6 +148,16 @@ the gate by inventing a source file.
 **Rows are never silently dropped.** A `claimId` absent from the run's worklist lands in
 `VERIFY.json.ignored` rather than being folded.
 
+**Do not write `fingerprint` yourself.** Each worklist pair carries one, and `--apply` copies it
+from the worklist onto the verdict — a row cannot vouch for its own freshness. If you *do* echo
+`claim`/`feature` back, they must match the pair you were given; a row that disagrees is
+rejected as stale rather than folded.
+
+Without a readable `VERIFY.todo.json`, self-contained rows must preserve their
+original generated fingerprint, which `--apply` compares with the full current
+claim and evidence. It never supplies a fresh fingerprint to an unbound old row.
+A legacy worklist without fingerprints requires a new `--verify` and adjudication.
+
 ---
 
 ## D — the final gate
@@ -165,10 +175,34 @@ relaxation. Specifically it:
 - **re-derives the FULL requirement set** and fails closed on any requirement with no
   adjudicated verdict — whether it was dropped before `--apply` or never offered because the
   worklist was capped;
+- **re-binds every verdict to the content it judged** (see below);
 - warns on every `confidence: gap`.
 
 `--allow-unverified` downgrades the missing-ledger errors to warnings. Use it deliberately, and
 say so in your final report.
+
+### The content binding
+
+`claimId` is an **ordinal**. Rewrite a requirement in place and the count is unchanged, so `C4`
+is still called `C4` — and a gate that compared only ids would hand the new prose the verdict an
+adjudicator gave to the old. So the id is the stable *public handle* (fragments and reports keep
+citing it), and each pair additionally carries a `fingerprint` over the feature slug, the
+**complete** requirement text and the evidence offered for it. That is what a verdict is bound
+to. An edit *past* the 400-char stored `claim`, a reorder, an insertion, a deletion, or evidence
+that moved under untouched prose all break the match, and the gate reports the verdict as
+adjudicated-against-changed-content instead of counting it as coverage.
+
+Two consequences worth internalising:
+
+- **`--verify --apply` refuses a stale worklist.** If a PRD moved between `--verify` and the
+  fold, `--apply` errors instead of backfilling current text into an old judgement. Re-run
+  `--verify` and re-adjudicate; that recovers the green gate.
+- **A ledger with no fingerprints cannot certify anything.** Pre-binding `VERIFY.json` files are
+  reported, not trusted — re-run `--verify` then `--verify --apply` to re-bind them, or accept
+  the gap explicitly with `--allow-unverified` and say so in your report.
+
+This is independent of the buildability review: a fresh `--review` round does **not** make a
+stale verification ledger valid, and vice versa.
 
 See [`convergence-loop.md`](./convergence-loop.md) for where this sits in the round, and
 [`orchestration.md`](./orchestration.md) for the adjudicator fan-out.

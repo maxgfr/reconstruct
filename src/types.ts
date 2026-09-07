@@ -6,6 +6,10 @@ export type Fidelity = "mirror" | "embed" | "describe";
 export type Granularity = "coarse" | "fine";
 
 export interface Options {
+  compare?: string;
+  original?: string;
+  rebuilt?: string;
+  runTests?: boolean;
   /** Absolute path to the repository to analyze. */
   repo: string;
   /** Absolute path to the output directory (the `reconstruction/` tree). */
@@ -648,6 +652,18 @@ export interface ClaimEvidencePair {
   feature: string; // the feature slug it came from
   evidenceRef: string; // the best-matched captured evidence (source file / route / entity)
   digest: string; // the candidate evidence for this requirement
+  /**
+   * Content binding for this pair: a hash over the feature slug, the COMPLETE
+   * (untruncated) requirement text and the evidence the worklist offered for it.
+   *
+   * `claimId` is an ordinal — an edit that preserves the requirement count leaves
+   * `C4` named `C4`, so an id-only gate re-uses the verdict the adjudicator gave
+   * to the OLD prose. The fingerprint is what a verdict is actually bound to;
+   * `claimId` stays the stable PUBLIC handle agents and fragments cite. Hashing
+   * the full text (not the 400-char `claim`) is deliberate: an edit past the
+   * truncation must not be invisible to the gate.
+   */
+  fingerprint?: string;
 }
 
 export interface Verdict extends ClaimEvidencePair {
@@ -760,6 +776,14 @@ export interface ReviewWorklist {
   run: string;
   /** The round this worklist prepares (prior round + 1). */
   round: number;
+  /**
+   * One hash over everything this worklist covers (`archHash` + every unit's
+   * `prdHash`) — the content the reviewer is being asked to judge. A findings
+   * file may echo it back; `--review --apply` then rejects findings produced
+   * against a different round instead of committing them as this round's
+   * baseline.
+   */
+  contentHash?: string;
   /** Features changed since the previous round (all of them on the first round). */
   changedSet: string[];
   units: ReviewUnit[];

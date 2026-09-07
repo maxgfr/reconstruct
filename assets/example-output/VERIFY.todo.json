@@ -13,6 +13,7 @@
       "feature": "01-core",
       "evidenceRef": "feature 01-core",
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "fingerprint": "a36acbeb4b271466",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -23,6 +24,7 @@
       "feature": "01-core",
       "evidenceRef": "app/page.tsx",
       "digest": "app/page.tsx · components/Button.tsx",
+      "fingerprint": "1e5ed99ab52f290c",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -33,6 +35,7 @@
       "feature": "01-core",
       "evidenceRef": "app/page.tsx",
       "digest": "app/page.tsx",
+      "fingerprint": "251c0f0713c45c38",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -43,6 +46,7 @@
       "feature": "01-core",
       "evidenceRef": "components/Button.tsx",
       "digest": "components/Button.tsx",
+      "fingerprint": "eba219e4af6a2e2d",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -53,6 +57,7 @@
       "feature": "01-core",
       "evidenceRef": "lib/auth.ts",
       "digest": "lib/auth.ts",
+      "fingerprint": "64b0eff9b7c2015f",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -63,6 +68,7 @@
       "feature": "01-core",
       "evidenceRef": "lib/auth.ts",
       "digest": "lib/auth.ts",
+      "fingerprint": "969eeecdd33768a2",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -73,6 +79,7 @@
       "feature": "01-core",
       "evidenceRef": "feature 01-core",
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "fingerprint": "060c1c1062dc6cdd",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -83,6 +90,7 @@
       "feature": "01-core",
       "evidenceRef": "feature 01-core",
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "fingerprint": "b079f25112cc8653",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -93,6 +101,7 @@
       "feature": "01-core",
       "evidenceRef": "app/page.tsx",
       "digest": "app/page.tsx · components/Button.tsx",
+      "fingerprint": "96b8e0750428afda",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -103,6 +112,7 @@
       "feature": "01-core",
       "evidenceRef": "app/page.tsx",
       "digest": "app/page.tsx",
+      "fingerprint": "4570654f446229f2",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -113,6 +123,7 @@
       "feature": "01-core",
       "evidenceRef": "components/Button.tsx",
       "digest": "components/Button.tsx",
+      "fingerprint": "3e0930054d3cdafe",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -123,6 +134,7 @@
       "feature": "01-core",
       "evidenceRef": "feature 01-core",
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "fingerprint": "ede63a40d7fdd4cd",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -133,6 +145,7 @@
       "feature": "01-core",
       "evidenceRef": "feature 01-core",
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "fingerprint": "86417b03b0cbecb5",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -143,6 +156,7 @@
       "feature": "01-core",
       "evidenceRef": "feature 01-core",
       "digest": "app/page.tsx · components/Button.tsx · lib/auth.ts · route /",
+      "fingerprint": "67e40f24dd5dbbfe",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -153,6 +167,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "package.json",
       "digest": "package.json · next.config.js",
+      "fingerprint": "4a24f9bcb07d2d27",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -163,6 +178,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "4fceb79a9c5108af",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -173,6 +189,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "feature 02-project-setup",
       "digest": ".env.example · next.config.js · package.json",
+      "fingerprint": "b696aa6de82a2184",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -183,6 +200,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "ef77220ee7bb2575",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -193,6 +211,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "27b86c4290851782",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -203,6 +222,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "ec141855985fe3c8",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -213,6 +233,7 @@
       "feature": "02-project-setup",
       "evidenceRef": ".env.example",
       "digest": ".env.example",
+      "fingerprint": "1c5150e68c269b3b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -223,6 +244,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js · package.json",
+      "fingerprint": "763fc6af3b8193fb",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -233,6 +255,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "c1753940f9e6ed1a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -243,6 +266,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "package.json",
       "digest": "package.json · next.config.js",
+      "fingerprint": "c86c8413e532449d",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -253,6 +277,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "package.json",
       "digest": "package.json",
+      "fingerprint": "08ce9da569ea9aa2",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -263,6 +288,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "feature 02-project-setup",
       "digest": ".env.example · next.config.js · package.json",
+      "fingerprint": "f7ac1547ae89acd7",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -273,6 +299,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "6fddc24f7ca4f0b0",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -283,6 +310,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js",
+      "fingerprint": "62eb4ad8422f7217",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -293,6 +321,7 @@
       "feature": "02-project-setup",
       "evidenceRef": ".env.example",
       "digest": ".env.example",
+      "fingerprint": "5b8f9f64d2d39e6a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -303,6 +332,7 @@
       "feature": "02-project-setup",
       "evidenceRef": "next.config.js",
       "digest": "next.config.js · package.json",
+      "fingerprint": "a4c4dccb80fb108e",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -313,6 +343,7 @@
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "ae2a9b8ef69985dc",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -323,6 +354,7 @@
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "3ae2296da7313d36",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -333,6 +365,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "cc0adfcf76f6e8ec",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -343,6 +376,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "344728b9e5226cd5",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -353,6 +387,7 @@
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "9f01136fe022cb2a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -363,6 +398,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "af76083cc4f3e48c",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -373,6 +409,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "e11f8af0b72e20e1",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -383,6 +420,7 @@
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "810565fbe9f56625",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -393,6 +431,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "dfc1b2dbbfb7b667",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -403,6 +442,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "63871c27b6369934",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -413,6 +453,7 @@
       "feature": "03-prisma",
       "evidenceRef": "feature 03-prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "89c29e19d869b615",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -423,6 +464,7 @@
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "68be0f16c0435398",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -433,6 +475,7 @@
       "feature": "03-prisma",
       "evidenceRef": "prisma/schema.prisma",
       "digest": "prisma/schema.prisma",
+      "fingerprint": "5ec32ccea0265794",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -443,6 +486,7 @@
       "feature": "04-api",
       "evidenceRef": "app/api/users/route.ts",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "d5e3fa86b2c1cdd2",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -453,6 +497,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "9abe7b97f3a4a28a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -463,6 +508,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "ff02df90eb464896",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -473,6 +519,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "9c4cc6bc1817c160",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -483,6 +530,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "bce679c958743f30",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -493,6 +541,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "0d84b609c81d1484",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -503,6 +552,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "485f0c0dedc8b22b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -513,6 +563,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "25fbda65d22dfa1e",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -523,6 +574,7 @@
       "feature": "04-api",
       "evidenceRef": "app/api/users/route.ts",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "68acf4f4529a0529",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -533,6 +585,7 @@
       "feature": "04-api",
       "evidenceRef": "app/api/users/route.ts",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "ef3840acd303d101",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -543,6 +596,7 @@
       "feature": "04-api",
       "evidenceRef": "app/api/users/route.ts",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "cafa018e8472e96b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -553,6 +607,7 @@
       "feature": "04-api",
       "evidenceRef": "feature 04-api",
       "digest": "app/api/users/route.ts · route GET /api/users",
+      "fingerprint": "98e5bed2fe80ebe0",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -563,6 +618,7 @@
       "feature": "04-api",
       "evidenceRef": "route GET /api/users",
       "digest": "route GET /api/users · app/api/users/route.ts",
+      "fingerprint": "4a831b8008f98083",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -573,6 +629,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "messages/en.json",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "e9314883d016f96b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -583,6 +640,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "messages/en.json",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "23e5cd690bf4826a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -593,6 +651,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "feature 05-internationalization",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "4756c95230eac8aa",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -603,6 +662,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "messages/en.json",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "4ad5cb8938201a4a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -613,6 +673,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "feature 05-internationalization",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "8e2f81e98dc6e04b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -623,6 +684,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "feature 05-internationalization",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "1e505c18335ff51a",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -633,6 +695,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "messages/en.json",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "956952197dcb1c05",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -643,6 +706,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "messages/en.json",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "a6f37e9f8e01b2a6",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -653,6 +717,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "feature 05-internationalization",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "6e98c1e2694352bb",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -663,6 +728,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "messages/en.json",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "73372b05d026a187",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -673,6 +739,7 @@
       "feature": "05-internationalization",
       "evidenceRef": "feature 05-internationalization",
       "digest": "messages/en.json · messages/fr.json",
+      "fingerprint": "b6b74bd2699754d6",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -683,6 +750,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx · route /dashboard",
+      "fingerprint": "a821cb58b615a6b6",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -693,6 +761,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx · route /dashboard",
+      "fingerprint": "d9d166f6b201b70b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -703,6 +772,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx",
+      "fingerprint": "a7ce898bf0a6a8f8",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -713,6 +783,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx",
+      "fingerprint": "4e68c18224f34f15",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -723,6 +794,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx · route /dashboard",
+      "fingerprint": "b63252f62f994f19",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -733,6 +805,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx · route /dashboard",
+      "fingerprint": "949d88c008058c65",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -743,6 +816,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx · route /dashboard",
+      "fingerprint": "b34eb171e7a3e4d7",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -753,6 +827,7 @@
       "feature": "06-dashboard",
       "evidenceRef": "app/dashboard/page.tsx",
       "digest": "app/dashboard/page.tsx",
+      "fingerprint": "13372401c1862acd",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -763,6 +838,7 @@
       "feature": "07-documentation",
       "evidenceRef": "README.md",
       "digest": "README.md",
+      "fingerprint": "4093ed7de83bcc3b",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -773,6 +849,7 @@
       "feature": "07-documentation",
       "evidenceRef": "feature 07-documentation",
       "digest": "README.md",
+      "fingerprint": "4915db65ba6f393e",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -783,6 +860,7 @@
       "feature": "07-documentation",
       "evidenceRef": "feature 07-documentation",
       "digest": "README.md",
+      "fingerprint": "73b082cc320df518",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -793,6 +871,7 @@
       "feature": "07-documentation",
       "evidenceRef": "feature 07-documentation",
       "digest": "README.md",
+      "fingerprint": "aa4e4089d0c92d17",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -803,6 +882,7 @@
       "feature": "07-documentation",
       "evidenceRef": "README.md",
       "digest": "README.md",
+      "fingerprint": "f680504005633d45",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -813,6 +893,7 @@
       "feature": "07-documentation",
       "evidenceRef": "README.md",
       "digest": "README.md",
+      "fingerprint": "6da57da5b14931bc",
       "verdict": null,
       "note": "",
       "confidence": null
@@ -823,6 +904,7 @@
       "feature": "07-documentation",
       "evidenceRef": "README.md",
       "digest": "README.md",
+      "fingerprint": "1295aa344f8af222",
       "verdict": null,
       "note": "",
       "confidence": null
