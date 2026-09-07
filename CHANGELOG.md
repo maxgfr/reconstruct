@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.23.0](https://github.com/maxgfr/reconstruct/compare/v2.22.0...v2.23.0) (2026-09-07)
+
+
+### Features
+
+* harden verification, add workflows and require explicit skill invocation ([d4ece6f](https://github.com/maxgfr/reconstruct/commit/d4ece6ff896f4093541924de77a877c8606ea23a))
+
 # [2.22.0](https://github.com/maxgfr/reconstruct/compare/v2.21.0...v2.22.0) (2026-09-07)
 
 
