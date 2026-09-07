@@ -1,4 +1,4 @@
-declare const ENGINE_VERSION = "2.28.4";
+declare const ENGINE_VERSION = "2.28.6";
 declare const SCHEMA_VERSION = 5;
 declare const EXTRACTOR_VERSION = 14;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
@@ -227,6 +227,14 @@ interface ScanSummary {
 declare function scanSummary(root: string, opts?: ScanOptions): ScanSummary;
 declare function scanRepo(root: string, opts?: ScanOptions): RepoScan;
 
+type PersistedCacheEntry = {
+    hash: string;
+    record: FileRecord;
+    size?: number;
+    mtimeMs?: number;
+};
+type PersistedCacheMap = Map<string, PersistedCacheEntry>;
+
 interface BuildIndexOptions extends ScanOptions {
     meta?: {
         version?: string;
@@ -243,13 +251,6 @@ declare function buildIndexArtifacts(repo: string, opts?: BuildIndexOptions): In
 declare function buildArtifactsFromScan(scan: RepoScan, opts?: BuildIndexOptions): IndexArtifacts;
 
 declare const INDEX_DIR = ".codeindex";
-type PersistedCacheEntry = {
-    hash: string;
-    record: FileRecord;
-    size?: number;
-    mtimeMs?: number;
-};
-type PersistedCacheMap = Map<string, PersistedCacheEntry>;
 interface PersistedMeta {
     engineVersion?: string;
     commit?: string;
@@ -421,7 +422,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.4/grammars-2.28.4.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.28.6/grammars-2.28.6.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;

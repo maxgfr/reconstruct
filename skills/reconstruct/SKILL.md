@@ -4,7 +4,7 @@ description: "Brainstorm a new product or reverse-engineer a repository into spe
 disable-model-invocation: true
 license: MIT
 metadata:
-  version: 2.21.0
+  version: 2.22.0
 ---
 
 # Reconstruct: any repo — or any idea — → a buildable PRD suite
