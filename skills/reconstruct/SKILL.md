@@ -9,6 +9,8 @@ metadata:
 
 # Reconstruct: any repo — or any idea — → a buildable PRD suite
 
+Use the bundled CodeIndex-backed commands to locate relevant files, symbols and relationships, then inspect the cited source before drawing conclusions. Report caps, skipped files, unavailable extractors and blocked sources as coverage limits. An empty or partial result does not establish that nothing exists.
+
 A dependency-free Node script does the **deterministic** scaffold (facts + candidate *hints*);
 **you** supply the framework-aware understanding — the interface surface, the data model, the
 real features — for any stack. The output is a folder of PRDs an agent can rebuild the project

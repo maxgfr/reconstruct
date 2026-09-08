@@ -1,0 +1,48 @@
+{
+  "name": "reconstruct",
+  "vendorDir": "src/vendor",
+  "engines": {
+    "codeindex": {
+      "repo": "maxgfr/codeindex",
+      "minRef": "v2.30.0",
+      "meta": "engine.meta.json",
+      "files": [
+        {
+          "remote": "scripts/engine.mjs",
+          "local": "codeindex-engine.mjs"
+        },
+        {
+          "remote": "scripts/engine.d.mts",
+          "local": "codeindex-engine.d.mts"
+        }
+      ],
+      "forks": {
+        "src/detect/workspaces.ts:detectWorkspaces": "Maps shared workspace detection into reconstruction manifests and warnings.",
+        "src/features.ts:slugify": "Persisted feature identifiers require the item fallback.",
+        "src/prd/bundle.ts:slugify": "Markdown section anchors strip the .md suffix and preserve the existing link contract.",
+        "src/types.ts:FileCategory": "Reconstruction inventory category schema.",
+        "src/types.ts:WorkspaceKind": "Reconstruction workspace schema.",
+        "src/walk.ts:categorize": "Delegates categorization then applies reconstruction asset policy, including SVG.",
+        "src/walk.ts:WalkOptions": "Reconstruction output and include/exclude scoping options.",
+        "src/walk.ts:WalkResult": "Reconstruction file inventory and exclusion count schema.",
+        "src/walk.ts:walk": "Delegates traversal to CodeIndex; adds binary inventory, line counts, output-directory exclusions and category policy."
+      },
+      "usageFloor": 8
+    }
+  },
+  "repin": {
+    "artifacts": [
+      "src/vendor",
+      "scripts",
+      "skills",
+      "package.json",
+      "pnpm-lock.yaml",
+      "skill.json",
+      ".github/workflows/engine-repin.yml"
+    ],
+    "workflows": [
+      "ci.yml",
+      "release.yml"
+    ]
+  }
+}

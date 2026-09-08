@@ -27,12 +27,15 @@
     "verify:example": "node scripts/analyze.mjs --check --semantic --out assets/example-output",
     "engine:sync": "node scripts/sync-engine.mjs",
     "engine:check": "node scripts/sync-engine.mjs --check",
-    "check:build": "node scripts/sync-engine.mjs --check && tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/analyze.mjs skills/reconstruct/scripts/analyze.mjs && node scripts/verify-skill-bundle.mjs",
+    "check:build": "node scripts/sync-engine.mjs --check && tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/analyze.mjs skills/reconstruct/scripts/analyze.mjs && node scripts/verify-skill-bundle.mjs && node scripts/sync-engine.mjs --check && node scripts/verify-engine-usage.mjs",
     "gate": "pnpm run typecheck && pnpm run lint && pnpm test && pnpm run check:build && pnpm run verify:example && pnpm run parity",
     "demo": "node scripts/analyze.mjs --repo tests/fixtures/sample-app --out /tmp/reconstruct-demo --mode preserve --level light",
     "demo:scratch": "node scripts/analyze.mjs --scratch --plan tests/fixtures/scratch-plan/example.plan.json --out /tmp/reconstruct-scratch-demo --level complex",
     "parity": "node scripts/parity.mjs --plan tests/fixtures/scratch-plan/example.plan.json",
-    "release": "semantic-release"
+    "release": "semantic-release",
+    "verify:engine": "node scripts/verify-engine-usage.mjs",
+    "engine:prepare": "pnpm run build",
+    "engine:gate": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run check:build && pnpm run verify:example && pnpm run parity && pnpm run demo"
   },
   "keywords": [
     "skills",
@@ -60,7 +63,8 @@
     "tsup": "^8.3.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/5789560fa2b8c9a34326292e50f8f0fa951fa79d"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

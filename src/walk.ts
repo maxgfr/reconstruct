@@ -1,7 +1,6 @@
-import { closeSync, openSync, readSync, readdirSync, readFileSync, statSync } from "node:fs";
-import type { Dirent } from "node:fs";
-import { join, extname, resolve } from "node:path";
-import { categorize as engineCategorize, parseGitignore, isIgnored, readText } from "./vendor/codeindex-engine.mjs";
+import { closeSync, openSync, readSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { categorize as engineCategorize, parseGitignore, isIgnored, walk as engineWalk } from "./vendor/codeindex-engine.mjs";
 import type { IgnoreRule } from "./vendor/codeindex-engine.mjs";
 import type { FileCategory, FileInfo } from "./types.js";
 
@@ -235,102 +234,27 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
   const includeRules = compileScopeGlobs(opts.include);
   const excludeRules = compileScopeGlobs(opts.exclude);
   const outAbs = opts.out ? resolve(opts.out) : "";
-  const files: FileInfo[] = [];
-  let excludedCount = 0;
-
-  // `ignoreRules` is the .gitignore chain inherited from ancestor directories;
-  // this directory's own .gitignore (when present) is appended after, so deeper
-  // rules win — the engine's `isIgnored` returns the last matching rule's verdict.
-  const recurse = (dir: string, relDir: string, inherited: readonly IgnoreRule[]): void => {
-    let entries: Dirent<string>[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    let ignoreRules = inherited;
-    if (entries.some((e) => e.name === ".gitignore")) {
-      const parsed = parseGitignore(readText(join(dir, ".gitignore")), relDir);
-      if (parsed.length) ignoreRules = [...ignoreRules, ...parsed];
-    }
-    for (const entry of entries) {
-      const abs = join(dir, entry.name);
-      const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
-      const isDir = entry.isDirectory();
-      // Symlinks: a link to a file is real content — include it like any
-      // file. A link to a directory is never followed (following could loop
-      // or escape the repo; not descending keeps the walk loop-safe by
-      // construction). Broken links are skipped. Both are counted.
-      let isFile = entry.isFile();
-      if (entry.isSymbolicLink()) {
-        let targetIsFile = false;
-        try {
-          targetIsFile = statSync(abs).isFile(); // follows the link
-        } catch {
-          /* broken link */
-        }
-        if (!targetIsFile) {
-          excludedCount++;
-          continue;
-        }
-        isFile = true;
-      }
-
-      // Never re-scan this run's own output tree, whatever it's named, nor any
-      // prior reconstruct output detected by its inventory.json signature.
-      if (isDir && outAbs && resolve(abs) === outAbs) continue;
-      if (isDir && isReconstructOutput(abs)) continue;
-      // Pruned directories are not counted (their contents are never enumerated).
-      if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
-      if (ignoreRules.length && isIgnored(ignoreRules, rel, isDir)) {
-        if (!isDir) excludedCount++;
-        continue;
-      }
-
-      if (isDir) {
-        // Prune directories matching an exclude glob so we never descend into a
-        // large excluded tree. Their contents are not counted (like other pruned
-        // dirs). Includes are file-level only — a dir is never pruned by include.
-        if (isIgnored(excludeRules, rel, true)) continue;
-        recurse(abs, rel, ignoreRules);
-        continue;
-      }
-      if (!isFile) continue;
-
-      if (DEFAULT_IGNORE_FILES.has(entry.name)) {
-        excludedCount++;
-        continue;
-      }
-      // A dir-only pattern (trailing slash) must not exclude a file of that name.
-      if (isIgnored(excludeRules, rel, false)) {
-        excludedCount++;
-        continue;
-      }
-      if (includeRules.length > 0 && !matchesScope(includeRules, rel)) {
-        excludedCount++;
-        continue;
-      }
-
-      const ext = extname(entry.name).toLowerCase();
-      let size = 0;
-      try {
-        size = statSync(abs).size;
-      } catch {
-        continue;
-      }
-      const binary = isProbablyBinary(abs, ext);
-      files.push({
-        path: rel,
-        ext,
-        size,
-        lines: binary ? 0 : countLines(abs, size),
-        category: categorize(rel, ext),
-        binary,
-      });
-    }
-  };
-
-  recurse(repo, "", []);
+  let linkSkips = 0;
+  const result = engineWalk(repo, {
+    onSkip: ({ reason }) => {
+      if (["directory-symlink", "broken-symlink", "symlink-outside-root"].includes(reason)) linkSkips++;
+    },
+    ignoreDirs: [...DEFAULT_IGNORE_DIRS],
+    includeBinary: true,
+    includeLockfiles: true,
+    includeOversize: true,
+    includeMinified: true,
+    filter: ({ rel, abs, directory }) => {
+      if (directory) return resolve(abs) !== outAbs && !isReconstructOutput(abs) && !isIgnored(excludeRules, rel, true);
+      return (
+        !DEFAULT_IGNORE_FILES.has(rel.split("/").pop()!) && !isIgnored(excludeRules, rel, false) && (!includeRules.length || matchesScope(includeRules, rel))
+      );
+    },
+  });
+  const files: FileInfo[] = result.files.map(({ rel, abs, ext, size }) => {
+    const binary = isProbablyBinary(abs, ext);
+    return { path: rel, ext, size, lines: binary ? 0 : countLines(abs, size), category: categorize(rel, ext), binary };
+  });
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return { files, excludedCount };
+  return { files, excludedCount: result.excluded + linkSkips };
 }

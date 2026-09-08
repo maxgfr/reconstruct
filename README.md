@@ -417,3 +417,5 @@ running on untrusted repositories.
 ## License
 
 MIT © maxgfr
+
+See [shared engine maintenance](ENGINE-MAINTENANCE.md) for pins, source adoption checks and the daily repin workflow.
