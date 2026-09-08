@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.23.1](https://github.com/maxgfr/reconstruct/compare/v2.23.0...v2.23.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **engine:** unify pins, repins and shared engine adapters ([dae0a2c](https://github.com/maxgfr/reconstruct/commit/dae0a2c9b2bef834ecd51e42051e4b4f5c8104b1))
+* **engine:** unify pins, repins and shared engine adapters ([3856c90](https://github.com/maxgfr/reconstruct/commit/3856c9054d15335210b932241a70ca330552a009))
+
 # [2.23.0](https://github.com/maxgfr/reconstruct/compare/v2.22.0...v2.23.0) (2026-09-07)
 
 
