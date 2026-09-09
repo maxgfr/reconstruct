@@ -25683,7 +25683,7 @@ Options:
                        With --transport stdio|http \xB7 --out <tree> \xB7 --port \xB7 --bind \xB7
                        --allow-origin \xB7 --allow-remote \xB7 --max-response-bytes
   --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
-                       (per-phase workflows + agent contracts + RUNBOOK) into <out>/orchestration/
+                       (per-phase workflows + agent contracts + RUNBOOK) into <OUT>/orchestration/
   --phase <name>       --orchestrate: emit one phase only \u2014 enrich-map | review-find |
                        review-verify | adjudicate (exit 2 if its worklist is missing)
   --eco                --orchestrate: emit only RUNBOOK.md + agents/*.md (sequential low-token path)
@@ -25722,7 +25722,7 @@ Brainstorm (optional divergent phase, before building):
 
 Orchestration (fan the judgment phases out to subagents):
   --orchestrate reads --out's CURRENT worklists and emits, per ready phase, a
-  launchable multi-agent workflow (<out>/orchestration/<phase>.workflow.mjs), the
+  launchable multi-agent workflow (<OUT>/orchestration/<phase>.workflow.mjs), the
   agents/<role>.md dispatch contracts (drafter/finder/verifier/adjudicator) and a
   sequential RUNBOOK.md fallback. Phases: enrich-map (one drafter per
   inventory.json feature, grouped by workspace), review-find (one finder per

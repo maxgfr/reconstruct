@@ -134,7 +134,7 @@ node scripts/analyze.mjs --merge --specs --features --summary --out ./my-app/rec
 node scripts/analyze.mjs --specs --out ./my-app/reconstruction
 ```
 
-The standalone form reads `<out>/inventory.json` + the `.md` files, is idempotent,
+The standalone form reads `<OUT>/inventory.json` + the `.md` files, is idempotent,
 and errors clearly if the directory holds no `inventory.json`.
 
 ## Validation: is it actually buildable?

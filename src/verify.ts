@@ -234,7 +234,7 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
   return out.join("\n");
 }
 
-/** Read `<out>/inventory.json` if present/parseable — else citation resolution is skipped. */
+/** Read `<OUT>/inventory.json` if present/parseable — else citation resolution is skipped. */
 function readInventoryIfPresent(outDir: string): Inventory | undefined {
   try {
     return JSON.parse(readFileSync(join(outDir, "inventory.json"), "utf8")) as Inventory;

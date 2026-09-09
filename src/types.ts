@@ -86,7 +86,7 @@ export interface Options {
   /**
    * Emit the multi-agent orchestration (per-phase workflows + dispatch contracts
    * + sequential RUNBOOK) for `--out`'s CURRENT worklists into
-   * `<out>/orchestration/`. Reads no repo. `--orchestrate`.
+   * `<OUT>/orchestration/`. Reads no repo. `--orchestrate`.
    */
   orchestrate?: boolean;
   /**
