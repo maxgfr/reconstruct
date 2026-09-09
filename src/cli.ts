@@ -378,10 +378,13 @@ export function parseArgs(argv: string[]): Options {
   if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
   if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");
 
-  // Scratch (greenfield) needs a --plan and no repo; it can't also be a bundle
-  // post-step. Validate up front so the rest of the resolution can assume it.
+  // Scratch (greenfield) reads a --plan, not --repo. Bundle flags may append
+  // artifacts to the freshly generated tree, as on a normal repository run.
   if (scratch && raw.plan === undefined) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
+  }
+  if (scratch && raw.repo !== undefined) {
+    fail("--scratch cannot be combined with --repo; scratch mode is greenfield and reads only --plan");
   }
   const plan = raw.plan ? resolve(raw.plan) : "";
 

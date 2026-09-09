@@ -93,6 +93,21 @@ describe("parseArgs: scratch (greenfield) mode", () => {
     const o = parseArgs(["--scratch", "--plan", "p.json", "--out", "/tmp/greenfield"]);
     expect(o.out).toBe(resolve("/tmp/greenfield"));
   });
+
+  it("rejects a repository in scratch mode while retaining generated bundles", () => {
+    const expectScratchFail = (argv: string[], pattern: RegExp) => {
+      vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+        throw new Error(`process.exit(${code})`);
+      }) as never);
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      expect(() => parseArgs(argv)).toThrow(/process\.exit\(1\)/);
+      expect(stderr.mock.calls.map((c) => String(c[0])).join("")).toMatch(pattern);
+      vi.restoreAllMocks();
+    };
+    expectScratchFail(["--scratch", "--plan", "p.json", "--repo", REPO], /cannot be combined with --repo/);
+    const options = parseArgs(["--scratch", "--plan", "p.json", "--merge", "--summary", "--features", "--specs"]);
+    expect(options).toMatchObject({ scratch: true, merge: true, summary: true, features: true, specs: true, standalone: false });
+  });
 });
 
 describe("parseArgs: --tdd flag", () => {

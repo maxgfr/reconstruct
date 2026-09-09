@@ -25989,6 +25989,9 @@ function parseArgs(argv) {
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
+  if (scratch && raw.repo !== void 0) {
+    fail("--scratch cannot be combined with --repo; scratch mode is greenfield and reads only --plan");
+  }
   const plan = raw.plan ? resolve10(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve10(raw.repo ?? process.cwd());
