@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.23.4](https://github.com/maxgfr/reconstruct/compare/v2.23.3...v2.23.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* reject ignored repository input in scratch mode ([31177c8](https://github.com/maxgfr/reconstruct/commit/31177c8566e4e880ac3515f974abbdaef00ff11f))
+
 ## [2.23.3](https://github.com/maxgfr/reconstruct/compare/v2.23.2...v2.23.3) (2026-09-09)
 
 
