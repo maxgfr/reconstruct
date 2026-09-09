@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.23.5](https://github.com/maxgfr/reconstruct/compare/v2.23.4...v2.23.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **skills:** preserve manual invocation across agent hosts ([58abcd0](https://github.com/maxgfr/reconstruct/commit/58abcd0f35df9f1a9ce7f1db75bbc670f97ca272))
+
 ## [2.23.4](https://github.com/maxgfr/reconstruct/compare/v2.23.3...v2.23.4) (2026-09-09)
 
 
