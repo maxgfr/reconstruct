@@ -1,10 +1,11 @@
 ---
 name: reconstruct
-description: "Brainstorm a new product or reverse-engineer a repository into specifications, PRDs, and a reconstruction plan."
+description: Brainstorm a new product or reverse-engineer a repository into specifications, PRDs, and a reconstruction plan.
 disable-model-invocation: true
 license: MIT
 metadata:
   version: 2.23.4
+  opencode/autoinvoke: 'false'
 ---
 
 # Reconstruct: any repo — or any idea — → a buildable PRD suite

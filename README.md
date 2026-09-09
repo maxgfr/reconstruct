@@ -419,3 +419,21 @@ running on untrusted repositories.
 MIT © maxgfr
 
 See [shared engine maintenance](ENGINE-MAINTENANCE.md) for pins, source adoption checks and the daily repin workflow.
+
+## Manual skill invocation
+
+These skills run when explicitly invoked: `reconstruct`. Use `$name` in Codex or `/name` in Claude Code and OpenCode (with the plugin namespace when installed as a Claude plugin).
+
+The skill bundle disables implicit selection in Codex and Claude Code. OpenCode V2 reads `metadata.opencode/autoinvoke: "false"`. For OpenCode V1, merge these entries into `permission.skill` in `~/.config/opencode/opencode.json` or the project configuration; retain unrelated permissions:
+
+```json
+{
+  "permission": {
+    "skill": {
+      "reconstruct": "deny"
+    }
+  }
+}
+```
+
+On OpenCode 1.18.30, these rules hide the skills from the agent and reject skill-tool loading, while explicit `/name` commands remain available. Installation with `skills add` does not apply this OpenCode V1 configuration.
