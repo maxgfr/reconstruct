@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.23.6](https://github.com/maxgfr/reconstruct/compare/v2.23.5...v2.23.6) (2026-09-10)
+
+
+### Bug Fixes
+
+* **engine:** update shared engines and maintenance tool ([ed76a44](https://github.com/maxgfr/reconstruct/commit/ed76a44d557c624600d5318452068cf26cf343c3))
+
 ## [2.23.5](https://github.com/maxgfr/reconstruct/compare/v2.23.4...v2.23.5) (2026-09-09)
 
 
