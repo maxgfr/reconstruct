@@ -19,7 +19,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.31.0";
+    ENGINE_VERSION = "2.31.1";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 15;
   }
@@ -2492,7 +2492,7 @@ var init_js_ts = __esm({
     NAMED_DEFAULT_RE = /^\s*export\s+default\s+(?:async\s+)?(?:function|class)\s+(?!extends\b)[\w$]+/;
     EXPORT_LIST_RE = /export\s*\{([^}]*)\}\s*(from\b)?/g;
     CJS_OBJECT_RE = /module\.exports\s*=\s*\{([^}]*)\}/g;
-    DEFAULT_ID_RE = /(^|\n)\s*export(?:\s+default\s+|\s*=\s*)([A-Za-z_$][\w$]*)\s*;?\s*(?=\n|$)/g;
+    DEFAULT_ID_RE = /(^|\n)[ \t]*export(?:\s+default\s+|\s*=\s*)([A-Za-z_$][\w$]*)[ \t]*;?[ \t]*(?=\r?\n|$)/g;
     jsTs = {
       lang: "javascript/typescript",
       exts: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
