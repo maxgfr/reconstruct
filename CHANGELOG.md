@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.23.10](https://github.com/maxgfr/reconstruct/compare/v2.23.9...v2.23.10) (2026-09-30)
+
+
+### Bug Fixes
+
+* **engine:** update codeindex to v2.31.0 ([8bc78fa](https://github.com/maxgfr/reconstruct/commit/8bc78fa5f143d6b3adac061dd1120fb09709896c))
+
 ## [2.23.9](https://github.com/maxgfr/reconstruct/compare/v2.23.8...v2.23.9) (2026-09-28)
 
 
