@@ -1,6 +1,6 @@
-declare const ENGINE_VERSION = "2.30.1";
+declare const ENGINE_VERSION = "2.31.0";
 declare const SCHEMA_VERSION = 5;
-declare const EXTRACTOR_VERSION = 14;
+declare const EXTRACTOR_VERSION = 15;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
 type Tier = 0 | 1 | 2;
@@ -20,6 +20,8 @@ interface CodeSymbol {
 interface RawRef {
     kind: "doc-link" | "import";
     spec: string;
+    /** Speculative ref: an edge when it resolves to an in-repo file, otherwise dropped silently (never external, never dangling). */
+    soft?: true;
 }
 interface CodeLiteral {
     value: string;
@@ -47,6 +49,11 @@ interface RawRelation {
     to: string;
     line: number;
 }
+interface ImportAlias {
+    local: string;
+    name: string;
+    from?: string;
+}
 interface FileRecord {
     rel: string;
     ext: string;
@@ -68,7 +75,9 @@ interface FileRecord {
         receiver?: string;
     }[];
     importedNames?: string[];
+    importAliases?: ImportAlias[];
     truncated?: true;
+    generated?: "minified" | "bundle";
     relations?: RawRelation[];
     terms?: string[];
     literals?: CodeLiteral[];
@@ -88,6 +97,7 @@ interface FileNode {
     degOut: number;
     pagerank?: number;
     testFile?: true;
+    generated?: "minified" | "bundle";
 }
 interface ModuleNode {
     id: string;
@@ -211,9 +221,15 @@ declare const BINARY_EXT: Set<string>;
 /** An observed exclusion. Directory contents are not enumerated. */
 interface WalkSkip {
     rel: string;
-    reason: "binary-ext" | "lockfile" | "over-max-bytes" | "gitignored" | "minified" | "symlink-outside-root" | "broken-symlink" | "directory-symlink" | "ignore-dir" | "nested-repo" | "filter" | "unreadable";
+    reason: "binary-ext" | "lockfile" | "over-max-bytes" | "gitignored" | "minified" | "symlink-outside-root" | "broken-symlink" | "directory-symlink" | "file-symlink" | "ignore-dir" | "nested-repo" | "filter" | "unreadable";
     directory: boolean;
     size?: number;
+    /** For "gitignored": the rule that decided it — its file, 1-based line, and pattern as written. */
+    rule?: {
+        source: string;
+        line: number;
+        pattern: string;
+    };
 }
 interface WalkEntry {
     rel: string;
@@ -230,6 +246,9 @@ interface WalkOptions {
     includeBinary?: boolean;
     includeOversize?: boolean;
     includeMinified?: boolean;
+    /** Keep in-repo FILE symlinks as files of their own (skipped by default — see walk). */
+    includeFileSymlinks?: boolean;
+    trackedBuildDirs?: boolean;
     /** Replace the binary extension policy, e.g. to retain textual SVG. */
     binaryExtensions?: ReadonlySet<string>;
     /** Called before entering a directory or accepting a file. False prunes it. */
@@ -285,11 +304,19 @@ interface ScanOptions {
     fullHash?: boolean;
     precomputedWalk?: WalkResult;
     extracted?: Map<string, ExtractedRecord>;
+    onSkip?: (skip: ScanSkip) => void;
 }
+type ScanSkip = WalkSkip | {
+    rel: string;
+    reason: "index-output";
+    directory: false;
+    size: number;
+};
 interface ExtractedRecord {
     size: number;
     mtimeMs: number;
-    record: FileRecord;
+    hash: string;
+    record?: FileRecord;
 }
 declare function buildCodeRecord(rel: string, ext: string, size: number, content: string, hash: string, lang: string, opts?: {
     maxCallsPerFile?: number;
@@ -309,6 +336,21 @@ interface ScanSummary {
 declare function scanSummary(root: string, opts?: ScanOptions): ScanSummary;
 declare function scanRepo(root: string, opts?: ScanOptions): RepoScan;
 
+type PathVerdictReason = ScanSkip["reason"] | "outside-repo" | "not-found" | "max-files" | "no-indexed-files" | "not-walked";
+interface PathVerdict {
+    path: string;
+    indexed: boolean;
+    reason: PathVerdictReason | null;
+    detail: Record<string, unknown>;
+}
+declare function scanSkips(root: string, opts?: ScanOptions): {
+    skips: ScanSkip[];
+    files: WalkedFile[];
+    capped: boolean;
+};
+declare function skipHistogram(skips: readonly ScanSkip[]): Record<string, number>;
+declare function whyPath(root: string, path: string, opts?: ScanOptions): PathVerdict;
+
 type PersistedCacheEntry = {
     hash: string;
     record: FileRecord;
@@ -316,6 +358,10 @@ type PersistedCacheEntry = {
     mtimeMs?: number;
 };
 type PersistedCacheMap = Map<string, PersistedCacheEntry>;
+interface ExtractionProfile {
+    grammars: string[];
+    maxCallsPerFile?: number;
+}
 
 interface BuildIndexOptions extends ScanOptions {
     meta?: {
@@ -338,8 +384,15 @@ interface PersistedMeta {
     commit?: string;
     graphSha1?: string;
     symbolsSha1?: string;
+    embed?: {
+        embedVersion?: number;
+        modelId?: string;
+        sha1?: string;
+    };
+    extraction?: ExtractionProfile;
 }
 declare function toCacheMap(scan: RepoScan): PersistedCacheMap;
+type UnusableIndex = "absent" | "unreadable" | "corrupt" | "schema" | "extractor";
 declare function readPersistedIndex(repo: string, indexDir?: string): {
     cacheMap: PersistedCacheMap;
     meta: PersistedMeta;
@@ -351,10 +404,44 @@ declare function preloadSession(repo: string, opts: Omit<ScanOptions, "cache">, 
     arts?: IndexArtifacts;
 } | undefined;
 
+interface TreeDrift {
+    indexed: number;
+    unchanged: number;
+    touched: number;
+    modified: number;
+    added: number;
+    deleted: number;
+    reextract: number;
+}
+
+type IndexStaleness = UnusableIndex | "engine-version" | "extraction" | "files" | "graph.json" | "symbols.json";
+interface IndexStatus {
+    indexDir: string;
+    present: boolean;
+    usable: boolean;
+    reason?: UnusableIndex;
+    engineVersion: {
+        index: string | null;
+        current: string;
+    };
+    commit: {
+        index: string | null;
+        head: string | null;
+    };
+    files: TreeDrift | null;
+    artifactsFresh: boolean;
+    stale: IndexStaleness[];
+}
+interface IndexStatusOptions extends Omit<ScanOptions, "cache" | "precomputedWalk" | "extracted"> {
+    ast?: boolean;
+}
+declare function indexStatus(repo: string, opts?: IndexStatusOptions, indexDir?: string): IndexStatus;
+
 interface Job {
     abs: string;
     rel: string;
     ext: string;
+    cachedHash?: string;
 }
 interface WorkerInput {
     jobs: Job[];
@@ -367,7 +454,8 @@ interface WorkerOutput {
         rel: string;
         size: number;
         mtimeMs: number;
-        record: FileRecord;
+        hash: string;
+        record?: FileRecord;
     }[];
 }
 declare function workerCount(requested?: number): number;
@@ -385,9 +473,14 @@ interface IgnoreRule {
     re: RegExp;
     negated: boolean;
     dirOnly: boolean;
+    test?: (rel: string, base: string) => boolean;
+    source?: string;
+    line?: number;
+    pattern?: string;
 }
-declare function parseGitignore(content: string, baseRel: string): IgnoreRule[];
+declare function parseGitignore(content: string, baseRel: string, source?: string): IgnoreRule[];
 declare function isIgnored(rules: readonly IgnoreRule[], rel: string, isDir: boolean): boolean;
+declare function decidingRule(rules: readonly IgnoreRule[], rel: string, isDir: boolean): IgnoreRule | undefined;
 
 declare const MARKDOWN_EXT: Set<string>;
 declare function isDoc(rel: string, ext: string): boolean;
@@ -402,10 +495,13 @@ declare function extToLang(ext: string): string;
 declare function extractSymbols(rel: string, ext: string, content: string): CodeSymbol[];
 declare function languageOf(ext: string): string;
 
+type GeneratedKind = NonNullable<FileRecord["generated"]>;
+
 interface CodeInfo {
     symbols: CodeSymbol[];
     summary?: string;
     truncated?: true;
+    generated?: GeneratedKind;
     refs: RawRef[];
     pkg?: string;
     idents?: string[];
@@ -415,6 +511,7 @@ interface CodeInfo {
         receiver?: string;
     }[];
     importedNames?: string[];
+    importAliases?: ImportAlias[];
     terms?: string[];
     literals?: CodeLiteral[];
     relations?: RawRelation[];
@@ -430,6 +527,8 @@ interface MarkdownInfo {
     refs: RawRef[];
 }
 declare function extractMarkdown(content: string): MarkdownInfo;
+
+declare function extractRst(rel: string, content: string): MarkdownInfo;
 
 declare const CORE_GRAMMARS: Set<string>;
 declare const EXTENDED_GRAMMARS: Set<string>;
@@ -465,6 +564,7 @@ interface AstResult {
         receiver?: string;
     }[];
     importedNames: string[];
+    importAliases: ImportAlias[];
     relations: RawRelation[];
     terms: string[];
     literals: CodeLiteral[];
@@ -504,7 +604,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.30.1/grammars-2.30.1.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.31.0/grammars-2.31.0.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -564,6 +664,7 @@ interface TsPath {
 interface TsConfigScope {
     dir: string;
     baseUrl: string;
+    baseUrlSet: boolean;
     paths: TsPath[];
 }
 interface ExportEntry {
@@ -576,6 +677,11 @@ interface WorkspacePackage$1 {
     dir: string;
     exportEntries: ExportEntry[];
     mainCandidates: string[];
+    tsconfig?: string;
+}
+interface PackageScope {
+    dir: string;
+    importEntries: ExportEntry[];
 }
 interface GoModule {
     module: string;
@@ -590,6 +696,13 @@ interface RustCrate {
     dir: string;
     srcDir: string;
     rootFile?: string;
+    renames?: Map<string, string>;
+    edition2015?: boolean;
+}
+interface JvmIndex {
+    types: Map<string, string>;
+    packages: Map<string, string>;
+    scalaPkg: Map<string, string>;
 }
 interface ResolveContext {
     fileSet: Set<string>;
@@ -601,6 +714,7 @@ interface ResolveContext {
     javaRoots: string[];
     pyRoots: string[];
     workspacePackages: WorkspacePackage$1[];
+    packageScopes: PackageScope[];
     cIncludeRoots: string[];
     rubyLibRoots: string[];
     phpPsr4: {
@@ -608,8 +722,14 @@ interface ResolveContext {
         dir: string;
     }[];
     csharpNamespaces: Map<string, string[]>;
+    jvm?: JvmIndex;
+    csharpPrefix?: Map<string, string>;
+    dartPackages?: Map<string, string>;
+    luaRoots?: string[];
+    elixirModules?: Map<string, string>;
     warnings: string[];
     jsMemo?: Map<string, Resolution>;
+    pyMemo?: Map<string, Resolution>;
     dirFilesMemo?: Map<string, string[]>;
 }
 declare function buildResolveContext(scan: RepoScan): ResolveContext;
@@ -637,7 +757,7 @@ declare function buildGraph(scan: RepoScan, ctx: ResolveContext, modules: Module
     schemaVersion?: number;
 }): Graph;
 
-declare function resolveCallEdges(scan: RepoScan, importPairs: Set<string>): Edge[];
+declare function resolveCallEdges(scan: RepoScan, importPairs: Set<string>, ctx?: ResolveContext): Edge[];
 
 /** One inheritance link with both ends bound to a declaration site. */
 interface ResolvedRelation {
@@ -657,19 +777,21 @@ interface ResolvedRelation {
  *
  * Deterministic: sorted, and never dependent on Map iteration order.
  */
-declare function resolveRelations(scan: RepoScan, importPairs: Set<string>): ResolvedRelation[];
+declare function resolveRelations(scan: RepoScan, importPairs: Set<string>, ctx?: ResolveContext): ResolvedRelation[];
 /**
  * File-level `extends`/`implements` edges, aggregated per (from, to, kind) pair.
  * Self-edges are dropped: a type extending another in the same file is a real
  * relation (the hierarchy reports it) but not a dependency between files.
  */
-declare function resolveRelationEdges(scan: RepoScan, importPairs: Set<string>): Edge[];
+declare function resolveRelationEdges(scan: RepoScan, importPairs: Set<string>, ctx?: ResolveContext): Edge[];
 /** One end of a relation, as reported by the hierarchy. */
 interface HierarchyRef {
     name: string;
     file: string;
     line: number;
     kind: string;
+    /** A Go type whose method set covers the interface's, with no assertion saying so. */
+    structural?: true;
 }
 interface TypeHierarchyEntry {
     name: string;
@@ -702,11 +824,25 @@ declare function buildTypeHierarchy(scan: RepoScan, importPairs: Set<string>): M
  * of the one asked about is an implementation too, and a caller should not have
  * to walk the chain itself. Breadth-first, cycle-safe, deterministic.
  */
-declare function implementationsOf(hierarchy: Map<string, TypeHierarchyEntry>, name: string): HierarchyRef[];
-/** The declaration `name` refers to, for callers that only have a name. */
-declare function typeEntry(hierarchy: Map<string, TypeHierarchyEntry>, name: string): TypeHierarchyEntry | undefined;
+declare function implementationsOf(hierarchy: Map<string, TypeHierarchyEntry>, name: string, declarations?: readonly {
+    name: string;
+    file: string;
+}[]): HierarchyRef[];
+/**
+ * The type a symbol ref names — `Name`, `Name@file`, `file#Name` (see
+ * src/symref.ts). A bare name answers with the key the hierarchy stores it
+ * under (the first homonym); the qualified forms reach every homonym.
+ *
+ * Entries do not record where a type is nested, so a ref constraining the
+ * PARENT (`Outer/Inner`, `file#Outer/Inner`) is settled by `declarations`:
+ * what the ref resolved to against the scan (query.ts resolveSymbolRef).
+ */
+declare function typeEntry(hierarchy: Map<string, TypeHierarchyEntry>, name: string, declarations?: readonly {
+    name: string;
+    file: string;
+}[]): TypeHierarchyEntry | undefined;
 
-type SymbolEdgeKind = "calls" | "extends" | "implements";
+type SymbolEdgeKind = "calls" | "extends" | "implements" | "overrides";
 interface SymbolNode {
     /** Stable id: `file#Parent/name` for a member, `file#name` otherwise. */
     id: string;
@@ -723,7 +859,7 @@ interface SymbolEdge {
     from: string;
     to: string;
     kind: SymbolEdgeKind;
-    /** How many distinct call sites back a `calls` edge. Always 1 for inheritance. */
+    /** How many distinct call sites back a `calls` edge. Always 1 for inheritance and overrides. */
     weight: number;
 }
 interface SymbolGraph {
@@ -756,6 +892,8 @@ interface Neighborhood {
     edges: SymbolEdge[];
     /** True when the node cap stopped the walk short. */
     truncated?: true;
+    /** The hop limit actually walked, present when a deeper walk was asked for. */
+    depthClamped?: number;
 }
 /**
  * The bounded neighborhood of a symbol. Breadth-first, so `depth` is the true
@@ -771,6 +909,7 @@ interface CallerSite {
     file: string;
     line: number;
     confidence?: "corroborated" | "unique-name";
+    caller?: string;
 }
 interface CallerIndexOptions {
     recall?: boolean;
@@ -819,21 +958,28 @@ interface FindSymbolOptions {
 declare function findSymbol(scan: RepoScan, namePath: string, opts?: FindSymbolOptions): SymbolMatch[];
 interface SymbolReferences {
     defs: CodeSymbol[];
-    callSites: CallerSite[];
+    callSites: (CallerSite & {
+        def?: string;
+    })[];
     referencingFiles: string[];
 }
-declare function findReferences(scan: RepoScan, name: string): SymbolReferences;
+declare function findReferences(scan: RepoScan, ref: string): SymbolReferences;
 
 interface EditResult {
     file: string;
     startLine: number;
     endLine: number;
     lines: number;
+    warnings?: string[];
 }
-declare function resolveUniqueSymbol(scan: RepoScan, namePath: string, file?: string): CodeSymbol;
-declare function replaceSymbolBody(scan: RepoScan, namePath: string, body: string, file?: string): EditResult;
-declare function insertAfterSymbol(scan: RepoScan, namePath: string, body: string, file?: string): EditResult;
-declare function insertBeforeSymbol(scan: RepoScan, namePath: string, body: string, file?: string): EditResult;
+interface EditOptions {
+    line?: number;
+    strict?: boolean;
+}
+declare function resolveUniqueSymbol(scan: RepoScan, namePath: string, file?: string, line?: number): CodeSymbol;
+declare function replaceSymbolBody(scan: RepoScan, namePath: string, body: string, file?: string, opts?: EditOptions): EditResult;
+declare function insertAfterSymbol(scan: RepoScan, namePath: string, body: string, file?: string, opts?: EditOptions): EditResult;
+declare function insertBeforeSymbol(scan: RepoScan, namePath: string, body: string, file?: string, opts?: EditOptions): EditResult;
 
 declare function writeMemory(repo: string, name: string, content: string): string;
 declare function readMemory(repo: string, name: string): string | undefined;
@@ -919,25 +1065,44 @@ declare function resolveBaseRef(dir: string, base?: string): {
 declare function diffFiles(dir: string, spec: DiffSpec): DiffFile[];
 declare function diffHunks(dir: string, spec: DiffSpec): Map<string, Hunk[]>;
 declare function untrackedFiles(dir: string): string[];
-declare function gitChurn(dir: string, opts?: {
-    since?: string;
-}): {
+interface ChurnResult {
     churn: Map<string, number>;
     ok: boolean;
-};
+    error?: string;
+    shallow?: boolean;
+    commits: number;
+}
+declare function gitChurn(dir: string, opts?: {
+    since?: string;
+}): ChurnResult;
 declare function changedSince(dir: string, ref: string): Set<string>;
 
 interface SearchHit {
     file: string;
     line: number;
+    col: number;
     text: string;
 }
 interface GrepOptions {
     globs?: string[];
+    scope?: string;
     maxHits?: number;
     ignoreCase?: boolean;
+    filesWithMatches?: boolean;
+    gitignore?: boolean;
+    ignoreDirs?: string[];
+    maxFileBytes?: number;
+    timeoutMs?: number;
     noRipgrep?: boolean;
 }
+interface GrepResult {
+    hits: SearchHit[];
+    truncated: boolean;
+    filesMatched: number;
+    timedOut: boolean;
+    notes: string[];
+}
+declare function grepRepoEx(root: string, pattern: string, opts?: GrepOptions): GrepResult;
 declare function grepRepo(root: string, pattern: string, opts?: GrepOptions): SearchHit[];
 
 interface ShResult {
@@ -946,12 +1111,14 @@ interface ShResult {
     stdout: string;
     stderr: string;
     missing: boolean;
+    errorCode?: string;
 }
 declare function sh(cmd: string, args: string[], opts?: {
     cwd?: string;
     input?: string;
     timeoutMs?: number;
     env?: Record<string, string | undefined>;
+    maxBufferBytes?: number;
 }): ShResult;
 declare function have(cmd: string): boolean;
 declare function slugify(input: string): string;
@@ -959,7 +1126,7 @@ declare function clip(s: string, max: number): string;
 declare function clipInline(s: string, max: number): string;
 declare function escapeRegExp(s: string): string;
 declare function foldText(s: string): string;
-declare function keywords(question: string): string[];
+declare function keywords(question: string, keep?: (raw: string) => boolean): string[];
 declare function rankedKeywords(question: string): string[];
 declare function rrf<T>(lists: T[][], keyOf: (item: T) => string, k?: number): Map<string, number>;
 declare function subtokens(raw: string): string[];
@@ -1016,7 +1183,11 @@ interface QueryExplanation {
     query: string;
     /** Post keywords() + subtokens(), in query order. */
     terms: TermDiagnostic[];
-    /** Raw tokens keywords() discarded as stopwords or 1-char noise, in order. */
+    /**
+     * Raw tokens keywords() discarded as stopwords or 1-char noise, in order. A
+     * stopword the query searched for after all — the query's only word, or a
+     * capitalised name the corpus declares — is not listed.
+     */
     droppedStopwords: string[];
     /** df==0 AND no stem/trigram bridge — present in the repo nowhere, sorted. */
     unresolvedTerms: string[];
@@ -1054,7 +1225,7 @@ declare function searchIndex(scan: RepoScan, query: string, opts?: SearchOptions
  */
 declare function explainQuery(scan: RepoScan, query: string, opts?: SearchOptions): ExplainedSearch;
 
-declare const EMBED_VERSION = 1;
+declare const EMBED_VERSION = 2;
 interface StaticEmbedModel {
     modelId: string;
     dim: number;
@@ -1085,6 +1256,7 @@ interface EmbeddingRecord {
     file: string;
     symbol?: string;
     line?: number;
+    textHash?: string;
     vec: Int8Array;
 }
 interface EmbeddingIndex {
@@ -1099,8 +1271,11 @@ interface EmbeddingUnit {
     line?: number;
     text: string;
 }
+declare function unitHash(text: string): string;
 declare function embeddingUnits(scan: RepoScan): EmbeddingUnit[];
-declare function buildEmbeddingIndex(scan: RepoScan, model: StaticEmbedModel): EmbeddingIndex;
+declare function buildEmbeddingIndex(scan: RepoScan, model: StaticEmbedModel, opts?: {
+    previous?: EmbeddingIndex;
+}): EmbeddingIndex;
 declare function serializeEmbeddings(index: EmbeddingIndex): Uint8Array;
 declare function deserializeEmbeddings(bytes: Uint8Array): EmbeddingIndex;
 
@@ -1112,6 +1287,15 @@ interface SemanticSearchOptions extends SearchOptions {
 interface SemanticSearchResult extends SearchResult {
     semanticSymbol?: string;
 }
+interface SemanticQueryExplanation extends QueryExplanation {
+    /** Rows only the embedding side found — no lexical match at all. */
+    semanticOnlyResults: number;
+}
+interface ExplainedSemanticSearch {
+    results: SemanticSearchResult[];
+    explain: QueryExplanation | SemanticQueryExplanation;
+}
+declare function explainSemantic(scan: RepoScan, query: string, index: EmbeddingIndex | undefined, opts?: SemanticSearchOptions): ExplainedSemanticSearch;
 declare function searchSemantic(scan: RepoScan, query: string, index: EmbeddingIndex | undefined, opts?: SemanticSearchOptions): SemanticSearchResult[];
 
 interface EmbedEndpointOptions {
@@ -1119,6 +1303,7 @@ interface EmbedEndpointOptions {
     timeoutMs?: number;
     headers?: Record<string, string>;
     batchSize?: number;
+    concurrency?: number;
 }
 declare function resolveEmbedEndpoint(opts?: EmbedEndpointOptions): string | undefined;
 declare function embedEndpointUrl(base: string): string;
@@ -1126,7 +1311,11 @@ declare function healthzUrl(base: string): string;
 declare function embedViaEndpoint(texts: string[], opts?: EmbedEndpointOptions): Promise<number[][]>;
 declare function probeEndpoint(base: string, opts?: EmbedEndpointOptions): Promise<boolean>;
 declare function encodeQueryViaEndpoint(query: string, opts?: EmbedEndpointOptions): Promise<Int8Array>;
-declare function buildEndpointIndex(scan: RepoScan, opts?: EmbedEndpointOptions): Promise<EmbeddingIndex>;
+declare function endpointModelId(opts?: EmbedEndpointOptions): Promise<string>;
+declare function buildEndpointIndex(scan: RepoScan, opts?: EmbedEndpointOptions & {
+    previous?: EmbeddingIndex;
+    modelId?: string;
+}): Promise<EmbeddingIndex>;
 
 interface OnboardOptions {
     /** Token budget for the repo-map section (default 900). */
@@ -1220,6 +1409,10 @@ interface LspTransport {
     /** Fired when the far side goes away, however it went away. */
     onExit(cb: (code: number | null) => void): void;
     close(): void;
+    /** The last non-empty line the far side wrote to stderr, when there is one. */
+    lastError?(): string | undefined;
+    /** Kill the far side NOW, synchronously — for a host that is exiting. */
+    kill?(): void;
 }
 interface LspSessionOptions {
     /** Absolute repository root; every URI is built against it. */
@@ -1242,6 +1435,8 @@ interface LspSession {
     definition(rel: string, line: number, character: number): Promise<LspRef[]>;
     incomingCalls(rel: string, line: number, character: number): Promise<LspIncomingCall[]>;
     shutdown(): Promise<void>;
+    /** False once the server died or the session was shut down. */
+    alive(): boolean;
 }
 /** Thrown when a request outlives its budget. Named so callers can tell it apart. */
 declare class LspTimeout extends Error {
@@ -1308,7 +1503,12 @@ interface LspAgreement {
 interface LspBlock {
     server: string;
     ok: boolean;
-    /** Why it could not answer. Present only when `ok` is false. */
+    /**
+     * The server kept answering with declarations only although the static tier
+     * found call sites: it may still be indexing, or those sites are homonyms.
+     */
+    partial?: true;
+    /** Why it could not answer (`ok` false), or why the answer looks partial. */
     reason?: string;
     refs: LspRef[];
     agreement: LspAgreement;
@@ -1337,6 +1537,8 @@ declare function agreementOf(refs: LspRef[], statik: SymbolReferences): LspAgree
 interface LspCallersBlock {
     server: string;
     ok: boolean;
+    /** No incoming calls although the static tier found callers (see LspBlock). */
+    partial?: true;
     reason?: string;
     calls: LspIncomingCall[];
     agreement: LspAgreement;
@@ -1345,6 +1547,68 @@ type LspCallers<T extends object> = T & {
     lsp?: LspCallersBlock;
 };
 
+type OpenResult = {
+    ok: true;
+    session: LspSession;
+    transport: LspTransport;
+} | {
+    ok: false;
+    reason: string;
+};
+/** What a query gets to work with, pooled or not. */
+interface LspLease {
+    session: LspSession;
+    /**
+     * The session has already given an answer beyond bare declarations, so its
+     * index is built: a declaration-only answer from it is believed rather than
+     * retried as a server that is still warming up.
+     */
+    readonly warm: boolean;
+    markWarm(): void;
+}
+type LeaseResult<T> = {
+    ok: true;
+    value: T;
+} | {
+    ok: false;
+    reason: string;
+};
+interface LspPoolOptions {
+    /** Close a session after this long without a query, ms (default 5 min). */
+    idleMs?: number;
+    /** How a session is opened; tests inject one. */
+    open?: (server: LspServerConfig, root: string) => Promise<OpenResult>;
+}
+declare class LspSessionPool {
+    private readonly entries;
+    private readonly idleMs;
+    private readonly open;
+    private readonly live;
+    private readonly killAll;
+    private hooked;
+    private closed;
+    constructor(options?: LspPoolOptions);
+    /** Live sessions, for tests and status. */
+    get size(): number;
+    use<T>(server: LspServerConfig, root: string, stamp: string, fn: (lease: LspLease) => Promise<T>, retried?: boolean): Promise<LeaseResult<T>>;
+    /** Shut every session down. The host calls this when it stops. */
+    close(): Promise<void>;
+    private retire;
+    private shutdown;
+    private readonly onSignal;
+    private hook;
+    /** Drop the hooks once nothing they could kill is left. */
+    private unhook;
+}
+
+/** How a query reaches its servers. */
+interface LspQueryOptions {
+    /**
+     * Reuse sessions across queries (the MCP server passes its own). Without
+     * one, each query opens a fresh session and shuts it down before returning.
+     */
+    pool?: LspSessionPool;
+}
 interface LspServerStatus {
     id: string;
     languages: string[];
@@ -1385,9 +1649,9 @@ declare function lspStatus(scan: RepoScan, repo: string, probe?: boolean): Promi
  * TypeScript server configured still gets its Go references answered
  * statically, silently and correctly.
  */
-declare function referencesWithLsp(scan: RepoScan, repo: string, name: string, statik: SymbolReferences): Promise<LspReferences>;
+declare function referencesWithLsp(scan: RepoScan, repo: string, name: string, statik: SymbolReferences, options?: LspQueryOptions): Promise<LspReferences>;
 /** Incoming calls may exist even when the static caller index has no entry. */
-declare function callersWithLsp<T extends object>(scan: RepoScan, repo: string, name: string, statik: T): Promise<LspCallers<T>>;
+declare function callersWithLsp<T extends object>(scan: RepoScan, repo: string, name: string, statik: T, options?: LspQueryOptions): Promise<LspCallers<T>>;
 
 declare function spawnLspTransport(server: LspServerConfig, cwd: string): LspTransport | undefined;
 
@@ -1404,20 +1668,26 @@ interface BuiltinRule {
     name: string;
     builtin: "cycles" | "orphans" | "literals";
     tiers?: LiteralDuplication["tier"][];
+    minFiles?: number;
+    minCount?: number;
+    includeTests?: boolean;
     severity?: RuleSeverity;
     comment?: string;
+}
+interface CheckRulesOptions {
+    scan?: RepoScan;
 }
 type ArchRule = ForbiddenEdgeRule | BuiltinRule;
 interface RuleViolation {
     rule: string;
     from: string;
     to: string;
-    kind: EdgeKind | "cycle" | "orphan" | "literal";
+    kind: EdgeKind | "cycle" | "orphan" | "literal" | "unmatched";
     severity: RuleSeverity;
     comment?: string;
 }
 declare function parseRules(input: unknown): ArchRule[];
-declare function checkRules(graph: Graph, rules: ArchRule[]): RuleViolation[];
+declare function checkRules(graph: Graph, rules: ArchRule[], opts?: CheckRulesOptions): RuleViolation[];
 
 interface ChangeCoupling {
     a: string;
@@ -1426,28 +1696,37 @@ interface ChangeCoupling {
     totalA: number;
     totalB: number;
     strength: number;
+    confidence: number;
+    linked?: boolean;
 }
 interface CouplingOptions {
     since?: string;
     maxCommitFiles?: number;
     minTogether?: number;
     maxPairs?: number;
+    graph?: Pick<Graph, "files" | "fileEdges">;
+    hidden?: boolean;
 }
-declare function changeCoupling(dir: string, opts?: CouplingOptions): {
+interface CouplingResult {
     ok: boolean;
+    error?: string;
+    shallow?: boolean;
     couplings: ChangeCoupling[];
-};
+}
+declare function changeCoupling(dir: string, opts?: CouplingOptions): CouplingResult;
 interface Hotspot {
     rel: string;
     lines: number;
     commits: number;
     score: number;
+    test?: true;
 }
 declare function rankHotspots(scan: RepoScan, churn: Map<string, number>, top?: number): Hotspot[];
 
 interface RepoMapOptions {
     budgetTokens?: number;
     maxSymbolsPerFile?: number;
+    bare?: boolean;
 }
 declare function renderRepoMap(scan: RepoScan, graph: Graph, opts?: RepoMapOptions): string;
 
@@ -1458,7 +1737,13 @@ interface DeadSymbol {
     kind: string;
     tier: "unreferenced" | "uncalled";
 }
-declare function findDeadCode(scan: RepoScan): DeadSymbol[];
+interface DeadCodeOptions {
+    /** "callable" (default): functions, methods, classes, function-valued consts. "all": every exported kind. */
+    kinds?: "callable" | "all";
+    /** Also report symbols of tail files (examples, docs, fixtures, scripts). Test files stay roots. */
+    includeTail?: boolean;
+}
+declare function findDeadCode(scan: RepoScan, opts?: DeadCodeOptions): DeadSymbol[];
 
 interface LiteralFamily {
     prefix: string;
@@ -1478,7 +1763,8 @@ interface LiteralsOptions {
 }
 declare function findLiteralDuplications(scan: RepoScan, opts?: LiteralsOptions): LiteralsReport;
 
-declare function complexityOfSource(source: string): number;
+/** Branch count + 1 over the code of `source`, its comments and strings aside. */
+declare function complexityOfSource(source: string, lang?: string): number;
 interface SymbolComplexity {
     file: string;
     name: string;
@@ -1526,9 +1812,26 @@ interface ImpactResult {
     seeds: string[];
     files: ImpactedFile[];
     modules: string[];
+    inferredDependents?: number;
 }
-declare function reverseClosure(edges: Edge[], seeds: string[], depth?: number): Map<string, number>;
-declare function impactOf(graph: Graph, target: string, depth?: number): ImpactResult | undefined;
+interface ClosureOptions {
+    /** Leave out `call` edges inferred from a name alone (Edge.confidence "inferred"). */
+    skipInferred?: boolean;
+    /**
+     * Read a Go import as an import of the whole package. Go imports a
+     * directory, and the resolver lands it on ONE representative file of it, so
+     * without this the other files of a package have no importers at all: gin's
+     * render/render.go (the Render interface) showed no dependents while
+     * `render` had 61.
+     */
+    goPackages?: boolean;
+}
+declare function reverseClosure(edges: Edge[], seeds: string[], depth?: number, opts?: ClosureOptions): Map<string, number>;
+interface ImpactOptions {
+    /** Also follow `call` edges inferred from a name alone (default false: they are counted, not walked). */
+    includeInferred?: boolean;
+}
+declare function impactOf(graph: Graph, target: string, depth?: number, opts?: ImpactOptions): ImpactResult | undefined;
 interface NeighborLink {
     node: string;
     direction: "out" | "in";
@@ -1549,6 +1852,8 @@ interface DeltaOptions {
     base?: string;
     staged?: boolean;
     depth?: number;
+    scan?: RepoScan;
+    indexDir?: string;
 }
 interface ChangedSymbol {
     name: string;
@@ -1595,6 +1900,13 @@ interface DeltaModule {
     };
     open: string[];
 }
+interface BrokenImport {
+    from: string;
+    spec: string;
+    kind: "import" | "doc-link";
+    target: string;
+    renamedTo?: string;
+}
 interface DeltaResult {
     base: {
         ref: string;
@@ -1610,6 +1922,7 @@ interface DeltaResult {
         spec: string;
         reason: string;
     }[];
+    broken: BrokenImport[];
     deleted: string[];
     unindexed: string[];
     notes: string[];
@@ -1626,6 +1939,7 @@ declare const RISK_WEIGHTS: {
     readonly testGap: 20;
     readonly surprise: 10;
     readonly dangling: 15;
+    readonly brokenImport: 40;
 };
 declare const DEFAULT_DELTA_DEPTH = 2;
 interface NamedDef {
@@ -1638,12 +1952,26 @@ interface NamedDef {
     parent?: string;
 }
 declare function symbolsInHunks(defs: NamedDef[], hunks: Hunk[]): ChangedSymbol[];
+declare function brokenImports(scan: RepoScan, graph: Graph, removed: {
+    path: string;
+    renamedTo?: string;
+}[]): BrokenImport[];
 declare function computeDelta(graph: Graph, symbols: SymbolIndex | undefined, diff: {
     files: DiffFile[];
     hunks: Map<string, Hunk[]>;
     base: DeltaResult["base"];
     notes?: string[];
+    broken?: BrokenImport[];
 }, depth?: number): DeltaResult;
+interface DeltaDiff {
+    base: DeltaResult["base"];
+    files: DiffFile[];
+    hunks: Map<string, Hunk[]>;
+    notes: string[];
+}
+declare function readDeltaDiff(repo: string, opts?: DeltaOptions): DeltaDiff | DeltaError;
+declare function emptyDelta(diff: DeltaDiff, depth?: number): DeltaResult;
+declare function deltaOfDiff(diff: DeltaDiff, graph: Graph, symbols: SymbolIndex | undefined, opts?: DeltaOptions): DeltaResult;
 declare function deltaFor(repo: string, graph: Graph, symbols: SymbolIndex | undefined, opts?: DeltaOptions): DeltaResult | DeltaError;
 declare function formatDeltaPanel(res: DeltaResult): string;
 
@@ -1669,4 +1997,4 @@ declare function byKey<T>(keyOf: (x: T) => string): (a: T, b: T) => number;
 
 declare function runCli(rawArgv: string[]): Promise<void>;
 
-export { type ArchRule, BINARY_EXT, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeLiteral, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadSymbol, type DeltaChange, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type Encoding, type ExplainedSearch, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type HierarchyRef, type Hotspot, type Hunk, IGNORE_DIRS, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, LOCKFILES, type LiteralDuplication, type LiteralFamily, type LiteralSite, type LiteralsOptions, type LiteralsReport, type LspAgreement, type LspBlock, type LspCallers, type LspCallersBlock, type LspCapabilities, type LspConfig, type LspConfigSource, type LspIncomingCall, type LspMessage, type LspRef, type LspReferences, type LspServerConfig, type LspServerStatus, type LspSession, type LspSessionOptions, type LspStatus, LspTimeout, type LspTransport, MARKDOWN_EXT, MAX_FRAME_BYTES, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, OffsetMap, type OnboardBrief, type OnboardOptions, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, type QueryExplanation, type QueryVerdict, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TermDiagnostic, type TestMap, type TextRead, type Tier, type TypeHierarchyEntry, type WalkEntry, type WalkOptions, type WalkResult, type WalkSkip, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, agreementOf, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, callersWithLsp, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, columnOfSymbol, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, createFramer, deleteMemory, deltaFor, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, enclosingSymbol, encode, encodeMessage, encodeQueryViaEndpoint, ensureGrammars, escapeRegExp, explainQuery, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, fileUri, findDeadCode, findLiteralDuplications, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, loadLspConfig, locationsToRefs, lspStatus, lspUnavailable, neighborhood, neighborsOf, onboardBrief, openLspSession, pagerankOf, parseGitignore, parseLspConfig, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readMemory, readPersistedIndex, readText, readTextEx, referencesWithLsp, relFromUri, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveLspConfigPath, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, serverForLang, sh, sha1, sharedGrammarsCacheDir, shortHash, slugify, spawnLspTransport, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, untestedModules, untrackedFiles, walk, warmGrammars, wordpiece, workerCount, writeMemory };
+export { type ArchRule, BINARY_EXT, type BrokenImport, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeLiteral, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadCodeOptions, type DeadSymbol, type DeltaChange, type DeltaDiff, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type Encoding, type ExplainedSearch, type ExplainedSemanticSearch, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type GrepResult, type HierarchyRef, type Hotspot, type Hunk, IGNORE_DIRS, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, type IndexStaleness, type IndexStatus, type IndexStatusOptions, LOCKFILES, type LiteralDuplication, type LiteralFamily, type LiteralSite, type LiteralsOptions, type LiteralsReport, type LspAgreement, type LspBlock, type LspCallers, type LspCallersBlock, type LspCapabilities, type LspConfig, type LspConfigSource, type LspIncomingCall, type LspMessage, type LspQueryOptions, type LspRef, type LspReferences, type LspServerConfig, type LspServerStatus, type LspSession, type LspSessionOptions, LspSessionPool, type LspStatus, LspTimeout, type LspTransport, MARKDOWN_EXT, MAX_FRAME_BYTES, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, OffsetMap, type OnboardBrief, type OnboardOptions, type PathVerdict, type PathVerdictReason, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, type QueryExplanation, type QueryVerdict, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSkip, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticQueryExplanation, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TermDiagnostic, type TestMap, type TextRead, type Tier, type TypeHierarchyEntry, type UnusableIndex, type WalkEntry, type WalkOptions, type WalkResult, type WalkSkip, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, agreementOf, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, brokenImports, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, callersWithLsp, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, columnOfSymbol, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, createFramer, decidingRule, deleteMemory, deltaFor, deltaOfDiff, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, emptyDelta, enclosingSymbol, encode, encodeMessage, encodeQueryViaEndpoint, endpointModelId, ensureGrammars, escapeRegExp, explainQuery, explainSemantic, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractRst, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, fileUri, findDeadCode, findLiteralDuplications, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, grepRepoEx, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, indexStatus, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, loadLspConfig, locationsToRefs, lspStatus, lspUnavailable, neighborhood, neighborsOf, onboardBrief, openLspSession, pagerankOf, parseGitignore, parseLspConfig, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readDeltaDiff, readMemory, readPersistedIndex, readText, readTextEx, referencesWithLsp, relFromUri, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveLspConfigPath, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSkips, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, serverForLang, sh, sha1, sharedGrammarsCacheDir, shortHash, skipHistogram, slugify, spawnLspTransport, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, unitHash, untestedModules, untrackedFiles, walk, warmGrammars, whyPath, wordpiece, workerCount, writeMemory };

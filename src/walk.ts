@@ -244,6 +244,8 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
     includeLockfiles: true,
     includeOversize: true,
     includeMinified: true,
+    // A full inventory lists in-repo file symlinks like regular files.
+    includeFileSymlinks: true,
     filter: ({ rel, abs, directory }) => {
       if (directory) return resolve(abs) !== outAbs && !isReconstructOutput(abs) && !isIgnored(excludeRules, rel, true);
       return (
