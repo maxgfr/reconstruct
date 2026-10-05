@@ -4,7 +4,7 @@ description: Brainstorm a new product or reverse-engineer a repository into spec
 disable-model-invocation: true
 license: MIT
 metadata:
-  version: 2.23.14
+  version: 2.23.15
   opencode/autoinvoke: 'false'
 ---
 
