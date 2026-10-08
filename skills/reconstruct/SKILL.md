@@ -3,7 +3,7 @@ name: reconstruct
 description: Brainstorm a new product or reverse-engineer a repository into specifications, PRDs, and a reconstruction plan. Use only when the user explicitly asks for reconstruct or to reverse-engineer or brainstorm a product into specs.
 license: MIT
 metadata:
-  version: 2.23.15
+  version: 2.24.0
   opencode/autoinvoke: 'true'
 ---
 
