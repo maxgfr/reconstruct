@@ -34139,7 +34139,8 @@ function phaseWorkflowScript(ph, outAbs, engineAbs, batchSize) {
   return [
     `export const meta = ${JSON.stringify(meta)}`,
     ``,
-    `// Claude Code: launch this with the Workflow tool. Codex/other hosts: dispatch the sibling agents/*.md contracts with native subagents; use --eco when subagents are unavailable.`,
+    `// Any host with subagents: dispatch the sibling agents/*.md contracts with native subagents; no subagents: rerun with --eco and follow RUNBOOK.md.`,
+    `// Optional \u2014 Claude Code: launch this file with the Workflow tool for one-call parallel fan-out: Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
     `// Emitted by \`reconstruct --orchestrate\` from the CURRENT worklist. The worklist is the source`,
     `// of truth: if it changes, re-run \`--orchestrate --phase ${ph.name}\` before launching.`,
     ``,
@@ -34271,9 +34272,10 @@ ${status}
 Never fanned out (orchestrator-only, always serial): the greenfield interview, \`--brainstorm\`
 (the divergent phase), every reduce/merge step, and the scratch build itself.
 
-With subagents available, prefer the emitted workflows instead: \`--orchestrate --out ${outAbs} --phase <p>\`
-then launch the generated workflow with Claude Code's Workflow tool. Under Codex or another host,
-dispatch the generated \`agents/*.md\` contracts with native subagents. You stay the sole writer either way.
+With subagents available (any host), fan out instead: \`--orchestrate --out ${outAbs} --phase <p>\`, then
+dispatch the generated \`agents/*.md\` contracts with native subagents. Optional \u2014 Claude Code: launch
+the generated \`<p>.workflow.mjs\` with the Workflow tool for one-call parallel fan-out. You stay the sole
+writer either way.
 `;
 }
 
@@ -35571,8 +35573,8 @@ Options:
   --verify             Write a requirement\u2192source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
-  --mcp                Serve the tree over the Model Context Protocol, for a non-Claude-Code
-                       host (Cursor, Zed, Claude Desktop). Read-only unless --allow-write.
+  --mcp                Serve the tree over the Model Context Protocol, for any MCP client
+                       (Codex, OpenCode, Claude Code, Cursor, Zed, \u2026). Read-only unless --allow-write.
                        With --transport stdio|http \xB7 --out <tree> \xB7 --port \xB7 --bind \xB7
                        --allow-origin \xB7 --allow-remote \xB7 --max-response-bytes
   --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
@@ -36042,8 +36044,13 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
     }
     process.stderr.write(`reconstruct: MCP server listening on ${running.url}
 `);
-    process.stderr.write(`  client: claude mcp add --transport http reconstruct ${running.url}
-`);
+    process.stderr.write(
+      `  connect: ${running.url}
+    Claude Code: claude mcp add --transport http reconstruct ${running.url}
+    Codex:       codex mcp add reconstruct --url ${running.url}
+    OpenCode:    opencode mcp add reconstruct --url ${running.url}
+`
+    );
     for (const sig of ["SIGINT", "SIGTERM"]) {
       process.once(sig, () => {
         void running.close().then(() => process.exit(0));
@@ -36091,9 +36098,10 @@ ${res.written.map((w) => `  ${w}`).join("\n")}
     if (workflows.length) {
       process.stdout.write(
         `
-${workflows.map((w) => `Claude Code Workflow: ${w}`).join("\n")}
-Codex/other hosts: dispatch the generated orchestration/agents/*.md contracts with native subagents.
+Any host with subagents: dispatch the generated orchestration/agents/*.md contracts with native subagents.
 No subagents: rerun with --eco and follow orchestration/RUNBOOK.md.
+Optional \u2014 Claude Code: launch a workflow with the Workflow tool for one-call parallel fan-out:
+${workflows.map((w) => `  ${w}`).join("\n")}
 Then fold the returned fragments in yourself (single serial reducer) and run the fold command shown at the end of each workflow.
 `
       );

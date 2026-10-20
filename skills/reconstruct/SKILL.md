@@ -103,9 +103,9 @@ node scripts/analyze.mjs --orchestrate --out <OUT> [--phase enrich-map|review-fi
 
 | Your harness | How to run each judgment phase |
 | --- | --- |
-| Codex or another host with subagents | `--orchestrate --phase <p>`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md`. Subagents return fragments; you perform the single serial merge and run the fold command. |
-| Claude Code with the Workflow tool | `--orchestrate --phase <p>`, then launch `<OUT>/orchestration/<p>.workflow.mjs` with `Workflow`. Subagents return fragments; you perform the single serial merge and run the printed fold command. |
-| Eco mode, or no subagents | `--orchestrate --eco` → follow `<OUT>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+| Any host with subagents (Codex, Claude Code, OpenCode, …) | `--orchestrate --phase <p>`; dispatch one subagent per batch following `<OUT>/orchestration/agents/<role>.md`. Subagents return fragments; you perform the single serial merge and run the fold command. |
+| Single agent, or no subagents | `--orchestrate --eco` → follow `<OUT>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+| Optional — Claude Code | Launch `<OUT>/orchestration/<p>.workflow.mjs` (emitted by `--orchestrate --phase <p>`) with the Workflow tool for one-call parallel fan-out. Same contracts: subagents return fragments; you perform the single serial merge and run the printed fold command. |
 
 Fan-out is an optimization, never a requirement — the gates are harness-independent and every
 phase has a sequential fallback with identical artifacts. **Subagents never write:** the reduce

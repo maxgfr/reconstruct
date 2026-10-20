@@ -44,8 +44,8 @@ Options:
   --verify             Write a requirement→source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
-  --mcp                Serve the tree over the Model Context Protocol, for a non-Claude-Code
-                       host (Cursor, Zed, Claude Desktop). Read-only unless --allow-write.
+  --mcp                Serve the tree over the Model Context Protocol, for any MCP client
+                       (Codex, OpenCode, Claude Code, Cursor, Zed, …). Read-only unless --allow-write.
                        With --transport stdio|http · --out <tree> · --port · --bind ·
                        --allow-origin · --allow-remote · --max-response-bytes
   --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists
@@ -589,7 +589,12 @@ async function main(): Promise<void> {
     // keeping the two transports identical here means no one has to remember
     // which is which.
     process.stderr.write(`reconstruct: MCP server listening on ${running.url}\n`);
-    process.stderr.write(`  client: claude mcp add --transport http reconstruct ${running.url}\n`);
+    process.stderr.write(
+      `  connect: ${running.url}\n` +
+        `    Claude Code: claude mcp add --transport http reconstruct ${running.url}\n` +
+        `    Codex:       codex mcp add reconstruct --url ${running.url}\n` +
+        `    OpenCode:    opencode mcp add reconstruct --url ${running.url}\n`,
+    );
     for (const sig of ["SIGINT", "SIGTERM"] as const) {
       process.once(sig, () => {
         void running.close().then(() => process.exit(0));
@@ -637,9 +642,10 @@ async function main(): Promise<void> {
     const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
     if (workflows.length) {
       process.stdout.write(
-        `\n${workflows.map((w) => `Claude Code Workflow: ${w}`).join("\n")}\n` +
-          `Codex/other hosts: dispatch the generated orchestration/agents/*.md contracts with native subagents.\n` +
+        `\nAny host with subagents: dispatch the generated orchestration/agents/*.md contracts with native subagents.\n` +
           `No subagents: rerun with --eco and follow orchestration/RUNBOOK.md.\n` +
+          `Optional — Claude Code: launch a workflow with the Workflow tool for one-call parallel fan-out:\n` +
+          `${workflows.map((w) => `  ${w}`).join("\n")}\n` +
           `Then fold the returned fragments in yourself (single serial reducer) and run the fold command shown at the end of each workflow.\n`,
       );
     } else {
