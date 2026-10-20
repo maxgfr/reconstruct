@@ -4,7 +4,6 @@ description: Brainstorm a new product or reverse-engineer a repository into spec
 license: MIT
 metadata:
   version: 2.24.4
-  opencode/autoinvoke: 'true'
 ---
 
 # Reconstruct: any repo — or any idea — → a buildable PRD suite

@@ -21,10 +21,6 @@ describe("model-invocable skill", () => {
     expect(frontmatter).not.toMatch(/^user-invocable:\s*(?:false|no|off|0)\s*$/im);
   });
 
-  it("lets OpenCode advertise the skill", () => {
-    expect(frontmatter).not.toMatch(/opencode\/autoinvoke:\s*['"]?false['"]?\s*$/m);
-  });
-
   it("lets Codex invoke the skill implicitly", () => {
     const config = readFileSync(new URL("agents/openai.yaml", skillDir), "utf8");
     // This is a host policy boolean, not a prose instruction to the model.
