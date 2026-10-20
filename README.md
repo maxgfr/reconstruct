@@ -450,7 +450,7 @@ Making it explicit-only again is one setting per host, applied to the
 
 | Host | Shipped, on request | Explicit-only |
 | --- | --- | --- |
-| Claude Code, OpenCode | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
+| Claude Code | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
 
 Claude Code can do it without touching the file:
 `"skillOverrides": { "reconstruct": "user-invocable-only" }` in `settings.json`
