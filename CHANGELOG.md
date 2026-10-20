@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.25.0](https://github.com/maxgfr/reconstruct/compare/v2.24.4...v2.25.0) (2026-10-20)
+
+
+### Features
+
+* make orchestration and MCP hints agent-neutral ([#34](https://github.com/maxgfr/reconstruct/issues/34)) ([3305511](https://github.com/maxgfr/reconstruct/commit/33055119c3250e657d325f1391337483ed8edb07))
+
 ## [2.24.4](https://github.com/maxgfr/reconstruct/compare/v2.24.3...v2.24.4) (2026-10-19)
 
 
