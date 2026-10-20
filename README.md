@@ -445,12 +445,12 @@ own. You can still invoke it directly with `$reconstruct` in Codex, `/reconstruc
 Claude Code or OpenCode, prefixing the plugin namespace when it is installed as a
 Claude plugin.
 
-Making it explicit-only again is one setting per host, applied to the
-**installed** copy of the skill:
+Making it explicit-only again is one setting, read by Claude Code and OpenCode,
+applied to the **installed** copy of the skill:
 
 | Host | Shipped, on request | Explicit-only |
 | --- | --- | --- |
-| Claude Code | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
+| Claude Code, OpenCode | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
 
 Claude Code can do it without touching the file:
 `"skillOverrides": { "reconstruct": "user-invocable-only" }` in `settings.json`
