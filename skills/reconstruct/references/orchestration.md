@@ -18,7 +18,7 @@ the deterministic glue (worklists, hashing, change-tracking, reduction) so the a
 judgment.
 
 This file is **host-agnostic**. "Fan out" means *dispatch one subagent per unit* — with whatever
-primitive the host has (Claude Code's Task/Agent tool, a plain loop of sequential subagent calls, or
+primitive the host has (Codex, Claude Code or OpenCode subagents, a plain loop of sequential subagent calls, or
 a dynamic workflow engine). The protocol below does not depend on any one of them; the optional
 [workflow mapping](#optional-on-hosts-with-a-dynamic-workflow-engine) at the end is a convenience,
 not a requirement. On a small repo, just do the steps inline — the fan-out earns its keep when the

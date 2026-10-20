@@ -34,12 +34,15 @@ npx skills add maxgfr/reconstruct
 
 # or globally for all your projects
 npx skills add -g maxgfr/reconstruct
+
+# optionally target specific agents (default: the ones detected)
+npx skills add maxgfr/reconstruct -a codex opencode
 ```
 
-This installs the skill into your agent. Invoke it explicitly:
+This installs the skill into your agent (Codex, OpenCode, Claude Code, Cursor, …). Invoke it
+explicitly — `$reconstruct` in Codex, `/reconstruct` in Claude Code or OpenCode, or just ask:
 
-> Codex: `$reconstruct on this repo in redesign + complex mode`.
-> Claude Code: `/reconstruct on this repo in redesign + complex mode`.
+> `reconstruct this repo in redesign + complex mode`.
 
 ## What it produces
 
@@ -225,17 +228,29 @@ The skill shells out to the CLI and parses its output. An MCP server skips both:
 your agent calls reconstruct as typed tools, with JSON schemas in and structured
 results out. Same engine, same tree, no wrapper.
 
-```bash
-# stdio — the default, and what Claude Code / Claude Desktop / Cursor expect
-claude mcp add reconstruct -- node /abs/path/to/scripts/analyze.mjs --mcp
+Register it with any MCP client; the server command (`node /abs/path/to/scripts/analyze.mjs --mcp`)
+is the same for every client. stdio is the default:
 
-# or over HTTP, on loopback
-node scripts/analyze.mjs --mcp --transport http --port 7343
-claude mcp add --transport http reconstruct http://127.0.0.1:7343/mcp
+```bash
+codex mcp add reconstruct -- node /abs/path/to/scripts/analyze.mjs --mcp                 # Codex
+opencode mcp add reconstruct -- node /abs/path/to/scripts/analyze.mjs --mcp              # OpenCode
+claude mcp add reconstruct -- node /abs/path/to/scripts/analyze.mjs --mcp                # Claude Code
 ```
 
+Or over HTTP, on loopback — the server prints the URL and these same hints on start:
+
+```bash
+node scripts/analyze.mjs --mcp --transport http --port 7343   # → http://127.0.0.1:7343/mcp
+
+codex mcp add reconstruct --url http://127.0.0.1:7343/mcp                     # Codex
+opencode mcp add reconstruct --url http://127.0.0.1:7343/mcp                  # OpenCode
+claude mcp add --transport http reconstruct http://127.0.0.1:7343/mcp         # Claude Code
+```
+
+Clients configured through a JSON file take the same command or URL:
+
 ```jsonc
-// Claude Desktop takes stdio servers only — a remote URL here will not work.
+// stdio (Claude Desktop takes stdio servers only — a remote URL there will not work):
 { "mcpServers": { "reconstruct": { "command": "node", "args": ["/abs/path/to/scripts/analyze.mjs", "--mcp"] } } }
 // Cursor, HTTP:
 { "mcpServers": { "reconstruct": { "url": "http://127.0.0.1:7343/mcp" } } }
@@ -302,7 +317,7 @@ the greenfield interview below, or lands as iteration PRDs — see
 
 ## From scratch (greenfield)
 
-No repo yet? Invoke `$reconstruct` (Codex) or `/reconstruct` (Claude Code) to turn an **idea** into the same reconstruction tree:
+No repo yet? Invoke `$reconstruct` (Codex) or `/reconstruct` (Claude Code, OpenCode) to turn an **idea** into the same reconstruction tree:
 
 > "Use reconstruct to turn my idea into a build plan."
 

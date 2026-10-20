@@ -78,8 +78,8 @@ jobs:
         run: |
           WORK="$(mktemp -d)"
           cd "$WORK"
-          npx --yes skills add "$GITHUB_WORKSPACE" --skill reconstruct --agent claude-code --copy -y
-          DIR=.claude/skills/reconstruct
+          npx --yes skills add "$GITHUB_WORKSPACE" --skill reconstruct --agent universal --copy -y
+          DIR=.agents/skills/reconstruct
           test -f "$DIR/SKILL.md"             || { echo "::error::SKILL.md not installed"; exit 1; }
           test -f "$DIR/scripts/analyze.mjs"  || { echo "::error::engine not bundled — skills add dropped scripts/"; exit 1; }
           test -d "$DIR/references"           || { echo "::error::references/ not bundled"; exit 1; }

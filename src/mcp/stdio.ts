@@ -3,8 +3,8 @@ import type { Readable, Writable } from "node:stream";
 import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOptions } from "./server.js";
 
 // The stdio transport: one JSON-RPC message per line, in on stdin, out on
-// stdout. This is what `claude mcp add --transport stdio` and Claude Desktop
-// speak, and it is the default.
+// stdout. This is what every local MCP client speaks when it launches the server
+// as a subprocess, and it is the default.
 //
 // Two properties this file exists to guarantee:
 //

@@ -232,7 +232,8 @@ export function phaseWorkflowScript(ph: PhaseInfo, outAbs: string, engineAbs: st
   return [
     `export const meta = ${JSON.stringify(meta)}`,
     ``,
-    `// Claude Code: launch this with the Workflow tool. Codex/other hosts: dispatch the sibling agents/*.md contracts with native subagents; use --eco when subagents are unavailable.`,
+    `// Any host with subagents: dispatch the sibling agents/*.md contracts with native subagents; no subagents: rerun with --eco and follow RUNBOOK.md.`,
+    `// Optional — Claude Code: launch this file with the Workflow tool for one-call parallel fan-out: Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
     `// Emitted by \`reconstruct --orchestrate\` from the CURRENT worklist. The worklist is the source`,
     `// of truth: if it changes, re-run \`--orchestrate --phase ${ph.name}\` before launching.`,
     ``,
@@ -368,8 +369,9 @@ ${status}
 Never fanned out (orchestrator-only, always serial): the greenfield interview, \`--brainstorm\`
 (the divergent phase), every reduce/merge step, and the scratch build itself.
 
-With subagents available, prefer the emitted workflows instead: \`--orchestrate --out ${outAbs} --phase <p>\`
-then launch the generated workflow with Claude Code's Workflow tool. Under Codex or another host,
-dispatch the generated \`agents/*.md\` contracts with native subagents. You stay the sole writer either way.
+With subagents available (any host), fan out instead: \`--orchestrate --out ${outAbs} --phase <p>\`, then
+dispatch the generated \`agents/*.md\` contracts with native subagents. Optional — Claude Code: launch
+the generated \`<p>.workflow.mjs\` with the Workflow tool for one-call parallel fan-out. You stay the sole
+writer either way.
 `;
 }
