@@ -718,11 +718,11 @@ function buildCharToByte(text) {
   return table;
 }
 function buildLineStarts(text) {
-  const starts = [0];
+  const starts2 = [0];
   for (let i2 = 0; i2 < text.length; i2++) {
-    if (text.charCodeAt(i2) === 10) starts.push(i2 + 1);
+    if (text.charCodeAt(i2) === 10) starts2.push(i2 + 1);
   }
-  return Int32Array.from(starts);
+  return Int32Array.from(starts2);
 }
 var EMPTY;
 var strictUtf8;
@@ -1383,18 +1383,18 @@ function shallowBoundary(file) {
 function parseLog(buf, prefix, shallow) {
   const idOf = /* @__PURE__ */ new Map();
   const paths = [];
-  const starts = [];
+  const starts2 = [];
   const ids = [];
   for (let pos = 0; pos < buf.length; ) {
     let end = buf.indexOf(0, pos);
     if (end < 0) end = buf.length;
     let s = pos;
     if (buf[s] === 30) {
-      starts.push(ids.length);
+      starts2.push(ids.length);
       s++;
       if (buf[s] === 10) s++;
     }
-    if (end > s && starts.length) {
+    if (end > s && starts2.length) {
       const path = buf.toString("utf8", s, end);
       let id = idOf.get(path);
       if (id === void 0) {
@@ -1406,8 +1406,8 @@ function parseLog(buf, prefix, shallow) {
     }
     pos = end + 1;
   }
-  starts.push(ids.length);
-  return { prefix, paths, starts, ids, shallow };
+  starts2.push(ids.length);
+  return { prefix, paths, starts: starts2, ids, shallow };
 }
 function repoPaths(log) {
   if (!log.prefix) return log.paths;
@@ -28376,10 +28376,23 @@ function readSources(files, repo, exts) {
 function cmp(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+var startsSrc;
+var starts = [];
 function lineAt(src, offset) {
-  let line2 = 1;
-  for (let i2 = 0; i2 < offset && i2 < src.length; i2++) if (src.charCodeAt(i2) === 10) line2++;
-  return line2;
+  if (src !== startsSrc) {
+    starts = [0];
+    for (let i2 = src.indexOf("\n"); i2 !== -1; i2 = src.indexOf("\n", i2 + 1)) starts.push(i2 + 1);
+    startsSrc = src;
+  }
+  const at = Math.min(offset, src.length);
+  let lo = 0;
+  let hi = starts.length;
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (starts[mid] <= at) lo = mid + 1;
+    else hi = mid;
+  }
+  return Math.max(1, lo);
 }
 function joinRoute(...parts2) {
   const segs = parts2.join("/").split("/").filter(Boolean);
@@ -28387,9 +28400,9 @@ function joinRoute(...parts2) {
 }
 var SYNTAX_BY_EXT = {
   ".js": "js",
-  ".jsx": "js",
+  ".jsx": "jsx",
   ".ts": "js",
-  ".tsx": "js",
+  ".tsx": "jsx",
   ".mts": "js",
   ".cts": "js",
   ".mjs": "js",
@@ -28402,6 +28415,7 @@ var SYNTAX_BY_EXT = {
   ".rb": "ruby"
 };
 var REGEX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
+var RUBY_REGEX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "{", "!", "&", "|", "~"]);
 var REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 function regexLiteralAllowedAt(src, i2, last) {
   return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2).trimEnd());
@@ -28432,6 +28446,7 @@ function stripComments(src, ext) {
     }
     return n;
   };
+  let last = "";
   if (syntax === "python" || syntax === "ruby") {
     let i3 = 0;
     while (i3 < n) {
@@ -28450,9 +28465,14 @@ function stripComments(src, ext) {
           const end = src.indexOf(c2.repeat(3), i3 + 3);
           i3 = end === -1 ? n : end + 3;
         } else {
-          i3 = skipString(c2, i3, syntax === "ruby");
+          i3 = skipString(c2, i3, false);
         }
+        last = "a";
+      } else if (syntax === "ruby" && c2 === "/" && RUBY_REGEX_PRECEDES.has(last)) {
+        i3 = skipString("/", i3, false);
+        last = "a";
       } else {
+        if (!/\s/.test(c2)) last = /[\w$)\]}]/.test(c2) ? "a" : c2;
         i3++;
       }
     }
@@ -28460,7 +28480,6 @@ function stripComments(src, ext) {
   }
   const templates = [];
   let depth = 0;
-  let last = "";
   const skipTemplate = (from) => {
     let j = from;
     while (j < n) {
@@ -28490,9 +28509,14 @@ function stripComments(src, ext) {
     }
     if (c2 === "/" && next === "*") {
       const end = src.indexOf("*/", i2 + 2);
-      const stop2 = end === -1 ? n : end + 2;
-      blank2(i2, stop2);
-      i2 = stop2;
+      const lineStart = src.lastIndexOf("\n", i2) + 1;
+      const jsxText = syntax === "jsx" && !/^[\s{]*$/.test(src.slice(lineStart, i2)) && (end === -1 || end > eolFrom(i2));
+      if (end === -1 || jsxText) {
+        i2 += 2;
+        continue;
+      }
+      blank2(i2, end + 2);
+      i2 = end + 2;
       continue;
     }
     if (c2 === '"' || c2 === "'") {
@@ -28511,7 +28535,7 @@ function stripComments(src, ext) {
       last = "a";
       continue;
     }
-    if (syntax === "js") {
+    if (syntax === "js" || syntax === "jsx") {
       if (c2 === "/" && regexLiteralAllowedAt(src, i2, last)) {
         let j = i2 + 1;
         let inClass = false;
@@ -28623,15 +28647,24 @@ function resolvePythonModule(fromFile, module2, sources) {
     pkg.splice(pkg.length - (dots - 1));
     abs = [...pkg, ...module2.slice(dots).split(".").filter(Boolean)].join(".");
   }
-  const byModule = /* @__PURE__ */ new Map();
-  for (const p of sources.keys()) if (p.endsWith(".py")) byModule.set(moduleName(p), p);
-  const exact = byModule.get(abs);
+  let index = pythonModuleIndexes.get(sources);
+  if (!index) {
+    const byModule = /* @__PURE__ */ new Map();
+    for (const p of sources.keys()) if (p.endsWith(".py")) byModule.set(moduleName(p), p);
+    index = { byModule, bySuffix: /* @__PURE__ */ new Map() };
+    pythonModuleIndexes.set(sources, index);
+  }
+  const exact = index.byModule.get(abs);
   if (exact) return exact;
-  const suffix = `.${abs}`;
-  const hits = [...byModule.entries()].filter(([m]) => m.endsWith(suffix)).map(([, p]) => p);
-  hits.sort((a, b) => a.length - b.length || cmp(a, b));
-  return hits[0] ?? null;
+  if (!index.bySuffix.has(abs)) {
+    const suffix = `.${abs}`;
+    const hits = [...index.byModule.entries()].filter(([m]) => m.endsWith(suffix)).map(([, p]) => p);
+    hits.sort((a, b) => a.length - b.length || cmp(a, b));
+    index.bySuffix.set(abs, hits[0] ?? null);
+  }
+  return index.bySuffix.get(abs) ?? null;
 }
+var pythonModuleIndexes = /* @__PURE__ */ new WeakMap();
 function pythonImportAliases(src) {
   const out2 = /* @__PURE__ */ new Map();
   for (const m of src.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
@@ -30133,10 +30166,15 @@ function parseExclude(args2) {
   }
   return out2;
 }
-function appRootOf(file) {
-  const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "";
-  if (dir === "src") return "";
-  return dir.endsWith("/src") ? dir.slice(0, -"/src".length) : dir;
+function appRootOf(file, packageDirs) {
+  const segs = file.split("/").slice(0, -1);
+  const src = segs.lastIndexOf("src");
+  if (src !== -1) return segs.slice(0, src).join("/");
+  for (let i2 = segs.length; i2 > 0; i2--) {
+    const dir = segs.slice(0, i2).join("/");
+    if (packageDirs.has(dir)) return dir;
+  }
+  return "";
 }
 var isUnder = (file, root) => root === "" || file.startsWith(`${root}/`);
 function pathsFromArg(arg) {
@@ -30158,11 +30196,14 @@ var nestjsAdapter = {
   frameworks: ["NestJS"],
   detectRoutes(files, repo) {
     const sources = readSources(files, repo, [".ts"]);
+    const packageDirs = new Set(
+      files.filter((f) => f.path === "package.json" || f.path.endsWith("/package.json")).map((f) => f.path.slice(0, -"package.json".length).replace(/\/$/, ""))
+    );
     const prefixes = [];
     for (const path of [...sources.keys()].sort(cmp)) {
       const src = sources.get(path);
       for (const m of src.matchAll(GLOBAL_PREFIX_RE)) {
-        const root = appRootOf(path);
+        const root = appRootOf(path, packageDirs);
         if (prefixes.some((p) => p.root === root)) continue;
         const open = (m.index ?? 0) + m[0].indexOf("(");
         const args2 = src.slice(open, closeOf(src, open));
@@ -30235,14 +30276,17 @@ function isRoutePath(p) {
 }
 function moduleSpecs(src) {
   const out2 = /* @__PURE__ */ new Map();
-  const names = (list) => list.split(",").map(
-    (s) => s.trim().split(/\s+as\s+|\s*:\s*/).pop() ?? ""
-  ).filter((s) => IDENT_RE.test(s));
-  for (const m of src.matchAll(REQUIRE_RE)) out2.set(m[1], m[2]);
-  for (const m of src.matchAll(REQUIRE_NAMED_RE)) for (const n of names(m[1])) out2.set(n, m[2]);
+  const bind = (list, spec) => {
+    for (const part of list.split(",")) {
+      const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
+      if (IDENT_RE.test(local) && IDENT_RE.test(exported)) out2.set(local, { spec, exported });
+    }
+  };
+  for (const m of src.matchAll(REQUIRE_RE)) out2.set(m[1], { spec: m[2] });
+  for (const m of src.matchAll(REQUIRE_NAMED_RE)) bind(m[1], m[2]);
   for (const m of src.matchAll(IMPORT_RE)) {
-    if (m[1]) out2.set(m[1], m[3]);
-    if (m[2]) for (const n of names(m[2])) out2.set(n, m[3]);
+    if (m[1]) out2.set(m[1], { spec: m[3] });
+    if (m[2]) bind(m[2], m[3]);
   }
   return out2;
 }
@@ -30254,8 +30298,10 @@ var expressAdapter = {
     const instancesByFile = /* @__PURE__ */ new Map();
     const uses = [];
     for (const [path, src] of sources) {
-      const instances = /* @__PURE__ */ new Set([...localVars(src, APP_RE), ...localVars(src, ROUTER_RE)]);
-      instancesByFile.set(path, instances);
+      instancesByFile.set(path, /* @__PURE__ */ new Set([...localVars(src, APP_RE), ...localVars(src, ROUTER_RE)]));
+    }
+    for (const [path, src] of sources) {
+      const instances = instancesByFile.get(path) ?? /* @__PURE__ */ new Set();
       const moduleOf = moduleSpecs(src);
       for (const m of src.matchAll(USE_RE)) {
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
@@ -30263,10 +30309,13 @@ var expressAdapter = {
         const literal3 = call2.args[0]?.match(LITERAL_RE);
         const prefix = literal3 ? literal3[2] : "";
         for (const arg of literal3 ? call2.args.slice(1) : call2.args) {
-          const spec = arg.match(INLINE_REQUIRE_RE)?.[1] ?? (IDENT_RE.test(arg) ? moduleOf.get(arg) : void 0);
+          const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
+          const imported = inline ? { spec: inline } : IDENT_RE.test(arg) ? moduleOf.get(arg) : void 0;
           let target = null;
-          if (spec) target = resolveModule(path, spec, sources);
-          else if (instances.has(arg)) target = `${path}::${arg}`;
+          if (imported) {
+            target = resolveModule(path, imported.spec, sources);
+            if (target && imported.exported && instancesByFile.get(target)?.has(imported.exported)) target = `${target}::${imported.exported}`;
+          } else if (instances.has(arg)) target = `${path}::${arg}`;
           if (target) uses.push({ file: path, receiver: m[1], prefix, target });
         }
       }
@@ -30847,7 +30896,7 @@ var railsAdapter = {
       for (const rawLine of src.split(/\r?\n/)) {
         lineNo++;
         const line2 = rawLine.trim();
-        if (!line2) continue;
+        if (!line2 || line2.startsWith("#")) continue;
         if (ROOT_RE.test(line2)) emit2(joinRoute(...verbPrefix()), "GET");
         for (const m of line2.matchAll(VERB_RE3)) {
           const p = m[2] ?? m[3];
@@ -34294,6 +34343,15 @@ function ensureUnknowns(outDir) {
   writeFileSync9(join43(outDir, UNKNOWNS_FILE), JSON.stringify(seeded, null, 2) + "\n");
   return seeded;
 }
+function citationProblems(rec, inv) {
+  const problems = [];
+  if (rec.status === "resolved" && rec.evidence.length === 0) problems.push("`resolved` needs at least one `evidence` citation");
+  for (const ref2 of [...rec.evidence, ...rec.contradicting]) {
+    if (!resolveEvidence(ref2, inv)) problems.push(`citation does not resolve against the inventory: ${ref2}`);
+  }
+  if (rec.status === "contradicted" && rec.contradicting.length === 0) problems.push("`contradicted` needs a `contradicting` citation");
+  return problems;
+}
 function strList(v) {
   return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : void 0;
 }
@@ -34326,11 +34384,7 @@ function applyUnknownUpdates(outDir, updates) {
     const evidence = strList(row.evidence) ?? prev?.evidence ?? [];
     const contradicting = strList(row.contradicting) ?? prev?.contradicting ?? [];
     const recommendedProbes = strList(row.recommendedProbes) ?? prev?.recommendedProbes ?? [];
-    if (status === "resolved" && evidence.length === 0) problems.push(`${label}: \`resolved\` needs at least one \`evidence\` citation`);
-    for (const ref2 of [...evidence, ...contradicting]) {
-      if (!resolveEvidence(ref2, inv)) problems.push(`${label}: citation does not resolve against the inventory: ${ref2}`);
-    }
-    if (status === "contradicted" && contradicting.length === 0) problems.push(`${label}: \`contradicted\` needs a \`contradicting\` citation`);
+    for (const p of citationProblems({ status, evidence, contradicting }, inv)) problems.push(`${label}: ${p}`);
     const id = prev?.id ?? `U${++next}`;
     const feature = typeof row.feature === "string" ? row.feature : prev?.feature;
     const note = typeof row.note === "string" ? row.note : prev?.note;
@@ -34369,12 +34423,25 @@ function foldUnknowns(outDir, check) {
     return;
   }
   if (!ledger) return;
+  let inv;
+  try {
+    inv = readInventory(outDir);
+  } catch {
+  }
   for (const u of ledger.unknowns) {
+    const label = `${UNKNOWNS_FILE}: ${typeof u?.id === "string" ? u.id : "a record"}`;
+    if (typeof u?.id !== "string" || typeof u.question !== "string" || !SEVERITIES2.includes(u.severity) || !STATUSES.includes(u.status) || !strList(u.evidence) || !strList(u.contradicting) || !strList(u.recommendedProbes)) {
+      check.errors.push(
+        `${label} is malformed (id, question, severity, status, evidence[], contradicting[], recommendedProbes[]) \u2014 record it with --unknowns --apply`
+      );
+      continue;
+    }
     const { digest, ...rest } = u;
     if (digest !== unknownDigest(rest)) {
-      check.warnings.push(
-        `${UNKNOWNS_FILE}: ${u.id} was edited by hand (digest mismatch) \u2014 record changes with --unknowns --apply so the revision chain holds`
-      );
+      check.warnings.push(`${label} was edited by hand (digest mismatch) \u2014 record changes with --unknowns --apply so the revision chain holds`);
+    }
+    if (inv) {
+      for (const p of citationProblems(u, inv)) check.errors.push(`${label}: ${p}`);
     }
     if (u.severity === "blocker" && UNSETTLED.has(u.status)) {
       check.errors.push(
@@ -34675,6 +34742,14 @@ function sectionHasContent(doc, heading) {
 }
 var FINDING_RULES = [
   [/no inventory\.json|inventory\.json is not valid JSON/, "RC000_NO_TREE", "Run the analyzer to scaffold a tree, then enrich it."],
+  // Path-prefixed findings first: their message names a document, which a
+  // broad pattern below (DESIGN-SYSTEM.md, VERIFY.json…) would otherwise claim.
+  [/: broken link →/, "RC060_BROKEN_LINK", "Point the link at a file that exists in the tree, or remove it."],
+  [/^stale evidence/, "RC061_STALE_EVIDENCE", "Re-run the analyzer against the current repo, then re-verify the affected requirements."],
+  [/^UNKNOWNS\.json: blocker /, "RC070_OPEN_BLOCKER_UNKNOWN", "Settle the blocker with reconstruct_unknowns / --unknowns --apply, citing evidence."],
+  [/^UNKNOWNS\.json: \S+ was edited by hand/, "RC071_UNKNOWN_EDITED", "Record unknown changes through --unknowns --apply so the revision chain holds."],
+  [/not a valid unknowns ledger/, "RC072_UNKNOWNS_CORRUPT", "Repair or delete UNKNOWNS.json, then re-run --unknowns."],
+  [/^UNKNOWNS\.json: /, "RC073_UNKNOWN_INVALID", "Fix the record (a resolving citation for resolved/contradicted) through --unknowns --apply."],
   [
     /^missing required document/,
     "RC001_MISSING_DOC",
@@ -34688,13 +34763,7 @@ var FINDING_RULES = [
   [/has no content — fill it/, "RC031_EMPTY_SECTION", "Write the section from the source: a heading alone is not a PRD section."],
   [/declares no entities/, "RC040_EMPTY_DATA_MODEL", "Enumerate every entity with its fields in architecture/DATA-MODEL.md."],
   [/declares no operations/, "RC041_EMPTY_INTERFACES", "Enumerate every operation in architecture/INTERFACES.md."],
-  [/DESIGN-SYSTEM\.md/, "RC042_DESIGN_SYSTEM", "Capture tokens, theming, typography, components and a11y in architecture/DESIGN-SYSTEM.md."],
   [/^locale `/, "RC050_LOCALE_COVERAGE", "Copy the locale's messages under data/translations/ or cover it in the message catalog."],
-  [/broken link →/, "RC060_BROKEN_LINK", "Point the link at a file that exists in the tree, or remove it."],
-  [/^stale evidence/, "RC061_STALE_EVIDENCE", "Re-run the analyzer against the current repo, then re-verify the affected requirements."],
-  [/UNKNOWNS\.json: blocker/, "RC070_OPEN_BLOCKER_UNKNOWN", "Settle the blocker with reconstruct_unknowns / --unknowns --apply, citing evidence."],
-  [/digest mismatch/, "RC071_UNKNOWN_EDITED", "Record unknown changes through --unknowns --apply so the revision chain holds."],
-  [/not a valid unknowns ledger/, "RC072_UNKNOWNS_CORRUPT", "Repair or delete UNKNOWNS.json, then re-run --unknowns."],
   [/semantic verification failed/, "RC085_REQUIREMENT_FAILED", "Fix or remove each refuted/unsupported requirement (see VERIFY.json), then re-verify."],
   [/adjudicated against content that has since changed|carry no content fingerprint/, "RC081_STALE_VERDICTS", "Re-run --verify then --verify --apply."],
   [/were dropped|never offered/, "RC082_VERIFY_COVERAGE", "Adjudicate every requirement (raise --max-verify), then --verify --apply."],
@@ -34705,7 +34774,9 @@ var FINDING_RULES = [
   [/review is stale|review baseline|carries no content baseline/, "RC091_STALE_REVIEW", "Re-run --review then --review --apply."],
   [/buildability review failed/, "RC092_REVIEW_BLOCKERS", "Fix each unrefuted blocker in REVIEW.json, then run another review round."],
   [/review made no progress/, "RC093_REVIEW_STALLED", "Fix the shared architecture contract, or record the blockers as known gaps."],
-  [/REVIEW\.json/, "RC090_NO_REVIEW", "Run --review, record findings, then --review --apply."]
+  [/REVIEW\.json/, "RC090_NO_REVIEW", "Run --review, record findings, then --review --apply."],
+  // Broadest last: any other message that merely names the design system.
+  [/DESIGN-SYSTEM\.md/, "RC042_DESIGN_SYSTEM", "Capture tokens, theming, typography, components and a11y in architecture/DESIGN-SYSTEM.md."]
 ];
 function checkFindings(r) {
   const one = (message, severity) => {
@@ -35909,9 +35980,9 @@ async function callTool2(name2, args2, defaults = {}) {
     return await withTreeLock(out3, async () => outcome2(handleScaffold(args2, repo, out3)));
   }
   const out2 = requiredOut(args2, defaults);
-  return await withTreeLock(out2, async () => outcome2(dispatch(name2, args2, out2)));
+  return await withTreeLock(out2, async () => outcome2(dispatch(name2, args2, out2, defaults.allowWrite === true)));
 }
-function dispatch(name2, args2, out2) {
+function dispatch(name2, args2, out2, allowWrite) {
   switch (name2) {
     case "reconstruct_check":
       return handleCheck(args2, out2);
@@ -35930,7 +36001,7 @@ function dispatch(name2, args2, out2) {
     case "reconstruct_read":
       return handleRead(args2, out2);
     case "reconstruct_unknowns":
-      return handleUnknowns(args2, out2);
+      return handleUnknowns(args2, out2, allowWrite);
     default:
       throw new ToolError(`unknown tool: ${name2}`);
   }
@@ -35960,7 +36031,9 @@ function inRepoInventory(real, repo, out2) {
   const rel2 = relative13(root, real).split(sep10).join("/");
   try {
     const inv = JSON.parse(readFileSync39(join50(out2, "inventory.json"), "utf8"));
-    return (inv.files ?? []).some((f) => f.path === rel2);
+    const listed2 = (inv.files ?? []).find((f) => f.path === rel2);
+    if (typeof listed2?.hash !== "string" || statSync17(real).size > MAX_READ_BYTES) return false;
+    return sha256Hex(readFileSync39(real)).slice(0, 16) === listed2.hash;
   } catch {
     return false;
   }
@@ -36062,10 +36135,19 @@ function handleBundle(out2, kind) {
   const file = kind === "specs" ? "SPECS.md" : kind === "features" ? "FEATURES.md" : "RECONSTRUCTION.md";
   return { out: out2, path: join50(out2, file), bundle: kind };
 }
-function handleUnknowns(args2, out2) {
+function handleUnknowns(args2, out2, allowWrite) {
+  if (Array.isArray(args2.updates) && !allowWrite) {
+    throw new ToolError(
+      "reconstruct_unknowns with `updates` rewrites UNKNOWNS.json, which the gate reads \u2014 start the server with --allow-write to enable it.",
+      {
+        kind: "grant_write",
+        hint: "Call it without `updates` to list the ledger, or record the changes with the CLI: --unknowns --apply <file> --out <tree>."
+      }
+    );
+  }
   let ledger;
   try {
-    ledger = Array.isArray(args2.updates) ? applyUnknownUpdates(out2, args2.updates) : ensureUnknowns(out2);
+    ledger = Array.isArray(args2.updates) ? applyUnknownUpdates(out2, args2.updates) : readUnknowns(out2) ?? seedUnknowns(readInventory(out2));
   } catch (e) {
     throw new ToolError(e.message);
   }
@@ -36093,7 +36175,10 @@ function handleRead(args2, out2) {
   }
   if (!within2(real, realOr(out2)) && !inRepoInventory(real, repo, out2)) {
     throw new ToolError(
-      `path is outside the reconstruction tree${repo ? " and is not a file the tree's inventory lists from that repo" : ""}: ${raw}. Use your own file tool for anything else.`
+      `path is outside the reconstruction tree${repo ? " and is not, byte for byte, a file the tree's inventory lists from that repo" : ""}: ${raw}. Use your own file tool for anything else.`,
+      repo ? {
+        hint: "The file may have changed since the tree was generated (re-run reconstruct_scaffold), or `repo` is not the repository this tree was built from."
+      } : {}
     );
   }
   const st = statSync17(real);
@@ -36311,7 +36396,7 @@ var TOOLS2 = [
   {
     name: "reconstruct_unknowns",
     title: "The residual-unknowns ledger",
-    description: "List what the reconstruction still does not know (UNKNOWNS.json, seeded from the engine's unknowns on first use), or record updates: new unknowns, a status change, the evidence that settles one. Fail-closed: `resolved` needs a citation that resolves against the inventory, and an unsettled blocker fails reconstruct_check.",
+    description: "List what the reconstruction still does not know (UNKNOWNS.json, seeded from the engine's unknowns on first use), or record updates: new unknowns, a status change, the evidence that settles one (`updates` need a server started with --allow-write). Fail-closed: `resolved` needs a citation that resolves against the inventory, and an unsettled blocker fails reconstruct_check.",
     inputSchema: {
       type: "object",
       properties: {
@@ -36543,7 +36628,7 @@ ${CORE_RULE}
 
 1. \`reconstruct_unknowns\` \u2014 the ledger, seeded from what the engine could not determine.
 2. For each unsettled record: \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : ""} the source its question points at, and its \`recommendedProbes\`.
-3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_\u2026\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open.
+3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_\u2026\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open. (\`updates\` need a server started with \`--allow-write\`; without it, hand the updates to the user for \`--unknowns --apply\`.)
 4. Anything you discover while enriching that you cannot settle goes in as a NEW record \u2014 a \`blocker\` when a builder would have to guess it.
 5. \`reconstruct_check\`: an unsettled blocker fails it.
 
