@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.26.0](https://github.com/maxgfr/reconstruct/compare/v2.25.1...v2.26.0) (2026-10-22)
+
+
+### Features
+
+* hardening pass and evidence model inspired by rea ([#38](https://github.com/maxgfr/reconstruct/issues/38)) ([ba1635a](https://github.com/maxgfr/reconstruct/commit/ba1635a15b92e75d38d44dc0522456a62b4cbb6e))
+
 ## [2.25.1](https://github.com/maxgfr/reconstruct/compare/v2.25.0...v2.25.1) (2026-10-21)
 
 
