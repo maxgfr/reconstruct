@@ -108,13 +108,17 @@ When you stop **not** at `ok`, do not stop silently. Climb the escalation ladder
    `INTERFACES.md`/`DATA-MODEL.md` is the usual real culprit.
 3. **Record and report** — write every remaining `REVIEW.json.failures` entry into `REBUILD.md`
    under `## Known gaps / unresolved blockers` (owning unit · the finding · what was tried), and
-   surface it to the user.
+   surface it to the user. Record each one as well in the unknowns ledger
+   (`--unknowns --apply`, see [`evidence-model.md`](./evidence-model.md)) with the probes you
+   would run next — but `major`, not `blocker`, unless a builder truly cannot proceed: an
+   unsettled blocker fails `--check`.
 
 If a residual blocker is a **faithful property of the original** (a real bug you are preserving),
 record it rather than looping on it.
 
 **Report once, at the end** — the final `--check`/`REVIEW.json` result, the zero-blocker
-confirmation (or the known-gaps list), and anything you deliberately left. The user should
+confirmation (or the known-gaps list), the `OBLIGATIONS.json` closure (closed / open / failed
+and its `closureDigest`), the unknowns still open, and anything you deliberately left. The user should
 relaunch nothing: one skill invocation goes scaffold → buildable.
 
 ---
@@ -124,8 +128,10 @@ relaunch nothing: one skill invocation goes scaffold → buildable.
 `--check --semantic` re-reduces **both** persisted ledgers (`VERIFY.json` verdicts,
 `REVIEW.json` findings) and re-resolves every cited `evidenceRef` against the inventory — a
 stale or hand-edited `ok: true` never passes. A missing or unreadable ledger is an **error**,
-not a pass. `--allow-unverified` downgrades that to a warning; use it only deliberately, and
-say so in the final report.
+not a pass — and so are an unadjudicated verdict row and a `confidence: gap` verdict:
+*not judged* and *judged on thin evidence* never add up to a pass. `--allow-unverified`
+downgrades these to warnings; use it only deliberately, and say so in the final report. An
+unsettled `blocker` in `UNKNOWNS.json` fails even the structural `--check`.
 
 Both ledgers are also **bound to the content they judged**, so a clean ledger over prose that
 has since moved is not a pass:

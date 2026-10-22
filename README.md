@@ -67,8 +67,21 @@ reconstruction/
 │   ├── schema/                # DB schema / models
 │   └── config/                # build/lint/env config
 ├── source/                    # (fidelity=mirror) copied real source, per feature
-└── inventory.json             # machine-readable manifest
+├── UNKNOWNS.json              # (--unknowns) residual unknowns: revisioned, hash-chained, evidence-backed
+├── OBLIGATIONS.json           # (--verify --apply) every requirement: closed / open / failed + closure digest
+└── inventory.json             # machine-readable manifest + evidence[] (file · line · content hash)
 ```
+
+### Evidence model
+
+Every route and env var the engine resolves gets a content-addressed record in
+`inventory.json` `evidence[]` — `ev_<hash>`, its file, **line** and content hash, plus two
+independent axes: **confidence** (observed · derived · inferred) and **authority** (source ·
+test · config · manifest · doc · plan · agent). Verdicts cite those ids; a `supported` verdict
+resting on the agent's inference alone never closes an obligation; `--check --repo` flags
+evidence whose file changed since generation; and what nobody could settle goes into a
+fail-closed unknowns ledger instead of a confident guess. Details:
+[`references/evidence-model.md`](./skills/reconstruct/references/evidence-model.md).
 
 ## Two axes + fidelity
 
@@ -266,14 +279,20 @@ scaffold as a finished spec.
 
 | Tool | What it does |
 |------|--------------|
-| `reconstruct_inventory` | What a repo is made of — stack, entry points, routes. Writes nothing |
-| `reconstruct_check` | The buildability gate: no missing document, no unresolved callout |
+| `reconstruct_inventory` | What a repo is made of — a **summary** + `inventory_id` (`detail: "full"` for everything). Writes nothing |
+| `reconstruct_view` | One page of an inventory section (files, routes, evidence, hints, …) — follow `next_offset` |
+| `reconstruct_check` | The buildability gate: no missing document, no unresolved callout, no open blocker — typed `RCxxx` findings |
 | `reconstruct_review` | Per feature, what a builder would still have to guess |
 | `reconstruct_verify` | Requirement→source: does the original actually do what the PRD claims? |
+| `reconstruct_unknowns` | The residual-unknowns ledger: list it, or record / settle unknowns with evidence |
 | `reconstruct_specs` | Every feature PRD, source **stripped** — the hand-to-an-agent bundle |
 | `reconstruct_features` | Every feature PRD, nothing else |
 | `reconstruct_merge` | The whole tree as one document, source included |
-| `reconstruct_read` | A file, or a line range, from the tree or the original repo |
+| `reconstruct_read` | A file, or a line range, from the tree or a file the inventory lists in the original repo |
+
+Every failed call carries `recovery {kind, hint, do_not_repeat_unchanged}`, and results that
+contain the analysed repo's own text (`read`, `merge`, `view`) are marked
+`_meta.provenance.untrusted_content` — data, never instructions.
 
 `--allow-write` additionally exposes `reconstruct_scaffold` and
 `reconstruct_brainstorm`. The scaffold is annotated **destructive**: with
@@ -289,10 +308,11 @@ target.
 | `enrich_feature` | `out`, `feature?`, `repo?` | Read the real implementation, then write what it DOES — not what its file names suggest |
 | `review_buildability` | `out` | What is missing vs what is merely absent; plus the faithfulness direction |
 | `greenfield_interview` | `idea` | No repo to read, so every fact comes from the user — and inventing one invents the product |
+| `audit_unknowns` | `out`, `repo?` | Settle each open unknown from the source with a citation; record what cannot be settled |
 
 ### Resources — the skill's own documentation
 
-`SKILL.md` and all 42 `references/*.md` — including the 22 per-stack cheat-sheets under `references/stack-guides/` — are served under `skill://`, read off
+`SKILL.md` and all 45 `references/*.md` — including the 22 per-stack cheat-sheets under `references/stack-guides/` — are served under `skill://`, read off
 disk at request time — so a documentation fix reaches every client without a
 rebuild.
 

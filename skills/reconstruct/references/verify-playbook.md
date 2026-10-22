@@ -101,8 +101,8 @@ decide.
 
 ### `confidence` — the honesty axis
 
-Stamped alongside the verdict. It never gates; it keeps a grounded fact machine-distinguishable
-from an inference.
+Stamped alongside the verdict. It keeps a grounded fact machine-distinguishable from an
+inference.
 
 | confidence | meaning |
 | --- | --- |
@@ -110,8 +110,26 @@ from an inference.
 | `inferred` | Consistent with the source but **indirect** — a convention, a pattern, standard library/DB behaviour. No false certainty. |
 | `gap` | The evidence is thin or missing and a human should confirm. |
 
-`--check --semantic` **warns** on any verdict labelled `gap`, so thin evidence surfaces instead
-of reading as directly confirmed.
+`--check --semantic` **fails** on any verdict labelled `gap` (unless `--allow-unverified`
+downgrades it): thin evidence is not a pass. Either strengthen the evidence, or mark the verdict
+`partial` and record the open question in `UNKNOWNS.json` (`--unknowns --apply`).
+
+### `authority` — what vouches for it
+
+A second, independent axis: **what kind of artifact** backs the verdict.
+
+| authority | meaning |
+| --- | --- |
+| `source` | Shipped application code. |
+| `test` | A test asserts the behaviour. Strong for behaviour, weaker than source for what ships. |
+| `config` / `manifest` | Configuration, `.env`, a package manifest. |
+| `doc` | The repo's own documentation — may be stale. |
+| `plan` | Greenfield: the interview, `CONTEXT.md`, an ADR. |
+| `agent` | Your own reasoning, no artifact behind it. |
+
+A `supported` verdict with `authority: "agent"` is **folded as `partial`**: inference never
+closes a requirement on its own. Prefer citing an `ev_…` id from `inventory.json` `evidence[]`
+as `evidenceRef` — it names the exact file, line and content hash the engine observed.
 
 > In scratch (greenfield) mode the ground truth is not code: adjudicate against the interview,
 > `CONTEXT.md` and the ADRs. A requirement that traces to no decision is `unsupported` exactly
@@ -134,12 +152,20 @@ A row only needs the fields you decided; the rest are backfilled from `VERIFY.to
 
 ```jsonc
 {
-  "claimId":    "C17",
-  "verdict":    "partial",
-  "confidence": "inferred",
-  "note":       "the handler validates the email but the 30-day expiry is a convention, not in code"
+  "claimId":     "C17",
+  "verdict":     "partial",
+  "confidence":  "inferred",
+  "authority":   "source",
+  "evidenceRef": "ev_67666b2dbcc69a9a",
+  "note":        "the handler validates the email but the 30-day expiry is a convention, not in code"
 }
 ```
+
+`--apply` also writes **`OBLIGATIONS.json`**: every requirement as an obligation that is
+`closed` (a `supported` verdict bound to the current text, not `gap`, not agent-only),
+`failed` (refuted, unsupported, or an unresolvable citation) or `open`. Its `ledgerId` pins the
+requirement set and its `closureDigest` pins the closure state — quote both in your final report;
+`--check --semantic` warns when the recorded ledger no longer matches the tree.
 
 **The citation guard.** A `supported`/`partial` verdict must cite an `evidenceRef` that actually
 resolves in `inventory.json`. A fabricated citation is rejected at fold time — you cannot pass
@@ -176,7 +202,12 @@ relaxation. Specifically it:
   adjudicated verdict — whether it was dropped before `--apply` or never offered because the
   worklist was capped;
 - **re-binds every verdict to the content it judged** (see below);
-- warns on every `confidence: gap`.
+- fails on every unadjudicated row and every `confidence: gap` — not judged, or judged on thin
+  evidence, never adds up to a pass;
+- warns when `OBLIGATIONS.json` is stale.
+
+`--check --json` prints the same result as typed findings — a stable `RCxxx` code, the file and
+a `next_action` per message — for CI and for agents that match on codes rather than prose.
 
 `--allow-unverified` downgrades the missing-ledger errors to warnings. Use it deliberately, and
 say so in your final report.
