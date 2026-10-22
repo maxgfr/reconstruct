@@ -2,7 +2,7 @@ import { VERSION } from "../types.js";
 import { callTool, ToolError, type HandlerDefaults } from "./handlers.js";
 import { getPrompt, PROMPTS, PromptError } from "./prompts.js";
 import { listResources, readResource, ResourceError } from "./resources.js";
-import { toolsFor, type ToolDecl } from "./tools.js";
+import { toolsFor, UNTRUSTED_CONTENT_TOOLS, type ToolDecl } from "./tools.js";
 import {
   DEFAULT_MAX_RESPONSE_BYTES,
   LATEST_PROTOCOL,
@@ -195,7 +195,11 @@ export function createServer(opts: ServerOptions = {}): McpServer {
       const text = capResponse(raw, name, maxBytes, artifact);
       const capped = text !== raw;
       const structured = protocol >= RICH_TOOLS_SINCE ? structuredContentFor(text, capped, decl.outputSchema !== undefined) : undefined;
-      reply({ result: { content: [{ type: "text", text }], ...(structured ? { structuredContent: structured } : {}) } });
+      // Results that carry the target repo's own text (source, bundles that
+      // embed it) are marked so a client can keep that text out of the
+      // instruction channel: a comment in analysed code is data, not a prompt.
+      const meta = UNTRUSTED_CONTENT_TOOLS.has(name) ? { _meta: { provenance: { untrusted_content: true } } } : {};
+      reply({ result: { content: [{ type: "text", text }], ...(structured ? { structuredContent: structured } : {}), ...meta } });
     } catch (e) {
       // The tool ran and could not finish: a repo that won't clone, a path
       // outside the tree, a dossier that isn't there. The caller can act on all
@@ -206,7 +210,11 @@ export function createServer(opts: ServerOptions = {}): McpServer {
       // failure, and reporting it as one would make the model retry work that
       // already told it everything it is going to.
       if (e instanceof ToolError) {
-        reply({ result: { content: [{ type: "text", text: e.message }], isError: true } });
+        // The recovery rides in the text too: a client that drops
+        // structuredContent must still see what to do next.
+        const text = `${e.message}\n\nrecovery: ${JSON.stringify(e.recovery)}`;
+        const structured = protocol >= RICH_TOOLS_SINCE ? { structuredContent: { error: e.message, recovery: e.recovery } } : {};
+        reply({ result: { content: [{ type: "text", text }], isError: true, ...structured } });
         return;
       }
       reply({ error: { code: ERR_INTERNAL, message: errMessage(e) } });

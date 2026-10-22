@@ -62,6 +62,7 @@ describe("annotations", () => {
     reconstruct_merge: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     reconstruct_read: { readOnlyHint: true, openWorldHint: false },
     reconstruct_unknowns: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    reconstruct_view: { readOnlyHint: true, openWorldHint: false },
     reconstruct_scaffold: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     reconstruct_brainstorm: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   };
@@ -127,6 +128,7 @@ describe("declared schemas accept what the handlers expect", () => {
       reconstruct_merge: { out: "/t" },
       reconstruct_read: { out: "/t", path: "SUMMARY.md", start_line: 1, end_line: 20 },
       reconstruct_unknowns: { out: "/t", updates: [{ question: "q", severity: "blocker" }] },
+      reconstruct_view: { inventory_id: "inv_0", section: "routes", offset: 0, limit: 50, filter: "users" },
       reconstruct_scaffold: { repo: "/r", out: "/t", mode: "preserve", level: "complex", fidelity: "describe", granularity: "fine" },
       reconstruct_brainstorm: { out: "/t" },
     };

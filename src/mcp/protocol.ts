@@ -116,7 +116,8 @@ export function validateArgs(schema: JsonSchema, args: Record<string, unknown>):
 // second call.
 const NARROWER: Record<string, string> = {
   reconstruct_scaffold: 'narrow with `include`/`exclude`, or drop to `fidelity: "describe"` so source is summarised rather than embedded',
-  reconstruct_inventory: "narrow with `include`/`exclude`",
+  reconstruct_inventory: 'use the default `detail: "summary"` and page sections with reconstruct_view, or narrow with `include`/`exclude`',
+  reconstruct_view: "lower `limit`, or add a `filter`",
   reconstruct_verify: "lower `max_verify`",
   reconstruct_specs: "read the bundle at the returned path instead of inlining it",
   reconstruct_features: "read the bundle at the returned path instead of inlining it",

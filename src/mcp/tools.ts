@@ -26,16 +26,45 @@ export const TOOLS: ToolDecl[] = [
     name: "reconstruct_inventory",
     title: "Inventory a repository, write nothing",
     description:
-      "Walk a repository and return what it is made of — stack, entry points, routes, data model candidates, i18n — as JSON, persisting nothing. Use it to " +
-      "size a rebuild before committing to a scaffold, or to answer 'what is in here' without creating a tree.",
+      "Walk a repository and summarise what it is made of — stack, features, section sizes, unknowns — persisting nothing to disk. Returns an " +
+      "`inventory_id`: page any section (files, routes, evidence, …) with reconstruct_view instead of asking for everything at once. Use it to size a " +
+      "rebuild before committing to a scaffold, or to answer 'what is in here' without creating a tree.",
     inputSchema: {
       type: "object",
       properties: {
         repo: repoProp,
         include: { type: "array", items: { type: "string" }, description: "Keep only files matching these globs." },
         exclude: { type: "array", items: { type: "string" }, description: "Drop files matching these globs." },
+        detail: {
+          type: "string",
+          enum: ["summary", "full"],
+          description: "summary (default): counts + inventory_id to page with reconstruct_view. full: the whole inventory.",
+        },
       },
       required: ["repo"],
+    },
+  },
+  {
+    name: "reconstruct_view",
+    title: "Page one section of an inventory",
+    description:
+      "Return one deterministic page of an inventory section — files, routes, features, evidence, envVars, dependencies, unknowns, warnings, " +
+      "workspaces or hints — from an `inventory_id` (reconstruct_inventory) or a tree's inventory.json. Follow `next_offset` until it is null.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        inventory_id: { type: "string", description: "The id reconstruct_inventory returned (kept in this server's memory)." },
+        out: { ...outProp, description: `${outProp.description} Read its inventory.json when no inventory_id is given.` },
+        section: {
+          type: "string",
+          enum: ["files", "routes", "features", "evidence", "envVars", "dependencies", "unknowns", "warnings", "workspaces", "hints"],
+          description: "Which section to page.",
+        },
+        offset: { type: "number", description: "First item to return (default 0)." },
+        limit: { type: "number", description: "Items per page (default 100, max 500)." },
+        filter: { type: "string", description: "Keep only items whose JSON contains this text (case-insensitive)." },
+      },
+      required: ["section"],
     },
   },
   {
@@ -206,6 +235,7 @@ export const TOOL_META: Record<string, { write?: boolean; destructive?: boolean;
   reconstruct_features: { write: true, destructive: false, idempotent: true, openWorld: false },
   reconstruct_merge: { write: true, destructive: false, idempotent: true, openWorld: false },
   reconstruct_read: { openWorld: false },
+  reconstruct_view: { openWorld: false },
   reconstruct_unknowns: { write: true, destructive: false, idempotent: false, openWorld: false },
   // Destructive with force:true — it overwrites prose an agent spent real work
   // writing, and nothing else in this repo can bring that back.
@@ -268,3 +298,8 @@ function applyDefaultOut(schema: JsonSchema, defaultOut?: string): JsonSchema {
     required: schema.required.filter((r) => r !== "out"),
   };
 }
+
+// Tools whose result can carry the analysed repo's own text (its source,
+// comments, docs). Their results are marked `_meta.provenance.untrusted_content`
+// so a client keeps that text on the data side of the prompt boundary.
+export const UNTRUSTED_CONTENT_TOOLS = new Set(["reconstruct_read", "reconstruct_merge", "reconstruct_view"]);

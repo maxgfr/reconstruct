@@ -10,7 +10,8 @@ import { foldReview, runReview } from "../review.js";
 import { foldSemantic, runVerify } from "../verify.js";
 import { applyUnknownUpdates, ensureUnknowns, foldUnknowns, UNKNOWNS_FILE } from "../unknowns.js";
 import { withTreeLock } from "../tree-lock.js";
-import type { Options } from "../types.js";
+import type { Inventory, Options } from "../types.js";
+import { recallInventory, rememberInventory, summarizeInventory, VIEW_SECTIONS, viewSection } from "./view.js";
 
 // Where a tool name becomes work. Every handler calls the same library
 // functions the CLI does — nothing here shells out to `reconstruct`, and
@@ -22,7 +23,28 @@ export interface HandlerDefaults {
   allowWrite?: boolean;
 }
 
-export class ToolError extends Error {}
+/**
+ * What the caller should do about a failed call. `do_not_repeat_unchanged` is
+ * always true: the same arguments will fail the same way, and a model that
+ * retries verbatim burns a turn learning nothing.
+ */
+export interface Recovery {
+  kind: "fix_arguments" | "run_first" | "grant_write" | "narrow_request" | "confirm_overwrite";
+  hint: string;
+  do_not_repeat_unchanged: true;
+}
+
+export class ToolError extends Error {
+  readonly recovery: Recovery;
+  constructor(message: string, recovery: { kind?: Recovery["kind"]; hint?: string } = {}) {
+    super(message);
+    this.recovery = {
+      kind: recovery.kind ?? "fix_arguments",
+      hint: recovery.hint ?? "Re-read the tool's input schema and correct the arguments before calling again.",
+      do_not_repeat_unchanged: true,
+    };
+  }
+}
 
 export interface ToolOutcome {
   text: string;
@@ -84,7 +106,10 @@ function requiredOut(args: Record<string, unknown>, defaults: HandlerDefaults): 
   if (!isAbsolute(out)) throw new ToolError("`out` must be an absolute path.");
   const abs = resolve(out);
   if (!existsSync(join(abs, "inventory.json"))) {
-    throw new ToolError(`no reconstruction tree at ${abs} — scaffold one first with reconstruct_scaffold (it writes there).`);
+    throw new ToolError(`no reconstruction tree at ${abs} — scaffold one first with reconstruct_scaffold (it writes there).`, {
+      kind: "run_first",
+      hint: "Call reconstruct_scaffold for this repo (needs --allow-write), or pass the `out` of an existing tree.",
+    });
   }
   return abs;
 }
@@ -123,11 +148,16 @@ function baseOptions(repo: string, out: string, args: Record<string, unknown> = 
 
 export async function callTool(name: string, args: Record<string, unknown>, defaults: HandlerDefaults = {}): Promise<ToolOutcome> {
   if (WRITE_TOOL_NAMES.has(name) && !defaults.allowWrite) {
-    throw new ToolError(`${name} writes a reconstruction tree to disk and is disabled — start the server with --allow-write to enable it.`);
+    throw new ToolError(`${name} writes a reconstruction tree to disk and is disabled — start the server with --allow-write to enable it.`, {
+      kind: "grant_write",
+      hint: "Ask the user to restart the server with --allow-write, or run the equivalent CLI command yourself.",
+    });
   }
 
   // Reads a repo, writes nothing, needs no tree.
   if (name === "reconstruct_inventory") return outcome(handleInventory(args));
+  // Pages a remembered inventory, or a tree's inventory.json.
+  if (name === "reconstruct_view") return outcome(handleView(args, defaults));
 
   if (name === "reconstruct_scaffold") {
     const repo = requiredRepo(args);
@@ -219,8 +249,44 @@ function inRepoInventory(real: string, repo: string | undefined, out: string): b
 
 function handleInventory(args: Record<string, unknown>): unknown {
   const repo = requiredRepo(args);
+  const detail = oneOf(args.detail, ["summary", "full"] as const, "detail", "summary");
   const inv = analyze(baseOptions(repo, join(repo, "reconstruction"), args));
-  return { repo, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
+  const inventory_id = rememberInventory(inv);
+  if (detail === "full") {
+    return { repo, inventory_id, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
+  }
+  return {
+    repo,
+    inventory_id,
+    summary: summarizeInventory(inv),
+    next:
+      "Nothing was written. Page any section with reconstruct_view { inventory_id, section } (follow next_offset), " +
+      "or run reconstruct_scaffold to turn this into a tree you can enrich.",
+  };
+}
+
+function handleView(args: Record<string, unknown>, defaults: HandlerDefaults): unknown {
+  const section = oneOf(args.section, VIEW_SECTIONS, "section", "files");
+  const id = str(args.inventory_id);
+  let inv: Inventory | undefined;
+  if (id) {
+    inv = recallInventory(id);
+    if (!inv) {
+      throw new ToolError(`inventory ${id} is not in this server's memory (it keeps the 16 most recent; a restart clears them).`, {
+        kind: "run_first",
+        hint: "Call reconstruct_inventory again for a fresh inventory_id, or pass the `out` of a scaffolded tree instead.",
+      });
+    }
+  } else {
+    const out = requiredOut(args, defaults);
+    try {
+      inv = JSON.parse(readFileSync(join(out, "inventory.json"), "utf8")) as Inventory;
+    } catch (e) {
+      throw new ToolError(`unreadable inventory.json in ${out}: ${(e as Error).message}`, { kind: "run_first", hint: "Re-scaffold the tree." });
+    }
+  }
+  const page = viewSection(inv, section, { offset: num(args.offset), limit: num(args.limit), filter: str(args.filter) });
+  return { ...(id ? { inventory_id: id } : {}), ...page };
 }
 
 function handleScaffold(args: Record<string, unknown>, repo: string, out: string): unknown {
@@ -229,7 +295,10 @@ function handleScaffold(args: Record<string, unknown>, repo: string, out: string
   // asking the caller to guess what would be lost.
   const witnesses = detectEnrichment(out);
   if (witnesses.length && !bool(args.force)) {
-    throw new ToolError(formatEnrichmentRefusal(out, witnesses));
+    throw new ToolError(formatEnrichmentRefusal(out, witnesses), {
+      kind: "confirm_overwrite",
+      hint: "Scaffold into a different `out`, or ask the user before passing force:true — it discards enriched prose.",
+    });
   }
 
   const opts = baseOptions(repo, out, args);
@@ -336,12 +405,17 @@ function handleRead(args: Record<string, unknown>, out: string): unknown {
   }
   const st = statSync(real);
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
-  if (st.size > MAX_READ_BYTES) throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`);
+  if (st.size > MAX_READ_BYTES)
+    throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`, { kind: "narrow_request", hint: "Use your own file tool with a byte range." });
 
   const lines = readFileSync(real, "utf8").split("\n");
   const total = lines.length;
   const start = Math.max(1, Math.floor(num(args.start_line) ?? 1));
-  if (start > total) throw new ToolError(`start_line ${start} is past the end of the file (${total} lines).`);
+  if (start > total)
+    throw new ToolError(`start_line ${start} is past the end of the file (${total} lines).`, {
+      kind: "narrow_request",
+      hint: `Pass a start_line between 1 and ${total}.`,
+    });
   const requestedEnd = Math.floor(num(args.end_line) ?? total);
   const end = Math.min(total, Math.max(start, requestedEnd), start + MAX_READ_LINES - 1);
 
