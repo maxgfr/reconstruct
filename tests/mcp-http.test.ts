@@ -218,6 +218,22 @@ describe("HTTP method and header handling", () => {
     expect(res.status).toBe(415);
   });
 
+  it("rejects a body with no content type — a browser sends a Blob that way with no preflight", async () => {
+    const res = await post({ headers: { "content-type": "" }, raw: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) });
+    expect(res.status).toBe(415);
+  });
+
+  it("refuses an Origin of null outright", async () => {
+    const res = await post({ headers: { origin: "null" }, body: { jsonrpc: "2.0", id: 1, method: "ping" } });
+    expect(res.status).toBe(403);
+  });
+
+  it("answers an empty batch with -32600, not a silent 202", async () => {
+    const res = await post({ raw: "[]" });
+    expect(res.status).toBe(200);
+    expect(res.json().error.code).toBe(-32600);
+  });
+
   it("is lenient about Accept, but rejects one that excludes JSON outright", async () => {
     expect((await post({ body: { jsonrpc: "2.0", id: 1, method: "ping" }, headers: { accept: "application/json, text/event-stream" } })).status).toBe(200);
     expect((await post({ body: { jsonrpc: "2.0", id: 1, method: "ping" }, headers: { accept: "*/*" } })).status).toBe(200);

@@ -45,7 +45,8 @@ Options:
   --review             Write the AI buildability review worklist for --out
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
   --mcp                Serve the tree over the Model Context Protocol, for any MCP client
-                       (Codex, OpenCode, Claude Code, Cursor, Zed, …). Read-only unless --allow-write.
+                       (Codex, OpenCode, Claude Code, Cursor, Zed, …). Never creates a tree or overwrites prose
+                       unless --allow-write (worklists/bundles inside --out are derived files).
                        With --transport stdio|http · --out <tree> · --port · --bind ·
                        --allow-origin · --allow-remote · --max-response-bytes
   --orchestrate        Emit the multi-agent orchestration for --out's CURRENT worklists

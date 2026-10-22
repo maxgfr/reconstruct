@@ -1,6 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { FileInfo } from "../types.js";
+
+/**
+ * Largest source file an adapter reads. Route tables live in hand-written
+ * files; anything past this is generated or minified, and reading it whole
+ * would only cost memory and regex time.
+ */
+export const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 /** Read the source of every walked file whose extension is in `exts`. */
 export function readSources(files: FileInfo[], repo: string, exts: string[]): Map<string, string> {
@@ -9,6 +16,7 @@ export function readSources(files: FileInfo[], repo: string, exts: string[]): Ma
   for (const f of files) {
     if (!set.has(f.ext)) continue;
     try {
+      if ((f.size || statSync(join(repo, f.path)).size) > MAX_SOURCE_BYTES) continue;
       out.set(f.path, readFileSync(join(repo, f.path), "utf8"));
     } catch {
       /* unreadable — skip */

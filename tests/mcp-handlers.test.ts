@@ -138,6 +138,14 @@ describe("read", () => {
     expect(String(res.content)).toContain("express");
   });
 
+  it("does not let a caller-chosen repo widen the readable roots", async () => {
+    // `repo: "/"` used to make the whole disk readable over HTTP.
+    expect(await errorText("reconstruct_read", { out: TREE, repo: "/", path: "/etc/hosts" })).toMatch(/outside the reconstruction tree/);
+    const home = join(REPO, "..");
+    writeFileSync(join(home, "secret.txt"), "token");
+    expect(await errorText("reconstruct_read", { out: TREE, repo: home, path: join(home, "secret.txt") })).toMatch(/outside the reconstruction tree/);
+  });
+
   it("refuses a path outside the tree", async () => {
     // Containment is the whole point: this server can be reached over HTTP.
     expect(await errorText("reconstruct_read", { out: TREE, path: "/etc/passwd" })).toMatch(/outside the reconstruction tree/);

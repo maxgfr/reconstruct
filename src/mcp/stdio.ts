@@ -14,8 +14,8 @@ import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOpti
 //    construction: a console.log added to a source module in a year lands on
 //    stderr instead of corrupting the stream mid-session.
 //
-// 2. A slow tool never blocks a fast one. `reconstruct_ask` on a cold repo takes
-//    tens of seconds; serializing the read loop behind it would make `ping` and
+// 2. A slow tool never blocks a fast one. `reconstruct_scaffold` on a large repo
+//    takes tens of seconds; serializing the read loop behind it would make `ping` and
 //    `tools/list` time out. JSON-RPC explicitly permits out-of-order responses.
 
 // How many tool calls may be in flight at once. Above this, reconstruct's own
@@ -78,6 +78,10 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
 
       await drainToLimit();
 
+      if (Array.isArray(parsed) && parsed.length === 0) {
+        send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: empty batch" } });
+        continue;
+      }
       if (Array.isArray(parsed)) {
         // A batch answers as one array, so the client can match it to what it
         // sent. Notifications inside it contribute nothing, and a batch of only

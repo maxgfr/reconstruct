@@ -177,11 +177,12 @@ const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 //
 // An absent Origin is allowed: non-browser clients (Claude Code, Cursor, curl)
 // don't send one, and a browser always does, so absence is not something an
-// attacker can use.
+// attacker can use. The literal "null" is NOT absence: it is what a sandboxed
+// iframe, a data: URL or a file:// page sends, i.e. exactly an untrusted page.
 export function isOriginAllowed(origin: string | undefined, allowed: string[] = []): boolean {
   if (origin === undefined) return true;
   const o = origin.trim();
-  if (o === "" || o === "null") return true;
+  if (o === "") return true;
   if (LOOPBACK_ORIGIN.test(o)) return true;
   return allowed.some((a) => a === "*" || a.toLowerCase() === o.toLowerCase());
 }

@@ -131,9 +131,12 @@ async function route(req: IncomingMessage, res: ServerResponse, opts: HttpOption
     return;
   }
 
+  // Required, not just checked when present: a browser sends a Blob or a
+  // text/plain body with no preflight, and only a non-simple content type
+  // forces the CORS preflight the Origin check depends on.
   const contentType = (header(req, "content-type") ?? "").split(";")[0]!.trim().toLowerCase();
-  if (contentType && contentType !== "application/json") {
-    sendJson(res, 415, { error: `unsupported content-type "${contentType}" — send application/json` }, origin);
+  if (contentType !== "application/json") {
+    sendJson(res, 415, { error: `unsupported content-type "${contentType || "(none)"}" — send application/json` }, origin);
     return;
   }
 
@@ -183,6 +186,11 @@ async function route(req: IncomingMessage, res: ServerResponse, opts: HttpOption
 
   const out: JsonRpcMessage[] = [];
   const collect = (m: JsonRpcMessage) => void out.push(m);
+  // JSON-RPC 2.0: an empty batch is itself an invalid request, not "nothing to do".
+  if (Array.isArray(parsed) && parsed.length === 0) {
+    sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid request: empty batch" } }, origin);
+    return;
+  }
   const messages: JsonRpcMessage[] = Array.isArray(parsed) ? (parsed as JsonRpcMessage[]) : [parsed as JsonRpcMessage];
   for (const m of messages) await mcp.handle(m, collect);
 

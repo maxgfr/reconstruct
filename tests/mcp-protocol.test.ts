@@ -126,10 +126,13 @@ describe("isOriginAllowed", () => {
     }
   });
 
-  it("allows an absent or opaque origin (non-browser clients send none)", () => {
+  it("allows an absent origin (non-browser clients send none)", () => {
     expect(isOriginAllowed(undefined)).toBe(true);
-    expect(isOriginAllowed("null")).toBe(true);
     expect(isOriginAllowed("")).toBe(true);
+  });
+
+  it("rejects the opaque origin `null` — sandboxed iframes and data: pages send it", () => {
+    expect(isOriginAllowed("null")).toBe(false);
   });
 
   it("rejects a remote origin — the DNS-rebinding case", () => {

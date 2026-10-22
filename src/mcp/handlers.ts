@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { analyze } from "../analyze.js";
 import { runBrainstorm } from "../brainstorm.js";
 import { checkOutput } from "../check.js";
@@ -178,6 +178,39 @@ function artifactFor(result: unknown): string | undefined {
 }
 
 // --------------------------------------------------------------------------
+// Containment
+// --------------------------------------------------------------------------
+
+function realOr(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+
+function within(real: string, root: string): boolean {
+  return real === root || real.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+// The caller-supplied `repo` is NOT a root of its own: over HTTP that would let
+// any client name `/` and read the whole disk. A repo file is readable only
+// when the tree's own inventory lists it — i.e. it is one of the files this
+// reconstruction was generated from.
+function inRepoInventory(real: string, repo: string | undefined, out: string): boolean {
+  if (!repo) return false;
+  const root = realOr(resolve(repo));
+  if (!within(real, root) || real === root) return false;
+  const rel = relative(root, real).split(sep).join("/");
+  try {
+    const inv = JSON.parse(readFileSync(join(out, "inventory.json"), "utf8")) as { files?: { path?: unknown }[] };
+    return (inv.files ?? []).some((f) => f.path === rel);
+  } catch {
+    return false;
+  }
+}
+
+// --------------------------------------------------------------------------
 // Handlers
 // --------------------------------------------------------------------------
 
@@ -265,17 +298,11 @@ function handleRead(args: Record<string, unknown>, out: string): unknown {
   } catch {
     throw new ToolError(`no such file: ${raw}`);
   }
-  const roots = [out, ...(repo ? [resolve(repo)] : [])].map((d) => {
-    try {
-      return realpathSync(d);
-    } catch {
-      return resolve(d);
-    }
-  });
-  if (!roots.some((root) => real === root || real.startsWith(root + sep))) {
-    throw new ToolError(`path is outside the reconstruction tree${repo ? " and the repo" : ""}: ${raw}. Use your own file tool for anything else.`);
+  if (!within(real, realOr(out)) && !inRepoInventory(real, repo, out)) {
+    throw new ToolError(
+      `path is outside the reconstruction tree${repo ? " and is not a file the tree's inventory lists from that repo" : ""}: ${raw}. Use your own file tool for anything else.`,
+    );
   }
-
   const st = statSync(real);
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
   if (st.size > MAX_READ_BYTES) throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`);
