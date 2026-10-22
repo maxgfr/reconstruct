@@ -157,7 +157,7 @@ export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {})
     pairs.length > max
       ? pairs
           .slice()
-          .sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId))
+          .sort((a, b) => b.score - a.score || (a.claimId < b.claimId ? -1 : a.claimId > b.claimId ? 1 : 0))
           .slice(0, max)
       : pairs;
   const worklist: VerifyWorklist = {

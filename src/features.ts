@@ -236,7 +236,7 @@ export function orderFeatures(records: OrderingRecord[]): Feature[] {
     if (a.tier !== b.tier) return a.tier - b.tier;
     if (a.rank !== b.rank) return a.rank - b.rank;
     if (a.size !== b.size) return b.size - a.size;
-    return a.feature.name.localeCompare(b.feature.name);
+    return a.feature.name < b.feature.name ? -1 : a.feature.name > b.feature.name ? 1 : 0;
   });
   return records.map((r, i) => ({
     ...r.feature,

@@ -257,6 +257,6 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
     const binary = isProbablyBinary(abs, ext);
     return { path: rel, ext, size, lines: binary ? 0 : countLines(abs, size), category: categorize(rel, ext), binary };
   });
-  files.sort((a, b) => a.path.localeCompare(b.path));
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { files, excludedCount: result.excluded + linkSkips };
 }

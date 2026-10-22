@@ -42,6 +42,22 @@
       "binary": false
     },
     {
+      "path": "Cargo.toml",
+      "ext": ".toml",
+      "size": 40,
+      "lines": 3,
+      "category": "config",
+      "binary": false
+    },
+    {
+      "path": "README.md",
+      "ext": ".md",
+      "size": 89,
+      "lines": 4,
+      "category": "doc",
+      "binary": false
+    },
+    {
       "path": "apps/web/app/api/users/route.ts",
       "ext": ".ts",
       "size": 175,
@@ -80,14 +96,6 @@
       "lines": 0,
       "category": "asset",
       "binary": true
-    },
-    {
-      "path": "Cargo.toml",
-      "ext": ".toml",
-      "size": 40,
-      "lines": 3,
-      "category": "config",
-      "binary": false
     },
     {
       "path": "crates/native/Cargo.toml",
@@ -210,14 +218,6 @@
       "binary": false
     },
     {
-      "path": "README.md",
-      "ext": ".md",
-      "size": 89,
-      "lines": 4,
-      "category": "doc",
-      "binary": false
-    },
-    {
       "path": "src/index.astro",
       "ext": ".astro",
       "size": 49,
@@ -311,8 +311,8 @@
     "prisma/schema.prisma"
   ],
   "configs": [
-    "apps/web/package.json",
     "Cargo.toml",
+    "apps/web/package.json",
     "crates/native/Cargo.toml",
     "next.config.js",
     "package.json",
@@ -320,8 +320,8 @@
     "tsconfig.json"
   ],
   "docs": [
-    "docs/notes.txt",
-    "README.md"
+    "README.md",
+    "docs/notes.txt"
   ],
   "envVars": [],
   "scripts": {
