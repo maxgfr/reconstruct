@@ -78,6 +78,8 @@ export interface Options {
    * REVIEW.json ledger to a warning instead of failing closed. `--allow-unverified`.
    */
   allowUnverified?: boolean;
+  /** `--check --repo <path>`: the original repo, to re-hash cited evidence for staleness. */
+  checkRepo?: string;
   /**
    * Divergent-phase scaffold: write a `BRAINSTORM.md` into `--out` (seeded from an
    * existing reconstruction's inventory.json when present). Reads no repo. `--brainstorm`.
@@ -147,6 +149,8 @@ export interface FileInfo {
   lines: number;
   category: FileCategory;
   binary: boolean;
+  /** First 16 hex of the content's sha256 (omitted past the 8 MB read cap). */
+  hash?: string;
 }
 
 export interface RouteInfo {
@@ -465,6 +469,28 @@ export interface Entity {
   uniques?: string[];
 }
 
+/** How directly a fact was established. */
+export type EvidenceConfidence = "observed" | "derived" | "inferred";
+
+/**
+ * What kind of artifact vouches for a fact. Orthogonal to confidence: an
+ * observed fact from a test is weaker authority for shipped behaviour than an
+ * observed fact from source, and an agent's inference is never source.
+ */
+export type EvidenceAuthority = "source" | "test" | "config" | "manifest" | "doc" | "plan" | "agent";
+
+/** One content-addressed fact (see src/evidence.ts). */
+export interface EvidenceRecord {
+  /** `ev_` + 16 hex of the sha256 of the canonical record (id excluded). */
+  id: string;
+  kind: "route" | "env" | "interface" | "entity";
+  /** What the fact is about: `GET /users/:id`, `DATABASE_URL`, `User`. */
+  subject: string;
+  source?: { file: string; line?: number; hash?: string };
+  confidence: EvidenceConfidence;
+  authority: EvidenceAuthority;
+}
+
 export interface Inventory {
   generatedWith: string;
   /** Generation parameters this inventory was produced with (provenance). */
@@ -500,6 +526,12 @@ export interface Inventory {
   runtime?: { node?: string };
   /** Count of files skipped by ignore rules — surfaced for transparency. */
   excludedCount: number;
+  /**
+   * Content-addressed provenance for every statically resolved fact (routes,
+   * env vars; plan rows on the scratch path). Verify verdicts and unknowns cite
+   * these ids; `--check` re-hashes the cited files to flag stale evidence.
+   */
+  evidence?: EvidenceRecord[];
   /**
    * Scratch mode only: the product summary from the interview, used to fill the
    * overview instead of leaving an "infer from the README" placeholder.
@@ -675,6 +707,13 @@ export interface Verdict extends ClaimEvidencePair {
   verdict: VerdictKind;
   note: string;
   confidence?: ConfidenceKind;
+  /**
+   * What vouches for the verdict (see {@link EvidenceAuthority}). `agent` means
+   * the adjudicator's own reasoning with no artifact behind it: such a
+   * `supported` verdict is folded as `partial` — inference never closes a
+   * behaviour requirement on its own.
+   */
+  authority?: EvidenceAuthority;
 }
 
 export interface VerifyResult {
@@ -692,6 +731,8 @@ export interface VerifyResult {
   confidence?: { confirmed: number; inferred: number; gap: number; unlabeled: number };
   /** Verdict rows whose claimId is not in the run's VERIFY.todo.json — ignored, never folded. */
   ignored?: string[];
+  /** Claim ids marked `supported` on agent authority alone — folded as `partial`. */
+  inferenceOnly?: string[];
 }
 
 export interface VerifyWorklist {

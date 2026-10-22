@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonManifest } from "../detect/manifest.js";
 import type { DependencyInfo, FileInfo } from "../types.js";
+import { cmp, lineAt } from "./util.js";
 
 function read(repo: string, rel: string): string | null {
   try {
@@ -206,16 +207,24 @@ export function extractScripts(repo: string, warnings?: string[]): Record<string
 }
 
 export function extractEnvVars(repo: string, files: FileInfo[]): string[] {
-  const names = new Set<string>();
+  return Object.keys(extractEnvVarSources(repo, files)).sort();
+}
+
+/** Every env var name with the first place it was seen (file + 1-based line). */
+export function extractEnvVarSources(repo: string, files: FileInfo[]): Record<string, { file: string; line: number }> {
+  const names = new Map<string, { file: string; line: number }>();
+  const note = (name: string, file: string, line: number) => {
+    if (!names.has(name)) names.set(name, { file, line });
+  };
 
   // From .env* files: keys only, never values.
   for (const f of files) {
     if (!f.path.split("/").pop()?.startsWith(".env")) continue;
     const raw = read(repo, f.path) ?? "";
-    for (const line of raw.split(/\r?\n/)) {
+    raw.split(/\r?\n/).forEach((line, i) => {
       const m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=/);
-      if (m) names.add(m[1] as string);
-    }
+      if (m) note(m[1] as string, f.path, i + 1);
+    });
   }
 
   // From source: process.env.X, import.meta.env.X, os.environ["X"].
@@ -232,11 +241,11 @@ export function extractEnvVars(repo: string, files: FileInfo[]): string[] {
     const raw = read(repo, f.path);
     if (!raw) continue;
     for (const re of patterns) {
-      for (const m of raw.matchAll(re)) names.add(m[1] as string);
+      for (const m of raw.matchAll(re)) note(m[1] as string, f.path, lineAt(raw, m.index ?? 0));
     }
   }
 
-  return [...names].sort();
+  return Object.fromEntries([...names.entries()].sort(([a], [b]) => cmp(a, b)));
 }
 
 export function collectByCategory(files: FileInfo[], category: string): string[] {

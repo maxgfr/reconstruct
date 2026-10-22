@@ -51,6 +51,7 @@ export const TOOLS: ToolDecl[] = [
         out: outProp,
         semantic: { type: "boolean", description: "Also fold in the recorded verification verdicts." },
         allow_unverified: { type: "boolean", description: "With semantic, warn instead of failing when no verdicts exist yet." },
+        repo: { type: "string", description: "Absolute path to the original repo: re-hash the files cited as evidence and warn on stale ones." },
       },
       required: ["out"],
     },

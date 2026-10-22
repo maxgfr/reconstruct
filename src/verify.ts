@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import type { ClaimEvidencePair, ConfidenceKind, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
+import type { ClaimEvidencePair, ConfidenceKind, EvidenceAuthority, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
 
 // Bounds the requirement-verification loop (claim↔evidence pairs per run).
 export const VERIFY_MAX = 60;
@@ -15,6 +15,7 @@ export interface BuiltWorklist {
 }
 const VALID: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
 const VALID_CONFIDENCE: ConfidenceKind[] = ["confirmed", "inferred", "gap"];
+const VALID_AUTHORITY: EvidenceAuthority[] = ["source", "test", "config", "manifest", "doc", "plan", "agent"];
 
 // The feature-PRD sections whose list items are testable requirements/claims.
 const CLAIM_SECTIONS = new Set(["## Functional requirements", "## Acceptance criteria"]);
@@ -197,7 +198,13 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
     // agent reading only the JSON must still see that a capped run adjudicates
     // a subset — partial coverage never reads as complete.
     coverage: worklist.coverage,
-    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "", confidence: null as ConfidenceKind | null })),
+    pairs: worklist.pairs.map((p) => ({
+      ...p,
+      verdict: null as VerdictKind | null,
+      note: "",
+      confidence: null as ConfidenceKind | null,
+      authority: null as EvidenceAuthority | null,
+    })),
   };
   writeFileSync(join(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
   writeFileSync(join(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
@@ -214,7 +221,10 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
       `\`VERIFY.todo.json\`, set each \`verdict\` to supported · partial · refuted · unsupported ` +
       `(+ a short \`note\`), and stamp each \`confidence\` to confirmed (evidence read and ` +
       `decisive) · inferred (consistent but indirect — a pattern or standard behavior) · gap ` +
-      `(evidence thin; needs a human). Save it (e.g. as \`verdicts.json\`), then run ` +
+      `(evidence thin; needs a human). Stamp \`authority\` with what vouches for the verdict — ` +
+      `source · test · config · manifest · doc · plan, or agent when it rests on your reasoning ` +
+      `alone (an agent-authority \`supported\` is folded as partial). When an \`inventory.json\` ` +
+      `\`evidence[]\` id matches, cite it as \`evidenceRef\`. Save it (e.g. as \`verdicts.json\`), then run ` +
       `\`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`,
   );
   if (kept < total)
@@ -257,6 +267,8 @@ function readInventoryIfPresent(outDir: string): Inventory | undefined {
  */
 export function resolveEvidence(ref: string, inv: Inventory): boolean {
   const features = inv.features ?? [];
+  // A content-addressed evidence id resolves iff the inventory recorded it.
+  if (/^ev_[0-9a-f]{16}$/.test(ref)) return (inv.evidence ?? []).some((e) => e.id === ref);
   const feat = /^feature (\S+)( \(no captured evidence\))?$/.exec(ref);
   if (feat) return features.some((f) => f.slug === feat[1]);
 
@@ -445,6 +457,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
     }
     const verdict = VALID.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
     const confidence = VALID_CONFIDENCE.includes(v.confidence) ? (v.confidence as ConfidenceKind) : undefined;
+    const authority = VALID_AUTHORITY.includes(v.authority) ? (v.authority as EvidenceAuthority) : undefined;
     verdicts.push({
       claimId: v.claimId,
       claim: typeof v.claim === "string" ? v.claim : (base?.claim ?? ""),
@@ -454,6 +467,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       verdict,
       note: typeof v.note === "string" ? v.note : "",
       ...(confidence ? { confidence } : {}),
+      ...(authority ? { authority } : {}),
       // A fragment inherits only a saved worklist's binding. Without that
       // worklist, preserve the row's existing binding after comparison above.
       ...((todo ? base?.fingerprint : base ? v.fingerprint : undefined) ? { fingerprint: todo ? base!.fingerprint : v.fingerprint } : {}),
@@ -479,7 +493,12 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
 // (fabricated citation).
 export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResult {
   const counts: Record<VerdictKind, number> = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
-  for (const v of verdicts) if (v.verdict && counts[v.verdict] !== undefined) counts[v.verdict]++;
+  // Inference is not proof: `supported` on agent authority alone counts as partial.
+  const inferenceOnly = verdicts.filter((v) => v.verdict === "supported" && v.authority === "agent").map((v) => v.claimId);
+  for (const v of verdicts) {
+    if (!v.verdict || counts[v.verdict] === undefined) continue;
+    counts[v.verdict === "supported" && v.authority === "agent" ? "partial" : v.verdict]++;
+  }
   const confidence = { confirmed: 0, inferred: 0, gap: 0, unlabeled: 0 };
   for (const v of verdicts) {
     if (v.confidence && VALID_CONFIDENCE.includes(v.confidence)) confidence[v.confidence]++;
@@ -516,6 +535,7 @@ export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResu
     failures,
     unadjudicated,
     confidence,
+    ...(inferenceOnly.length ? { inferenceOnly } : {}),
   };
 }
 

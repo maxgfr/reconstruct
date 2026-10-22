@@ -467,6 +467,7 @@ export function parseArgs(argv: string[]): Options {
     apply: raw.apply ?? "",
     semantic,
     allowUnverified,
+    ...(check && raw.repo !== undefined ? { checkRepo: repo } : {}),
     brainstorm,
     orchestrate,
     mcp,
@@ -668,7 +669,7 @@ async function main(): Promise<void> {
 
   // Validation mode: statically check an already-generated tree for buildability.
   if (opts.check) {
-    const result = checkOutput(opts.out);
+    const result = checkOutput(opts.out, { repo: opts.checkRepo });
     if (opts.semantic) {
       foldSemantic(opts.out, result, { allowUnverified: opts.allowUnverified });
       foldReview(opts.out, result, { allowUnverified: opts.allowUnverified });

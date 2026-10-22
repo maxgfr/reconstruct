@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { closeSync, openSync, readSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { categorize as engineCategorize, parseGitignore, isIgnored, walk as engineWalk } from "./vendor/codeindex-engine.mjs";
@@ -194,21 +195,31 @@ function isProbablyBinary(abs: string, ext: string): boolean {
 // report 0 lines — the inventory still records the file and its byte size.
 const MAX_COUNT_LINES_BYTES = 8 * 1024 * 1024; // 8 MB
 
-function countLines(abs: string, size: number): number {
-  if (size > MAX_COUNT_LINES_BYTES) return 0;
+/**
+ * Line count (text files) and content hash (every file) in one read. The hash
+ * is the first 16 hex of sha256 — enough to tell, later, that a file cited as
+ * evidence has changed since the tree was generated.
+ */
+function readFacts(abs: string, size: number, binary: boolean): { lines: number; hash?: string } {
+  if (size > MAX_COUNT_LINES_BYTES) return { lines: 0 };
   try {
-    const content = readFileSync(abs, "utf8");
-    if (content.length === 0) return 0;
-    let n = 1;
-    for (let i = 0; i < content.length; i++) {
-      if (content.charCodeAt(i) === 10) n++;
-    }
-    // A trailing newline terminates the last line; it does not start a new one
-    // (`wc -l` semantics plus the unterminated last line, if any).
-    return content.charCodeAt(content.length - 1) === 10 ? n - 1 : n;
+    const buf = readFileSync(abs);
+    const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
+    return { lines: binary ? 0 : countLines(buf.toString("utf8")), hash };
   } catch {
-    return 0;
+    return { lines: 0 };
   }
+}
+
+function countLines(content: string): number {
+  if (content.length === 0) return 0;
+  let n = 1;
+  for (let i = 0; i < content.length; i++) {
+    if (content.charCodeAt(i) === 10) n++;
+  }
+  // A trailing newline terminates the last line; it does not start a new one
+  // (`wc -l` semantics plus the unterminated last line, if any).
+  return content.charCodeAt(content.length - 1) === 10 ? n - 1 : n;
 }
 
 export interface WalkOptions {
@@ -257,7 +268,8 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
   });
   const files: FileInfo[] = result.files.map(({ rel, abs, ext, size }) => {
     const binary = isProbablyBinary(abs, ext);
-    return { path: rel, ext, size, lines: binary ? 0 : countLines(abs, size), category: categorize(rel, ext), binary };
+    const { lines, hash } = readFacts(abs, size, binary);
+    return { path: rel, ext, size, lines, category: categorize(rel, ext), binary, ...(hash ? { hash } : {}) };
   });
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { files, excludedCount: result.excluded + linkSkips };

@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, posix, relative } from "node:path";
+import { sha256Hex, staleEvidence } from "./evidence.js";
 import { fencedLines } from "./prd/markdown.js";
 import { hasUI } from "./design.js";
 import type { Inventory } from "./types.js";
@@ -109,7 +110,7 @@ function fileNames(dir: string, base = dir): string[] {
  * the generated tree + `inventory.json`, so it works whether the tree came from
  * the code path or the scratch path.
  */
-export function checkOutput(outDir: string): CheckResult {
+export function checkOutput(outDir: string, opts: { repo?: string } = {}): CheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -178,6 +179,27 @@ export function checkOutput(outDir: string): CheckResult {
 
   // 3b. Link integrity (warning): every relative link resolves inside the tree.
   warnings.push(...brokenLinks(outDir, docs));
+
+  // 3c. Evidence freshness (warning, only when the original repo is named): a
+  //     cited file whose content hash moved means the PRD describes code that
+  //     no longer exists in that form.
+  if (opts.repo && inv.evidence?.length) {
+    const repo = opts.repo;
+    const cache = new Map<string, string | null>();
+    const hashOf = (file: string): string | null => {
+      if (!cache.has(file)) {
+        try {
+          cache.set(file, sha256Hex(readFileSync(join(repo, file))).slice(0, 16));
+        } catch {
+          cache.set(file, null);
+        }
+      }
+      return cache.get(file) ?? null;
+    };
+    for (const s of staleEvidence(inv.evidence, hashOf)) {
+      warnings.push(`stale evidence ${s.id} (${s.subject}): ${s.file} — ${s.reason}; re-run the analyzer and re-verify`);
+    }
+  }
 
   // 4. Feature PRD spine — enrichment must keep the demanding sections, and the
   //    sections must carry content (a spine of bare headings is not a PRD).

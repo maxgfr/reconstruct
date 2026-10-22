@@ -11,7 +11,8 @@ import {
 } from "./detect/workspaces.js";
 import { detectCandidates } from "./detect/candidates.js";
 import { detectStylingLibraries } from "./design.js";
-import { extractDependencies, extractScripts, extractEnvVars, collectByCategory } from "./adapters/generic.js";
+import { extractDependencies, extractScripts, extractEnvVarSources, collectByCategory } from "./adapters/generic.js";
+import { buildEvidence } from "./evidence.js";
 import { detectRoutes } from "./adapters/registry.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
@@ -182,7 +183,8 @@ export function analyze(opts: Options): Inventory {
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");
   const docs = collectByCategory(files, "doc");
-  const envVars = extractEnvVars(opts.repo, files);
+  const envSources = extractEnvVarSources(opts.repo, files);
+  const envVars = Object.keys(envSources);
   const scripts = extractScripts(opts.repo, warnings);
   const hints = detectCandidates(opts.repo, files, stack);
   if (workspaces.length > 0) {
@@ -225,5 +227,6 @@ export function analyze(opts: Options): Inventory {
     ...(workspaces.length ? { workspaces } : {}),
     ...(node ? { runtime: { node } } : {}),
     excludedCount,
+    evidence: buildEvidence(files, routes, envSources),
   };
 }

@@ -6,8 +6,8 @@ import { checkOutput } from "../check.js";
 import { detectEnrichment, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
-import { runReview } from "../review.js";
-import { runVerify } from "../verify.js";
+import { foldReview, runReview } from "../review.js";
+import { foldSemantic, runVerify } from "../verify.js";
 import { withTreeLock } from "../tree-lock.js";
 import type { Options } from "../types.js";
 
@@ -244,7 +244,15 @@ function handleScaffold(args: Record<string, unknown>, repo: string, out: string
 }
 
 function handleCheck(args: Record<string, unknown>, out: string): unknown {
-  const res = checkOutput(out);
+  const repo = str(args.repo);
+  const res = checkOutput(out, { repo: repo ? resolve(repo) : undefined });
+  // Same fold as `--check --semantic`: the flag used to be echoed back without
+  // ever consulting VERIFY.json / REVIEW.json, so a semantic check always passed.
+  if (bool(args.semantic)) {
+    const allowUnverified = bool(args.allow_unverified);
+    foldSemantic(out, res, { allowUnverified });
+    foldReview(out, res, { allowUnverified });
+  }
   // CheckResult is errors/warnings; the CLI turns that into an exit code. A
   // tool result has no exit code, so the verdict is stated explicitly — a
   // client should not have to infer it from an empty array.
