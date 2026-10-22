@@ -7,7 +7,7 @@ import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
-import { checkOutput, formatCheckReport } from "./check.js";
+import { checkFindings, checkOutput, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./verify.js";
 import { runReview, applyFindings, foldReview, formatReviewReport } from "./review.js";
 import { runBrainstorm } from "./brainstorm.js";
@@ -708,7 +708,11 @@ async function main(): Promise<void> {
       foldSemantic(opts.out, result, { allowUnverified: opts.allowUnverified });
       foldReview(opts.out, result, { allowUnverified: opts.allowUnverified });
     }
-    process.stdout.write(formatCheckReport(result, opts.out) + "\n");
+    process.stdout.write(
+      opts.json
+        ? JSON.stringify({ out: opts.out, ok: result.errors.length === 0, findings: checkFindings(result) }, null, 2) + "\n"
+        : formatCheckReport(result, opts.out) + "\n",
+    );
     if (result.errors.length) process.exit(1);
     return;
   }

@@ -2,7 +2,19 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import type { ClaimEvidencePair, ConfidenceKind, EvidenceAuthority, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
+import { canonicalJson, sha256Hex } from "./evidence.js";
+import type {
+  ClaimEvidencePair,
+  ConfidenceKind,
+  EvidenceAuthority,
+  Inventory,
+  Obligation,
+  ObligationLedger,
+  Verdict,
+  VerdictKind,
+  VerifyResult,
+  VerifyWorklist,
+} from "./types.js";
 
 // Bounds the requirement-verification loop (claim↔evidence pairs per run).
 export const VERIFY_MAX = 60;
@@ -484,6 +496,8 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
   if (unknown.length) result.ignored = unknown;
   writeFileSync(join(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  const ledger = writeObligations(outDir, verdicts);
+  result.obligations = { ledgerId: ledger.ledgerId, closureDigest: ledger.closureDigest, closed: ledger.closed, open: ledger.open, failed: ledger.failed };
   return result;
 }
 
@@ -676,14 +690,94 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
       `semantic verification failed: ${fresh.failures.length} requirement(s) refuted, unsupported or citing unresolvable evidence (see VERIFY.json)`,
     );
   }
+  // Fail closed: "not judged" and "judged on thin evidence" never add up to a
+  // pass. Both route through `skip`, so --allow-unverified is the explicit,
+  // visible way to accept them.
   if (fresh.unadjudicated.length) {
-    check.warnings.push(`${fresh.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
+    skip(`--semantic: ${fresh.unadjudicated.length} requirement(s) in VERIFY.json carry no verdict (${previewIds(fresh.unadjudicated)})`);
   }
   if (fresh.confidence?.gap) {
-    check.warnings.push(
-      `${fresh.confidence.gap} verdict(s) labeled confidence:gap — the cited evidence is thin; strengthen it or record the claims as known gaps`,
+    skip(
+      `--semantic: ${fresh.confidence.gap} verdict(s) labeled confidence:gap — the cited evidence is thin; strengthen it, or record the claim in UNKNOWNS.json and mark it partial`,
     );
   }
+
+  // The obligation ledger written at --apply time must still describe this tree.
+  const ledger = buildObligations(all, sem.verdicts, readInventoryIfPresent(outDir));
+  const recorded = readObligations(outDir);
+  if (recorded && recorded.closureDigest !== ledger.closureDigest) {
+    check.warnings.push(
+      `OBLIGATIONS.json is stale (closure ${recorded.closureDigest} ≠ ${ledger.closureDigest} recomputed) — re-run --verify --apply to refresh it`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Obligation ledger (`OBLIGATIONS.json`). Every requirement the PRDs state is an
+// obligation the rebuild must meet. It is CLOSED only by a `supported` verdict
+// bound to the current text, at confidence other than `gap`, on authority other
+// than the agent's own inference; FAILED when refuted, unsupported or citing
+// evidence that does not resolve; OPEN otherwise. Two digests pin it:
+// `ledgerId` names the requirement set (ids + fingerprints), `closureDigest`
+// names its closure state — any change to a PRD, a verdict or a citation moves it.
+// ---------------------------------------------------------------------------
+
+export const OBLIGATIONS_FILE = "OBLIGATIONS.json";
+
+export function buildObligations(pairs: ClaimEvidencePair[], verdicts: Verdict[], inv?: Inventory): ObligationLedger {
+  const byId = new Map(verdicts.filter((v) => v.verdict).map((v) => [v.claimId, v]));
+  const obligations: Obligation[] = pairs.map((p) => {
+    const raw = byId.get(p.claimId);
+    // A verdict judged other content (fingerprint moved) does not speak for this one.
+    const v = raw && (!p.fingerprint || raw.fingerprint === p.fingerprint) ? raw : undefined;
+    const evidence = v ? [v.evidenceRef] : [];
+    let status: Obligation["status"] = "open";
+    if (v && (v.verdict === "refuted" || v.verdict === "unsupported" || (inv && !resolveEvidence(v.evidenceRef, inv)))) status = "failed";
+    else if (v && v.verdict === "supported" && v.authority !== "agent" && v.confidence !== "gap") status = "closed";
+    return {
+      id: p.claimId,
+      feature: p.feature,
+      requirement: p.claim,
+      ...(p.fingerprint ? { fingerprint: p.fingerprint } : {}),
+      evidence,
+      verdict: v?.verdict ?? null,
+      ...(v?.confidence ? { confidence: v.confidence } : {}),
+      ...(v?.authority ? { authority: v.authority } : {}),
+      status,
+    };
+  });
+  const count = (s: Obligation["status"]) => obligations.filter((o) => o.status === s).length;
+  return {
+    version: 1,
+    ledgerId: `ob_${sha256Hex(canonicalJson(obligations.map((o) => [o.id, o.fingerprint ?? o.requirement]))).slice(0, 16)}`,
+    closureDigest: sha256Hex(canonicalJson(obligations)).slice(0, 16),
+    total: obligations.length,
+    closed: count("closed"),
+    open: count("open"),
+    failed: count("failed"),
+    obligations,
+  };
+}
+
+export function readObligations(outDir: string): ObligationLedger | undefined {
+  try {
+    return JSON.parse(readFileSync(join(outDir, OBLIGATIONS_FILE), "utf8")) as ObligationLedger;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Recompute and persist the ledger for the tree's current PRDs and verdicts. */
+export function writeObligations(outDir: string, verdicts: Verdict[]): ObligationLedger {
+  let pairs: ClaimEvidencePair[] = [];
+  try {
+    pairs = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
+  } catch {
+    pairs = [];
+  }
+  const ledger = buildObligations(pairs, verdicts, readInventoryIfPresent(outDir));
+  writeFileSync(join(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
+  return ledger;
 }
 
 export function formatVerifyReport(r: VerifyResult): string {
@@ -691,6 +785,15 @@ export function formatVerifyReport(r: VerifyResult): string {
   lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
   lines.push(`  supported: ${r.supported} · partial: ${r.partial} · refuted: ${r.refuted} · unsupported: ${r.unsupported}`);
   const c = r.confidence;
+  if (r.inferenceOnly?.length) {
+    lines.push(
+      `  ${r.inferenceOnly.length} supported verdict(s) rest on agent inference alone — counted as partial (${r.inferenceOnly.slice(0, 6).join(", ")})`,
+    );
+  }
+  if (r.obligations) {
+    const o = r.obligations;
+    lines.push(`  obligations: ${o.closed} closed · ${o.open} open · ${o.failed} failed — ledger ${o.ledgerId}, closure ${o.closureDigest} (OBLIGATIONS.json)`);
+  }
   if (c && c.confirmed + c.inferred + c.gap > 0) {
     lines.push(`  confidence: ${c.confirmed} confirmed · ${c.inferred} inferred · ${c.gap} gap${c.unlabeled ? ` · ${c.unlabeled} unlabeled` : ""}`);
   }

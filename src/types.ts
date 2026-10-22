@@ -768,6 +768,34 @@ export interface VerifyResult {
   ignored?: string[];
   /** Claim ids marked `supported` on agent authority alone — folded as `partial`. */
   inferenceOnly?: string[];
+  /** Summary of the obligation ledger written alongside (OBLIGATIONS.json). */
+  obligations?: { ledgerId: string; closureDigest: string; closed: number; open: number; failed: number };
+}
+
+/** One requirement the rebuild must meet (see `buildObligations`). */
+export interface Obligation {
+  id: string;
+  feature: string;
+  requirement: string;
+  fingerprint?: string;
+  evidence: string[];
+  verdict: VerdictKind | null;
+  confidence?: ConfidenceKind;
+  authority?: EvidenceAuthority;
+  status: "closed" | "open" | "failed";
+}
+
+export interface ObligationLedger {
+  version: 1;
+  /** Names the requirement set: ids + content fingerprints. */
+  ledgerId: string;
+  /** Names the closure state: every obligation, verdict and citation. */
+  closureDigest: string;
+  total: number;
+  closed: number;
+  open: number;
+  failed: number;
+  obligations: Obligation[];
 }
 
 export interface VerifyWorklist {

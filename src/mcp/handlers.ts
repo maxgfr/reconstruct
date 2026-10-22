@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { analyze } from "../analyze.js";
 import { runBrainstorm } from "../brainstorm.js";
-import { checkOutput } from "../check.js";
+import { checkFindings, checkOutput } from "../check.js";
 import { detectEnrichment, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
@@ -263,6 +263,7 @@ function handleCheck(args: Record<string, unknown>, out: string): unknown {
     out,
     ok: res.errors.length === 0,
     ...res,
+    findings: checkFindings(res),
     semantic: bool(args.semantic),
     note: "Passing means nothing is EMPTY. It cannot see a section that is present and says nothing — that is reconstruct_review's job.",
   };

@@ -447,6 +447,70 @@ function sectionHasContent(doc: string, heading: string): boolean {
     });
 }
 
+/** One gate result, machine-readable: a stable code, where, and what to do next. */
+export interface CheckFinding {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  /** Tree-relative document the finding is about, when it names one. */
+  file?: string;
+  next_action: string;
+}
+
+// Stable codes for every message the gate (and its semantic folds) can emit.
+// The prose may be reworded; the code is the contract a CI job or an agent
+// matches on. First match wins, so specific patterns come before broad ones.
+const FINDING_RULES: [RegExp, string, string][] = [
+  [/no inventory\.json|inventory\.json is not valid JSON/, "RC000_NO_TREE", "Run the analyzer to scaffold a tree, then enrich it."],
+  [
+    /^missing required document/,
+    "RC001_MISSING_DOC",
+    "Restore the document (re-run the analyzer into a scratch dir and copy it over) — the spine is mandatory.",
+  ],
+  [/unresolved `🧠` agent callout/, "RC010_UNRESOLVED_CALLOUT", "Resolve each callout from the real source, then delete it."],
+  [/"fill this in" placeholder/, "RC011_PLACEHOLDER", "Replace the placeholder with the real content."],
+  [/does not document entity/, "RC020_UNDOCUMENTED_ENTITY", "Document the entity in architecture/DATA-MODEL.md (fields, types, relations)."],
+  [/does not document operation/, "RC021_UNDOCUMENTED_OPERATION", "Document the operation in architecture/INTERFACES.md (input, output, side effects)."],
+  [/missing required section/, "RC030_MISSING_SECTION", "Restore the section heading and fill it."],
+  [/has no content — fill it/, "RC031_EMPTY_SECTION", "Write the section from the source: a heading alone is not a PRD section."],
+  [/declares no entities/, "RC040_EMPTY_DATA_MODEL", "Enumerate every entity with its fields in architecture/DATA-MODEL.md."],
+  [/declares no operations/, "RC041_EMPTY_INTERFACES", "Enumerate every operation in architecture/INTERFACES.md."],
+  [/DESIGN-SYSTEM\.md/, "RC042_DESIGN_SYSTEM", "Capture tokens, theming, typography, components and a11y in architecture/DESIGN-SYSTEM.md."],
+  [/^locale `/, "RC050_LOCALE_COVERAGE", "Copy the locale's messages under data/translations/ or cover it in the message catalog."],
+  [/broken link →/, "RC060_BROKEN_LINK", "Point the link at a file that exists in the tree, or remove it."],
+  [/^stale evidence/, "RC061_STALE_EVIDENCE", "Re-run the analyzer against the current repo, then re-verify the affected requirements."],
+  [/UNKNOWNS\.json: blocker/, "RC070_OPEN_BLOCKER_UNKNOWN", "Settle the blocker with reconstruct_unknowns / --unknowns --apply, citing evidence."],
+  [/digest mismatch/, "RC071_UNKNOWN_EDITED", "Record unknown changes through --unknowns --apply so the revision chain holds."],
+  [/not a valid unknowns ledger/, "RC072_UNKNOWNS_CORRUPT", "Repair or delete UNKNOWNS.json, then re-run --unknowns."],
+  [/semantic verification failed/, "RC085_REQUIREMENT_FAILED", "Fix or remove each refuted/unsupported requirement (see VERIFY.json), then re-verify."],
+  [/adjudicated against content that has since changed|carry no content fingerprint/, "RC081_STALE_VERDICTS", "Re-run --verify then --verify --apply."],
+  [/were dropped|never offered/, "RC082_VERIFY_COVERAGE", "Adjudicate every requirement (raise --max-verify), then --verify --apply."],
+  [/carry no verdict/, "RC083_UNADJUDICATED", "Give every requirement a verdict, then --verify --apply."],
+  [/confidence:gap/, "RC084_THIN_EVIDENCE", "Strengthen the evidence, or record the claim as an unknown and mark it partial."],
+  [/OBLIGATIONS\.json is stale/, "RC086_STALE_OBLIGATIONS", "Re-run --verify --apply to refresh the obligation ledger."],
+  [/VERIFY\.json|requirement gate never engaged/, "RC080_NO_VERIFICATION", "Run --verify, adjudicate, then --verify --apply."],
+  [/review is stale|review baseline|carries no content baseline/, "RC091_STALE_REVIEW", "Re-run --review then --review --apply."],
+  [/buildability review failed/, "RC092_REVIEW_BLOCKERS", "Fix each unrefuted blocker in REVIEW.json, then run another review round."],
+  [/review made no progress/, "RC093_REVIEW_STALLED", "Fix the shared architecture contract, or record the blockers as known gaps."],
+  [/REVIEW\.json/, "RC090_NO_REVIEW", "Run --review, record findings, then --review --apply."],
+];
+
+/** The check result as typed findings with stable codes. */
+export function checkFindings(r: CheckResult): CheckFinding[] {
+  const one = (message: string, severity: CheckFinding["severity"]): CheckFinding => {
+    const rule = FINDING_RULES.find(([re]) => re.test(message));
+    const file = /^([\w./-]+\.(?:md|json)): /.exec(message)?.[1];
+    return {
+      code: rule?.[1] ?? "RC999_OTHER",
+      severity,
+      message,
+      ...(file ? { file } : {}),
+      next_action: rule?.[2] ?? "Read the message and fix the tree accordingly.",
+    };
+  };
+  return [...r.errors.map((m) => one(m, "error")), ...r.warnings.map((m) => one(m, "warning"))];
+}
+
 /** Human-readable report for the CLI; PASS when there are no errors. */
 export function formatCheckReport(r: CheckResult, outDir: string): string {
   const lines: string[] = [];
