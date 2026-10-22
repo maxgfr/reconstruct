@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { extToLang } from "../vendor/codeindex-engine.mjs";
 import { readJsonManifest, safeRead } from "./manifest.js";
@@ -189,6 +189,25 @@ const GO_FRAMEWORKS: Array<[RegExp, string]> = [
   [/github\.com\/gorilla\/mux/, "Gorilla"],
 ];
 
+// Root-level Python dependency manifests read for framework detection.
+const PY_MANIFESTS = ["requirements.txt", "pyproject.toml", "Pipfile", "setup.py", "setup.cfg"];
+
+/** `requirements/*.txt` (the split base/dev/prod layout), as repo-relative paths. */
+function requirementsDir(repo: string): string[] {
+  try {
+    return readdirSync(join(repo, "requirements"))
+      .filter((f) => f.endsWith(".txt"))
+      .sort()
+      .map((f) => `requirements/${f}`);
+  } catch {
+    return [];
+  }
+}
+
+// Directory segments whose contents are not the project's own code (tests,
+// fixtures, samples, vendored deps): ignored for framework-level detection.
+const NON_PROJECT_DIR = /^(tests?|__tests__|fixtures?|examples?|samples?|testdata|node_modules)$/i;
+
 /** Detect notable libraries from a merged dependency map (runtime + dev). */
 export function detectLibraries(deps: Record<string, string>): string[] {
   const names = Object.keys(deps);
@@ -244,9 +263,12 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   }
 
   // Other ecosystems by manifest presence.
-  if (existsSync(join(repo, "requirements.txt")) || existsSync(join(repo, "pyproject.toml"))) {
+  // Python declares dependencies in many places: requirements files (incl. the
+  // split `requirements/base.txt` layout), pyproject, Pipfile, setup.py/cfg.
+  const pyManifests = [...PY_MANIFESTS.filter((f) => existsSync(join(repo, f))), ...requirementsDir(repo)];
+  if (pyManifests.length) {
     packageManagers.add("pip");
-    const py = safeRead(join(repo, "requirements.txt")) + safeRead(join(repo, "pyproject.toml"));
+    const py = pyManifests.map((f) => safeRead(join(repo, f))).join("\n");
     if (/\bdjango\b/i.test(py)) frameworks.add("Django");
     if (/\bflask\b/i.test(py)) frameworks.add("Flask");
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
@@ -294,14 +316,26 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   // `WebApplication.CreateBuilder` covers a Program.cs whose csproj we did not
   // walk to (a nested project). Without this the whole ecosystem was invisible:
   // only the C# *language* was detected, so `frameworks` came back empty.
-  const csproj = files.find((f) => f.path.endsWith(".csproj"));
-  if (csproj) {
+  // Projects are searched anywhere in the tree, so test fixtures, samples and
+  // vendored packages are skipped — a Node repo whose tests carry a .csproj
+  // fixture is not an ASP.NET Core app. Every remaining project is examined:
+  // the web one is often not the first (`src/Core` before `src/Web`).
+  const ownFiles = files.filter(
+    (f) =>
+      !f.path
+        .split("/")
+        .slice(0, -1)
+        .some((seg) => NON_PROJECT_DIR.test(seg)),
+  );
+  const csprojs = ownFiles.filter((f) => f.path.endsWith(".csproj"));
+  if (csprojs.length) {
     packageManagers.add("nuget");
-    const proj = safeRead(join(repo, csproj.path));
-    const program = files.find((f) => f.path.endsWith("Program.cs"));
-    if (/Microsoft\.NET\.Sdk\.Web/.test(proj) || (program && /WebApplication\s*\.\s*CreateBuilder/.test(safeRead(join(repo, program.path))))) {
-      frameworks.add("ASP.NET Core");
-    }
+    const webSdk = csprojs.some((f) => /Microsoft\.NET\.Sdk\.Web/.test(safeRead(join(repo, f.path))));
+    const webHost = () =>
+      ownFiles.some(
+        (f) => (f.path === "Program.cs" || f.path.endsWith("/Program.cs")) && /WebApplication\s*\.\s*CreateBuilder/.test(safeRead(join(repo, f.path))),
+      );
+    if (webSdk || webHost()) frameworks.add("ASP.NET Core");
   }
 
   return {
