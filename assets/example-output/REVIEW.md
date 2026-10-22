@@ -1,8 +1,10 @@
-# AI buildability review worklist — round 1
+# AI buildability review worklist — round 2
 
 Review the 7 feature(s) flagged below against the nine checks in `references/ai-review-rubric.md` (story completeness, requirement testability, real Given/When/Then, write-contract satisfiability, enum fidelity, cross-doc consistency, faithfulness, i18n, the rebuild self-test). For each, read the PRD plus the architecture docs it references and the embedded source. Keep the reviewer **separate from the author** and prompt it to find reasons the unit is *not* buildable.
 
 Emit each finding as `{ feature, severity (blocker|major|minor), category, problem, fix }`. Have an **independent verifier** set `verdict` to `confirmed` or `refuted` per blocker (a refuted blocker does not gate). Save the findings (e.g. as `findings.json`, shape `{ "findings": [...] }`), then run `node scripts/analyze.mjs --review --apply findings.json --out <dir>`.
+
+_Changed since last round: 01-core, 02-project-setup, 03-prisma, 04-api, 05-internationalization, 06-dashboard, 07-documentation._
 
 ## 01-core
 PRD: `features/01-core/PRD.md`

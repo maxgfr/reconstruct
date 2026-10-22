@@ -1,5 +1,5 @@
 {
-  "generatedWith": "reconstruct@1.3.0",
+  "generatedWith": "reconstruct@2.25.1",
   "generation": {
     "mode": "redesign",
     "level": "complex",
@@ -31,103 +31,115 @@
     ]
   },
   "fileCount": 12,
-  "totalLines": 113,
+  "totalLines": 101,
   "files": [
     {
       "path": ".env.example",
       "ext": ".example",
       "size": 73,
-      "lines": 3,
+      "lines": 2,
       "category": "config",
-      "binary": false
-    },
-    {
-      "path": "app/api/users/route.ts",
-      "ext": ".ts",
-      "size": 192,
-      "lines": 7,
-      "category": "code",
-      "binary": false
-    },
-    {
-      "path": "app/dashboard/page.tsx",
-      "ext": ".tsx",
-      "size": 141,
-      "lines": 9,
-      "category": "code",
-      "binary": false
-    },
-    {
-      "path": "app/page.tsx",
-      "ext": ".tsx",
-      "size": 186,
-      "lines": 11,
-      "category": "code",
-      "binary": false
-    },
-    {
-      "path": "components/Button.tsx",
-      "ext": ".tsx",
-      "size": 106,
-      "lines": 4,
-      "category": "code",
-      "binary": false
-    },
-    {
-      "path": "lib/auth.ts",
-      "ext": ".ts",
-      "size": 175,
-      "lines": 8,
-      "category": "code",
-      "binary": false
-    },
-    {
-      "path": "messages/en.json",
-      "ext": ".json",
-      "size": 116,
-      "lines": 10,
-      "category": "i18n",
-      "binary": false
-    },
-    {
-      "path": "messages/fr.json",
-      "ext": ".json",
-      "size": 122,
-      "lines": 10,
-      "category": "i18n",
-      "binary": false
-    },
-    {
-      "path": "next.config.js",
-      "ext": ".js",
-      "size": 187,
-      "lines": 11,
-      "category": "config",
-      "binary": false
-    },
-    {
-      "path": "package.json",
-      "ext": ".json",
-      "size": 460,
-      "lines": 24,
-      "category": "config",
-      "binary": false
-    },
-    {
-      "path": "prisma/schema.prisma",
-      "ext": ".prisma",
-      "size": 168,
-      "lines": 11,
-      "category": "schema",
-      "binary": false
+      "binary": false,
+      "hash": "460ffb403d4b9907"
     },
     {
       "path": "README.md",
       "ext": ".md",
       "size": 174,
-      "lines": 5,
+      "lines": 4,
       "category": "doc",
-      "binary": false
+      "binary": false,
+      "hash": "e8a3a3d4818c4cd6"
+    },
+    {
+      "path": "app/api/users/route.ts",
+      "ext": ".ts",
+      "size": 192,
+      "lines": 6,
+      "category": "code",
+      "binary": false,
+      "hash": "8990e5ea37d7e20c"
+    },
+    {
+      "path": "app/dashboard/page.tsx",
+      "ext": ".tsx",
+      "size": 141,
+      "lines": 8,
+      "category": "code",
+      "binary": false,
+      "hash": "119d4289d9a84a13"
+    },
+    {
+      "path": "app/page.tsx",
+      "ext": ".tsx",
+      "size": 186,
+      "lines": 10,
+      "category": "code",
+      "binary": false,
+      "hash": "9c5729e7c2efe865"
+    },
+    {
+      "path": "components/Button.tsx",
+      "ext": ".tsx",
+      "size": 106,
+      "lines": 3,
+      "category": "code",
+      "binary": false,
+      "hash": "6487d610117df580"
+    },
+    {
+      "path": "lib/auth.ts",
+      "ext": ".ts",
+      "size": 175,
+      "lines": 7,
+      "category": "code",
+      "binary": false,
+      "hash": "8169efd14fa115dc"
+    },
+    {
+      "path": "messages/en.json",
+      "ext": ".json",
+      "size": 116,
+      "lines": 9,
+      "category": "i18n",
+      "binary": false,
+      "hash": "689f09a24f63bf6d"
+    },
+    {
+      "path": "messages/fr.json",
+      "ext": ".json",
+      "size": 122,
+      "lines": 9,
+      "category": "i18n",
+      "binary": false,
+      "hash": "104a43eb571ed3d7"
+    },
+    {
+      "path": "next.config.js",
+      "ext": ".js",
+      "size": 187,
+      "lines": 10,
+      "category": "config",
+      "binary": false,
+      "hash": "8fd81a09da56c77f"
+    },
+    {
+      "path": "package.json",
+      "ext": ".json",
+      "size": 460,
+      "lines": 23,
+      "category": "config",
+      "binary": false,
+      "hash": "60b6a909c1fe6260"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "ext": ".prisma",
+      "size": 168,
+      "lines": 10,
+      "category": "schema",
+      "binary": false,
+      "hash": "1aeebda720507225"
     }
   ],
   "dependencies": [
@@ -157,6 +169,7 @@
     {
       "route": "/api/users",
       "file": "app/api/users/route.ts",
+      "line": 3,
       "kind": "api",
       "method": "GET"
     },
@@ -251,6 +264,7 @@
         {
           "route": "/api/users",
           "file": "app/api/users/route.ts",
+          "line": 3,
           "kind": "api",
           "method": "GET"
         }
@@ -312,5 +326,65 @@
   "unknowns": [
     "The data model is not structured by the engine — extract entities, fields, types, and relations from `hints.schemaCandidates` into `architecture/DATA-MODEL.md`."
   ],
-  "excludedCount": 0
+  "excludedCount": 0,
+  "evidence": [
+    {
+      "id": "ev_109a82c21b247825",
+      "kind": "env",
+      "subject": "DATABASE_URL",
+      "source": {
+        "file": ".env.example",
+        "line": 1,
+        "hash": "460ffb403d4b9907"
+      },
+      "confidence": "observed",
+      "authority": "config"
+    },
+    {
+      "id": "ev_42a179307e82dcf9",
+      "kind": "env",
+      "subject": "NEXTAUTH_SECRET",
+      "source": {
+        "file": ".env.example",
+        "line": 2,
+        "hash": "460ffb403d4b9907"
+      },
+      "confidence": "observed",
+      "authority": "config"
+    },
+    {
+      "id": "ev_7b2ae5682685a36d",
+      "kind": "route",
+      "subject": "/dashboard",
+      "source": {
+        "file": "app/dashboard/page.tsx",
+        "hash": "119d4289d9a84a13"
+      },
+      "confidence": "observed",
+      "authority": "source"
+    },
+    {
+      "id": "ev_93a6649dcbcf88fe",
+      "kind": "route",
+      "subject": "/",
+      "source": {
+        "file": "app/page.tsx",
+        "hash": "9c5729e7c2efe865"
+      },
+      "confidence": "observed",
+      "authority": "source"
+    },
+    {
+      "id": "ev_db912203330a5c43",
+      "kind": "route",
+      "subject": "GET /api/users",
+      "source": {
+        "file": "app/api/users/route.ts",
+        "line": 3,
+        "hash": "8990e5ea37d7e20c"
+      },
+      "confidence": "observed",
+      "authority": "source"
+    }
+  ]
 }
