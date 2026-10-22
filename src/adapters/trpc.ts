@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { JS_SRC_EXTS as SRC_EXTS, lineAt, readSources, resolveModule } from "./util.js";
+import { JS_SRC_EXTS as SRC_EXTS, lineAt, readSources, regexLiteralAllowedAt, resolveModule } from "./util.js";
 
 // A router declaration: `export const userRouter = createTRPCRouter({ … })` or
 // the raw factory form `const adminRouter = t.router({ … })`. Captures the var
@@ -26,10 +26,6 @@ interface RouterDef {
   /** Inline nested routers: `sub: createTRPCRouter({ … })`. */
   inlineChildren: Array<{ name: string; def: RouterDef }>;
 }
-
-// After one of these (or a keyword below) a `/` opens a regex literal, not a division.
-const REGEX_AFTER = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
-const REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 
 const OPENERS = new Set(["{", "(", "["]);
 const CLOSERS = new Set(["}", ")", "]"]);
@@ -68,7 +64,7 @@ function literalEnd(src: string, i: number, last: string): number {
     }
     return n;
   }
-  if (c === "/" && (REGEX_AFTER.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd()))) {
+  if (c === "/" && regexLiteralAllowedAt(src, i, last)) {
     let inClass = false;
     for (let j = i + 1; j < n && src[j] !== "\n"; j++) {
       const d = src[j];

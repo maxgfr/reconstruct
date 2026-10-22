@@ -1,7 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
-import { parsePyCall, pyString, splitPyArgs } from "./fastapi.js";
 import type { RouteAdapter } from "./types.js";
-import { joinRoute, lineAt, pythonImportAliases, readSources, resolvePythonModule } from "./util.js";
+import { joinRoute, lineAt, parsePyCall, pyString, pythonImportAliases, readSources, resolvePythonModule, splitPyArgs, subModule } from "./util.js";
 
 // A `path("x", view)` / `re_path(r"^x$", view)` / legacy `url(r"^x$", view)`
 // entry. The view head (dotted) is captured so an `include(...)` / admin mount
@@ -29,9 +28,6 @@ function cleanRegex(pattern: string): string {
 function isApiContext(src: string, route: string): boolean {
   return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src) || /(^|\/)api(\/|$)/.test(route);
 }
-
-/** `pkg` + `name` -> the submodule path (`.` + `urls` -> `.urls`). */
-const subModule = (pkg: string, name: string): string => (pkg.endsWith(".") ? pkg + name : `${pkg}.${name}`);
 
 /**
  * The file an `include(<arg>)` argument names, from the including file `path`:

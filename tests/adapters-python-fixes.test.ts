@@ -73,6 +73,25 @@ app.include_router(router, prefix="/api")
     expect(route?.line).toBe(5);
   });
 
+  it("keeps the include prefix with a parenthesised multi-line import", () => {
+    const r = routesOf({
+      "requirements.txt": "fastapi\n",
+      "app/__init__.py": "",
+      "app/main.py": `from fastapi import FastAPI
+from .routers.items import (
+    router as items_router,  # the items API
+)
+
+app = FastAPI()
+app.include_router(items_router, prefix="/api")
+`,
+      "app/routers/__init__.py": "",
+      "app/routers/items.py": itemsRouter,
+    });
+    expect(has(r, "GET", "/api/items/{id}")).toBe(true);
+    expect(has(r, "GET", "/items/{id}")).toBe(false);
+  });
+
   it("keeps the include prefix with a src/ layout", () => {
     const r = routesOf({
       "requirements.txt": "fastapi\n",

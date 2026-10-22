@@ -1,7 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
-import { type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver } from "./fastapi.js";
 import type { RouteAdapter } from "./types.js";
-import { joinRoute, lineAt, readSources } from "./util.js";
+import { joinRoute, lineAt, type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver, readSources } from "./util.js";
 
 const HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
 // Only the heads are matched; the arguments are parsed bracket-balanced so a

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cmp, lineAt, resolveModule, resolvePythonModule, stripComments } from "../src/adapters/util.js";
+import { cmp, lineAt, pythonImportAliases, resolveModule, resolvePythonModule, stripComments } from "../src/adapters/util.js";
 
 // The shared lexical layer every route adapter reads through. Offsets must be
 // preserved exactly: provenance line numbers are computed on the stripped text.
@@ -91,5 +91,26 @@ describe("module resolution", () => {
     expect(resolvePythonModule("src/app/main.py", "app.routers.items", sources)).toBe("src/app/routers/items.py");
     expect(resolvePythonModule("src/app/routers/items.py", "..main", sources)).toBe("src/app/main.py");
     expect(resolvePythonModule("src/app/main.py", "nope", sources)).toBeNull();
+  });
+
+  it("reads parenthesised multi-line `from … import (…)` aliases", () => {
+    // Comments arrive blanked by readSources; a trailing comma is allowed.
+    const src = stripComments(
+      `from fastapi import FastAPI
+from .routers.items import (
+    router as items_router,  # the items API
+    helper,
+)
+from app.deps import (get_db, get_user as current_user)
+`,
+      ".py",
+    );
+    expect(Object.fromEntries(pythonImportAliases(src))).toEqual({
+      FastAPI: "fastapi::FastAPI",
+      items_router: ".routers.items::router",
+      helper: ".routers.items::helper",
+      get_db: "app.deps::get_db",
+      current_user: "app.deps::get_user",
+    });
   });
 });

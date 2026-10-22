@@ -40,6 +40,12 @@ export function lineAt(src: string, offset: number): number {
   return line;
 }
 
+/** Join route segments (prefixes + a path) into one normalized "/a/b" route. */
+export function joinRoute(...parts: string[]): string {
+  const segs = parts.join("/").split("/").filter(Boolean);
+  return "/" + segs.join("/");
+}
+
 type CommentSyntax = "js" | "c" | "python" | "ruby";
 
 const SYNTAX_BY_EXT: Record<string, CommentSyntax> = {
@@ -59,9 +65,17 @@ const SYNTAX_BY_EXT: Record<string, CommentSyntax> = {
   ".rb": "ruby",
 };
 
-// After one of these a `/` starts a regex literal, not a division.
+// After one of these (or a keyword below) a `/` starts a regex literal, not a division.
 const REGEX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
 const REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
+
+/**
+ * Whether a JS `/` at `i` opens a regex literal rather than a division. `last`
+ * is the previous significant code char (`a` for an operand, `""` at start).
+ */
+export function regexLiteralAllowedAt(src: string, i: number, last: string): boolean {
+  return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd());
+}
 
 /**
  * Replace every comment with spaces, keeping newlines, so offsets and line
@@ -183,7 +197,7 @@ export function stripComments(src: string, ext: string): string {
       continue;
     }
     if (syntax === "js") {
-      if (c === "/" && (REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd()))) {
+      if (c === "/" && regexLiteralAllowedAt(src, i, last)) {
         let j = i + 1;
         let inClass = false;
         while (j < n && src[j] !== "\n") {
@@ -244,6 +258,78 @@ export function resolveModule(fromFile: string, spec: string, sources: Map<strin
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// JS call scanning shared by the JS-family adapters (express, hono). Call
+// arguments nest calls, objects and literals, so they are split on TOP-LEVEL
+// commas of a bracket-balanced, string-aware scan.
+
+/** Index of the quote closing the JS string literal opened at `i`. */
+function skipJsString(src: string, i: number): number {
+  const q = src[i];
+  let j = i + 1;
+  while (j < src.length && src[j] !== q) {
+    if (src[j] === "\\") j++;
+    else if (src[j] === "\n" && q !== "`") break;
+    j++;
+  }
+  return j;
+}
+
+/**
+ * The top-level arguments of the call whose `(` is at `open`, and the index
+ * just past its `)`. Comments are already blanked by `readSources`, so only
+ * string literals need skipping.
+ */
+export function callArgs(src: string, open: number): { args: string[]; end: number } | null {
+  const args: string[] = [];
+  let depth = 0;
+  let from = open + 1;
+  for (let i = open; i < src.length; i++) {
+    const c = src[i] as string;
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipJsString(src, i);
+    } else if (c === "(" || c === "[" || c === "{") {
+      depth++;
+    } else if (c === ")" || c === "]" || c === "}") {
+      if (--depth === 0) {
+        args.push(src.slice(from, i));
+        return { args: args.map((a) => a.trim()).filter(Boolean), end: i + 1 };
+      }
+    } else if (c === "," && depth === 1) {
+      args.push(src.slice(from, i));
+      from = i + 1;
+    }
+  }
+  return null;
+}
+
+/** One `.name(args)` link of a call chain; `index` is the offset of `name`. */
+export interface ChainedCall {
+  name: string;
+  args: string[];
+  index: number;
+}
+
+/** The `.name(args)` calls chained from `pos` onward — `x.a(1)\n  .b(2)` → a, b. */
+export function chainCalls(src: string, pos: number): ChainedCall[] {
+  const calls: ChainedCall[] = [];
+  const re = /(\s*\.\s*)([A-Za-z_$][\w$]*)\s*\(/y;
+  for (;;) {
+    re.lastIndex = pos;
+    const m = re.exec(src);
+    if (!m) break;
+    const call = callArgs(src, pos + m[0].length - 1);
+    if (!call) break;
+    calls.push({ name: m[2] as string, args: call.args, index: pos + (m[1] as string).length });
+    pos = call.end;
+  }
+  return calls;
+}
+
+// ---------------------------------------------------------------------------
+// Python module resolution and call parsing shared by the Python adapters
+// (fastapi, flask, django).
+
 /** "routes/users.py" -> "routes.users" so an import path matches a file. */
 export function moduleName(path: string): string {
   return path
@@ -278,18 +364,16 @@ export function resolvePythonModule(fromFile: string, module: string, sources: M
   return hits[0] ?? null;
 }
 
-/** Join route segments (prefixes + a path) into one normalized "/a/b" route. */
-export function joinRoute(...parts: string[]): string {
-  const segs = parts.join("/").split("/").filter(Boolean);
-  return "/" + segs.join("/");
-}
-
-/** Map `alias -> "module::name"` for every `from module import name [as alias]`. */
+/**
+ * Map `alias -> "module::name"` for every `from module import name [as alias]`,
+ * including the parenthesised form `from module import (\n  a,\n  b as c,\n)`
+ * (spread over lines, trailing comma allowed; comments are already blanked).
+ */
 export function pythonImportAliases(src: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const m of src.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(.+)$/gm)) {
+  for (const m of src.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
     const module = m[1] as string;
-    for (const part of (m[2] as string).split(",")) {
+    for (const part of (m[2] ?? (m[3] as string)).split(",")) {
       const asMatch = part.trim().match(/^(\w+)(?:\s+as\s+(\w+))?$/);
       if (!asMatch) continue;
       const name = asMatch[1] as string;
@@ -298,4 +382,150 @@ export function pythonImportAliases(src: string): Map<string, string> {
     }
   }
   return out;
+}
+
+// Python call-argument parsing. Decorator / constructor arguments nest calls
+// and literals (`dependencies=[Depends(f)]`, `defaults=dict(page=1)`), so they
+// are split on TOP-LEVEL commas of a bracket-balanced, string-aware scan —
+// never a regex that stops at the first `)`.
+
+/** A parsed call: positional argument texts, keyword arguments, end offset. */
+export interface PyCall {
+  args: string[];
+  kwargs: Map<string, string>;
+  /** Offset just past the closing `)`. */
+  end: number;
+}
+
+/** Offset just past the Python string literal opening at `i`. */
+function skipPyString(src: string, i: number): number {
+  const q = src[i] as string;
+  const triple = q.repeat(3);
+  if (src.startsWith(triple, i)) {
+    const end = src.indexOf(triple, i + 3);
+    return end === -1 ? src.length : end + 3;
+  }
+  let j = i + 1;
+  while (j < src.length) {
+    const c = src[j];
+    if (c === "\\") {
+      j += 2;
+      continue;
+    }
+    if (c === q) return j + 1;
+    if (c === "\n") return j;
+    j++;
+  }
+  return src.length;
+}
+
+/**
+ * Walk `src` from `from` to `to`, calling `onTop(i)` for every character
+ * outside any bracket opened during the walk (string literals skipped).
+ * Returns the offset just past the first unmatched closing bracket, or `to`.
+ */
+function scanTop(src: string, from: number, to: number, onTop: (i: number) => void): number {
+  let depth = 0;
+  for (let i = from; i < to; i++) {
+    const c = src[i] as string;
+    if (c === '"' || c === "'") {
+      i = skipPyString(src, i) - 1;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (depth === 0) return i + 1;
+      depth--;
+    } else if (depth === 0) onTop(i);
+  }
+  return to;
+}
+
+/** Split a comma-separated argument list on its top-level commas. */
+export function splitPyArgs(inner: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  scanTop(inner, 0, inner.length, (i) => {
+    if (inner[i] !== ",") return;
+    parts.push(inner.slice(start, i));
+    start = i + 1;
+  });
+  parts.push(inner.slice(start));
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+/** Parse the call whose `(` is at offset `open` in `src`. */
+export function parsePyCall(src: string, open: number): PyCall {
+  const end = scanTop(src, open + 1, src.length, () => {});
+  const inner = src.slice(open + 1, src[end - 1] === ")" ? end - 1 : end);
+  const args: string[] = [];
+  const kwargs = new Map<string, string>();
+  for (const part of splitPyArgs(inner)) {
+    const kw = part.match(/^(\w+)\s*=(?!=)\s*([\s\S]*)$/);
+    if (kw) kwargs.set(kw[1] as string, kw[2] as string);
+    else if (!part.startsWith("*")) args.push(part);
+  }
+  return { args, kwargs, end };
+}
+
+/** The value of a plain string-literal expression (`"x"`, `r'^x$'`), else null. */
+export function pyString(expr: string | undefined): string | null {
+  const m = expr?.trim().match(/^[rRuUbB]{0,2}(["'])([^"'\n]*)\1$/);
+  return m ? (m[2] as string) : null;
+}
+
+/** HTTP methods listed in a `methods=[…]` / `(…)` / `{…}` value, uppercased. */
+export function pyMethods(expr: string | undefined): string[] {
+  if (!expr) return [];
+  return [...expr.matchAll(/["']([A-Za-z]+)["']/g)].map((v) => (v[1] as string).toUpperCase());
+}
+
+/** Map `alias -> module` for every `import a.b [as alias]` statement. */
+function pythonModuleImports(src: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of src.matchAll(/^[ \t]*import[ \t]+(.+)$/gm)) {
+    for (const part of (m[1] as string).split(",")) {
+      const im = part.trim().match(/^([\w.]+)(?:\s+as\s+(\w+))?$/);
+      if (!im) continue;
+      const module = im[1] as string;
+      out.set((im[2] as string) ?? module, module);
+    }
+  }
+  return out;
+}
+
+/** `pkg` + `name` -> the submodule path (`.` + `items` -> `.items`). */
+export const subModule = (pkg: string, name: string): string => (pkg.endsWith(".") ? pkg + name : `${pkg}.${name}`);
+
+/**
+ * Resolves a Python name or dotted reference in one file to the file-scoped
+ * key (`path::var`) of the object it names, following `from … import`
+ * (relative, aliased, source-rooted) and `import a.b [as x]` statements.
+ */
+export function pythonRefResolver(path: string, src: string, sources: Map<string, string>): (expr: string) => string | null {
+  const aliases = pythonImportAliases(src);
+  const modules = pythonModuleImports(src);
+  return (expr) => {
+    const parts = expr.split(".");
+    const attr = parts.pop() as string;
+    if (!parts.length) {
+      const alias = aliases.get(attr);
+      if (!alias) return `${path}::${attr}`;
+      const [module, name] = alias.split("::") as [string, string];
+      const file = resolvePythonModule(path, module, sources);
+      return file ? `${file}::${name}` : null;
+    }
+    // `mod.attr`: the head is a `from pkg import mod` submodule or an `import`.
+    const head = parts[0] as string;
+    const alias = aliases.get(head);
+    let module: string;
+    if (alias) {
+      const [pkg, name] = alias.split("::") as [string, string];
+      module = [subModule(pkg, name), ...parts.slice(1)].join(".");
+    } else {
+      module = modules.get(parts.join(".")) ?? parts.join(".");
+    }
+    const file = resolvePythonModule(path, module, sources);
+    return file ? `${file}::${attr}` : null;
+  };
 }

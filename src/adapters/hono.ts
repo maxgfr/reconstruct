@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { JS_SRC_EXTS as SRC_EXTS, joinRoute, lineAt, readSources, resolveModule } from "./util.js";
+import { type ChainedCall, JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, readSources, resolveModule } from "./util.js";
 
 // `new Hono()` / `new Hono<{ Bindings: Env }>()` — generics tolerated.
 const NEW_RE = /new\s+Hono\s*(?:<[^()]*?>)?\s*\(/g;
@@ -27,73 +27,11 @@ interface HonoVar {
   own: string;
 }
 
-interface Call {
-  name: string;
-  args: string[];
-  index: number;
-}
-
 function methodOf(verb: string): string {
   return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
 }
 
 const literal = (arg: string | undefined): string | undefined => arg?.match(LITERAL_RE)?.[2];
-
-/** Index of the quote closing the string literal opened at `i`. */
-function skipString(src: string, i: number): number {
-  const q = src[i];
-  let j = i + 1;
-  while (j < src.length && src[j] !== q) {
-    if (src[j] === "\\") j++;
-    else if (src[j] === "\n" && q !== "`") break;
-    j++;
-  }
-  return j;
-}
-
-/**
- * The top-level arguments of the call whose `(` is at `open`, and the index
- * just past its `)`. Comments are already blanked by `readSources`, so only
- * string literals need skipping.
- */
-function callArgs(src: string, open: number): { args: string[]; end: number } | null {
-  const args: string[] = [];
-  let depth = 0;
-  let from = open + 1;
-  for (let i = open; i < src.length; i++) {
-    const c = src[i] as string;
-    if (c === '"' || c === "'" || c === "`") {
-      i = skipString(src, i);
-    } else if (c === "(" || c === "[" || c === "{") {
-      depth++;
-    } else if (c === ")" || c === "]" || c === "}") {
-      if (--depth === 0) {
-        args.push(src.slice(from, i));
-        return { args: args.map((a) => a.trim()).filter(Boolean), end: i + 1 };
-      }
-    } else if (c === "," && depth === 1) {
-      args.push(src.slice(from, i));
-      from = i + 1;
-    }
-  }
-  return null;
-}
-
-/** The `.name(args)` calls chained from `pos` onward — `x.a(1)\n  .b(2)` → a, b. */
-function chainCalls(src: string, pos: number): Call[] {
-  const calls: Call[] = [];
-  const re = /(\s*\.\s*)([A-Za-z_$][\w$]*)\s*\(/y;
-  for (;;) {
-    re.lastIndex = pos;
-    const m = re.exec(src);
-    if (!m) break;
-    const call = callArgs(src, pos + m[0].length - 1);
-    if (!call) break;
-    calls.push({ name: m[2] as string, args: call.args, index: pos + (m[1] as string).length });
-    pos = call.end;
-  }
-  return calls;
-}
 
 /** Relative module + imported export name per local name (`"default"` for default imports). */
 function moduleSpecs(src: string): Map<string, { spec: string; name: string }> {
@@ -135,11 +73,11 @@ export const honoAdapter: RouteAdapter = {
     // A call's `rel` is the basePath accumulated earlier in its own chain;
     // `fresh` chains start at `new Hono()`, so the var's base does not apply.
     const varsByFile = new Map<string, Map<string, HonoVar>>();
-    const callsByFile = new Map<string, Array<{ recv: string; fresh: boolean; rel: string; call: Call }>>();
+    const callsByFile = new Map<string, Array<{ recv: string; fresh: boolean; rel: string; call: ChainedCall }>>();
     const exportsByFile = new Map<string, Map<string, string>>(); // export name → var
     for (const [path, src] of sources) {
       const vars = new Map<string, HonoVar>();
-      const calls: Array<{ recv: string; fresh: boolean; rel: string; call: Call }> = [];
+      const calls: Array<{ recv: string; fresh: boolean; rel: string; call: ChainedCall }> = [];
       const exportsOf = new Map<string, string>();
       const heads: Array<{ index: number; start: number; name: string | null }> = [];
       for (const m of src.matchAll(NEW_RE)) {
