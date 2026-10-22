@@ -373,6 +373,13 @@ export function parseArgs(argv: string[]): Options {
   if (actions > 1) {
     fail(`--check, --verify, --review, --brainstorm and --orchestrate are mutually exclusive — run one at a time`);
   }
+  // `--mcp` serves until killed, so anything combined with it would never run —
+  // `--mcp --check` used to exit 0 having checked nothing.
+  if (mcp && (actions > 0 || scratch || merge || features || specs)) {
+    fail(
+      "--mcp serves the tree and runs nothing else — drop --check/--verify/--review/--brainstorm/--orchestrate/--compare/--scratch/--merge/--features/--specs",
+    );
+  }
   if (raw.compare && (scratch || mcp || merge || summary || features || specs || raw.repo || raw.apply || semantic || allowUnverified)) {
     fail("--compare cannot be combined with other modes or semantic/apply options.");
   }

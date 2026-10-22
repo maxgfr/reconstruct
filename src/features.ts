@@ -343,7 +343,12 @@ export function buildFeatures(
   for (const r of routes) {
     // A workspace owning a route is by definition an "app" workspace.
     const ws = ctx && r.workspace ? workspaces.find((w) => w.name === r.workspace) : undefined;
-    const k = ws && ctx ? `${ctx.shortOf.get(ws.path)}/${routeKey(r.route)}` : routeKey(r.route);
+    const byUrl = ws && ctx ? `${ctx.shortOf.get(ws.path)}/${routeKey(r.route)}` : routeKey(r.route);
+    // File-system routers name their groups after the URL, so the URL key
+    // finds the group. Code-routed frameworks (Express, Rails, Go, …) declare
+    // `/users/:id` in a file whose group is named after the FILE — without
+    // this fallback the route matched no group and never reached a PRD.
+    const k = codeGroups.has(byUrl) ? byUrl : codeGroups.has(keyForFile(r.file)) ? keyForFile(r.file) : byUrl;
     if (ws && ctx && !ctx.groups.has(k)) ctx.groups.set(k, { ws, inner: routeKey(r.route) });
     const list = routesByKey.get(k) ?? [];
     list.push(r);

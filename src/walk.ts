@@ -203,7 +203,9 @@ function countLines(abs: string, size: number): number {
     for (let i = 0; i < content.length; i++) {
       if (content.charCodeAt(i) === 10) n++;
     }
-    return n;
+    // A trailing newline terminates the last line; it does not start a new one
+    // (`wc -l` semantics plus the unterminated last line, if any).
+    return content.charCodeAt(content.length - 1) === 10 ? n - 1 : n;
   } catch {
     return 0;
   }

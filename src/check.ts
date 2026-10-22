@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, posix, relative } from "node:path";
+import { fencedLines } from "./prd/markdown.js";
 import { hasUI } from "./design.js";
 import type { Inventory } from "./types.js";
 
@@ -42,7 +43,9 @@ function collectMarkdown(dir: string, base = dir): Doc[] {
       continue;
     }
     if (st.isDirectory()) {
-      if (SKIP_DIRS.has(name)) continue;
+      // A symlinked directory is never descended: a link back up the tree
+      // would recurse forever, and one pointing outside isn't the tree.
+      if (SKIP_DIRS.has(name) || lstatSync(full).isSymbolicLink()) continue;
       out.push(...collectMarkdown(full, base));
     } else if (name.endsWith(".md")) {
       out.push({ rel: relative(base, full).split("\\").join("/"), content: readFileSync(full, "utf8") });
@@ -74,8 +77,8 @@ function scanScaffolding(docs: Doc[], errors: string[]): void {
   }
 }
 
-/** Gather every filename under a directory tree (recursively). */
-function fileNames(dir: string): string[] {
+/** Gather every file path (relative to the first `dir`) under a directory tree. */
+function fileNames(dir: string, base = dir): string[] {
   const out: string[] = [];
   let entries: string[];
   try {
@@ -91,8 +94,9 @@ function fileNames(dir: string): string[] {
     } catch {
       continue;
     }
-    if (st.isDirectory()) out.push(...fileNames(full));
-    else out.push(name);
+    if (st.isDirectory()) {
+      if (!lstatSync(full).isSymbolicLink()) out.push(...fileNames(full, base));
+    } else out.push(relative(base, full).split("\\").join("/"));
   }
   return out;
 }
@@ -172,6 +176,9 @@ export function checkOutput(outDir: string): CheckResult {
     }
   }
 
+  // 3b. Link integrity (warning): every relative link resolves inside the tree.
+  warnings.push(...brokenLinks(outDir, docs));
+
   // 4. Feature PRD spine — enrichment must keep the demanding sections, and the
   //    sections must carry content (a spine of bare headings is not a PRD).
   for (const d of docs) {
@@ -232,8 +239,11 @@ export function checkOutput(outDir: string): CheckResult {
         .map((d) => d.content)
         .join("\n");
     for (const loc of inv.i18n.locales) {
-      const inFiles = names.some((n) => n.includes(loc));
-      const inCatalog = catalog.includes(`${loc}`);
+      // `it` is a locale AND an English word, and `item.json` contains it: match
+      // a path segment (`it.json`, `it/`) or a code-ish mention (`it`, "it",
+      // | it |, it-IT), never a bare substring of prose.
+      const inFiles = names.some((n) => n.split("/").some((seg) => localeTag(seg.replace(/\.[^.]+$/, ""), loc)));
+      const inCatalog = mentionsLocale(catalog, loc);
       if (!inFiles && !inCatalog) {
         warnings.push(`locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`);
       }
@@ -245,15 +255,68 @@ export function checkOutput(outDir: string): CheckResult {
 
 /** Whether a doc documents a token — as a word, not an incidental substring. */
 function documents(doc: string, token: string): boolean {
-  return doc.includes(token);
+  // `Item` must not pass because `OrderItem` is documented.
+  return new RegExp(`(?<!\\w)${escapeRe(token)}(?!\\w)`).test(doc);
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** `seg` names locale `loc` (`en`, `en-US`, `en_GB` all name `en`). */
+function localeTag(seg: string, loc: string): boolean {
+  return seg === loc || seg.startsWith(`${loc}-`) || seg.startsWith(`${loc}_`);
+}
+
+/** A code-ish mention of a locale tag — never a bare word of prose. */
+function mentionsLocale(text: string, loc: string): boolean {
+  const l = escapeRe(loc);
+  const forms = [
+    `\`${l}(?:[-_][A-Za-z]{2,4})?\``, // `en`, `en-US`
+    `["']${l}["']`, // "en"
+    `[/[(]${l}[/\\])]`, // /en/, (en)
+    `(?<!\\w)${l}\\.json\\b`, // en.json
+    `\\|\\s*${l}\\s*\\|`, // | en |
+    `(?<!\\w)${l}[-_][A-Z]{2}\\b`, // en-US
+  ];
+  return new RegExp(forms.join("|")).test(text);
 }
 
 /** Markdown with fenced code blocks and inline code spans removed. */
 function stripCode(s: string): string {
-  return s
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/~~~[\s\S]*?~~~/g, "")
+  return fencedLines(s)
+    .filter((l) => !l.code)
+    .map((l) => l.line)
+    .join("\n")
     .replace(/`[^`\n]*`/g, "");
+}
+
+/**
+ * Relative links in tree docs that point at nothing. A bundle inlining a PRD
+ * without rebasing its links, or a PRD naming a source file that was never
+ * copied, leaves a builder following a dead reference.
+ */
+function brokenLinks(outDir: string, docs: Doc[]): string[] {
+  const out: string[] = [];
+  for (const d of docs) {
+    const dir = posix.dirname(d.rel);
+    const prose = fencedLines(d.content)
+      .filter((l) => !l.code)
+      .map((l) => l.line.replace(/`[^`\n]*`/g, ""))
+      .join("\n");
+    for (const m of prose.matchAll(/\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"]*")?\)/g)) {
+      const target = (m[1] ?? m[2] ?? "").split("#")[0] as string;
+      if (target === "" || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(target)) continue;
+      let decoded = target;
+      try {
+        decoded = decodeURI(target);
+      } catch {
+        /* keep the raw target */
+      }
+      if (!existsSync(join(outDir, posix.normalize(posix.join(dir, decoded))))) out.push(`${d.rel}: broken link → ${target}`);
+    }
+  }
+  return out;
 }
 
 /**
