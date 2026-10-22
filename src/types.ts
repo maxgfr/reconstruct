@@ -152,6 +152,11 @@ export interface FileInfo {
 export interface RouteInfo {
   route: string;
   file: string;
+  /**
+   * 1-based line in `file` where the route is declared (provenance). Omitted
+   * for file-system routes, whose declaration IS the file.
+   */
+  line?: number;
   kind: "page" | "api" | "layout" | "component";
   /**
    * HTTP method/verb when the framework declares one (`GET`, `POST`, …; `*` for
