@@ -33,11 +33,29 @@ export function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+// Line-start offsets of the last source asked about. Adapters call lineAt once
+// per match while scanning one file, so a one-entry cache turns a rescan from
+// offset 0 per match into one pass per file plus a binary search per lookup.
+let startsSrc: string | undefined;
+let starts: number[] = [];
+
 /** 1-based line number of a character offset. */
 export function lineAt(src: string, offset: number): number {
-  let line = 1;
-  for (let i = 0; i < offset && i < src.length; i++) if (src.charCodeAt(i) === 10) line++;
-  return line;
+  if (src !== startsSrc) {
+    starts = [0];
+    for (let i = src.indexOf("\n"); i !== -1; i = src.indexOf("\n", i + 1)) starts.push(i + 1);
+    startsSrc = src;
+  }
+  // Number of line starts at or before the offset.
+  const at = Math.min(offset, src.length);
+  let lo = 0;
+  let hi = starts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((starts[mid] as number) <= at) lo = mid + 1;
+    else hi = mid;
+  }
+  return Math.max(1, lo);
 }
 
 /** Join route segments (prefixes + a path) into one normalized "/a/b" route. */
@@ -46,13 +64,13 @@ export function joinRoute(...parts: string[]): string {
   return "/" + segs.join("/");
 }
 
-type CommentSyntax = "js" | "c" | "python" | "ruby";
+type CommentSyntax = "js" | "jsx" | "c" | "python" | "ruby";
 
 const SYNTAX_BY_EXT: Record<string, CommentSyntax> = {
   ".js": "js",
-  ".jsx": "js",
+  ".jsx": "jsx",
   ".ts": "js",
-  ".tsx": "js",
+  ".tsx": "jsx",
   ".mts": "js",
   ".cts": "js",
   ".mjs": "js",
@@ -67,6 +85,8 @@ const SYNTAX_BY_EXT: Record<string, CommentSyntax> = {
 
 // After one of these (or a keyword below) a `/` starts a regex literal, not a division.
 const REGEX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
+// Ruby: after these a `/` opens a regex (`path: /x/`, `=~ /x/`, `(/x/`).
+const RUBY_REGEX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "{", "!", "&", "|", "~"]);
 const REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 
 /**
@@ -111,10 +131,14 @@ export function stripComments(src: string, ext: string): string {
     return n;
   };
 
+  // The previous significant code char (`a` for an operand): decides whether a
+  // `/` opens a regex literal.
+  let last = "";
+
   if (syntax === "python" || syntax === "ruby") {
     let i = 0;
     while (i < n) {
-      const c = src[i];
+      const c = src[i] as string;
       if (syntax === "ruby" && c === "=" && (i === 0 || src[i - 1] === "\n") && src.startsWith("=begin", i)) {
         const end = src.indexOf("\n=end", i);
         const stop = end === -1 ? n : eolFrom(end + 1);
@@ -129,9 +153,19 @@ export function stripComments(src: string, ext: string): string {
           const end = src.indexOf(c.repeat(3), i + 3);
           i = end === -1 ? n : end + 3;
         } else {
-          i = skipString(c, i, syntax === "ruby");
+          // Single-line even in Ruby (which allows multi-line strings): a quote
+          // this scanner misreads — inside a %-literal or a heredoc — then
+          // costs one line, not every comment below it.
+          i = skipString(c, i, false);
         }
+        last = "a";
+      } else if (syntax === "ruby" && c === "/" && RUBY_REGEX_PRECEDES.has(last)) {
+        // A Ruby regex literal (`constraints: { path: /[^']+/ }`): its quotes
+        // and `#` are not code. Bounded to the line, like strings.
+        i = skipString("/", i, false);
+        last = "a";
       } else {
+        if (!/\s/.test(c)) last = /[\w$)\]}]/.test(c) ? "a" : c;
         i++;
       }
     }
@@ -142,7 +176,6 @@ export function stripComments(src: string, ext: string): string {
   // at which the enclosing template body resumes.
   const templates: number[] = [];
   let depth = 0;
-  let last = "";
   const skipTemplate = (from: number): number => {
     let j = from;
     while (j < n) {
@@ -173,9 +206,18 @@ export function stripComments(src: string, ext: string): string {
     }
     if (c === "/" && next === "*") {
       const end = src.indexOf("*/", i + 2);
-      const stop = end === -1 ? n : end + 2;
-      blank(i, stop);
-      i = stop;
+      // Not a comment: an unterminated `/*` (a scanner misread, or a syntax
+      // error) and, in JSX, a `/*` in element text — anything but whitespace
+      // or `{` before it on its line, without a close on that same line.
+      // Blanking those would erase every route down to the next `*/`.
+      const lineStart = src.lastIndexOf("\n", i) + 1;
+      const jsxText = syntax === "jsx" && !/^[\s{]*$/.test(src.slice(lineStart, i)) && (end === -1 || end > eolFrom(i));
+      if (end === -1 || jsxText) {
+        i += 2;
+        continue;
+      }
+      blank(i, end + 2);
+      i = end + 2;
       continue;
     }
     if (c === '"' || c === "'") {
@@ -196,7 +238,7 @@ export function stripComments(src: string, ext: string): string {
       last = "a";
       continue;
     }
-    if (syntax === "js") {
+    if (syntax === "js" || syntax === "jsx") {
       if (c === "/" && regexLiteralAllowedAt(src, i, last)) {
         let j = i + 1;
         let inClass = false;
@@ -352,17 +394,29 @@ export function resolvePythonModule(fromFile: string, module: string, sources: M
     pkg.splice(pkg.length - (dots - 1));
     abs = [...pkg, ...module.slice(dots).split(".").filter(Boolean)].join(".");
   }
-  const byModule = new Map<string, string>();
-  for (const p of sources.keys()) if (p.endsWith(".py")) byModule.set(moduleName(p), p);
-  const exact = byModule.get(abs);
+  let index = pythonModuleIndexes.get(sources);
+  if (!index) {
+    const byModule = new Map<string, string>();
+    for (const p of sources.keys()) if (p.endsWith(".py")) byModule.set(moduleName(p), p);
+    index = { byModule, bySuffix: new Map() };
+    pythonModuleIndexes.set(sources, index);
+  }
+  const exact = index.byModule.get(abs);
   if (exact) return exact;
   // Otherwise the shortest path whose module name ends with `.abs`: the
   // unspelled prefix is a source root like `src/` or `backend/`.
-  const suffix = `.${abs}`;
-  const hits = [...byModule.entries()].filter(([m]) => m.endsWith(suffix)).map(([, p]) => p);
-  hits.sort((a, b) => a.length - b.length || cmp(a, b));
-  return hits[0] ?? null;
+  if (!index.bySuffix.has(abs)) {
+    const suffix = `.${abs}`;
+    const hits = [...index.byModule.entries()].filter(([m]) => m.endsWith(suffix)).map(([, p]) => p);
+    hits.sort((a, b) => a.length - b.length || cmp(a, b));
+    index.bySuffix.set(abs, hits[0] ?? null);
+  }
+  return index.bySuffix.get(abs) ?? null;
 }
+
+// Module-name index per source set (one detectRoutes pass reuses its Map), so
+// resolving every decorator and include does not rebuild it each time.
+const pythonModuleIndexes = new WeakMap<Map<string, string>, { byModule: Map<string, string>; bySuffix: Map<string, string | null> }>();
 
 /**
  * Map `alias -> "module::name"` for every `from module import name [as alias]`,

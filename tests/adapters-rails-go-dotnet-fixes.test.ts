@@ -73,6 +73,11 @@ function opts(repo: string): Options {
 describe("rails adapter fixes", () => {
   const routesRb = (body: string) => ({ "config/routes.rb": `Rails.application.routes.draw do\n${body}\nend\n` });
 
+  it("a quote inside a route's regex constraint does not revive a commented-out route", () => {
+    const r = run(railsAdapter, routesRb('  get "files/*path", constraints: { path: /[^\']+/ }\n  # get "/legacy"'));
+    expect(ops(r)).toEqual(["GET /files/*path"]);
+  });
+
   it("honors `only:` given as a single symbol", () => {
     const r = run(railsAdapter, routesRb("  resources :photos, only: :show"));
     expect(ops(r)).toEqual(["GET /photos/:id"]);

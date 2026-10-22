@@ -29,7 +29,7 @@ function seal(rec: Omit<UnknownRecord, "digest">): UnknownRecord {
   return { ...rec, digest: unknownDigest(rec) };
 }
 
-function readInventory(outDir: string): Inventory {
+export function readInventory(outDir: string): Inventory {
   try {
     return JSON.parse(readFileSync(join(outDir, "inventory.json"), "utf8")) as Inventory;
   } catch {
@@ -91,6 +91,20 @@ export interface UnknownUpdate {
   note?: string;
 }
 
+/**
+ * The citation rules a record must meet, shared by `--apply` and the gate so a
+ * hand-edited ledger cannot settle a question the apply path would refuse.
+ */
+function citationProblems(rec: Pick<UnknownRecord, "status" | "evidence" | "contradicting">, inv: Inventory): string[] {
+  const problems: string[] = [];
+  if (rec.status === "resolved" && rec.evidence.length === 0) problems.push("`resolved` needs at least one `evidence` citation");
+  for (const ref of [...rec.evidence, ...rec.contradicting]) {
+    if (!resolveEvidence(ref, inv)) problems.push(`citation does not resolve against the inventory: ${ref}`);
+  }
+  if (rec.status === "contradicted" && rec.contradicting.length === 0) problems.push("`contradicted` needs a `contradicting` citation");
+  return problems;
+}
+
 function strList(v: unknown): string[] | undefined {
   return Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : undefined;
 }
@@ -135,11 +149,7 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
     const evidence = strList(row.evidence) ?? prev?.evidence ?? [];
     const contradicting = strList(row.contradicting) ?? prev?.contradicting ?? [];
     const recommendedProbes = strList(row.recommendedProbes) ?? prev?.recommendedProbes ?? [];
-    if (status === "resolved" && evidence.length === 0) problems.push(`${label}: \`resolved\` needs at least one \`evidence\` citation`);
-    for (const ref of [...evidence, ...contradicting]) {
-      if (!resolveEvidence(ref, inv)) problems.push(`${label}: citation does not resolve against the inventory: ${ref}`);
-    }
-    if (status === "contradicted" && contradicting.length === 0) problems.push(`${label}: \`contradicted\` needs a \`contradicting\` citation`);
+    for (const p of citationProblems({ status, evidence, contradicting }, inv)) problems.push(`${label}: ${p}`);
     const id = prev?.id ?? `U${++next}`;
     const feature = typeof row.feature === "string" ? row.feature : prev?.feature;
     const note = typeof row.note === "string" ? row.note : prev?.note;
@@ -170,7 +180,12 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
   return out;
 }
 
-/** Fold the ledger into a check: open blockers fail, a broken digest warns. Absent ledger: nothing. */
+/**
+ * Fold the ledger into a check: open blockers fail, and so does a record that
+ * breaks the apply-time rules (a malformed record, a `resolved` without a
+ * citation, a citation that no longer resolves). A broken digest alone warns.
+ * Absent ledger: nothing.
+ */
 export function foldUnknowns(outDir: string, check: CheckResult): void {
   let ledger: UnknownsLedger | undefined;
   try {
@@ -180,12 +195,34 @@ export function foldUnknowns(outDir: string, check: CheckResult): void {
     return;
   }
   if (!ledger) return;
+  let inv: Inventory | undefined;
+  try {
+    inv = readInventory(outDir);
+  } catch {
+    // checkOutput already fails a tree without a readable inventory.
+  }
   for (const u of ledger.unknowns) {
+    const label = `${UNKNOWNS_FILE}: ${typeof u?.id === "string" ? u.id : "a record"}`;
+    if (
+      typeof u?.id !== "string" ||
+      typeof u.question !== "string" ||
+      !SEVERITIES.includes(u.severity) ||
+      !STATUSES.includes(u.status) ||
+      !strList(u.evidence) ||
+      !strList(u.contradicting) ||
+      !strList(u.recommendedProbes)
+    ) {
+      check.errors.push(
+        `${label} is malformed (id, question, severity, status, evidence[], contradicting[], recommendedProbes[]) — record it with --unknowns --apply`,
+      );
+      continue;
+    }
     const { digest, ...rest } = u;
     if (digest !== unknownDigest(rest)) {
-      check.warnings.push(
-        `${UNKNOWNS_FILE}: ${u.id} was edited by hand (digest mismatch) — record changes with --unknowns --apply so the revision chain holds`,
-      );
+      check.warnings.push(`${label} was edited by hand (digest mismatch) — record changes with --unknowns --apply so the revision chain holds`);
+    }
+    if (inv) {
+      for (const p of citationProblems(u, inv)) check.errors.push(`${label}: ${p}`);
     }
     if (u.severity === "blocker" && UNSETTLED.has(u.status)) {
       check.errors.push(

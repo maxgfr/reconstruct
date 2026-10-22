@@ -168,11 +168,13 @@ export const railsAdapter: RouteAdapter = {
       };
 
       // Comments are already blanked by readSources (offsets kept), so a
-      // trailing `# note` after `do` no longer hides the block opener.
+      // trailing `# note` after `do` no longer hides the block opener. A line
+      // that still starts with `#` is skipped anyway: the blanking is lexical
+      // and a construct it misreads must not revive a commented-out route.
       for (const rawLine of src.split(/\r?\n/)) {
         lineNo++;
         const line = rawLine.trim();
-        if (!line) continue;
+        if (!line || line.startsWith("#")) continue;
 
         // --- routes declared on this line, under the active prefix ---
         if (ROOT_RE.test(line)) emit(joinRoute(...verbPrefix()), "GET");

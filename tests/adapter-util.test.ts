@@ -55,6 +55,23 @@ describe("stripComments", () => {
     expect(stripComments('[Route(@"api//""q""")] // x\n', ".cs")).not.toContain("// x");
   });
 
+  it("a `/*` in JSX text, or one never closed, erases nothing after it", () => {
+    const tsx = '<p>Use /* here</p>\napp.get("/a")\n';
+    expect(stripComments(tsx, ".tsx")).toBe(tsx);
+    expect(stripComments('const re = 1; /* never closed\napp.get("/a")\n', ".ts")).toContain('app.get("/a")');
+    // Real JSX comments and JSDoc blocks are still blanked.
+    expect(stripComments('<div>{/* app.get("/x") */}</div>\n  /**\n   * app.get("/y")\n   */\n', ".tsx")).not.toMatch(/app\.get/);
+  });
+
+  it("a quote inside a Ruby regex cannot revive the comment below it", () => {
+    const rb = 'get "files/*path", constraints: { path: /[^\']+/ }\n# get "/legacy"\n';
+    const out = stripComments(rb, ".rb");
+    expect(out).toContain('get "files/*path"');
+    expect(out).not.toContain("/legacy");
+    // A misread quote costs at most its own line.
+    expect(stripComments('x = %w[it\'s]\n# get "/old"\n', ".rb")).not.toContain("/old");
+  });
+
   it("leaves unknown extensions untouched", () => {
     expect(stripComments("# not code // at all", ".md")).toBe("# not code // at all");
   });
@@ -65,6 +82,13 @@ describe("lineAt / cmp", () => {
     const src = "a\nb\nc";
     expect(lineAt(src, 0)).toBe(1);
     expect(lineAt(src, src.indexOf("c"))).toBe(3);
+  });
+
+  it("agrees with a plain newline count at every offset, across sources", () => {
+    const naive = (s: string, o: number) => s.slice(0, Math.max(0, o)).split("\n").length;
+    for (const s of ["", "\n", "a\n\nb\n", "x\ny\nz"]) {
+      for (let o = -1; o <= s.length + 2; o++) expect(lineAt(s, o), `${JSON.stringify(s)}@${o}`).toBe(naive(s, o));
+    }
   });
 
   it("orders by code unit, independent of the user's locale", () => {

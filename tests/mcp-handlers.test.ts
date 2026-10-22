@@ -146,6 +146,15 @@ describe("read", () => {
     expect(await errorText("reconstruct_read", { out: TREE, repo: home, path: join(home, "secret.txt") })).toMatch(/outside the reconstruction tree/);
   });
 
+  it("does not trust a listed relative path in another repo", async () => {
+    // Another project with the same layout: `src/server.js` is listed in the
+    // inventory, but these bytes are not the ones the tree was built from.
+    const other = join(REPO, "..", "other-project");
+    mkdirSync(join(other, "src"), { recursive: true });
+    writeFileSync(join(other, "src", "server.js"), "const SECRET = 'other project';\n");
+    expect(await errorText("reconstruct_read", { out: TREE, repo: other, path: join(other, "src/server.js") })).toMatch(/byte for byte/);
+  });
+
   it("refuses a path outside the tree", async () => {
     // Containment is the whole point: this server can be reached over HTTP.
     expect(await errorText("reconstruct_read", { out: TREE, path: "/etc/passwd" })).toMatch(/outside the reconstruction tree/);

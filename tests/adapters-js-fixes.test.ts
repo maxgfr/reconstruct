@@ -25,6 +25,36 @@ function run(adapter: RouteAdapter, files: Record<string, string>): RouteInfo[] 
 const sig = (routes: RouteInfo[]): string[] => routes.map((r) => `${r.method ?? "-"} ${r.route}`).sort();
 
 describe("express adapter fixes", () => {
+  it("a named require/import mounts that router only, not every router in the module", () => {
+    const routers = `const express = require("express");
+const usersRouter = express.Router();
+const adminRouter = express.Router();
+usersRouter.get("/login", (req, res) => res.send());
+adminRouter.get("/stats", (req, res) => res.send());
+module.exports = { usersRouter, adminRouter };
+`;
+    const viaRequire = run(expressAdapter, {
+      "routes/index.js": routers,
+      "app.js": `const express = require("express");
+const app = express();
+const { usersRouter, adminRouter: admin } = require("./routes");
+app.use("/users", usersRouter);
+app.use("/admin", admin);
+`,
+    });
+    expect(sig(viaRequire)).toEqual(["GET /admin/stats", "GET /users/login"]);
+    const viaImport = run(expressAdapter, {
+      "routes/index.js": routers,
+      "app.js": `import express from "express";
+import { usersRouter as users, adminRouter } from "./routes";
+const app = express();
+app.use("/users", users);
+app.use("/admin", adminRouter);
+`,
+    });
+    expect(sig(viaImport)).toEqual(["GET /admin/stats", "GET /users/login"]);
+  });
+
   it("resolves routes on typed instances and Router({ options })", () => {
     const r = run(expressAdapter, {
       "app.ts": `import express, { Express, Router } from "express";

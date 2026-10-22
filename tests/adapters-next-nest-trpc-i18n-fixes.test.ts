@@ -112,6 +112,14 @@ describe("nestjs: setGlobalPrefix scope", () => {
     });
     expect(sig(routes)).toEqual(["GET /api/users", "GET /health", "GET /metrics"]);
   });
+
+  it("a prefix set in a bootstrap helper still governs its whole app", () => {
+    const routes = routesOf(nestjsAdapter, {
+      "src/config/setup.ts": 'export function setup(app) {\n  app.setGlobalPrefix("api");\n}\n',
+      "src/users/users.controller.ts": ctrl("users"),
+    });
+    expect(sig(routes)).toEqual(["GET /api/users"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

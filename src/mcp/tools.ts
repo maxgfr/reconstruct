@@ -130,8 +130,8 @@ export const TOOLS: ToolDecl[] = [
     title: "The residual-unknowns ledger",
     description:
       "List what the reconstruction still does not know (UNKNOWNS.json, seeded from the engine's unknowns on first use), or record updates: new " +
-      "unknowns, a status change, the evidence that settles one. Fail-closed: `resolved` needs a citation that resolves against the inventory, and an " +
-      "unsettled blocker fails reconstruct_check.",
+      "unknowns, a status change, the evidence that settles one (`updates` need a server started with --allow-write). Fail-closed: `resolved` needs a " +
+      "citation that resolves against the inventory, and an unsettled blocker fails reconstruct_check.",
     inputSchema: {
       type: "object",
       properties: {

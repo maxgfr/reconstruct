@@ -103,13 +103,32 @@ describe("updates", () => {
     const { digest, ...rest } = ledger.unknowns[0]!;
     expect(unknownDigest(rest)).toBe(digest);
   });
+
+  it("the gate re-applies the citation rules: a hand-settled blocker still fails", () => {
+    const ledger = applyUnknownUpdates(out, [{ question: "Which DB?", severity: "blocker" }]);
+    const settle = (patch: Partial<UnknownsLedger["unknowns"][number]>) =>
+      writeFileSync(join(out, UNKNOWNS_FILE), JSON.stringify({ ...ledger, unknowns: ledger.unknowns.map((u) => ({ ...u, ...patch })) }));
+    settle({ status: "resolved", evidence: [] });
+    expect(blockerErrors().some((e) => /`resolved` needs at least one `evidence`/.test(e))).toBe(true);
+    settle({ status: "resolved", evidence: ["ev_0000000000000000"] });
+    expect(blockerErrors().some((e) => /does not resolve/.test(e))).toBe(true);
+    settle({ status: "resolved", evidence: "nope" as unknown as string[] });
+    expect(blockerErrors().some((e) => /is malformed/.test(e))).toBe(true);
+    settle({ status: "resolved", evidence: [inv.evidence?.[0]?.id as string] });
+    expect(blockerErrors()).toEqual([]);
+  });
 });
 
 describe("MCP reconstruct_unknowns", () => {
   it("lists, records and reports the gate", async () => {
     const listed = JSON.parse((await callTool("reconstruct_unknowns", { out })).text);
     expect(listed.ok).toBe(true);
-    const recorded = JSON.parse((await callTool("reconstruct_unknowns", { out, updates: [{ question: "Which DB?", severity: "blocker" }] })).text);
+    // Listing seeds in memory only: a read-only server writes nothing.
+    expect(existsSync(join(out, UNKNOWNS_FILE))).toBe(false);
+    const updates = [{ question: "Which DB?", severity: "blocker" }];
+    // Recording rewrites what the gate reads: refused on a read-only server.
+    await expect(callTool("reconstruct_unknowns", { out, updates })).rejects.toMatchObject({ recovery: { kind: "grant_write" } });
+    const recorded = JSON.parse((await callTool("reconstruct_unknowns", { out, updates }, { allowWrite: true })).text);
     expect(recorded.ok).toBe(false);
     expect(recorded.gate.errors[0]).toMatch(/blocker U\d+ is open/);
   });

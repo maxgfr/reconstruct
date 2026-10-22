@@ -462,6 +462,14 @@ export interface CheckFinding {
 // matches on. First match wins, so specific patterns come before broad ones.
 const FINDING_RULES: [RegExp, string, string][] = [
   [/no inventory\.json|inventory\.json is not valid JSON/, "RC000_NO_TREE", "Run the analyzer to scaffold a tree, then enrich it."],
+  // Path-prefixed findings first: their message names a document, which a
+  // broad pattern below (DESIGN-SYSTEM.md, VERIFY.json…) would otherwise claim.
+  [/: broken link →/, "RC060_BROKEN_LINK", "Point the link at a file that exists in the tree, or remove it."],
+  [/^stale evidence/, "RC061_STALE_EVIDENCE", "Re-run the analyzer against the current repo, then re-verify the affected requirements."],
+  [/^UNKNOWNS\.json: blocker /, "RC070_OPEN_BLOCKER_UNKNOWN", "Settle the blocker with reconstruct_unknowns / --unknowns --apply, citing evidence."],
+  [/^UNKNOWNS\.json: \S+ was edited by hand/, "RC071_UNKNOWN_EDITED", "Record unknown changes through --unknowns --apply so the revision chain holds."],
+  [/not a valid unknowns ledger/, "RC072_UNKNOWNS_CORRUPT", "Repair or delete UNKNOWNS.json, then re-run --unknowns."],
+  [/^UNKNOWNS\.json: /, "RC073_UNKNOWN_INVALID", "Fix the record (a resolving citation for resolved/contradicted) through --unknowns --apply."],
   [
     /^missing required document/,
     "RC001_MISSING_DOC",
@@ -475,13 +483,7 @@ const FINDING_RULES: [RegExp, string, string][] = [
   [/has no content — fill it/, "RC031_EMPTY_SECTION", "Write the section from the source: a heading alone is not a PRD section."],
   [/declares no entities/, "RC040_EMPTY_DATA_MODEL", "Enumerate every entity with its fields in architecture/DATA-MODEL.md."],
   [/declares no operations/, "RC041_EMPTY_INTERFACES", "Enumerate every operation in architecture/INTERFACES.md."],
-  [/DESIGN-SYSTEM\.md/, "RC042_DESIGN_SYSTEM", "Capture tokens, theming, typography, components and a11y in architecture/DESIGN-SYSTEM.md."],
   [/^locale `/, "RC050_LOCALE_COVERAGE", "Copy the locale's messages under data/translations/ or cover it in the message catalog."],
-  [/broken link →/, "RC060_BROKEN_LINK", "Point the link at a file that exists in the tree, or remove it."],
-  [/^stale evidence/, "RC061_STALE_EVIDENCE", "Re-run the analyzer against the current repo, then re-verify the affected requirements."],
-  [/UNKNOWNS\.json: blocker/, "RC070_OPEN_BLOCKER_UNKNOWN", "Settle the blocker with reconstruct_unknowns / --unknowns --apply, citing evidence."],
-  [/digest mismatch/, "RC071_UNKNOWN_EDITED", "Record unknown changes through --unknowns --apply so the revision chain holds."],
-  [/not a valid unknowns ledger/, "RC072_UNKNOWNS_CORRUPT", "Repair or delete UNKNOWNS.json, then re-run --unknowns."],
   [/semantic verification failed/, "RC085_REQUIREMENT_FAILED", "Fix or remove each refuted/unsupported requirement (see VERIFY.json), then re-verify."],
   [/adjudicated against content that has since changed|carry no content fingerprint/, "RC081_STALE_VERDICTS", "Re-run --verify then --verify --apply."],
   [/were dropped|never offered/, "RC082_VERIFY_COVERAGE", "Adjudicate every requirement (raise --max-verify), then --verify --apply."],
@@ -493,6 +495,8 @@ const FINDING_RULES: [RegExp, string, string][] = [
   [/buildability review failed/, "RC092_REVIEW_BLOCKERS", "Fix each unrefuted blocker in REVIEW.json, then run another review round."],
   [/review made no progress/, "RC093_REVIEW_STALLED", "Fix the shared architecture contract, or record the blockers as known gaps."],
   [/REVIEW\.json/, "RC090_NO_REVIEW", "Run --review, record findings, then --review --apply."],
+  // Broadest last: any other message that merely names the design system.
+  [/DESIGN-SYSTEM\.md/, "RC042_DESIGN_SYSTEM", "Capture tokens, theming, typography, components and a11y in architecture/DESIGN-SYSTEM.md."],
 ];
 
 /** The check result as typed findings with stable codes. */

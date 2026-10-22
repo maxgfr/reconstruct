@@ -44,25 +44,24 @@ function isRoutePath(p: string): boolean {
   return p.startsWith("/") || p === "*";
 }
 
-/** Relative module spec per local name, from `require`/`import` (default and named). */
-function moduleSpecs(src: string): Map<string, string> {
-  const out = new Map<string, string>();
-  const names = (list: string) =>
-    list
-      .split(",")
-      .map(
-        (s) =>
-          s
-            .trim()
-            .split(/\s+as\s+|\s*:\s*/)
-            .pop() ?? "",
-      )
-      .filter((s) => IDENT_RE.test(s));
-  for (const m of src.matchAll(REQUIRE_RE)) out.set(m[1] as string, m[2] as string);
-  for (const m of src.matchAll(REQUIRE_NAMED_RE)) for (const n of names(m[1] as string)) out.set(n, m[2] as string);
+/**
+ * Relative module spec per local name, from `require`/`import` (default and
+ * named). A named binding also keeps the name it was exported under, so a
+ * mount can target that one router rather than every router in the module.
+ */
+function moduleSpecs(src: string): Map<string, { spec: string; exported?: string }> {
+  const out = new Map<string, { spec: string; exported?: string }>();
+  const bind = (list: string, spec: string) => {
+    for (const part of list.split(",")) {
+      const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
+      if (IDENT_RE.test(local) && IDENT_RE.test(exported)) out.set(local, { spec, exported });
+    }
+  };
+  for (const m of src.matchAll(REQUIRE_RE)) out.set(m[1] as string, { spec: m[2] as string });
+  for (const m of src.matchAll(REQUIRE_NAMED_RE)) bind(m[1] as string, m[2] as string);
   for (const m of src.matchAll(IMPORT_RE)) {
-    if (m[1]) out.set(m[1], m[3] as string);
-    if (m[2]) for (const n of names(m[2])) out.set(n, m[3] as string);
+    if (m[1]) out.set(m[1], { spec: m[3] as string });
+    if (m[2]) bind(m[2], m[3] as string);
   }
   return out;
 }
@@ -86,8 +85,10 @@ export const expressAdapter: RouteAdapter = {
     const instancesByFile = new Map<string, Set<string>>();
     const uses: Array<{ file: string; receiver: string; prefix: string; target: string }> = [];
     for (const [path, src] of sources) {
-      const instances = new Set([...localVars(src, APP_RE), ...localVars(src, ROUTER_RE)]);
-      instancesByFile.set(path, instances);
+      instancesByFile.set(path, new Set([...localVars(src, APP_RE), ...localVars(src, ROUTER_RE)]));
+    }
+    for (const [path, src] of sources) {
+      const instances = instancesByFile.get(path) ?? new Set<string>();
       const moduleOf = moduleSpecs(src);
       for (const m of src.matchAll(USE_RE)) {
         const call = callArgs(src, (m.index ?? 0) + (m[0] as string).length - 1);
@@ -97,10 +98,15 @@ export const expressAdapter: RouteAdapter = {
         // Every argument after the path may be the router — middleware
         // (`use("/api", auth, r)`) simply resolves to no mountable node.
         for (const arg of literal ? call.args.slice(1) : call.args) {
-          const spec = arg.match(INLINE_REQUIRE_RE)?.[1] ?? (IDENT_RE.test(arg) ? moduleOf.get(arg) : undefined);
+          const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
+          const imported = inline ? { spec: inline } : IDENT_RE.test(arg) ? moduleOf.get(arg) : undefined;
           let target: string | null = null;
-          if (spec) target = resolveModule(path, spec, sources);
-          else if (instances.has(arg)) target = `${path}::${arg}`;
+          if (imported) {
+            target = resolveModule(path, imported.spec, sources);
+            // `const { usersRouter } = require("./routes")`: that router only,
+            // when the module declares it under the exported name.
+            if (target && imported.exported && instancesByFile.get(target)?.has(imported.exported)) target = `${target}::${imported.exported}`;
+          } else if (instances.has(arg)) target = `${path}::${arg}`;
           if (target) uses.push({ file: path, receiver: m[1] as string, prefix, target });
         }
       }

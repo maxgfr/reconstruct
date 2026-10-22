@@ -60,9 +60,9 @@ node scripts/analyze.mjs --unknowns --apply updates.json --out <OUT> # record ch
 - **Fail-closed:** one invalid row and nothing is written.
 - **The gate:** an unsettled `blocker` fails `--check` (structural, not only `--semantic`). Use
   `blocker` only when a builder would have to guess; `major`/`minor` otherwise.
-- Hand-editing breaks the record's digest and `--check` warns — go through `--apply`.
+- Hand-editing breaks the record's digest and `--check` warns — go through `--apply`. The gate re-applies the citation rules either way: a hand-settled record with no resolving citation still fails.
 
-MCP: `reconstruct_unknowns` (list, or `updates`) and the `audit_unknowns` prompt.
+MCP: `reconstruct_unknowns` (list; `updates` need a server started with `--allow-write`) and the `audit_unknowns` prompt.
 
 ## 3. The obligation ledger (`OBLIGATIONS.json`)
 

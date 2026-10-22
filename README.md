@@ -284,17 +284,17 @@ scaffold as a finished spec.
 | `reconstruct_check` | The buildability gate: no missing document, no unresolved callout, no open blocker — typed `RCxxx` findings |
 | `reconstruct_review` | Per feature, what a builder would still have to guess |
 | `reconstruct_verify` | Requirement→source: does the original actually do what the PRD claims? |
-| `reconstruct_unknowns` | The residual-unknowns ledger: list it, or record / settle unknowns with evidence |
+| `reconstruct_unknowns` | The residual-unknowns ledger: list it, or (with `--allow-write`) record / settle unknowns with evidence |
 | `reconstruct_specs` | Every feature PRD, source **stripped** — the hand-to-an-agent bundle |
 | `reconstruct_features` | Every feature PRD, nothing else |
 | `reconstruct_merge` | The whole tree as one document, source included |
-| `reconstruct_read` | A file, or a line range, from the tree or a file the inventory lists in the original repo |
+| `reconstruct_read` | A file, or a line range, from the tree, or a repo file the inventory lists whose bytes still match its recorded hash |
 
 Every failed call carries `recovery {kind, hint, do_not_repeat_unchanged}`, and results that
 contain the analysed repo's own text (`read`, `merge`, `view`) are marked
 `_meta.provenance.untrusted_content` — data, never instructions.
 
-`--allow-write` additionally exposes `reconstruct_scaffold` and
+`--allow-write` lets `reconstruct_unknowns` record `updates` and additionally exposes `reconstruct_scaffold` and
 `reconstruct_brainstorm`. The scaffold is annotated **destructive**: with
 `force:true` it discards prose an agent spent real work writing, and nothing
 here can bring that back. It is also the one tool that never inherits the

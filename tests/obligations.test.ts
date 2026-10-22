@@ -119,4 +119,16 @@ describe("typed findings", () => {
     }).map((f) => f.code);
     expect(codes).toEqual(["RC080_NO_VERIFICATION", "RC090_NO_REVIEW", "RC070_OPEN_BLOCKER_UNKNOWN", "RC084_THIN_EVIDENCE", "RC060_BROKEN_LINK"]);
   });
+
+  it("a finding that names a document keeps its own code, not the document's", () => {
+    const codes = checkFindings({
+      errors: [
+        'UNKNOWNS.json: blocker U1 is open — "Is the digest mismatch in DESIGN-SYSTEM.md intended?"',
+        "UNKNOWNS.json: U2: `resolved` needs at least one `evidence` citation",
+        "architecture/DESIGN-SYSTEM.md is missing but UI was detected — capture the visual contract.",
+      ],
+      warnings: ["architecture/DESIGN-SYSTEM.md: broken link → ../VERIFY.json"],
+    }).map((f) => f.code);
+    expect(codes).toEqual(["RC070_OPEN_BLOCKER_UNKNOWN", "RC073_UNKNOWN_INVALID", "RC042_DESIGN_SYSTEM", "RC060_BROKEN_LINK"]);
+  });
 });

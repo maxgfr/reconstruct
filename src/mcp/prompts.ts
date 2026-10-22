@@ -160,7 +160,7 @@ ${CORE_RULE}
 
 1. \`reconstruct_unknowns\` — the ledger, seeded from what the engine could not determine.
 2. For each unsettled record: \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : ""} the source its question points at, and its \`recommendedProbes\`.
-3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_…\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open.
+3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_…\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open. (\`updates\` need a server started with \`--allow-write\`; without it, hand the updates to the user for \`--unknowns --apply\`.)
 4. Anything you discover while enriching that you cannot settle goes in as a NEW record — a \`blocker\` when a builder would have to guess it.
 5. \`reconstruct_check\`: an unsettled blocker fails it.
 

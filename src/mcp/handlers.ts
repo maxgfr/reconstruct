@@ -6,11 +6,12 @@ import { checkFindings, checkOutput } from "../check.js";
 import { detectEnrichment, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
+import { sha256Hex } from "../evidence.js";
 import { foldReview, runReview } from "../review.js";
 import { foldSemantic, runVerify } from "../verify.js";
-import { applyUnknownUpdates, ensureUnknowns, foldUnknowns, UNKNOWNS_FILE } from "../unknowns.js";
+import { applyUnknownUpdates, foldUnknowns, readInventory, readUnknowns, seedUnknowns, UNKNOWNS_FILE } from "../unknowns.js";
 import { withTreeLock } from "../tree-lock.js";
-import type { Inventory, Options } from "../types.js";
+import type { Inventory, Options, UnknownsLedger } from "../types.js";
 import { recallInventory, rememberInventory, summarizeInventory, VIEW_SECTIONS, viewSection } from "./view.js";
 
 // Where a tool name becomes work. Every handler calls the same library
@@ -168,10 +169,10 @@ export async function callTool(name: string, args: Record<string, unknown>, defa
   const out = requiredOut(args, defaults);
   // Serialized per tree: the bundlers read it while a scaffold could be
   // rewriting it, and the worklists are read-merge-write.
-  return await withTreeLock(out, async () => outcome(dispatch(name, args, out)));
+  return await withTreeLock(out, async () => outcome(dispatch(name, args, out, defaults.allowWrite === true)));
 }
 
-function dispatch(name: string, args: Record<string, unknown>, out: string): unknown {
+function dispatch(name: string, args: Record<string, unknown>, out: string, allowWrite: boolean): unknown {
   switch (name) {
     case "reconstruct_check":
       return handleCheck(args, out);
@@ -190,7 +191,7 @@ function dispatch(name: string, args: Record<string, unknown>, out: string): unk
     case "reconstruct_read":
       return handleRead(args, out);
     case "reconstruct_unknowns":
-      return handleUnknowns(args, out);
+      return handleUnknowns(args, out, allowWrite);
     default:
       // Unreachable: the server rejects an unknown tool before dispatch.
       throw new ToolError(`unknown tool: ${name}`);
@@ -227,17 +228,21 @@ function within(real: string, root: string): boolean {
 }
 
 // The caller-supplied `repo` is NOT a root of its own: over HTTP that would let
-// any client name `/` and read the whole disk. A repo file is readable only
-// when the tree's own inventory lists it — i.e. it is one of the files this
-// reconstruction was generated from.
+// any client name `/` and read the whole disk. The inventory records no
+// absolute repo path, so a listed relative path proves nothing on its own —
+// most projects have a `.env`. A repo file is readable only when the tree's
+// inventory lists it AND its content still hashes to the recorded value: it is
+// byte for byte one of the files this reconstruction was generated from.
 function inRepoInventory(real: string, repo: string | undefined, out: string): boolean {
   if (!repo) return false;
   const root = realOr(resolve(repo));
   if (!within(real, root) || real === root) return false;
   const rel = relative(root, real).split(sep).join("/");
   try {
-    const inv = JSON.parse(readFileSync(join(out, "inventory.json"), "utf8")) as { files?: { path?: unknown }[] };
-    return (inv.files ?? []).some((f) => f.path === rel);
+    const inv = JSON.parse(readFileSync(join(out, "inventory.json"), "utf8")) as { files?: { path?: unknown; hash?: unknown }[] };
+    const listed = (inv.files ?? []).find((f) => f.path === rel);
+    if (typeof listed?.hash !== "string" || statSync(real).size > MAX_READ_BYTES) return false;
+    return sha256Hex(readFileSync(real)).slice(0, 16) === listed.hash;
   } catch {
     return false;
   }
@@ -364,10 +369,22 @@ function handleBundle(out: string, kind: "specs" | "features" | "merge"): unknow
   return { out, path: join(out, file), bundle: kind };
 }
 
-function handleUnknowns(args: Record<string, unknown>, out: string): unknown {
-  let ledger: ReturnType<typeof ensureUnknowns>;
+function handleUnknowns(args: Record<string, unknown>, out: string, allowWrite: boolean): unknown {
+  // Listing is read-only: an absent ledger is seeded in memory, not on disk.
+  // Recording updates rewrites what reconstruct_check gates on, so it needs
+  // --allow-write.
+  if (Array.isArray(args.updates) && !allowWrite) {
+    throw new ToolError(
+      "reconstruct_unknowns with `updates` rewrites UNKNOWNS.json, which the gate reads — start the server with --allow-write to enable it.",
+      {
+        kind: "grant_write",
+        hint: "Call it without `updates` to list the ledger, or record the changes with the CLI: --unknowns --apply <file> --out <tree>.",
+      },
+    );
+  }
+  let ledger: UnknownsLedger;
   try {
-    ledger = Array.isArray(args.updates) ? applyUnknownUpdates(out, args.updates) : ensureUnknowns(out);
+    ledger = Array.isArray(args.updates) ? applyUnknownUpdates(out, args.updates) : (readUnknowns(out) ?? seedUnknowns(readInventory(out)));
   } catch (e) {
     throw new ToolError((e as Error).message);
   }
@@ -400,7 +417,12 @@ function handleRead(args: Record<string, unknown>, out: string): unknown {
   }
   if (!within(real, realOr(out)) && !inRepoInventory(real, repo, out)) {
     throw new ToolError(
-      `path is outside the reconstruction tree${repo ? " and is not a file the tree's inventory lists from that repo" : ""}: ${raw}. Use your own file tool for anything else.`,
+      `path is outside the reconstruction tree${repo ? " and is not, byte for byte, a file the tree's inventory lists from that repo" : ""}: ${raw}. Use your own file tool for anything else.`,
+      repo
+        ? {
+            hint: "The file may have changed since the tree was generated (re-run reconstruct_scaffold), or `repo` is not the repository this tree was built from.",
+          }
+        : {},
     );
   }
   const st = statSync(real);

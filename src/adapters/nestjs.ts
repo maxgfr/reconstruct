@@ -79,11 +79,22 @@ function parseExclude(args: string): GlobalPrefix["exclude"] {
   return out;
 }
 
-/** App root a bootstrap file governs: its directory, or the parent of a `src/` dir. */
-function appRootOf(file: string): string {
-  const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "";
-  if (dir === "src") return "";
-  return dir.endsWith("/src") ? dir.slice(0, -"/src".length) : dir;
+/**
+ * App root a bootstrap file governs: the parent of its nearest `src/` ancestor
+ * (`apps/api/src/config/setup.ts` → `apps/api`), else its nearest directory
+ * holding a package.json, else the whole repo. Never the file's own directory:
+ * the prefix call may sit in a helper (`src/config/setup.ts`) far from the
+ * controllers it governs.
+ */
+function appRootOf(file: string, packageDirs: Set<string>): string {
+  const segs = file.split("/").slice(0, -1);
+  const src = segs.lastIndexOf("src");
+  if (src !== -1) return segs.slice(0, src).join("/");
+  for (let i = segs.length; i > 0; i--) {
+    const dir = segs.slice(0, i).join("/");
+    if (packageDirs.has(dir)) return dir;
+  }
+  return "";
 }
 
 const isUnder = (file: string, root: string): boolean => root === "" || file.startsWith(`${root}/`);
@@ -112,8 +123,8 @@ const methodOf = (verb: string): string => (verb === "All" ? "*" : verb.toUpperC
  * `GET /users/:id`. Array paths (`@Controller(['a','b'])`, `@Get(['x','y'])`)
  * fan out to one route per (base × sub) combination. A `setGlobalPrefix("api")`
  * (typically in `main.ts`) prefixes the routes of its own app only — the
- * controllers under the bootstrap file's app root (its dir, or the parent of
- * `src/`) — so each app of a monorepo keeps its own prefix; its `exclude`
+ * controllers under the calling file's app root (see `appRootOf`) — so each
+ * app of a monorepo keeps its own prefix; its `exclude`
  * paths stay un-prefixed.
  */
 export const nestjsAdapter: RouteAdapter = {
@@ -121,13 +132,16 @@ export const nestjsAdapter: RouteAdapter = {
   frameworks: ["NestJS"],
   detectRoutes(files: FileInfo[], repo: string): RouteInfo[] {
     const sources = readSources(files, repo, [".ts"]);
+    const packageDirs = new Set(
+      files.filter((f) => f.path === "package.json" || f.path.endsWith("/package.json")).map((f) => f.path.slice(0, -"package.json".length).replace(/\/$/, "")),
+    );
 
     // Global prefixes wired at bootstrap, one per app root (first call wins).
     const prefixes: GlobalPrefix[] = [];
     for (const path of [...sources.keys()].sort(cmp)) {
       const src = sources.get(path) as string;
       for (const m of src.matchAll(GLOBAL_PREFIX_RE)) {
-        const root = appRootOf(path);
+        const root = appRootOf(path, packageDirs);
         if (prefixes.some((p) => p.root === root)) continue;
         const open = (m.index ?? 0) + m[0].indexOf("(");
         const args = src.slice(open, closeOf(src, open));
