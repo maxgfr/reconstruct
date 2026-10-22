@@ -8,6 +8,7 @@ import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
 import { foldReview, runReview } from "../review.js";
 import { foldSemantic, runVerify } from "../verify.js";
+import { applyUnknownUpdates, ensureUnknowns, foldUnknowns, UNKNOWNS_FILE } from "../unknowns.js";
 import { withTreeLock } from "../tree-lock.js";
 import type { Options } from "../types.js";
 
@@ -158,6 +159,8 @@ function dispatch(name: string, args: Record<string, unknown>, out: string): unk
       return { out, ...runBrainstorm(out) };
     case "reconstruct_read":
       return handleRead(args, out);
+    case "reconstruct_unknowns":
+      return handleUnknowns(args, out);
     default:
       // Unreachable: the server rejects an unknown tool before dispatch.
       throw new ToolError(`unknown tool: ${name}`);
@@ -289,6 +292,25 @@ function handleBundle(out: string, kind: "specs" | "features" | "merge"): unknow
   writeOutput(result, opts);
   const file = kind === "specs" ? "SPECS.md" : kind === "features" ? "FEATURES.md" : "RECONSTRUCTION.md";
   return { out, path: join(out, file), bundle: kind };
+}
+
+function handleUnknowns(args: Record<string, unknown>, out: string): unknown {
+  let ledger: ReturnType<typeof ensureUnknowns>;
+  try {
+    ledger = Array.isArray(args.updates) ? applyUnknownUpdates(out, args.updates) : ensureUnknowns(out);
+  } catch (e) {
+    throw new ToolError((e as Error).message);
+  }
+  const gate = { errors: [] as string[], warnings: [] as string[] };
+  foldUnknowns(out, gate);
+  return {
+    out,
+    path: join(out, UNKNOWNS_FILE),
+    ok: gate.errors.length === 0,
+    ...ledger,
+    gate,
+    next: "Settle each unknown from the source: cite the evidence that answers it (ev_… ids from inventory.json, route/entity refs, path:line) and set status resolved, or record what contradicts it.",
+  };
 }
 
 function handleRead(args: Record<string, unknown>, out: string): unknown {

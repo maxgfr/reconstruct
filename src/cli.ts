@@ -1,6 +1,6 @@
 import { resolve, join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { existsSync, statSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { compareBehavior } from "./behavior.js";
 import { analyze } from "./analyze.js";
 import { render } from "./prd/render.js";
@@ -11,6 +11,7 @@ import { checkOutput, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, foldSemantic, formatVerifyReport } from "./verify.js";
 import { runReview, applyFindings, foldReview, formatReviewReport } from "./review.js";
 import { runBrainstorm } from "./brainstorm.js";
+import { applyUnknownUpdates, ensureUnknowns, foldUnknowns, formatUnknowns } from "./unknowns.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
 import { runStdioServer } from "./mcp/stdio.js";
 import { startHttpServer } from "./mcp/http.js";
@@ -43,6 +44,8 @@ Options:
   --check              Validate an existing --out tree for buildability, then exit
   --verify             Write a requirement→source verification worklist for --out
   --review             Write the AI buildability review worklist for --out
+  --unknowns           List the residual-unknowns ledger (UNKNOWNS.json, seeded on first use);
+                       with --apply <file>: record new/updated unknowns (fail-closed)
   --brainstorm         Scaffold a BRAINSTORM.md into --out (divergent phase before building)
   --mcp                Serve the tree over the Model Context Protocol, for any MCP client
                        (Codex, OpenCode, Claude Code, Cursor, Zed, …). Never creates a tree or overwrites prose
@@ -228,6 +231,7 @@ export function parseArgs(argv: string[]): Options {
   let check = false;
   let verify = false;
   let review = false;
+  let unknowns = false;
   let semantic = false;
   let allowUnverified = false;
   let brainstorm = false;
@@ -289,6 +293,10 @@ export function parseArgs(argv: string[]): Options {
     }
     if (arg === "--verify") {
       verify = true;
+      continue;
+    }
+    if (arg === "--unknowns") {
+      unknowns = true;
       continue;
     }
     if (arg === "--review") {
@@ -369,9 +377,9 @@ export function parseArgs(argv: string[]): Options {
   // Reject the combination instead of picking a winner. (`--semantic` modifies
   // `--check`; `--apply` modifies `--verify`/`--review`; `--phase`/`--eco`/`--list`
   // modify `--orchestrate` — those are not actions.)
-  const actions = [check, verify, review, brainstorm, orchestrate, raw.compare].filter(Boolean).length;
+  const actions = [check, verify, review, unknowns, brainstorm, orchestrate, raw.compare].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify, --review, --brainstorm and --orchestrate are mutually exclusive — run one at a time`);
+    fail(`--check, --verify, --review, --unknowns, --brainstorm and --orchestrate are mutually exclusive — run one at a time`);
   }
   // `--mcp` serves until killed, so anything combined with it would never run —
   // `--mcp --check` used to exit 0 having checked nothing.
@@ -404,7 +412,17 @@ export function parseArgs(argv: string[]): Options {
   const repo = resolve(raw.repo ?? process.cwd());
   // Scratch reads no repo; standalone, --check, --verify, --review, --brainstorm
   // and --orchestrate read/write an existing output dir — all skip the repo-exists check.
-  if (!standalone && !scratch && !check && !verify && !review && !brainstorm && !orchestrate && (!existsSync(repo) || !statSync(repo).isDirectory())) {
+  if (
+    !standalone &&
+    !scratch &&
+    !check &&
+    !verify &&
+    !review &&
+    !unknowns &&
+    !brainstorm &&
+    !orchestrate &&
+    (!existsSync(repo) || !statSync(repo).isDirectory())
+  ) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf<Level>("level", raw.level ?? "light", ["light", "complex"]);
@@ -416,7 +434,7 @@ export function parseArgs(argv: string[]): Options {
   const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const out = resolve(
     raw.out ??
-      (standalone || check || verify || review || brainstorm || orchestrate
+      (standalone || check || verify || review || unknowns || brainstorm || orchestrate
         ? process.cwd()
         : scratch
           ? join(process.cwd(), "reconstruction")
@@ -464,6 +482,7 @@ export function parseArgs(argv: string[]): Options {
     check,
     verify,
     review,
+    unknowns,
     apply: raw.apply ?? "",
     semantic,
     allowUnverified,
@@ -553,6 +572,21 @@ async function main(): Promise<void> {
         `reconstruct: review round ${wl.round} — ${due}/${wl.units.length} unit(s) to review → ${opts.out}/REVIEW.md & REVIEW.todo.json\n` +
           `  review each flagged unit (+ verify each blocker), save findings.json, then: node scripts/analyze.mjs --review --apply findings.json --out ${opts.out}\n`,
       );
+      return;
+    } catch (e) {
+      fail((e as Error).message);
+    }
+  }
+
+  // Residual unknowns: list the ledger (seeded from the inventory on first use),
+  // or apply recorded updates. Exits 1 while a blocker is unsettled.
+  if (opts.unknowns) {
+    try {
+      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync(resolve(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
+      process.stdout.write((opts.json ? JSON.stringify(ledger, null, 2) : formatUnknowns(ledger)) + "\n");
+      const gate = { errors: [] as string[], warnings: [] as string[] };
+      foldUnknowns(opts.out, gate);
+      if (gate.errors.length) process.exit(1);
       return;
     } catch (e) {
       fail((e as Error).message);

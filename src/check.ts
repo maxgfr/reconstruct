@@ -2,6 +2,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node
 import { join, posix, relative } from "node:path";
 import { sha256Hex, staleEvidence } from "./evidence.js";
 import { fencedLines } from "./prd/markdown.js";
+import { foldUnknowns } from "./unknowns.js";
 import { hasUI } from "./design.js";
 import type { Inventory } from "./types.js";
 
@@ -272,7 +273,10 @@ export function checkOutput(outDir: string, opts: { repo?: string } = {}): Check
     }
   }
 
-  return { errors, warnings };
+  // 6. Residual unknowns: an unsettled blocker in UNKNOWNS.json is an unbuildable gap.
+  const result = { errors, warnings };
+  foldUnknowns(outDir, result);
+  return result;
 }
 
 /** Whether a doc documents a token — as a word, not an incidental substring. */

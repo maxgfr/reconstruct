@@ -66,6 +66,8 @@ export interface Options {
    * (`--review`), or reduce agent-filled findings (`--review --apply <p>`).
    */
   review?: boolean;
+  /** `--unknowns`: list (seeding on first use) or `--apply` updates to UNKNOWNS.json. */
+  unknowns?: boolean;
   /** Path to an agent-filled verdicts/findings file to apply (`--verify`/`--review --apply <p>`). */
   apply?: string;
   /**
@@ -467,6 +469,39 @@ export interface Entity {
   indexes?: string[];
   /** Unique-constraint definitions (e.g. "unique on (provider, providerAccountId)"). */
   uniques?: string[];
+}
+
+export type UnknownSeverity = "blocker" | "major" | "minor";
+export type UnknownStatus = "open" | "investigating" | "blocked" | "contradicted" | "resolved";
+
+/** One residual unknown (see src/unknowns.ts). Revisioned and hash-chained. */
+export interface UnknownRecord {
+  /** Stable handle: `U1`, `U2`, … */
+  id: string;
+  question: string;
+  /** Feature slug the unknown belongs to, when it is local to one. */
+  feature?: string;
+  severity: UnknownSeverity;
+  status: UnknownStatus;
+  /** Citations that answer it (`ev_…`, `route GET /x`, `entity User`, `path:line`). */
+  evidence: string[];
+  /** Citations that contradict the current understanding. */
+  contradicting: string[];
+  /** What to look at next to settle it. */
+  recommendedProbes: string[];
+  note?: string;
+  /** Who raised it: the deterministic engine or the agent. */
+  source: "engine" | "agent";
+  revision: number;
+  /** The digest of the previous revision (null for revision 1). */
+  previousDigest: string | null;
+  /** 16 hex of the sha256 of this record's canonical JSON (digest excluded). */
+  digest: string;
+}
+
+export interface UnknownsLedger {
+  version: 1;
+  unknowns: UnknownRecord[];
 }
 
 /** How directly a fact was established. */
