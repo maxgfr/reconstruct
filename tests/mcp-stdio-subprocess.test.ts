@@ -156,6 +156,7 @@ describe("the bundled MCP server over stdio", () => {
       "enrich_feature",
       "review_buildability",
       "greenfield_interview",
+      "audit_unknowns",
     ]);
 
     const contents = msgs.find((m) => m.id === 4).result.contents[0];

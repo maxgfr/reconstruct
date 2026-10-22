@@ -106,17 +106,25 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--scratch` | flag | off | **Greenfield** mode: build from a `plan.json` interview instead of a repo. Forces `mode=scratch`, `fidelity=describe`; `--repo` is not used. See [From scratch](#from-scratch-greenfield). |
 | `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md). |
 | `--tdd` | flag | off | Emit test-first build guidance into the PRDs/`REBUILD.md` (each unit built red → green → refactor). Works in any mode. |
-| `--check` | flag | off | Validate an existing `--out` tree for buildability and exit non-zero on failures (unresolved `🧠`/placeholders, a feature referencing an undocumented entity/operation, a feature PRD missing its spine). Warnings (non-blocking): an uncovered locale, or a UI project whose `DESIGN-SYSTEM.md` is left empty. Reads no repo. See [`references/buildability-checklist.md`](./skills/reconstruct/references/buildability-checklist.md). |
+| `--check` | flag | off | Validate an existing `--out` tree for buildability and exit non-zero on failures (unresolved `🧠`/placeholders, a feature referencing an undocumented entity/operation, a feature PRD missing its spine, an unsettled `blocker` in `UNKNOWNS.json`). Warnings (non-blocking): an uncovered locale, a UI project whose `DESIGN-SYSTEM.md` is left empty, a broken relative link, a hand-edited unknown. Reads no repo — unless `--repo <path>` is given, in which case every file cited in `evidence[]` is re-hashed and stale evidence is reported. `--json` prints typed findings with stable `RCxxx` codes. See [`references/buildability-checklist.md`](./skills/reconstruct/references/buildability-checklist.md). |
 | `--verify` | flag | off | Write a requirement→source verification worklist (`VERIFY.todo.json`/`VERIFY.md`) for an existing `--out`: each PRD requirement paired with its captured evidence for an agent to adjudicate (supported/partial/refuted/unsupported). With `--apply`, reduces the filled verdicts to `VERIFY.json`. Reads no repo. |
+| `--unknowns` | flag | off | List the residual-unknowns ledger `UNKNOWNS.json` of an existing `--out` (seeded from `inventory.unknowns` on first use). With `--apply`, records new/updated unknowns fail-closed: `resolved` needs a citation that resolves against the inventory. Exits 1 while a `blocker` is unsettled. `--json` prints the ledger. See [`references/evidence-model.md`](./skills/reconstruct/references/evidence-model.md). |
 | `--review` | flag | off | Write the AI buildability-review worklist (`REVIEW.todo.json`/`REVIEW.md`) for an existing `--out`: one per-feature unit, content-hashed so only changed units are flagged `needsReview`. With `--apply`, reduces agent-filled findings to `REVIEW.json` (`ok`/`residual`/`noProgress`/`staleRounds`). The deterministic ledger that makes the review/fix loop terminate — see [`references/orchestration.md`](./skills/reconstruct/references/orchestration.md). Reads no repo. |
 | `--brainstorm` | flag | off | Scaffold a `BRAINSTORM.md` into `--out` for the optional divergent phase (generate several concepts, score, converge). Seeds the recovered surface when `--out` already has an `inventory.json`; never clobbers an edited file. Each section carries a `🧠` callout so `--check` gates an un-enriched brainstorm. Reads no repo. See [`references/brainstorm-playbook.md`](./skills/reconstruct/references/brainstorm-playbook.md). |
 | `--orchestrate` | flag | off | Emit the multi-agent orchestration for an existing `--out` into `<OUT>/orchestration/`: the `agents/<role>.md` dispatch contracts (drafter/finder/verifier/adjudicator) that any host's subagents can run, a sequential `RUNBOOK.md` for a single agent, and — optionally, for Claude Code's Workflow tool — one launchable `<phase>.workflow.mjs` per ready phase (`enrich-map` \| `review-find` \| `review-verify` \| `adjudicate`). Built from the CURRENT worklists (`inventory.json`, `REVIEW.todo.json`, `REVIEW.json`, `VERIFY.todo.json`) with real ids baked in — deterministic and idempotent. Subagents RETURN fragments; the reduce/`--apply` fold stays with the orchestrator. Exit 2 on a missing `--out`, an unknown phase, or a phase whose worklist does not exist yet (the error names the producing command). Reads no repo. See [`references/orchestration.md`](./skills/reconstruct/references/orchestration.md). |
 | `--phase <name>` | `enrich-map` \| `review-find` \| `review-verify` \| `adjudicate` | all ready phases | With `--orchestrate`, emit one phase only. |
 | `--eco` | flag | off | With `--orchestrate`, emit only `RUNBOOK.md` + `agents/*.md` — the explicit sequential, low-token path. |
 | `--list` | flag | off | With `--orchestrate`, print the `{"phases":[...]}` readiness JSON (worklist, item count, producing command per phase) and write nothing. |
-| `--apply <path>` | path | — | Apply an agent-filled verdicts/findings file: pair with `--verify` (verdicts → `VERIFY.json`) or `--review` (findings → `REVIEW.json`). |
+| `--batch-size <n>` | integer > 0 | per phase | With `--orchestrate`, items per subagent batch. |
+| `--max-verify <n>` | integer > 0 | `60` | With `--verify`, cap the requirement↔evidence worklist. The cap is recorded in `VERIFY.todo.json` `coverage`, and `--check --semantic` fails on requirements it left unoffered. |
+| `--mcp` | flag | off | Serve the tree over the Model Context Protocol instead of running a command. With `--transport stdio\|http`, `--out <tree>` (default tree), `--port`, `--bind`, `--allow-origin`, `--allow-remote`, `--allow-write` (exposes `reconstruct_scaffold`/`reconstruct_brainstorm` and lets `reconstruct_unknowns` record `updates`) and `--max-response-bytes`. Cannot be combined with another action. See the README's MCP section. |
+| `--compare <path>` | path | — | Compare a rebuilt program with the original on the explicit local cases in this JSON file: exact stdout/stderr/exit only. Requires `--original` and `--rebuilt`; executes nothing without `--run-tests`. See [`references/behavior-compare.md`](./skills/reconstruct/references/behavior-compare.md). |
+| `--original <path>` | path | — | With `--compare`, the original working tree. |
+| `--rebuilt <path>` | path | — | With `--compare`, the rebuilt working tree. |
+| `--run-tests` | flag | off | With `--compare`, authorize executing the case commands locally (not sandboxed). Without it every case stays `not-tested` and the gate fails. |
+| `--apply <path>` | path | — | Apply an agent-filled file: pair with `--verify` (verdicts → `VERIFY.json` + `OBLIGATIONS.json`), `--review` (findings → `REVIEW.json`) or `--unknowns` (updates → `UNKNOWNS.json`). |
 | `--semantic` | flag | off | With `--check`, fold the semantic gates into the structural one: `VERIFY.json` (refuted/unsupported requirements) and `REVIEW.json` (unresolved blockers). Strictly additive — never relaxes `--check`. Trustless and fail-closed: it re-reduces the persisted verdicts/findings (never a stored `ok`), re-resolves every cited `evidenceRef` against the inventory, and errors when a ledger is missing or unreadable. |
-| `--allow-unverified` | flag | off | With `--check --semantic`, downgrade a missing/unreadable `VERIFY.json`/`REVIEW.json` ledger to a warning instead of failing closed. Use deliberately, and say so in the report. |
+| `--allow-unverified` | flag | off | With `--check --semantic`, downgrade a missing/unreadable `VERIFY.json`/`REVIEW.json` ledger — and unadjudicated or `confidence: gap` verdicts — to a warning instead of failing closed. Use deliberately, and say so in the report. |
 | `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--exclude <glob>` | gitignore-style glob | — | Skip files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--max-embed-bytes N` | integer > 0 | `16000` | Max bytes embedded per file when `fidelity=embed`. |
@@ -124,7 +132,7 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--features` | flag | off | Also write `FEATURES.md` — every feature PRD only (the product functionality), in build order, in one file (single H1, table of contents, headings demoted one level). The features-only counterpart to `--merge`. Without `--repo`, runs standalone on an existing `--out`. |
 | `--specs` | flag | off | Also write `SPECS.md` — the **same whole tree as `--merge`** (overview, architecture, every feature PRD, build order) but with each document's `## Source material` section (the embedded original source code) stripped. Self-sufficient yet code-free: the single file to hand an agent to (re)implement the project from. Without `--repo`, runs standalone on an existing `--out`. |
 | `--summary` | flag | off | Also write `SUMMARY.md` — a one-page digest from the inventory (stack, libraries, size, features in build order, interface/data counts, locales, unknowns). Without `--repo`, runs standalone on an existing `--out`. |
-| `--json` | flag | off | Print the inventory JSON to stdout and write nothing to disk. Takes precedence over `--merge`/`--features`/`--specs`/`--summary`. |
+| `--json` | flag | off | Print the inventory JSON to stdout and write nothing to disk. Takes precedence over `--merge`/`--features`/`--specs`/`--summary`. With `--check`, print typed findings (`{ok, findings:[{code, severity, message, file, next_action}]}`) instead of the text report; with `--unknowns`, print the ledger. |
 | `-h, --help` | flag | — | Show help and exit. |
 | `-v, --version` | flag | — | Print the version and exit. |
 
@@ -224,7 +232,9 @@ reconstruction/
 │   ├── schema/                # DB schema / models (.prisma, .sql, .graphql, …)
 │   └── config/                # build/lint/env config
 ├── source/                    # (fidelity=mirror only) copied real source, per feature
-└── inventory.json             # machine-readable manifest of the whole analysis
+├── UNKNOWNS.json              # (--unknowns) residual-unknowns ledger, revisioned + hash-chained
+├── OBLIGATIONS.json           # (--verify --apply) requirement obligations: closed / open / failed + closure digest
+└── inventory.json             # machine-readable manifest of the whole analysis, incl. evidence[]
 ```
 
 `--brainstorm` writes a single `BRAINSTORM.md` into `--out` instead of the tree above — a divergent
@@ -241,7 +251,10 @@ that exists but does not parse, a workspace dependency cycle — omitted when em
 `workspaces` (monorepo packages — each entry
 carries its `kind` — npm/pnpm/lerna/nx/cargo/go —, its own `stack` and `dependencies`, the
 manifest-derived `dependsOn` edges, `routeCount`, `schemas`, and per-workspace `hints`),
-`runtime` (e.g. required Node version), and `excludedCount`. The artifacts and the per-feature copies
+`runtime` (e.g. required Node version), `excludedCount`, and `evidence` — one content-addressed
+record per resolved route / env var (`ev_<hash>`, file, line, content hash, `confidence`,
+`authority`; see [`references/evidence-model.md`](./skills/reconstruct/references/evidence-model.md)).
+Each `files[]` entry carries a 16-hex content `hash`, and each route its declaration `line`. The artifacts and the per-feature copies
 are produced by [`src/prd/render.ts`](./src/prd/render.ts) and flushed to disk by
 [`src/output.ts`](./src/output.ts).
 

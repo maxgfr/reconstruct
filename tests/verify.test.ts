@@ -599,17 +599,22 @@ describe("evidence resolution (fabricated citations)", () => {
     expect(unlabeled).not.toContain("confidence:");
   });
 
-  it("confidence: foldSemantic warns on gap-labeled verdicts", () => {
+  it("confidence: a gap-labeled verdict fails closed in the gate unless --allow-unverified", () => {
     const dir = setup();
     const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
     const pairs = todo.pairs.map((p: any, i: number) => ({ ...p, verdict: "supported", note: "", confidence: i === 0 ? "gap" : "confirmed" }));
     const f = join(dir, "verdicts.json");
     writeFileSync(f, JSON.stringify({ pairs }));
     const r = applyVerdicts(dir, f);
-    expect(r.ok).toBe(true); // confidence is triage metadata, never a gate
+    expect(r.ok).toBe(true); // the ledger itself records no failure…
+    expect(r.obligations?.open).toBe(1); // …but thin evidence does not close the obligation
     const check = checkOutput(dir);
     foldSemantic(dir, check);
-    expect(check.warnings.join(" ")).toMatch(/gap/);
+    expect(check.errors.join(" ")).toMatch(/confidence:gap/);
+    const lenient = checkOutput(dir);
+    foldSemantic(dir, lenient, { allowUnverified: true });
+    expect(lenient.errors.join(" ")).not.toMatch(/confidence:gap/);
+    expect(lenient.warnings.join(" ")).toMatch(/confidence:gap/);
     rmSync(dir, { recursive: true, force: true });
   });
 

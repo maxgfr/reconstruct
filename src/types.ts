@@ -66,6 +66,8 @@ export interface Options {
    * (`--review`), or reduce agent-filled findings (`--review --apply <p>`).
    */
   review?: boolean;
+  /** `--unknowns`: list (seeding on first use) or `--apply` updates to UNKNOWNS.json. */
+  unknowns?: boolean;
   /** Path to an agent-filled verdicts/findings file to apply (`--verify`/`--review --apply <p>`). */
   apply?: string;
   /**
@@ -78,6 +80,8 @@ export interface Options {
    * REVIEW.json ledger to a warning instead of failing closed. `--allow-unverified`.
    */
   allowUnverified?: boolean;
+  /** `--check --repo <path>`: the original repo, to re-hash cited evidence for staleness. */
+  checkRepo?: string;
   /**
    * Divergent-phase scaffold: write a `BRAINSTORM.md` into `--out` (seeded from an
    * existing reconstruction's inventory.json when present). Reads no repo. `--brainstorm`.
@@ -147,11 +151,18 @@ export interface FileInfo {
   lines: number;
   category: FileCategory;
   binary: boolean;
+  /** First 16 hex of the content's sha256 (omitted past the 8 MB read cap). */
+  hash?: string;
 }
 
 export interface RouteInfo {
   route: string;
   file: string;
+  /**
+   * 1-based line in `file` where the route is declared (provenance). Omitted
+   * for file-system routes, whose declaration IS the file.
+   */
+  line?: number;
   kind: "page" | "api" | "layout" | "component";
   /**
    * HTTP method/verb when the framework declares one (`GET`, `POST`, …; `*` for
@@ -460,6 +471,61 @@ export interface Entity {
   uniques?: string[];
 }
 
+export type UnknownSeverity = "blocker" | "major" | "minor";
+export type UnknownStatus = "open" | "investigating" | "blocked" | "contradicted" | "resolved";
+
+/** One residual unknown (see src/unknowns.ts). Revisioned and hash-chained. */
+export interface UnknownRecord {
+  /** Stable handle: `U1`, `U2`, … */
+  id: string;
+  question: string;
+  /** Feature slug the unknown belongs to, when it is local to one. */
+  feature?: string;
+  severity: UnknownSeverity;
+  status: UnknownStatus;
+  /** Citations that answer it (`ev_…`, `route GET /x`, `entity User`, `path:line`). */
+  evidence: string[];
+  /** Citations that contradict the current understanding. */
+  contradicting: string[];
+  /** What to look at next to settle it. */
+  recommendedProbes: string[];
+  note?: string;
+  /** Who raised it: the deterministic engine or the agent. */
+  source: "engine" | "agent";
+  revision: number;
+  /** The digest of the previous revision (null for revision 1). */
+  previousDigest: string | null;
+  /** 16 hex of the sha256 of this record's canonical JSON (digest excluded). */
+  digest: string;
+}
+
+export interface UnknownsLedger {
+  version: 1;
+  unknowns: UnknownRecord[];
+}
+
+/** How directly a fact was established. */
+export type EvidenceConfidence = "observed" | "derived" | "inferred";
+
+/**
+ * What kind of artifact vouches for a fact. Orthogonal to confidence: an
+ * observed fact from a test is weaker authority for shipped behaviour than an
+ * observed fact from source, and an agent's inference is never source.
+ */
+export type EvidenceAuthority = "source" | "test" | "config" | "manifest" | "doc" | "plan" | "agent";
+
+/** One content-addressed fact (see src/evidence.ts). */
+export interface EvidenceRecord {
+  /** `ev_` + 16 hex of the sha256 of the canonical record (id excluded). */
+  id: string;
+  kind: "route" | "env" | "interface" | "entity";
+  /** What the fact is about: `GET /users/:id`, `DATABASE_URL`, `User`. */
+  subject: string;
+  source?: { file: string; line?: number; hash?: string };
+  confidence: EvidenceConfidence;
+  authority: EvidenceAuthority;
+}
+
 export interface Inventory {
   generatedWith: string;
   /** Generation parameters this inventory was produced with (provenance). */
@@ -495,6 +561,12 @@ export interface Inventory {
   runtime?: { node?: string };
   /** Count of files skipped by ignore rules — surfaced for transparency. */
   excludedCount: number;
+  /**
+   * Content-addressed provenance for every statically resolved fact (routes,
+   * env vars; plan rows on the scratch path). Verify verdicts and unknowns cite
+   * these ids; `--check` re-hashes the cited files to flag stale evidence.
+   */
+  evidence?: EvidenceRecord[];
   /**
    * Scratch mode only: the product summary from the interview, used to fill the
    * overview instead of leaving an "infer from the README" placeholder.
@@ -670,6 +742,13 @@ export interface Verdict extends ClaimEvidencePair {
   verdict: VerdictKind;
   note: string;
   confidence?: ConfidenceKind;
+  /**
+   * What vouches for the verdict (see {@link EvidenceAuthority}). `agent` means
+   * the adjudicator's own reasoning with no artifact behind it: such a
+   * `supported` verdict is folded as `partial` — inference never closes a
+   * behaviour requirement on its own.
+   */
+  authority?: EvidenceAuthority;
 }
 
 export interface VerifyResult {
@@ -687,6 +766,36 @@ export interface VerifyResult {
   confidence?: { confirmed: number; inferred: number; gap: number; unlabeled: number };
   /** Verdict rows whose claimId is not in the run's VERIFY.todo.json — ignored, never folded. */
   ignored?: string[];
+  /** Claim ids marked `supported` on agent authority alone — folded as `partial`. */
+  inferenceOnly?: string[];
+  /** Summary of the obligation ledger written alongside (OBLIGATIONS.json). */
+  obligations?: { ledgerId: string; closureDigest: string; closed: number; open: number; failed: number };
+}
+
+/** One requirement the rebuild must meet (see `buildObligations`). */
+export interface Obligation {
+  id: string;
+  feature: string;
+  requirement: string;
+  fingerprint?: string;
+  evidence: string[];
+  verdict: VerdictKind | null;
+  confidence?: ConfidenceKind;
+  authority?: EvidenceAuthority;
+  status: "closed" | "open" | "failed";
+}
+
+export interface ObligationLedger {
+  version: 1;
+  /** Names the requirement set: ids + content fingerprints. */
+  ledgerId: string;
+  /** Names the closure state: every obligation, verdict and citation. */
+  closureDigest: string;
+  total: number;
+  closed: number;
+  open: number;
+  failed: number;
+  obligations: Obligation[];
 }
 
 export interface VerifyWorklist {

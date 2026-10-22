@@ -4,7 +4,8 @@
 reconstruction of `tests/fixtures/sample-app` — the shape a finished reconstruction takes, not a
 raw scaffold. It has no `🧠` callouts left, every feature PRD spine is filled, the architecture
 contracts (`INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md`) are complete, and it ships its
-adjudicated ledgers (`VERIFY.json`, `REVIEW.json`) so it passes the strictest gate:
+adjudicated ledgers (`VERIFY.json`, `REVIEW.json`, and the `OBLIGATIONS.json` closure — 82/82
+requirements closed) so it passes the strictest gate:
 
 ```bash
 node scripts/analyze.mjs --check --semantic --out assets/example-output   # exits 0

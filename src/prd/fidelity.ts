@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { CopyOp, Feature, Options } from "../types.js";
+import { codeFence } from "./markdown.js";
 
 export interface SourceSection {
   markdown: string;
@@ -33,6 +34,7 @@ const FENCE_LANG: Record<string, string> = {
 };
 
 const MAX_EMBED_FILES = 15;
+const MAX_EMBED_SOURCE_BYTES = 2 * 1024 * 1024;
 
 function extOf(path: string): string {
   const i = path.lastIndexOf(".");
@@ -52,17 +54,29 @@ function embedSection(feature: Feature, opts: Options): string {
     const lang = FENCE_LANG[ext] ?? "";
     let body: string;
     try {
+      // Generated/minified giants are not "key source"; don't slurp them.
+      if (statSync(join(opts.repo, rel)).size > MAX_EMBED_SOURCE_BYTES) {
+        parts.push(`#### \`${rel}\`\n`, "> _Too large to embed — see the file in the source repo._", "");
+        continue;
+      }
       body = readFileSync(join(opts.repo, rel), "utf8");
     } catch {
       continue;
     }
     let truncated = false;
-    if (body.length > opts.maxEmbedBytes) {
-      body = body.slice(0, opts.maxEmbedBytes);
+    if (Buffer.byteLength(body, "utf8") > opts.maxEmbedBytes) {
+      // Cut on a byte budget without splitting a multi-byte character.
+      body = Buffer.from(body, "utf8")
+        .subarray(0, opts.maxEmbedBytes)
+        .toString("utf8")
+        .replace(/\uFFFD$/, "");
       truncated = true;
     }
+    // Verbatim: a fence longer than any backtick run in the file, rather than
+    // rewriting the file's own ``` into look-alikes.
+    const fence = codeFence(body);
     parts.push(`#### \`${rel}\`\n`);
-    parts.push("```" + lang + "\n" + body.replace(/```/g, "ʼʼʼ") + "\n```");
+    parts.push(fence + lang + "\n" + body + "\n" + fence);
     if (truncated) parts.push(`> _Truncated to ${opts.maxEmbedBytes} bytes — see full file in the source repo._`);
     parts.push("");
   }
@@ -80,7 +94,8 @@ function mirrorSection(feature: Feature, opts: Options): SourceSection {
       from: join(opts.repo, rel),
       to: join(opts.out, "source", feature.slug, rel),
     });
-    lines.push(`- [\`${rel}\`](../../source/${feature.slug}/${rel})`);
+    // Angle brackets keep a path with spaces a valid link destination.
+    lines.push(`- [\`${rel}\`](<../../source/${feature.slug}/${rel}>)`);
   }
   if (feature.files.length === 0) lines.push("_No files associated with this unit._");
   return { markdown: lines.join("\n") + "\n", copies };

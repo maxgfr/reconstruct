@@ -160,7 +160,7 @@ export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[]
     const ws = adaptPackage(repo, pkg, warnings);
     if (ws) found.set(ws.path, ws);
   }
-  return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
+  return [...found.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 /**

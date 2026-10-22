@@ -1,35 +1,27 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { joinRoute, moduleName, pythonImportAliases, readSources } from "./util.js";
+import { joinRoute, lineAt, moduleName, type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver, readSources } from "./util.js";
 
 const METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
-// Capture the path and trailing kwargs (so `api_route(methods=[…])` resolves).
-const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${METHODS})\\(\\s*["']([^"']*)["']([^)]*)\\)`, "g");
-const ROUTER_DEF_RE = /(\w+)\s*=\s*APIRouter\(([^)]*)\)/g;
-// Receiver + included expression captured: nested `api.include_router(v2, prefix=…)`
-// and module-attribute `app.include_router(users.router, prefix=…)` forms.
-const INCLUDE_RE = /(\w+)\.include_router\(\s*([\w.]+)([^)]*)\)/g;
+// Only the head is matched; the arguments are parsed bracket-balanced.
+const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${METHODS})\\s*\\(`, "g");
+// `router = APIRouter(...)`, typed `router: APIRouter = …`, or `fastapi.APIRouter(...)`.
+const ROUTER_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?APIRouter\s*\(/g;
+// Receiver kept: nested `api.include_router(v2, prefix=…)` composes the parent.
+const INCLUDE_RE = /(\w+)\.include_router\s*\(/g;
 
-function prefixArg(args: string): string {
-  const m = args.match(/prefix\s*=\s*["']([^"']*)["']/);
-  return m ? (m[1] as string) : "";
-}
-
-function methodsOf(args: string): string[] {
-  const m = args.match(/methods\s*=\s*[[(]([^\])]*)[\])]/);
-  if (!m) return [];
-  return [...(m[1] as string).matchAll(/["']([A-Za-z]+)["']/g)].map((v) => (v[1] as string).toUpperCase());
-}
-
+const openParen = (m: RegExpMatchArray): number => (m.index ?? 0) + m[0].length - 1;
+const prefixOf = (call: PyCall): string => pyString(call.kwargs.get("prefix")) ?? "";
 const lastSeg = (mod: string): string => mod.split(".").pop() ?? mod;
 
 /**
  * FastAPI routing: `@app.<method>("/x")` plus `APIRouter` routers whose final
  * path composes every mount prefix in the include chain with the router's own
  * `APIRouter(prefix=…)` and the decorator path. Mounts are resolved across files
- * via import aliases, support the `module.router` attribute form, and compose
- * transitively for nested `router.include_router(...)`. The HTTP method (incl.
- * `websocket` → `WS` and `api_route(methods=[…])`) is preserved.
+ * via imports (relative, aliased, `src/`-rooted), support the `module.router`
+ * attribute form, and compose transitively for nested `router.include_router(...)`.
+ * The HTTP method (incl. `websocket` → `WS` and `api_route(methods=[…])`) is
+ * preserved.
  */
 export const fastapiAdapter: RouteAdapter = {
   id: "fastapi",
@@ -37,41 +29,42 @@ export const fastapiAdapter: RouteAdapter = {
   detectRoutes(files: FileInfo[], repo: string): RouteInfo[] {
     const sources = readSources(files, repo, [".py"]);
 
-    // 1. Each router's own prefix, keyed by "module::var".
+    // 1. Each router's own prefix, keyed by "path::var".
     const ownPrefix = new Map<string, string>();
     for (const [path, src] of sources) {
       for (const m of src.matchAll(ROUTER_DEF_RE)) {
-        ownPrefix.set(`${moduleName(path)}::${m[1]}`, prefixArg(m[2] as string));
+        ownPrefix.set(`${path}::${m[1]}`, prefixOf(parsePyCall(src, openParen(m))));
       }
     }
     const routerKeys = [...ownPrefix.keys()];
 
-    // Resolve an include() argument to a router key. Bare var → import alias /
-    // local def; `mod.attr` → the router named `attr` in submodule `mod`.
-    const resolveRouter = (expr: string, fileModule: string, aliases: Map<string, string>): string | null => {
-      if (expr.includes(".")) {
-        const parts = expr.split(".");
-        const attr = parts.pop() as string;
-        const mod = parts.pop() as string;
-        return routerKeys.find((k) => k.endsWith(`::${attr}`) && lastSeg(k.split("::")[0] as string) === mod) ?? null;
-      }
-      const key = aliases.get(expr) ?? `${fileModule}::${expr}`;
-      return ownPrefix.has(key) ? key : null;
+    // An unresolvable `mod.router` falls back to a router named `router` in any
+    // file whose module's last segment is `mod`.
+    const bySegment = (expr: string): string | null => {
+      const parts = expr.split(".");
+      if (parts.length < 2) return null;
+      const attr = parts.pop() as string;
+      const mod = parts.pop() as string;
+      return routerKeys.find((k) => k.endsWith(`::${attr}`) && lastSeg(moduleName(k.split("::")[0] as string)) === mod) ?? null;
     };
 
     // 2. Include edges: childKey -> { receiverKey|null (app), mountPrefix }.
     const includeOf = new Map<string, { receiverKey: string | null; mountPrefix: string }>();
+    const resolvers = new Map<string, (expr: string) => string | null>();
     for (const [path, src] of sources) {
-      const fileModule = moduleName(path);
-      const aliases = pythonImportAliases(src);
+      const resolve = pythonRefResolver(path, src, sources);
+      resolvers.set(path, resolve);
       for (const m of src.matchAll(INCLUDE_RE)) {
-        const childKey = resolveRouter(m[2] as string, fileModule, aliases);
+        const call = parsePyCall(src, openParen(m));
+        const expr = (call.args[0] ?? call.kwargs.get("router") ?? "").trim();
+        if (!/^[\w.]+$/.test(expr)) continue;
+        const resolved = resolve(expr);
+        const childKey = resolved && ownPrefix.has(resolved) ? resolved : bySegment(expr);
         if (!childKey) continue;
-        const receiverVar = m[1] as string;
-        const receiverKey = aliases.get(receiverVar) ?? `${fileModule}::${receiverVar}`;
+        const receiverKey = resolve(m[1] as string);
         includeOf.set(childKey, {
-          receiverKey: ownPrefix.has(receiverKey) ? receiverKey : null,
-          mountPrefix: prefixArg(m[3] as string),
+          receiverKey: receiverKey && ownPrefix.has(receiverKey) ? receiverKey : null,
+          mountPrefix: prefixOf(call),
         });
       }
     }
@@ -90,18 +83,22 @@ export const fastapiAdapter: RouteAdapter = {
     // 3. Emit a route per decorator (one per HTTP method).
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
-      const fileModule = moduleName(path);
+      const resolve = resolvers.get(path) as (expr: string) => string | null;
       for (const m of src.matchAll(DECORATOR_RE)) {
-        const obj = m[1] as string;
+        const call = parsePyCall(src, openParen(m));
+        const subPath = pyString(call.args[0] ?? call.kwargs.get("path"));
+        if (subPath === null) continue;
         const decorator = m[2] as string;
-        const key = `${fileModule}::${obj}`;
-        const prefix = ownPrefix.has(key) ? fullPrefix(key) : "";
-        const route = joinRoute(prefix, m[3] as string);
-        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? methodsOf(m[4] as string) : [decorator.toUpperCase()];
+        // A router decorated in another file than its definition resolves via imports.
+        const key = resolve(m[1] as string);
+        const prefix = key && ownPrefix.has(key) ? fullPrefix(key) : "";
+        const route = joinRoute(prefix, subPath);
+        const line = lineAt(src, m.index ?? 0);
+        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? pyMethods(call.kwargs.get("methods")) : [decorator.toUpperCase()];
         if (methods.length) {
-          for (const method of methods) routes.push({ route, file: path, kind: "api", method });
+          for (const method of methods) routes.push({ route, file: path, line, kind: "api", method });
         } else {
-          routes.push({ route, file: path, kind: "api" });
+          routes.push({ route, file: path, line, kind: "api" });
         }
       }
     }

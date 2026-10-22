@@ -1,5 +1,6 @@
 import type { FileInfo, RouteInfo, StackInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
+import { cmp } from "./util.js";
 import { nextjsAdapter } from "./nextjs.js";
 import { flaskAdapter } from "./flask.js";
 import { fastapiAdapter } from "./fastapi.js";
@@ -55,6 +56,6 @@ export function detectRoutes(files: FileInfo[], stack: StackInfo, repo: string):
       merged.push(r);
     }
   }
-  merged.sort((a, b) => a.route.localeCompare(b.route) || a.kind.localeCompare(b.kind) || (a.method ?? "").localeCompare(b.method ?? ""));
+  merged.sort((a, b) => cmp(a.route, b.route) || cmp(a.kind, b.kind) || cmp(a.method ?? "", b.method ?? "") || cmp(a.file, b.file));
   return merged;
 }

@@ -1,4 +1,6 @@
+import { posix } from "node:path";
 import type { Artifact, GenerationInfo, Inventory, Options } from "../types.js";
+import { closesFence, type Fence, fenceOpen, rebaseLinks } from "./markdown.js";
 
 /** A line that could be the *content* of a setext heading (plain prose). */
 function isSetextContent(s: string): boolean {
@@ -31,17 +33,15 @@ export function demoteHeadings(md: string, by = 1): string {
     if (i < lines.length) out.push(lines[i++] as string); // closing fence
   }
 
-  let fence: string | null = null;
+  let fence: Fence | null = null;
   for (; i < lines.length; i++) {
     const line = lines[i] as string;
-    const fenceMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
-    if (fenceMatch?.[2]) {
-      const marker = fenceMatch[2].startsWith("`") ? "`" : "~";
-      if (fence === null) fence = marker;
-      else if (fence === marker) fence = null;
+    if (fence !== null) {
+      if (closesFence(line, fence)) fence = null;
       out.push(line);
       continue;
     }
+    fence = fenceOpen(line);
     if (fence !== null) {
       out.push(line);
       continue;
@@ -153,7 +153,7 @@ function mergeTree(artifacts: Artifact[], inv: Inventory, opts: Options, variant
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
 
   for (const s of sections) {
-    const raw = byPath.get(s.relPath) ?? "";
+    const raw = rebaseLinks(byPath.get(s.relPath) ?? "", posix.dirname(s.relPath));
     const content = variant.stripSource ? stripSourceMaterial(raw) : raw;
     parts.push("");
     parts.push("---");
@@ -191,19 +191,15 @@ export function stripSourceMaterial(md: string): string {
   const lines = md.split("\n");
   const out: string[] = [];
   let skipping = false;
-  let fence: string | null = null;
+  let fence: Fence | null = null;
   for (const line of lines) {
-    const fenceMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
-    const marker = fenceMatch?.[2] ? (fenceMatch[2].startsWith("`") ? "`" : "~") : null;
     if (skipping) {
       if (fence !== null) {
-        if (marker === fence) fence = null; // closing fence
+        if (closesFence(line, fence)) fence = null;
         continue;
       }
-      if (marker) {
-        fence = marker; // opening fence inside the stripped section
-        continue;
-      }
+      fence = fenceOpen(line); // opening fence inside the stripped section
+      if (fence !== null) continue;
       if (/^##\s/.test(line))
         skipping = false; // next section heading ends the skip
       else continue;
@@ -253,7 +249,7 @@ export function mergeFeatures(artifacts: Artifact[], inv: Inventory, opts: Optio
   for (const s of sections) parts.push(`- [${s.title}](#${s.anchor})`);
 
   for (const s of sections) {
-    const content = byPath.get(s.relPath) ?? "";
+    const content = rebaseLinks(byPath.get(s.relPath) ?? "", posix.dirname(s.relPath));
     parts.push("");
     parts.push("---");
     parts.push("");

@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
+import { lineAt, readSources } from "./util.js";
 
 const CODE_PAGE_EXTS = new Set([".tsx", ".ts", ".jsx", ".js"]);
 const PAGES_SPECIAL = new Set(["_app", "_document", "_error", "middleware"]);
@@ -43,41 +42,74 @@ function afterDir(path: string, dir: string): string[] | null {
   return null;
 }
 
-/** Exported HTTP method handlers in a `route.ts` (`export function GET`, `export const POST = …`). */
-function routeMethods(repo: string, file: string): string[] {
-  let src: string;
-  try {
-    src = readFileSync(join(repo, file), "utf8");
-  } catch {
-    return [];
+/** Exported binding names of an export list or destructuring (`a as GET`, `POST`, `GET: get`). */
+function exportedNames(list: string, destructuring: boolean): string[] {
+  const out: string[] = [];
+  for (const raw of list.split(",")) {
+    let item = raw.trim().replace(/^type\s+/, "");
+    if (!item || item.startsWith("...")) continue;
+    item = destructuring ? ((item.split(":").pop() as string).split("=")[0] as string) : (item.split(/\s+as\s+/).pop() as string);
+    out.push(item.trim().replace(/^["'`]|["'`]$/g, ""));
   }
-  const found = new Set<string>();
-  for (const m of src.matchAll(/export\s+(?:async\s+)?function\s+([A-Z]+)\b/g)) {
-    if (HTTP_METHODS.includes(m[1] as string)) found.add(m[1] as string);
-  }
-  for (const m of src.matchAll(/export\s+const\s+([A-Z]+)\s*=/g)) {
-    if (HTTP_METHODS.includes(m[1] as string)) found.add(m[1] as string);
-  }
-  return [...found];
+  return out;
 }
 
+/**
+ * Exported HTTP method handlers in a `route.ts`, each with the line of its
+ * export: `export [async] function GET`, `export const POST = …` (typed or not),
+ * the NextAuth list form `export { handler as GET, handler as POST }`, re-exports
+ * `export { GET } from "./x"`, and the v5 destructuring
+ * `export const { GET, POST } = handlers`. `src` has its comments blanked, so a
+ * commented-out export is not a handler.
+ */
+function routeMethods(src: string): Array<{ method: string; line: number }> {
+  const found = new Map<string, number>();
+  const add = (name: string, offset: number): void => {
+    if (HTTP_METHODS.includes(name) && !found.has(name)) found.set(name, offset);
+  };
+  for (const m of src.matchAll(/\bexport\s+(?:async\s+)?function\s*\*?\s*([A-Z]+)\b/g)) add(m[1] as string, m.index ?? 0);
+  for (const m of src.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Z]+)\s*[=:]/g)) add(m[1] as string, m.index ?? 0);
+  for (const m of src.matchAll(/\bexport\s+(?:const|let|var)\s*\{([^}]*)\}\s*=/g)) {
+    for (const name of exportedNames(m[1] as string, true)) add(name, m.index ?? 0);
+  }
+  for (const m of src.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
+    for (const name of exportedNames(m[1] as string, false)) add(name, m.index ?? 0);
+  }
+  return [...found].map(([method, offset]) => ({ method, line: lineAt(src, offset) }));
+}
+
+/**
+ * A `_folder` under `app/` is private: it and every child are opted out of
+ * routing. (`%5F` is the escape for a URL segment that really starts with `_`.)
+ */
+const isPrivateSegment = (seg: string): boolean => seg.startsWith("_");
+
 function detectAppRoutes(files: FileInfo[], repo: string): RouteInfo[] {
-  const routes: RouteInfo[] = [];
+  const candidates: Array<{ f: FileInfo; rest: string[] }> = [];
   for (const f of files) {
     if (!CODE_PAGE_EXTS.has(f.ext)) continue;
     const rest = afterDir(f.path, "app");
     if (!rest || rest.length === 0) continue;
+    if (rest.slice(0, -1).some(isPrivateSegment)) continue;
+    candidates.push({ f, rest });
+  }
+  // Only route handlers are content-scanned (comments blanked by readSources).
+  const handlerFiles = candidates.filter((c) => /^route\.(tsx|ts|jsx|js)$/.test(c.rest[c.rest.length - 1] as string)).map((c) => c.f);
+  const sources = readSources(handlerFiles, repo, [...CODE_PAGE_EXTS]);
+
+  const routes: RouteInfo[] = [];
+  for (const { f, rest } of candidates) {
     const fileName = (rest[rest.length - 1] as string).replace(/\.(tsx|ts|jsx|js)$/, "");
-    const dirSegs = cleanAppSegments(rest.slice(0, -1));
+    const dirSegs = cleanAppSegments(rest.slice(0, -1)).map((s) => s.replace(/^%5F/i, "_"));
     const route = "/" + dirSegs.join("/");
     const normalized = route === "/" ? "/" : route.replace(/\/$/, "");
 
     if (fileName === "page") {
       routes.push({ route: normalized, file: f.path, kind: "page" });
     } else if (fileName === "route") {
-      const methods = routeMethods(repo, f.path);
+      const methods = routeMethods(sources.get(f.path) ?? "");
       if (methods.length) {
-        for (const method of methods) routes.push({ route: normalized, file: f.path, kind: "api", method });
+        for (const { method, line } of methods) routes.push({ route: normalized, file: f.path, line, kind: "api", method });
       } else {
         routes.push({ route: normalized, file: f.path, kind: "api" });
       }
@@ -109,7 +141,8 @@ function detectPagesRoutes(files: FileInfo[]): RouteInfo[] {
 /**
  * Next.js file-based routing: the App Router (`app/`, `page`/`route`/`layout`)
  * and the legacy Pages Router (`pages/`, `pages/api/*`). Path-based, except that
- * a `route.ts` is content-scanned for its exported HTTP method handlers.
+ * a `route.ts` is content-scanned for its exported HTTP method handlers. Private
+ * `_folders` under `app/` are not routable and are skipped.
  */
 export const nextjsAdapter: RouteAdapter = {
   id: "nextjs",

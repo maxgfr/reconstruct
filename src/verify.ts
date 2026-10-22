@@ -2,7 +2,19 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import type { ClaimEvidencePair, ConfidenceKind, Inventory, Verdict, VerdictKind, VerifyResult, VerifyWorklist } from "./types.js";
+import { canonicalJson, sha256Hex } from "./evidence.js";
+import type {
+  ClaimEvidencePair,
+  ConfidenceKind,
+  EvidenceAuthority,
+  Inventory,
+  Obligation,
+  ObligationLedger,
+  Verdict,
+  VerdictKind,
+  VerifyResult,
+  VerifyWorklist,
+} from "./types.js";
 
 // Bounds the requirement-verification loop (claim↔evidence pairs per run).
 export const VERIFY_MAX = 60;
@@ -15,6 +27,7 @@ export interface BuiltWorklist {
 }
 const VALID: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
 const VALID_CONFIDENCE: ConfidenceKind[] = ["confirmed", "inferred", "gap"];
+const VALID_AUTHORITY: EvidenceAuthority[] = ["source", "test", "config", "manifest", "doc", "plan", "agent"];
 
 // The feature-PRD sections whose list items are testable requirements/claims.
 const CLAIM_SECTIONS = new Set(["## Functional requirements", "## Acceptance criteria"]);
@@ -157,7 +170,7 @@ export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {})
     pairs.length > max
       ? pairs
           .slice()
-          .sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId))
+          .sort((a, b) => b.score - a.score || (a.claimId < b.claimId ? -1 : a.claimId > b.claimId ? 1 : 0))
           .slice(0, max)
       : pairs;
   const worklist: VerifyWorklist = {
@@ -197,7 +210,13 @@ export function runVerify(outDir: string, opts: { maxVerify?: number } = {}): Ve
     // agent reading only the JSON must still see that a capped run adjudicates
     // a subset — partial coverage never reads as complete.
     coverage: worklist.coverage,
-    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "", confidence: null as ConfidenceKind | null })),
+    pairs: worklist.pairs.map((p) => ({
+      ...p,
+      verdict: null as VerdictKind | null,
+      note: "",
+      confidence: null as ConfidenceKind | null,
+      authority: null as EvidenceAuthority | null,
+    })),
   };
   writeFileSync(join(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
   writeFileSync(join(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
@@ -214,7 +233,10 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
       `\`VERIFY.todo.json\`, set each \`verdict\` to supported · partial · refuted · unsupported ` +
       `(+ a short \`note\`), and stamp each \`confidence\` to confirmed (evidence read and ` +
       `decisive) · inferred (consistent but indirect — a pattern or standard behavior) · gap ` +
-      `(evidence thin; needs a human). Save it (e.g. as \`verdicts.json\`), then run ` +
+      `(evidence thin; needs a human). Stamp \`authority\` with what vouches for the verdict — ` +
+      `source · test · config · manifest · doc · plan, or agent when it rests on your reasoning ` +
+      `alone (an agent-authority \`supported\` is folded as partial). When an \`inventory.json\` ` +
+      `\`evidence[]\` id matches, cite it as \`evidenceRef\`. Save it (e.g. as \`verdicts.json\`), then run ` +
       `\`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`,
   );
   if (kept < total)
@@ -257,6 +279,8 @@ function readInventoryIfPresent(outDir: string): Inventory | undefined {
  */
 export function resolveEvidence(ref: string, inv: Inventory): boolean {
   const features = inv.features ?? [];
+  // A content-addressed evidence id resolves iff the inventory recorded it.
+  if (/^ev_[0-9a-f]{16}$/.test(ref)) return (inv.evidence ?? []).some((e) => e.id === ref);
   const feat = /^feature (\S+)( \(no captured evidence\))?$/.exec(ref);
   if (feat) return features.some((f) => f.slug === feat[1]);
 
@@ -445,6 +469,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
     }
     const verdict = VALID.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
     const confidence = VALID_CONFIDENCE.includes(v.confidence) ? (v.confidence as ConfidenceKind) : undefined;
+    const authority = VALID_AUTHORITY.includes(v.authority) ? (v.authority as EvidenceAuthority) : undefined;
     verdicts.push({
       claimId: v.claimId,
       claim: typeof v.claim === "string" ? v.claim : (base?.claim ?? ""),
@@ -454,6 +479,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       verdict,
       note: typeof v.note === "string" ? v.note : "",
       ...(confidence ? { confidence } : {}),
+      ...(authority ? { authority } : {}),
       // A fragment inherits only a saved worklist's binding. Without that
       // worklist, preserve the row's existing binding after comparison above.
       ...((todo ? base?.fingerprint : base ? v.fingerprint : undefined) ? { fingerprint: todo ? base!.fingerprint : v.fingerprint } : {}),
@@ -470,6 +496,8 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
   if (unknown.length) result.ignored = unknown;
   writeFileSync(join(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  const ledger = writeObligations(outDir, verdicts);
+  result.obligations = { ledgerId: ledger.ledgerId, closureDigest: ledger.closureDigest, closed: ledger.closed, open: ledger.open, failed: ledger.failed };
   return result;
 }
 
@@ -479,7 +507,12 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
 // (fabricated citation).
 export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResult {
   const counts: Record<VerdictKind, number> = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
-  for (const v of verdicts) if (v.verdict && counts[v.verdict] !== undefined) counts[v.verdict]++;
+  // Inference is not proof: `supported` on agent authority alone counts as partial.
+  const inferenceOnly = verdicts.filter((v) => v.verdict === "supported" && v.authority === "agent").map((v) => v.claimId);
+  for (const v of verdicts) {
+    if (!v.verdict || counts[v.verdict] === undefined) continue;
+    counts[v.verdict === "supported" && v.authority === "agent" ? "partial" : v.verdict]++;
+  }
   const confidence = { confirmed: 0, inferred: 0, gap: 0, unlabeled: 0 };
   for (const v of verdicts) {
     if (v.confidence && VALID_CONFIDENCE.includes(v.confidence)) confidence[v.confidence]++;
@@ -516,6 +549,7 @@ export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResu
     failures,
     unadjudicated,
     confidence,
+    ...(inferenceOnly.length ? { inferenceOnly } : {}),
   };
 }
 
@@ -656,14 +690,94 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
       `semantic verification failed: ${fresh.failures.length} requirement(s) refuted, unsupported or citing unresolvable evidence (see VERIFY.json)`,
     );
   }
+  // Fail closed: "not judged" and "judged on thin evidence" never add up to a
+  // pass. Both route through `skip`, so --allow-unverified is the explicit,
+  // visible way to accept them.
   if (fresh.unadjudicated.length) {
-    check.warnings.push(`${fresh.unadjudicated.length} requirement(s) not fully adjudicated by --verify`);
+    skip(`--semantic: ${fresh.unadjudicated.length} requirement(s) in VERIFY.json carry no verdict (${previewIds(fresh.unadjudicated)})`);
   }
   if (fresh.confidence?.gap) {
-    check.warnings.push(
-      `${fresh.confidence.gap} verdict(s) labeled confidence:gap — the cited evidence is thin; strengthen it or record the claims as known gaps`,
+    skip(
+      `--semantic: ${fresh.confidence.gap} verdict(s) labeled confidence:gap — the cited evidence is thin; strengthen it, or record the claim in UNKNOWNS.json and mark it partial`,
     );
   }
+
+  // The obligation ledger written at --apply time must still describe this tree.
+  const ledger = buildObligations(all, sem.verdicts, readInventoryIfPresent(outDir));
+  const recorded = readObligations(outDir);
+  if (recorded && recorded.closureDigest !== ledger.closureDigest) {
+    check.warnings.push(
+      `OBLIGATIONS.json is stale (closure ${recorded.closureDigest} ≠ ${ledger.closureDigest} recomputed) — re-run --verify --apply to refresh it`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Obligation ledger (`OBLIGATIONS.json`). Every requirement the PRDs state is an
+// obligation the rebuild must meet. It is CLOSED only by a `supported` verdict
+// bound to the current text, at confidence other than `gap`, on authority other
+// than the agent's own inference; FAILED when refuted, unsupported or citing
+// evidence that does not resolve; OPEN otherwise. Two digests pin it:
+// `ledgerId` names the requirement set (ids + fingerprints), `closureDigest`
+// names its closure state — any change to a PRD, a verdict or a citation moves it.
+// ---------------------------------------------------------------------------
+
+export const OBLIGATIONS_FILE = "OBLIGATIONS.json";
+
+export function buildObligations(pairs: ClaimEvidencePair[], verdicts: Verdict[], inv?: Inventory): ObligationLedger {
+  const byId = new Map(verdicts.filter((v) => v.verdict).map((v) => [v.claimId, v]));
+  const obligations: Obligation[] = pairs.map((p) => {
+    const raw = byId.get(p.claimId);
+    // A verdict judged other content (fingerprint moved) does not speak for this one.
+    const v = raw && (!p.fingerprint || raw.fingerprint === p.fingerprint) ? raw : undefined;
+    const evidence = v ? [v.evidenceRef] : [];
+    let status: Obligation["status"] = "open";
+    if (v && (v.verdict === "refuted" || v.verdict === "unsupported" || (inv && !resolveEvidence(v.evidenceRef, inv)))) status = "failed";
+    else if (v && v.verdict === "supported" && v.authority !== "agent" && v.confidence !== "gap") status = "closed";
+    return {
+      id: p.claimId,
+      feature: p.feature,
+      requirement: p.claim,
+      ...(p.fingerprint ? { fingerprint: p.fingerprint } : {}),
+      evidence,
+      verdict: v?.verdict ?? null,
+      ...(v?.confidence ? { confidence: v.confidence } : {}),
+      ...(v?.authority ? { authority: v.authority } : {}),
+      status,
+    };
+  });
+  const count = (s: Obligation["status"]) => obligations.filter((o) => o.status === s).length;
+  return {
+    version: 1,
+    ledgerId: `ob_${sha256Hex(canonicalJson(obligations.map((o) => [o.id, o.fingerprint ?? o.requirement]))).slice(0, 16)}`,
+    closureDigest: sha256Hex(canonicalJson(obligations)).slice(0, 16),
+    total: obligations.length,
+    closed: count("closed"),
+    open: count("open"),
+    failed: count("failed"),
+    obligations,
+  };
+}
+
+export function readObligations(outDir: string): ObligationLedger | undefined {
+  try {
+    return JSON.parse(readFileSync(join(outDir, OBLIGATIONS_FILE), "utf8")) as ObligationLedger;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Recompute and persist the ledger for the tree's current PRDs and verdicts. */
+export function writeObligations(outDir: string, verdicts: Verdict[]): ObligationLedger {
+  let pairs: ClaimEvidencePair[] = [];
+  try {
+    pairs = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
+  } catch {
+    pairs = [];
+  }
+  const ledger = buildObligations(pairs, verdicts, readInventoryIfPresent(outDir));
+  writeFileSync(join(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
+  return ledger;
 }
 
 export function formatVerifyReport(r: VerifyResult): string {
@@ -671,6 +785,15 @@ export function formatVerifyReport(r: VerifyResult): string {
   lines.push(`reconstruct --verify: ${r.adjudicated}/${r.pairs} requirement(s) adjudicated`);
   lines.push(`  supported: ${r.supported} · partial: ${r.partial} · refuted: ${r.refuted} · unsupported: ${r.unsupported}`);
   const c = r.confidence;
+  if (r.inferenceOnly?.length) {
+    lines.push(
+      `  ${r.inferenceOnly.length} supported verdict(s) rest on agent inference alone — counted as partial (${r.inferenceOnly.slice(0, 6).join(", ")})`,
+    );
+  }
+  if (r.obligations) {
+    const o = r.obligations;
+    lines.push(`  obligations: ${o.closed} closed · ${o.open} open · ${o.failed} failed — ledger ${o.ledgerId}, closure ${o.closureDigest} (OBLIGATIONS.json)`);
+  }
   if (c && c.confirmed + c.inferred + c.gap > 0) {
     lines.push(`  confidence: ${c.confirmed} confirmed · ${c.inferred} inferred · ${c.gap} gap${c.unlabeled ? ` · ${c.unlabeled} unlabeled` : ""}`);
   }

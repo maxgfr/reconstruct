@@ -1,5 +1,8 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, posix, relative } from "node:path";
+import { sha256Hex, staleEvidence } from "./evidence.js";
+import { fencedLines } from "./prd/markdown.js";
+import { foldUnknowns } from "./unknowns.js";
 import { hasUI } from "./design.js";
 import type { Inventory } from "./types.js";
 
@@ -42,7 +45,9 @@ function collectMarkdown(dir: string, base = dir): Doc[] {
       continue;
     }
     if (st.isDirectory()) {
-      if (SKIP_DIRS.has(name)) continue;
+      // A symlinked directory is never descended: a link back up the tree
+      // would recurse forever, and one pointing outside isn't the tree.
+      if (SKIP_DIRS.has(name) || lstatSync(full).isSymbolicLink()) continue;
       out.push(...collectMarkdown(full, base));
     } else if (name.endsWith(".md")) {
       out.push({ rel: relative(base, full).split("\\").join("/"), content: readFileSync(full, "utf8") });
@@ -74,8 +79,8 @@ function scanScaffolding(docs: Doc[], errors: string[]): void {
   }
 }
 
-/** Gather every filename under a directory tree (recursively). */
-function fileNames(dir: string): string[] {
+/** Gather every file path (relative to the first `dir`) under a directory tree. */
+function fileNames(dir: string, base = dir): string[] {
   const out: string[] = [];
   let entries: string[];
   try {
@@ -91,8 +96,9 @@ function fileNames(dir: string): string[] {
     } catch {
       continue;
     }
-    if (st.isDirectory()) out.push(...fileNames(full));
-    else out.push(name);
+    if (st.isDirectory()) {
+      if (!lstatSync(full).isSymbolicLink()) out.push(...fileNames(full, base));
+    } else out.push(relative(base, full).split("\\").join("/"));
   }
   return out;
 }
@@ -105,7 +111,7 @@ function fileNames(dir: string): string[] {
  * the generated tree + `inventory.json`, so it works whether the tree came from
  * the code path or the scratch path.
  */
-export function checkOutput(outDir: string): CheckResult {
+export function checkOutput(outDir: string, opts: { repo?: string } = {}): CheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -172,6 +178,30 @@ export function checkOutput(outDir: string): CheckResult {
     }
   }
 
+  // 3b. Link integrity (warning): every relative link resolves inside the tree.
+  warnings.push(...brokenLinks(outDir, docs));
+
+  // 3c. Evidence freshness (warning, only when the original repo is named): a
+  //     cited file whose content hash moved means the PRD describes code that
+  //     no longer exists in that form.
+  if (opts.repo && inv.evidence?.length) {
+    const repo = opts.repo;
+    const cache = new Map<string, string | null>();
+    const hashOf = (file: string): string | null => {
+      if (!cache.has(file)) {
+        try {
+          cache.set(file, sha256Hex(readFileSync(join(repo, file))).slice(0, 16));
+        } catch {
+          cache.set(file, null);
+        }
+      }
+      return cache.get(file) ?? null;
+    };
+    for (const s of staleEvidence(inv.evidence, hashOf)) {
+      warnings.push(`stale evidence ${s.id} (${s.subject}): ${s.file} — ${s.reason}; re-run the analyzer and re-verify`);
+    }
+  }
+
   // 4. Feature PRD spine — enrichment must keep the demanding sections, and the
   //    sections must carry content (a spine of bare headings is not a PRD).
   for (const d of docs) {
@@ -232,28 +262,87 @@ export function checkOutput(outDir: string): CheckResult {
         .map((d) => d.content)
         .join("\n");
     for (const loc of inv.i18n.locales) {
-      const inFiles = names.some((n) => n.includes(loc));
-      const inCatalog = catalog.includes(`${loc}`);
+      // `it` is a locale AND an English word, and `item.json` contains it: match
+      // a path segment (`it.json`, `it/`) or a code-ish mention (`it`, "it",
+      // | it |, it-IT), never a bare substring of prose.
+      const inFiles = names.some((n) => n.split("/").some((seg) => localeTag(seg.replace(/\.[^.]+$/, ""), loc)));
+      const inCatalog = mentionsLocale(catalog, loc);
       if (!inFiles && !inCatalog) {
         warnings.push(`locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`);
       }
     }
   }
 
-  return { errors, warnings };
+  // 6. Residual unknowns: an unsettled blocker in UNKNOWNS.json is an unbuildable gap.
+  const result = { errors, warnings };
+  foldUnknowns(outDir, result);
+  return result;
 }
 
 /** Whether a doc documents a token — as a word, not an incidental substring. */
 function documents(doc: string, token: string): boolean {
-  return doc.includes(token);
+  // `Item` must not pass because `OrderItem` is documented.
+  return new RegExp(`(?<!\\w)${escapeRe(token)}(?!\\w)`).test(doc);
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** `seg` names locale `loc` (`en`, `en-US`, `en_GB` all name `en`). */
+function localeTag(seg: string, loc: string): boolean {
+  return seg === loc || seg.startsWith(`${loc}-`) || seg.startsWith(`${loc}_`);
+}
+
+/** A code-ish mention of a locale tag — never a bare word of prose. */
+function mentionsLocale(text: string, loc: string): boolean {
+  const l = escapeRe(loc);
+  const forms = [
+    `\`${l}(?:[-_][A-Za-z]{2,4})?\``, // `en`, `en-US`
+    `["']${l}["']`, // "en"
+    `[/[(]${l}[/\\])]`, // /en/, (en)
+    `(?<!\\w)${l}\\.json\\b`, // en.json
+    `\\|\\s*${l}\\s*\\|`, // | en |
+    `(?<!\\w)${l}[-_][A-Z]{2}\\b`, // en-US
+  ];
+  return new RegExp(forms.join("|")).test(text);
 }
 
 /** Markdown with fenced code blocks and inline code spans removed. */
 function stripCode(s: string): string {
-  return s
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/~~~[\s\S]*?~~~/g, "")
+  return fencedLines(s)
+    .filter((l) => !l.code)
+    .map((l) => l.line)
+    .join("\n")
     .replace(/`[^`\n]*`/g, "");
+}
+
+/**
+ * Relative links in tree docs that point at nothing. A bundle inlining a PRD
+ * without rebasing its links, or a PRD naming a source file that was never
+ * copied, leaves a builder following a dead reference.
+ */
+function brokenLinks(outDir: string, docs: Doc[]): string[] {
+  const out: string[] = [];
+  for (const d of docs) {
+    const dir = posix.dirname(d.rel);
+    const prose = fencedLines(d.content)
+      .filter((l) => !l.code)
+      .map((l) => l.line.replace(/`[^`\n]*`/g, ""))
+      .join("\n");
+    for (const m of prose.matchAll(/\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"]*")?\)/g)) {
+      const target = (m[1] ?? m[2] ?? "").split("#")[0] as string;
+      if (target === "" || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(target)) continue;
+      let decoded = target;
+      try {
+        decoded = decodeURI(target);
+      } catch {
+        /* keep the raw target */
+      }
+      if (!existsSync(join(outDir, posix.normalize(posix.join(dir, decoded))))) out.push(`${d.rel}: broken link → ${target}`);
+    }
+  }
+  return out;
 }
 
 /**
@@ -356,6 +445,74 @@ function sectionHasContent(doc: string, heading: string): boolean {
       const t = l.trim();
       return t !== "" && !t.startsWith(">") && !t.startsWith("#");
     });
+}
+
+/** One gate result, machine-readable: a stable code, where, and what to do next. */
+export interface CheckFinding {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  /** Tree-relative document the finding is about, when it names one. */
+  file?: string;
+  next_action: string;
+}
+
+// Stable codes for every message the gate (and its semantic folds) can emit.
+// The prose may be reworded; the code is the contract a CI job or an agent
+// matches on. First match wins, so specific patterns come before broad ones.
+const FINDING_RULES: [RegExp, string, string][] = [
+  [/no inventory\.json|inventory\.json is not valid JSON/, "RC000_NO_TREE", "Run the analyzer to scaffold a tree, then enrich it."],
+  // Path-prefixed findings first: their message names a document, which a
+  // broad pattern below (DESIGN-SYSTEM.md, VERIFY.json…) would otherwise claim.
+  [/: broken link →/, "RC060_BROKEN_LINK", "Point the link at a file that exists in the tree, or remove it."],
+  [/^stale evidence/, "RC061_STALE_EVIDENCE", "Re-run the analyzer against the current repo, then re-verify the affected requirements."],
+  [/^UNKNOWNS\.json: blocker /, "RC070_OPEN_BLOCKER_UNKNOWN", "Settle the blocker with reconstruct_unknowns / --unknowns --apply, citing evidence."],
+  [/^UNKNOWNS\.json: \S+ was edited by hand/, "RC071_UNKNOWN_EDITED", "Record unknown changes through --unknowns --apply so the revision chain holds."],
+  [/not a valid unknowns ledger/, "RC072_UNKNOWNS_CORRUPT", "Repair or delete UNKNOWNS.json, then re-run --unknowns."],
+  [/^UNKNOWNS\.json: /, "RC073_UNKNOWN_INVALID", "Fix the record (a resolving citation for resolved/contradicted) through --unknowns --apply."],
+  [
+    /^missing required document/,
+    "RC001_MISSING_DOC",
+    "Restore the document (re-run the analyzer into a scratch dir and copy it over) — the spine is mandatory.",
+  ],
+  [/unresolved `🧠` agent callout/, "RC010_UNRESOLVED_CALLOUT", "Resolve each callout from the real source, then delete it."],
+  [/"fill this in" placeholder/, "RC011_PLACEHOLDER", "Replace the placeholder with the real content."],
+  [/does not document entity/, "RC020_UNDOCUMENTED_ENTITY", "Document the entity in architecture/DATA-MODEL.md (fields, types, relations)."],
+  [/does not document operation/, "RC021_UNDOCUMENTED_OPERATION", "Document the operation in architecture/INTERFACES.md (input, output, side effects)."],
+  [/missing required section/, "RC030_MISSING_SECTION", "Restore the section heading and fill it."],
+  [/has no content — fill it/, "RC031_EMPTY_SECTION", "Write the section from the source: a heading alone is not a PRD section."],
+  [/declares no entities/, "RC040_EMPTY_DATA_MODEL", "Enumerate every entity with its fields in architecture/DATA-MODEL.md."],
+  [/declares no operations/, "RC041_EMPTY_INTERFACES", "Enumerate every operation in architecture/INTERFACES.md."],
+  [/^locale `/, "RC050_LOCALE_COVERAGE", "Copy the locale's messages under data/translations/ or cover it in the message catalog."],
+  [/semantic verification failed/, "RC085_REQUIREMENT_FAILED", "Fix or remove each refuted/unsupported requirement (see VERIFY.json), then re-verify."],
+  [/adjudicated against content that has since changed|carry no content fingerprint/, "RC081_STALE_VERDICTS", "Re-run --verify then --verify --apply."],
+  [/were dropped|never offered/, "RC082_VERIFY_COVERAGE", "Adjudicate every requirement (raise --max-verify), then --verify --apply."],
+  [/carry no verdict/, "RC083_UNADJUDICATED", "Give every requirement a verdict, then --verify --apply."],
+  [/confidence:gap/, "RC084_THIN_EVIDENCE", "Strengthen the evidence, or record the claim as an unknown and mark it partial."],
+  [/OBLIGATIONS\.json is stale/, "RC086_STALE_OBLIGATIONS", "Re-run --verify --apply to refresh the obligation ledger."],
+  [/VERIFY\.json|requirement gate never engaged/, "RC080_NO_VERIFICATION", "Run --verify, adjudicate, then --verify --apply."],
+  [/review is stale|review baseline|carries no content baseline/, "RC091_STALE_REVIEW", "Re-run --review then --review --apply."],
+  [/buildability review failed/, "RC092_REVIEW_BLOCKERS", "Fix each unrefuted blocker in REVIEW.json, then run another review round."],
+  [/review made no progress/, "RC093_REVIEW_STALLED", "Fix the shared architecture contract, or record the blockers as known gaps."],
+  [/REVIEW\.json/, "RC090_NO_REVIEW", "Run --review, record findings, then --review --apply."],
+  // Broadest last: any other message that merely names the design system.
+  [/DESIGN-SYSTEM\.md/, "RC042_DESIGN_SYSTEM", "Capture tokens, theming, typography, components and a11y in architecture/DESIGN-SYSTEM.md."],
+];
+
+/** The check result as typed findings with stable codes. */
+export function checkFindings(r: CheckResult): CheckFinding[] {
+  const one = (message: string, severity: CheckFinding["severity"]): CheckFinding => {
+    const rule = FINDING_RULES.find(([re]) => re.test(message));
+    const file = /^([\w./-]+\.(?:md|json)): /.exec(message)?.[1];
+    return {
+      code: rule?.[1] ?? "RC999_OTHER",
+      severity,
+      message,
+      ...(file ? { file } : {}),
+      next_action: rule?.[2] ?? "Read the message and fix the tree accordingly.",
+    };
+  };
+  return [...r.errors.map((m) => one(m, "error")), ...r.warnings.map((m) => one(m, "warning"))];
 }
 
 /** Human-readable report for the CLI; PASS when there are no errors. */

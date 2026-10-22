@@ -6,7 +6,7 @@ import type { Inventory, ReviewCategory, ReviewFinding, ReviewResult, ReviewSeve
 
 // The architecture docs every feature PRD's contract hangs off — a change to any
 // of them can regress every feature, so they fold into one shared `archHash`.
-const ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md"];
+const ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 
 const SEVERITIES: ReviewSeverity[] = ["blocker", "major", "minor"];
 const CATEGORIES: ReviewCategory[] = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
@@ -234,6 +234,14 @@ function renderWorklistMd(wl: ReviewWorklist): string {
 }
 
 const VALID_SEVERITY = new Set(SEVERITIES);
+const SEVERITY_ALIASES: Record<string, ReviewSeverity> = { critical: "blocker", high: "major", medium: "major", low: "minor" };
+
+function normalizeSeverity(raw: unknown): ReviewSeverity | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim().toLowerCase();
+  if (VALID_SEVERITY.has(s as ReviewSeverity)) return s as ReviewSeverity;
+  return SEVERITY_ALIASES[s] ?? null;
+}
 const VALID_CATEGORY = new Set(CATEGORIES);
 
 // Normalize an agent-filled findings file: a bare array, `{ findings: [...] }`,
@@ -250,13 +258,16 @@ function normalizeFindings(raw: any): ReviewFinding[] {
   const out: ReviewFinding[] = [];
   for (const f of list) {
     if (!f || typeof f.feature !== "string") continue;
-    if (!VALID_SEVERITY.has(f.severity)) continue;
+    const severity = normalizeSeverity(f.severity);
     const category: ReviewCategory = VALID_CATEGORY.has(f.category) ? f.category : "rebuild-test";
+    const problem = typeof f.problem === "string" ? f.problem : "";
     const finding: ReviewFinding = {
       feature: f.feature,
-      severity: f.severity,
+      severity: severity ?? "blocker",
       category,
-      problem: typeof f.problem === "string" ? f.problem : "",
+      // Fail closed: a finding whose severity we can't read is kept as a
+      // blocker and says why, instead of vanishing from the gate.
+      problem: severity ? problem : `[unrecognised severity ${JSON.stringify(f.severity)} — treated as blocker] ${problem}`,
       fix: typeof f.fix === "string" ? f.fix : "",
       verdict: f.verdict === "confirmed" || f.verdict === "refuted" ? f.verdict : null,
       verifierNote: typeof f.verifierNote === "string" ? f.verifierNote : "",

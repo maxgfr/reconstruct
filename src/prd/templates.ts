@@ -412,7 +412,7 @@ export function interfacesDoc(inv: Inventory, opts: Options): string {
     ? [
         "| Method | Kind | Route | Handler file |",
         "| --- | --- | --- | --- |",
-        ...inv.routes.map((r) => `| ${r.method ?? "—"} | ${r.kind} | \`${r.route}\` | \`${r.file}\` |`),
+        ...inv.routes.map((r) => `| ${r.method ?? "—"} | ${r.kind} | \`${r.route}\` | \`${r.file}${r.line ? `:${r.line}` : ""}\` |`),
       ].join("\n")
     : "_None resolved deterministically — read the candidate files below to map the surface._";
 
@@ -781,7 +781,7 @@ export function featurePrd(inv: Inventory, feature: Feature, opts: Options, sour
   if (feature.routes.length) {
     out.push("## Routes", "", "| Method | Route | Kind | File |", "| --- | --- | --- | --- |");
     for (const r of feature.routes) {
-      out.push(`| ${r.method ?? "—"} | \`${r.route}\` | ${r.kind} | \`${r.file}\` |`);
+      out.push(`| ${r.method ?? "—"} | \`${r.route}\` | ${r.kind} | \`${r.file}${r.line ? `:${r.line}` : ""}\` |`);
     }
     out.push("");
   }

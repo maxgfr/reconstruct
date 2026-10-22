@@ -1,3 +1,6 @@
+import { realpathSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+
 // Serialize work that touches one reconstruction tree.
 //
 // The tree is the durable, ENRICHMENT-BEARING artifact: the whole point is that
@@ -13,7 +16,9 @@
 // actually correct. Different trees stay fully parallel.
 const chains = new Map<string, Promise<unknown>>();
 
-export function withTreeLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+export function withTreeLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  // Keyed by the resolved path: `/tmp/x` and a symlink to it are one tree.
+  const dir = canonical(path);
   const prev = chains.get(dir) ?? Promise.resolve();
   // Chain off `prev` however it settled: a failed predecessor must not poison
   // every later call for the same repo.
@@ -31,6 +36,19 @@ export function withTreeLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
 }
 
 function noop(): void {}
+
+function canonical(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    // Not created yet (a first scaffold): the parent may still be a symlink.
+    try {
+      return join(realpathSync(dirname(path)), basename(path));
+    } catch {
+      return resolve(path);
+    }
+  }
+}
 
 // Test seam: drop every pending chain. Never call this from product code — an
 // in-flight lock holder would stop serializing against later arrivals.

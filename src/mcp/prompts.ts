@@ -69,6 +69,14 @@ export const PROMPTS: PromptDecl[] = [
       "answerable, and record what is still unknown.",
     arguments: [{ name: "idea", description: "The product idea, in one line.", required: true }],
   },
+  {
+    name: "audit_unknowns",
+    title: "Settle what the reconstruction still does not know",
+    description:
+      "The residual-unknowns workflow: walk UNKNOWNS.json, settle each open question from the real source with a citation, and record — rather than " +
+      "paper over — what cannot be settled.",
+    arguments: [outArg, { name: "repo", description: "The original repository, to read source from.", required: false }],
+  },
 ];
 
 export function getPrompt(name: string, args: Record<string, unknown> = {}): PromptResult {
@@ -79,7 +87,14 @@ export function getPrompt(name: string, args: Record<string, unknown> = {}): Pro
     if (arg.required && !str(args[arg.name])) throw new PromptError(`\`${arg.name}\` is required for prompt "${name}"`);
   }
 
-  const text = name === "enrich_feature" ? enrichFeature(args) : name === "review_buildability" ? reviewBuildability(args) : greenfieldInterview(args);
+  const text =
+    name === "enrich_feature"
+      ? enrichFeature(args)
+      : name === "review_buildability"
+        ? reviewBuildability(args)
+        : name === "audit_unknowns"
+          ? auditUnknowns(args)
+          : greenfieldInterview(args);
   return { description: decl.description, messages: [{ role: "user", content: { type: "text", text } }] };
 }
 
@@ -129,6 +144,27 @@ ${CORE_RULE}
 **Look for what is missing, not what is absent.** A section present and generic is worse than one missing: the gate passes it, and the builder finds the hole at implementation time. "Handles errors appropriately" and "validates the input" are holes with prose in them.
 
 **The faithfulness direction matters as much.** A reconstruction that describes a product the source never implemented is worse than no reconstruction — it will be built, and it will be wrong. Where the PRD claims a behaviour the code does not show, that is a finding.
+
+${GATE}`;
+}
+
+function auditUnknowns(args: Record<string, unknown>): string {
+  const out = str(args.out)!;
+  const repo = str(args.repo);
+
+  return `Audit the residual unknowns of \`${out}\`.
+
+${CORE_RULE}
+
+**Sequence:**
+
+1. \`reconstruct_unknowns\` — the ledger, seeded from what the engine could not determine.
+2. For each unsettled record: \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : ""} the source its question points at, and its \`recommendedProbes\`.
+3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_…\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open. (\`updates\` need a server started with \`--allow-write\`; without it, hand the updates to the user for \`--unknowns --apply\`.)
+4. Anything you discover while enriching that you cannot settle goes in as a NEW record — a \`blocker\` when a builder would have to guess it.
+5. \`reconstruct_check\`: an unsettled blocker fails it.
+
+**An honest unknown is buildable-around; a confident guess is not.** Never resolve a record on inference alone — if no artifact answers it, it is still open. Prefer a narrow question with a concrete probe ("does \`retryJob\` cap attempts? read \`src/jobs/retry.ts\`") over a broad one.
 
 ${GATE}`;
 }
