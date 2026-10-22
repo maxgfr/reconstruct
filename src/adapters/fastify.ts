@@ -1,9 +1,13 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { JS_SRC_EXTS as SRC_EXTS, joinRoute, readSources, resolveModule } from "./util.js";
+import { JS_SRC_EXTS as SRC_EXTS, joinRoute, lineAt, readSources, resolveModule } from "./util.js";
 
+// Optional TS annotation between a declared name and its `=`: `: FastifyInstance`.
+const TYPE = String.raw`(?::\s*[\w$.]+(?:<[^>]*>)?\s*)?`;
 // `const app = Fastify()` / `fastify()` / `require("fastify")()`.
-const APP_RE = /(?:const|let|var)\s+(\w+)\s*=\s*(?:require\(\s*["'`]fastify["'`]\s*\)|[Ff]astify)\s*\(/g;
+const APP_RE = new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE}=\s*(?:require\(\s*["'\`]fastify["'\`]\s*\)|[Ff]astify)\s*\(`, "g");
+// The local name `fastify-plugin` is bound to (`fp` / `fastifyPlugin` by convention).
+const FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*require\()\s*["'`]fastify-plugin["'`]/g;
 const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 // `app.register(require("./x") | pluginVar, { prefix: "/p", ... })` — the
@@ -26,23 +30,27 @@ function methodOf(verb: string): string {
  * The instance parameter of the plugin this file exports — the receiver its
  * routes are declared on. Covers `module.exports = [async] function (app)`,
  * `export default [async] (app) =>`, and the indirect `async function routes
- * (app) {} … module.exports = routes` form.
+ * (app) {} … module.exports = routes` form — each also wrapped in
+ * `fastify-plugin` (`export default fp(async (app) => {})`, `fp(routes)`).
+ * `wrapped` reports that wrapper: such a plugin skips encapsulation.
  */
-function pluginParam(src: string): string | null {
-  const direct =
-    src.match(/module\.exports\s*=\s*(?:async\s+)?function\s*\w*\s*\(\s*(\w+)/) ??
-    src.match(/module\.exports\s*=\s*(?:async\s*)?\(\s*(\w+)/) ??
-    src.match(/export\s+default\s+(?:async\s+)?function\s*\w*\s*\(\s*(\w+)/) ??
-    src.match(/export\s+default\s+(?:async\s*)?\(\s*(\w+)/);
-  if (direct) return direct[1] as string;
-  const named = src.match(/(?:module\.exports\s*=|export\s+default)\s*(\w+)\s*;?\s*$/m);
-  if (named) {
-    const name = named[1] as string;
-    const fn =
-      src.match(new RegExp(`function\\s+${name}\\s*\\(\\s*(\\w+)`)) ??
-      src.match(new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?\\(\\s*(\\w+)`));
-    if (fn) return fn[1] as string;
-  }
+function pluginParam(src: string): { param: string; wrapped: boolean } | null {
+  const names = new Set(["fp", "fastifyPlugin"]);
+  for (const m of src.matchAll(FP_IMPORT_RE)) names.add((m[1] ?? m[2]) as string);
+  // Optional `fp(` wrapper (group 1), then a function expression whose first
+  // parameter is group 2 (`function (app)`) or group 3 (`(app) =>`).
+  const fp = String.raw`(?:(${[...names].join("|")})\s*\(\s*)?`;
+  const fn = String.raw`(?:(?:async\s+)?function\s*\w*\s*\(\s*(\w+)|(?:async\s*)?\(\s*(\w+))`;
+  const exp = String.raw`(?:module\.exports\s*=|export\s+default)\s*`;
+  const direct = src.match(new RegExp(exp + fp + fn));
+  if (direct) return { param: (direct[2] ?? direct[3]) as string, wrapped: direct[1] !== undefined };
+  const named = src.match(new RegExp(String.raw`${exp}${fp}(\w+)\s*(?:,[^)]*)?\)?\s*;?\s*$`, "m"));
+  if (!named) return null;
+  const name = named[2] as string;
+  const decl = src.match(new RegExp(String.raw`function\s+${name}\s*\(\s*(\w+)`));
+  if (decl) return { param: decl[1] as string, wrapped: named[1] !== undefined };
+  const expr = src.match(new RegExp(String.raw`(?:const|let|var)\s+${name}\s*${TYPE}=\s*${fp}${fn}`));
+  if (expr) return { param: (expr[2] ?? expr[3]) as string, wrapped: named[1] !== undefined || expr[1] !== undefined };
   return null;
 }
 
@@ -66,10 +74,12 @@ export const fastifyAdapter: RouteAdapter = {
     // Receivers per file: Fastify() instances + this file's plugin parameter.
     const appVarsByFile = new Map<string, Set<string>>();
     const pluginParamByFile = new Map<string, string>();
+    const unencapsulated = new Set<string>(); // fp()-wrapped plugin files
     for (const [path, src] of sources) {
       appVarsByFile.set(path, localVars(src, APP_RE));
-      const param = pluginParam(src);
-      if (param) pluginParamByFile.set(path, param);
+      const plugin = pluginParam(src);
+      if (plugin) pluginParamByFile.set(path, plugin.param);
+      if (plugin?.wrapped) unencapsulated.add(path);
     }
 
     // Register edges: fromFile → (targetFile, prefix). Only registers on a
@@ -88,7 +98,9 @@ export const fastifyAdapter: RouteAdapter = {
         if (!spec) continue;
         const target = resolveModule(path, spec, sources);
         if (!target) continue;
-        const prefix = (m[4] ?? "").match(PREFIX_RE)?.[1] ?? "";
+        // An fp()-wrapped plugin runs in its parent's context: Fastify ignores
+        // the register `prefix` for it, so it inherits the parent's mount.
+        const prefix = unencapsulated.has(target) ? "" : ((m[4] ?? "").match(PREFIX_RE)?.[1] ?? "");
         const list = edges.get(path);
         if (list) list.push({ target, prefix });
         else edges.set(path, [{ target, prefix }]);
@@ -134,6 +146,7 @@ export const fastifyAdapter: RouteAdapter = {
         routes.push({
           route: joinRoute(prefix, m[3] as string),
           file: path,
+          line: lineAt(src, m.index ?? 0),
           kind: "api",
           method: isWs ? "WS" : methodOf(m[2] as string),
         });
@@ -145,8 +158,9 @@ export const fastifyAdapter: RouteAdapter = {
         const url = slice.match(URL_RE)?.[1];
         if (url === undefined) continue;
         const route = joinRoute(prefix, url);
+        const line = lineAt(src, m.index ?? 0);
         if (/\bwebsocket\s*:\s*true/.test(slice)) {
-          routes.push({ route, file: path, kind: "api", method: "WS" });
+          routes.push({ route, file: path, line, kind: "api", method: "WS" });
           continue;
         }
         const methodM = slice.match(METHOD_RE);
@@ -157,9 +171,9 @@ export const fastifyAdapter: RouteAdapter = {
               .map((s) => s.trim().replace(/^["'`]|["'`]$/g, ""))
               .filter(Boolean);
         if (verbs.length) {
-          for (const v of verbs) routes.push({ route, file: path, kind: "api", method: methodOf(v) });
+          for (const v of verbs) routes.push({ route, file: path, line, kind: "api", method: methodOf(v) });
         } else {
-          routes.push({ route, file: path, kind: "api" });
+          routes.push({ route, file: path, line, kind: "api" });
         }
       }
     }
