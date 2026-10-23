@@ -15,6 +15,7 @@ import { extractDependencies, extractScripts, extractEnvVarSources, collectByCat
 import { buildEvidence } from "./evidence.js";
 import { detectRoutes } from "./adapters/registry.js";
 import { cmp } from "./adapters/util.js";
+import { withReadCache } from "./read-cache.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
 import { VERSION } from "./types.js";
@@ -178,6 +179,11 @@ export function opaqueArtifacts(files: FileInfo[]): string[] {
 
 /** Deterministic, LLM-free analysis of a repository into a structured inventory. */
 export function analyze(opts: Options): Inventory {
+  // Every stage below reads the same source files: one read each, shared.
+  return withReadCache(() => analyzeRepo(opts));
+}
+
+function analyzeRepo(opts: Options): Inventory {
   const { files, excludedCount } = walk(opts.repo, {
     include: opts.include,
     exclude: opts.exclude,

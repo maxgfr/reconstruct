@@ -1,15 +1,11 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonManifest } from "../detect/manifest.js";
+import { readText } from "../read-cache.js";
 import type { DependencyInfo, FileInfo } from "../types.js";
 import { cmp, lineAt } from "./util.js";
 
 function read(repo: string, rel: string): string | null {
-  try {
-    return readFileSync(join(repo, rel), "utf8");
-  } catch {
-    return null;
-  }
+  return readText(join(repo, rel));
 }
 
 function asStringMap(value: unknown): Record<string, string> {

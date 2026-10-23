@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { readText } from "../read-cache.js";
 import { join } from "node:path";
 import type { FileInfo, Hints, StackInfo } from "../types.js";
 
@@ -181,11 +182,7 @@ function baseName(path: string): string {
   return path.split("/").pop() ?? "";
 }
 function safeRead(repo: string, rel: string): string {
-  try {
-    return readFileSync(join(repo, rel), "utf8");
-  } catch {
-    return "";
-  }
+  return readText(join(repo, rel)) ?? "";
 }
 
 /**

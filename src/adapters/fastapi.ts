@@ -8,7 +8,7 @@ const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${METHODS})\\s*\\(`, "g");
 // `router = APIRouter(...)`, typed `router: APIRouter = …`, or `fastapi.APIRouter(...)`.
 const ROUTER_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?APIRouter\s*\(/g;
 // Receiver kept: nested `api.include_router(v2, prefix=…)` composes the parent.
-const INCLUDE_RE = /(\w+)\.include_router\s*\(/g;
+const INCLUDE_RE = /\b(\w+)\.include_router\s*\(/g;
 
 const openParen = (m: RegExpMatchArray): number => (m.index ?? 0) + m[0].length - 1;
 const prefixOf = (call: PyCall): string => pyString(call.kwargs.get("prefix")) ?? "";

@@ -12,8 +12,8 @@ const ENTRY_RE = /\b(path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*([\w.]+)/g;
 const MOUNT_RE = /\b(path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\s*\(/g;
 // DRF: `router = DefaultRouter()`, `router.register(r"users", UserViewSet)`, and
 // the mount `path("api/", include(router.urls))`.
-const DRF_ROUTER_RE = /(\w+)\s*=\s*(?:routers\.)?(?:Default|Simple)Router\(/g;
-const DRF_REGISTER_RE = /(\w+)\.register\(\s*r?["']([^"']*)["']/g;
+const DRF_ROUTER_RE = /\b(\w+)\s*=\s*(?:routers\.)?(?:Default|Simple)Router\(/g;
+const DRF_REGISTER_RE = /\b(\w+)\.register\(\s*r?["']([^"']*)["']/g;
 const DRF_MOUNT_RE = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*(\w+)\.urls/g;
 
 /** Strip `^`/`$` anchors and render `(?P<name>…)` named groups as `<name>`. */

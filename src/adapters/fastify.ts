@@ -12,13 +12,13 @@ const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)
 const IMPORT_RE = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 // `app.register(require("./x") | pluginVar, { prefix: "/p", ... })` — the
 // inline-require branch must come first or `(\w+)` would swallow `require`.
-const REGISTER_RE = /(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
+const REGISTER_RE = /\b(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
 const PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
-const ROUTE_RE = /(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+const ROUTE_RE = /\b(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
 // `app.route({ method: "GET" | ["GET", ...], url: "/x", ... })` — match the
 // receiver + opening brace; method/url are picked out of a bounded slice
 // (handler bodies can nest braces, so a balanced capture is unreliable).
-const ROUTE_OBJ_RE = /(\w+)\.route\(\s*\{/g;
+const ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
 const URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
 const METHOD_RE = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 

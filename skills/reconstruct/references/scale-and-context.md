@@ -1,7 +1,8 @@
 # Scale & context — making a reconstruction affordable
 
-The engine is fast (a few hundred milliseconds on a mid-size repo). **The cost of a
-reconstruction is your context, not CPU time.** This file is the set of levers that decide how
+The engine is fast: about 0.3 s to analyze a 2–3k-file, 300k-line repo, and about 3.5 s for
+32k files (one read per file, shared by every stage). **The cost of a reconstruction is your
+context, not CPU time.** This file is the set of levers that decide how
 many tokens the job burns, and when to spend them.
 
 ---

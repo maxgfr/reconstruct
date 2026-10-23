@@ -16,14 +16,14 @@ const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)
 const REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 // `import a from "./x"`, `import { b, c as d } from "./x"`, or both.
 const IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
-const USE_RE = /(\w+)\s*\.\s*use\s*\(/g;
+const USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 // `ws` is express-ws's verb — it declares a WebSocket route (method "WS").
 const VERBS = "get|post|put|delete|patch|options|head|all|ws";
-const ROUTE_RE = new RegExp(String.raw`(\w+)(\s*\.\s*)(${VERBS})\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
+const ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
 const VERB_RE = new RegExp(`^(?:${VERBS})$`);
 // `router.route("/x").get(h).post(h)` — match the path; the chained verbs are
 // read by walking the calls that follow (across lines, balanced parens).
-const ROUTE_CHAIN_RE = /(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
+const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
 const LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
 const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 const INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;

@@ -7,18 +7,18 @@ import { joinRoute, lineAt, readSources } from "./util.js";
 const VERB_TOKENS = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
 const VERB_RE = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
 // Verb-as-argument forms: gin `r.Handle("GET","/p",h)`, echo `e.Add("GET","/p",h)`.
-const HANDLE_VERB_RE = /(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
+const HANDLE_VERB_RE = /\b(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
 // net/http + gorilla: `mux.HandleFunc("/p", h)` / Go 1.22 `mux.HandleFunc("GET /p", h)`,
 // optionally chained `.Methods("GET","POST")` (gorilla).
-const HANDLEFUNC_RE = /(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
+const HANDLEFUNC_RE = /\b(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
 const METHODS_CHAIN_RE = /\.Methods\(\s*([^)]*)\)/;
 // Assignment route group: `v1 := r.Group("/api/v1")`. Resolved transitively so
 // nested groups (`admin := v1.Group("/admin")`) compose their full prefix.
-const GROUP_RE = /(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
+const GROUP_RE = /\b(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
 // chi closure groups: `r.Route("/prefix", func(r chi.Router){ ... })` and the
 // prefixing `r.Mount("/prefix", subRouter)`.
-const ROUTE_OPEN_RE = /(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
-const MOUNT_RE = /(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
+const ROUTE_OPEN_RE = /\b(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
+const MOUNT_RE = /\b(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
 const STD_VERBS = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/;
 
 // --- Router receivers --------------------------------------------------------
