@@ -6,7 +6,7 @@
 it when you request a reconstruction or product specs, and you can invoke it
 directly with `$reconstruct` in Codex, `/reconstruct` in Claude Code or OpenCode.
 The agent does not pick it up on its own, and CLI commands are unchanged. One
-setting per host makes it explicit-only — see [Manual or automatic](#manual-or-automatic).
+setting makes it explicit-only — see [Manual or automatic](#manual-or-automatic).
 
 [![CI](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml/badge.svg)](https://github.com/maxgfr/reconstruct/actions/workflows/ci.yml)
 
