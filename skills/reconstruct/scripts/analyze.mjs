@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve18, join as join53 } from "path";
+import { resolve as resolve19, join as join54 } from "path";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
-import { existsSync as existsSync26, readFileSync as readFileSync42, statSync as statSync20, realpathSync as realpathSync11 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync43, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
 
 // src/behavior.ts
 import { spawnSync } from "child_process";
@@ -13353,9 +13353,9 @@ function buildModules(scan2) {
   const moduleOf = /* @__PURE__ */ new Map();
   for (const dir of dirs) {
     const members = byDir.get(dir).slice().sort((a, b) => byStr(a.rel, b.rel));
-    const slug = slugForDir(dir);
+    const slug2 = slugForDir(dir);
     const info2 = {
-      slug,
+      slug: slug2,
       path: dir,
       title: dir,
       tier: tierOf(dir, members),
@@ -13363,7 +13363,7 @@ function buildModules(scan2) {
       summary: summaryOf(dir, members)
     };
     modules.push(info2);
-    for (const m of members) moduleOf.set(m.rel, slug);
+    for (const m of members) moduleOf.set(m.rel, slug2);
   }
   modules.sort((a, b) => byStr(a.slug, b.slug));
   return { modules, moduleOf };
@@ -14452,10 +14452,10 @@ function computeTestMap(graph) {
     let set = byFile.get(source);
     if (!set) byFile.set(source, set = /* @__PURE__ */ new Set());
     set.add(test);
-    const slug = moduleOf.get(source);
-    if (slug !== void 0) {
-      let mset = byModule.get(slug);
-      if (!mset) byModule.set(slug, mset = /* @__PURE__ */ new Set());
+    const slug2 = moduleOf.get(source);
+    if (slug2 !== void 0) {
+      let mset = byModule.get(slug2);
+      if (!mset) byModule.set(slug2, mset = /* @__PURE__ */ new Set());
       mset.add(test);
     }
   };
@@ -14479,10 +14479,10 @@ function computeTestMap(graph) {
   };
   return { testFiles, testedByFile: sortSets(byFile), testedByModule: sortSets(byModule) };
 }
-function testsForModule(graph, slug) {
-  const m = graph.modules.find((x) => x.slug === slug);
+function testsForModule(graph, slug2) {
+  const m = graph.modules.find((x) => x.slug === slug2);
   if (m?.testedBy) return m.testedBy;
-  return computeTestMap(graph).testedByModule.get(slug) ?? [];
+  return computeTestMap(graph).testedByModule.get(slug2) ?? [];
 }
 function untestedModules(graph) {
   const tm = computeTestMap(graph);
@@ -16494,8 +16494,8 @@ function buildGraph(scan2, ctx, modules, moduleOf, meta) {
   })).sort((a, b) => byStr(a.rel, b.rel));
   const symbolsByModule = /* @__PURE__ */ new Map();
   for (const f of scan2.files) {
-    const slug = moduleOf.get(f.rel) ?? "root";
-    symbolsByModule.set(slug, (symbolsByModule.get(slug) ?? 0) + f.symbols.length);
+    const slug2 = moduleOf.get(f.rel) ?? "root";
+    symbolsByModule.set(slug2, (symbolsByModule.get(slug2) ?? 0) + f.symbols.length);
   }
   const moduleNodes = modules.map((m) => ({
     id: m.slug,
@@ -18061,8 +18061,8 @@ var init_workspaces = __esm({
     CODE_LEVEL_DEPS = /* @__PURE__ */ new Set(["npm", "pnpm", "lerna", "cargo", "go"]);
   }
 });
-function communityOf(graph, slug) {
-  return graph.modules.find((m) => m.slug === slug)?.community;
+function communityOf(graph, slug2) {
+  return graph.modules.find((m) => m.slug === slug2)?.community;
 }
 function buildAdjacency(slugs, edges) {
   const n = slugs.length;
@@ -21698,7 +21698,7 @@ function renderMermaidClustered(graph, opts = {}) {
   const maxModules = opts.maxModules ?? CLUSTER_MAX_MODULES;
   const maxEdges = opts.maxEdges ?? CLUSTER_MAX_EDGES;
   const ids = mermaidIds(graph, "m_");
-  const clusterNodeId = (slug) => ids.get(slug);
+  const clusterNodeId = (slug2) => ids.get(slug2);
   const ranked = graph.modules.slice().sort((a, b) => degreeOf(b) - degreeOf(a) || byStr(a.slug, b.slug));
   const shown = ranked.slice(0, maxModules);
   const shownSet = new Set(shown.map((m) => m.slug));
@@ -21891,10 +21891,10 @@ function computeDelta(graph, symbols, diff, depth = DEFAULT_DELTA_DEPTH) {
   const brokenByModule = /* @__PURE__ */ new Map();
   const removedPathOf = /* @__PURE__ */ new Map();
   for (const b of broken) {
-    const slug = slugOfRemoved(b.target);
-    if (!moduleBySlug.has(slug)) removedPathOf.set(slug, b.target.includes("/") ? posix7.dirname(b.target) : "(root)");
-    let arr = brokenByModule.get(slug);
-    if (!arr) brokenByModule.set(slug, arr = []);
+    const slug2 = slugOfRemoved(b.target);
+    if (!moduleBySlug.has(slug2)) removedPathOf.set(slug2, b.target.includes("/") ? posix7.dirname(b.target) : "(root)");
+    let arr = brokenByModule.get(slug2);
+    if (!arr) brokenByModule.set(slug2, arr = []);
     arr.push(b);
   }
   const nonTestCode = /* @__PURE__ */ new Set();
@@ -21907,12 +21907,12 @@ function computeDelta(graph, symbols, diff, depth = DEFAULT_DELTA_DEPTH) {
   const metricName = pagerankKnown ? "pagerank" : "degree";
   const dependents = dependentsIndex(graph.fileEdges, { skipInferred: true, goPackages: true });
   const modules = [];
-  for (const slug of [.../* @__PURE__ */ new Set([...byModule.keys(), ...brokenByModule.keys()])].sort(byStr)) {
-    const m = moduleBySlug.get(slug);
-    const gonePath = removedPathOf.get(slug);
+  for (const slug2 of [.../* @__PURE__ */ new Set([...byModule.keys(), ...brokenByModule.keys()])].sort(byStr)) {
+    const m = moduleBySlug.get(slug2);
+    const gonePath = removedPathOf.get(slug2);
     if (!m && gonePath === void 0) continue;
-    const moduleChanges = byModule.get(slug) ?? [];
-    const moduleBroken = brokenByModule.get(slug) ?? [];
+    const moduleChanges = byModule.get(slug2) ?? [];
+    const moduleBroken = brokenByModule.get(slug2) ?? [];
     const reasons = [];
     let score = 0;
     const brokenImportsOnly = moduleBroken.filter((b) => b.kind === "import");
@@ -21953,7 +21953,7 @@ function computeDelta(graph, symbols, diff, depth = DEFAULT_DELTA_DEPTH) {
       for (const [rel2, d] of closureOver(dependents, seeds, depth)) {
         reach(rel2, d);
         const im = fileByRel.get(rel2)?.module ?? "root";
-        if (im !== c2.path && im !== slug) impModules.add(im);
+        if (im !== c2.path && im !== slug2) impModules.add(im);
       }
     }
     const importers = [...new Set(moduleBroken.map((b) => b.from))].sort(byStr);
@@ -21963,7 +21963,7 @@ function computeDelta(graph, symbols, diff, depth = DEFAULT_DELTA_DEPTH) {
       for (const [rel2, d] of hops) {
         reach(rel2, d);
         const im = fileByRel.get(rel2)?.module ?? "root";
-        if (im !== slug) impModules.add(im);
+        if (im !== slug2) impModules.add(im);
       }
     }
     const transitiveFiles = depthByRel.size;
@@ -21976,17 +21976,17 @@ function computeDelta(graph, symbols, diff, depth = DEFAULT_DELTA_DEPTH) {
       score += RISK_WEIGHTS.blastMed;
       reasons.push(`${transitiveFiles} dependent files across ${impact.modules.length} modules (depth ${depth})`);
     }
-    const testable = m !== void 0 && m.tier <= 1 && m.symbols > 0 && nonTestCode.has(slug);
+    const testable = m !== void 0 && m.tier <= 1 && m.symbols > 0 && nonTestCode.has(slug2);
     const coveredBy = m?.testedBy ?? [];
     const tests = testable ? coveredBy.length ? { status: "covered", files: coveredBy } : { status: "gap", files: [] } : { status: "n/a", files: [] };
     if (tests.status === "gap") {
       score += RISK_WEIGHTS.testGap;
       reasons.push("no test covers this module");
     }
-    const sup = (graph.surprises ?? []).find((s) => s.from === slug || s.to === slug);
+    const sup = (graph.surprises ?? []).find((s) => s.from === slug2 || s.to === slug2);
     if (sup) {
       score += RISK_WEIGHTS.surprise;
-      reasons.push(`cross-community edge to ${sup.from === slug ? sup.to : sup.from} (surprising)`);
+      reasons.push(`cross-community edge to ${sup.from === slug2 ? sup.to : sup.from} (surprising)`);
     }
     const moduleDangling = dangling.filter(
       (d) => moduleChanges.some((c2) => c2.path === d.from) && !intoIgnoredTree(d.from, d.spec)
@@ -22008,7 +22008,7 @@ function computeDelta(graph, symbols, diff, depth = DEFAULT_DELTA_DEPTH) {
       ...importers.filter((rel2) => !changedRels.has(rel2))
     ].slice(0, OPEN_CAP);
     modules.push({
-      slug,
+      slug: slug2,
       path: m?.path ?? gonePath,
       score,
       bucket: score >= HIGH_MIN ? "HIGH" : score >= MEDIUM_MIN ? "MEDIUM" : "LOW",
@@ -30004,15 +30004,15 @@ var flaskAdapter = {
     const regOf = /* @__PURE__ */ new Map();
     const resolvers = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
-      const resolve19 = pythonRefResolver(path, src, sources);
-      resolvers.set(path, resolve19);
+      const resolve20 = pythonRefResolver(path, src, sources);
+      resolvers.set(path, resolve20);
       for (const m of src.matchAll(REGISTER_RE)) {
         const call2 = parsePyCall(src, openParen(m));
         const expr = (call2.args[0] ?? call2.kwargs.get("blueprint") ?? "").trim();
         if (!/^[\w.]+$/.test(expr)) continue;
-        const childKey = resolve19(expr);
+        const childKey = resolve20(expr);
         if (!childKey || !ownPrefix.has(childKey)) continue;
-        regOf.set(childKey, { receiverKey: resolve19(m[1]), regPrefix: urlPrefixOf(call2) });
+        regOf.set(childKey, { receiverKey: resolve20(m[1]), regPrefix: urlPrefixOf(call2) });
       }
     }
     const effectivePrefix = (key, seen = /* @__PURE__ */ new Set()) => {
@@ -30029,9 +30029,9 @@ var flaskAdapter = {
     };
     const routes = [];
     for (const [path, src] of sources) {
-      const resolve19 = resolvers.get(path);
+      const resolve20 = resolvers.get(path);
       const prefixForObj = (obj) => {
-        const key = resolve19(obj);
+        const key = resolve20(obj);
         return key && ownPrefix.has(key) ? effectivePrefix(key) : "";
       };
       for (const m of src.matchAll(DECORATOR_RE)) {
@@ -30093,16 +30093,16 @@ var fastapiAdapter = {
     const includeOf = /* @__PURE__ */ new Map();
     const resolvers = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
-      const resolve19 = pythonRefResolver(path, src, sources);
-      resolvers.set(path, resolve19);
+      const resolve20 = pythonRefResolver(path, src, sources);
+      resolvers.set(path, resolve20);
       for (const m of src.matchAll(INCLUDE_RE)) {
         const call2 = parsePyCall(src, openParen2(m));
         const expr = (call2.args[0] ?? call2.kwargs.get("router") ?? "").trim();
         if (!/^[\w.]+$/.test(expr)) continue;
-        const resolved = resolve19(expr);
+        const resolved = resolve20(expr);
         const childKey = resolved && ownPrefix.has(resolved) ? resolved : bySegment(expr);
         if (!childKey) continue;
-        const receiverKey = resolve19(m[1]);
+        const receiverKey = resolve20(m[1]);
         includeOf.set(childKey, {
           receiverKey: receiverKey && ownPrefix.has(receiverKey) ? receiverKey : null,
           mountPrefix: prefixOf(call2)
@@ -30120,13 +30120,13 @@ var fastapiAdapter = {
     };
     const routes = [];
     for (const [path, src] of sources) {
-      const resolve19 = resolvers.get(path);
+      const resolve20 = resolvers.get(path);
       for (const m of src.matchAll(DECORATOR_RE2)) {
         const call2 = parsePyCall(src, openParen2(m));
         const subPath = pyString(call2.args[0] ?? call2.kwargs.get("path"));
         if (subPath === null) continue;
         const decorator = m[2];
-        const key = resolve19(m[1]);
+        const key = resolve20(m[1]);
         const prefix = key && ownPrefix.has(key) ? fullPrefix(key) : "";
         const route2 = joinRoute(prefix, subPath);
         const line2 = lineAt(src, m.index ?? 0);
@@ -31804,7 +31804,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
     const wsGroup = ctx?.groups.get(key);
     const short = wsGroup ? ctx?.shortOf.get(wsGroup.ws.path) : "";
     const name2 = wsGroup ? wsGroup.inner ? `${humanize(short)} \xB7 ${humanize(wsGroup.inner)}` : humanize(short) + (wsGroup.ws.name !== short ? ` (${wsGroup.ws.name})` : "") : humanize(key);
-    const slug = wsGroup ? wsGroup.inner ? slugify2(`${short}-${humanize(wsGroup.inner)}`) : slugify2(short) : slugify2(name2);
+    const slug2 = wsGroup ? wsGroup.inner ? slugify2(`${short}-${humanize(wsGroup.inner)}`) : slugify2(short) : slugify2(name2);
     const routeList = featureRoutes.map((r) => r.route);
     const uniqueRoutes = [...new Set(routeList)];
     const desc = `Groups ${groupFiles.length} file(s)` + (wsGroup ? ` in workspace \`${wsGroup.ws.path}\`` : "") + (uniqueRoutes.length ? `; routes: ${uniqueRoutes.slice(0, 6).join(", ")}` : "") + ".";
@@ -31823,7 +31823,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
     }
     records.push({
       feature: {
-        slug,
+        slug: slug2,
         name: name2,
         description: desc,
         kind: "feature",
@@ -31996,7 +31996,7 @@ function computeUnknowns(stack, routes, hints, workspaces, files) {
   if (opaque.length > 0) {
     const shown = opaque.slice(0, 5).join(", ") + (opaque.length > 5 ? ` and ${opaque.length - 5} more` : "");
     u.push(
-      `Compiled artifacts with no source in the repo were found (${shown}) \u2014 what they do is invisible to source analysis. If the rea MCP server is available, inspect each with it (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\` for WebAssembly, \`analyze_javascript_application\` for an ASAR), export the evidence into \`evidence/rea/\` and cite it as \`rea:ev_\u2026\` \u2014 see \`references/rea-companion.md\`. Otherwise record each artifact's role as an unknown rather than guessing it.`
+      `Compiled artifacts with no source in the repo were found (${shown}) \u2014 what they do is invisible to source analysis. When the rea MCP server is installed, the scaffold already inspected them (\`--rea\`, default auto): start from \`evidence/rea/INDEX.json\`, cite its \`rea:ev_\u2026\` ids, and dig further with rea's tools (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\`, \`analyze_javascript_application\` for an ASAR), exporting into \`evidence/rea/\` \u2014 see \`references/rea-companion.md\`. Without rea, record each artifact's role as an unknown rather than guessing it.`
     );
   }
   return u;
@@ -32074,8 +32074,320 @@ function analyze(opts) {
   };
 }
 
+// src/rea.ts
+import { spawn as spawn2 } from "child_process";
+import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync30, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
+import { delimiter, isAbsolute as isAbsolute12, join as join39, resolve as resolve14 } from "path";
+var DEFAULT_TIMEOUT_MS3 = 18e4;
+var DEFAULT_MAX_ARTIFACTS = 25;
+var PROTOCOL_VERSION = "2025-06-18";
+var STATIC_TOOLS = /* @__PURE__ */ new Set([
+  "analyze_javascript_application",
+  "inspect_wasm_artifact",
+  "inspect_android_package",
+  "identify_flutter_build",
+  "inspect_managed_artifact",
+  "inspect_pe_resources",
+  "inspect_binary_layout",
+  "inspect_macho",
+  "inspect_go_binary",
+  "inspect_rust_binary",
+  "open_binary",
+  "inspect_artifact",
+  "binary_overview",
+  "close_binary",
+  "export_evidence_bundle"
+]);
+function locateRea(env = process.env) {
+  const executable = (p) => {
+    try {
+      if (!statSync16(p).isFile()) return false;
+      accessSync(p, process.platform === "win32" ? constants.F_OK : constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (env.REA_BIN) {
+    const p = resolve14(env.REA_BIN);
+    return executable(p) ? p : null;
+  }
+  const names = process.platform === "win32" ? ["rea.cmd", "rea.exe", "rea"] : ["rea"];
+  for (const dir of (env.PATH ?? "").split(delimiter)) {
+    if (!dir || !isAbsolute12(dir)) continue;
+    for (const n of names) if (executable(join39(dir, n))) return join39(dir, n);
+  }
+  return null;
+}
+function assertReaAvailable(mode, artifacts, env = process.env) {
+  if (mode === "on" && artifacts.length > 0 && !locateRea(env)) {
+    throw new Error("--rea on: the rea executable was not found (set REA_BIN, or install it: `npx rea-agents setup`, Node 22+)");
+  }
+}
+var StdioClient = class {
+  constructor(child) {
+    this.child = child;
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => this.onData(chunk));
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk) => {
+      if (this.stderr.length < 4096) this.stderr += chunk;
+    });
+    const fail2 = (why) => {
+      this.exited = new Error(`${why}${this.stderr.trim() ? `: ${this.stderr.trim().slice(0, 400)}` : ""}`);
+      for (const p of this.pending.values()) {
+        clearTimeout(p.timer);
+        p.reject(this.exited);
+      }
+      this.pending.clear();
+    };
+    child.on("error", (e) => fail2(`rea could not start (${e.message})`));
+    child.on("exit", (code, signal) => fail2(`rea exited (${signal ?? code})`));
+    child.stdin?.on("error", () => {
+    });
+  }
+  child;
+  nextId = 1;
+  buffer = "";
+  pending = /* @__PURE__ */ new Map();
+  stderr = "";
+  exited = null;
+  onData(chunk) {
+    this.buffer += chunk;
+    let nl = this.buffer.indexOf("\n");
+    while (nl !== -1) {
+      const line2 = this.buffer.slice(0, nl).trim();
+      this.buffer = this.buffer.slice(nl + 1);
+      if (line2) this.onMessage(line2);
+      nl = this.buffer.indexOf("\n");
+    }
+  }
+  onMessage(line2) {
+    let msg;
+    try {
+      msg = JSON.parse(line2);
+    } catch {
+      return;
+    }
+    if (typeof msg.method === "string") {
+      if (msg.id !== void 0) this.send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "not supported by reconstruct" } });
+      return;
+    }
+    const p = typeof msg.id === "number" ? this.pending.get(msg.id) : void 0;
+    if (!p) return;
+    this.pending.delete(msg.id);
+    clearTimeout(p.timer);
+    if (msg.error) p.reject(new Error(String(msg.error.message ?? "rea returned an error")));
+    else p.resolve(msg.result);
+  }
+  send(msg) {
+    this.child.stdin?.write(`${JSON.stringify(msg)}
+`);
+  }
+  request(method, params, timeoutMs) {
+    if (this.exited) return Promise.reject(this.exited);
+    const id = this.nextId++;
+    return new Promise((resolvePromise, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`${method} timed out after ${Math.round(timeoutMs / 1e3)}s`));
+      }, timeoutMs);
+      this.pending.set(id, { resolve: resolvePromise, reject, timer });
+      this.send({ jsonrpc: "2.0", id, method, params });
+    });
+  }
+  notify(method, params) {
+    this.send({ jsonrpc: "2.0", method, ...params ? { params } : {} });
+  }
+  close() {
+    for (const p of this.pending.values()) clearTimeout(p.timer);
+    this.pending.clear();
+    this.child.stdin?.end();
+    this.child.kill();
+  }
+};
+function pathArg(tool) {
+  const props = Object.entries(tool.inputSchema?.properties ?? {}).filter(([, s]) => s?.type === void 0 || s.type === "string");
+  const required = new Set(tool.inputSchema?.required ?? []);
+  const named = (re) => props.find(([k]) => re.test(k) && required.has(k))?.[0] ?? props.find(([k]) => re.test(k))?.[0];
+  return named(/^(path|target|file|artifact|input)(_path)?$/i) ?? named(/path|target|file/i);
+}
+function callArgs2(tool, target) {
+  const arg = pathArg(tool);
+  if (!arg) return void 0;
+  const props = tool.inputSchema?.properties ?? {};
+  return { [arg]: target, ..."detail" in props ? { detail: "summary" } : {}, ..."provider_id" in props ? { provider_id: "auto" } : {} };
+}
+var SESSION = (tool) => ["open_binary", tool, "close_binary"];
+var OVERVIEW = SESSION("binary_overview");
+function probesFor(path) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".asar")) return [["analyze_javascript_application"]];
+  if (lower.endsWith(".wasm")) return [["inspect_wasm_artifact"], ["inspect_binary_layout"]];
+  if (/\.(apk|aab|xapk)$/.test(lower)) return [["inspect_android_package"], ["identify_flutter_build"]];
+  if (/\.(dll|exe)$/.test(lower)) {
+    return [["inspect_managed_artifact"], ["inspect_binary_layout"], ["inspect_pe_resources"], ["inspect_go_binary"], ["inspect_rust_binary"], OVERVIEW];
+  }
+  if (/\.(so|dylib|node)$/.test(lower) || /\.so\.\d[\d.]*$/.test(lower) || !/\.[^/]+$/.test(lower)) {
+    return [["inspect_binary_layout"], SESSION("inspect_macho"), ["inspect_go_binary"], ["inspect_rust_binary"], OVERVIEW];
+  }
+  return [SESSION("inspect_artifact")];
+}
+function slug(path) {
+  return path.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "artifact";
+}
+var EV_RE = /\bev_[0-9a-f]{64}\b/g;
+function errorText(result) {
+  const r = result;
+  const texts = (r?.content ?? []).map((c2) => typeof c2?.text === "string" ? c2.text : "");
+  const fromPayload = (v) => {
+    const e = v?.error;
+    if (!e) return void 0;
+    return typeof e === "string" ? e : String(e.message ?? "rea reported an error");
+  };
+  const clip2 = (s) => s.trim().slice(0, 400);
+  const structured = fromPayload(r?.structuredContent);
+  if (structured) return clip2(structured);
+  for (const t of texts) {
+    try {
+      const parsed2 = fromPayload(JSON.parse(t));
+      if (parsed2) return clip2(parsed2);
+    } catch {
+    }
+  }
+  return r?.isError ? clip2(texts.join(" ")) || "rea reported an error" : void 0;
+}
+async function runRea(repo, out2, artifacts, opts) {
+  const env = opts.env ?? process.env;
+  if (opts.mode === "off" || artifacts.length === 0) return { status: "unavailable", artifacts: [] };
+  assertReaAvailable(opts.mode, artifacts, env);
+  const bin = locateRea(env);
+  if (!bin) return { status: "unavailable", artifacts: [] };
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS3;
+  const max = opts.maxArtifacts ?? DEFAULT_MAX_ARTIFACTS;
+  const dir = join39(out2, REA_EVIDENCE_DIR);
+  mkdirSync5(dir, { recursive: true });
+  const report = { status: "ran", bin, artifacts: [] };
+  const child = spawn2(bin, ["mcp"], { cwd: repo, env, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" && bin.endsWith(".cmd") });
+  const client = new StdioClient(child);
+  try {
+    await client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "reconstruct", version: "1" } }, timeoutMs);
+    client.notify("notifications/initialized");
+    const listed2 = await client.request("tools/list", {}, timeoutMs);
+    const tools = new Map((listed2.tools ?? []).filter((t) => STATIC_TOOLS.has(t.name)).map((t) => [t.name, t]));
+    const exportBundle = async (name2) => {
+      const exporter = tools.get("export_evidence_bundle");
+      const arg = exporter && pathArg(exporter);
+      if (!exporter || !arg) return void 0;
+      const rel2 = `${REA_EVIDENCE_DIR}/${name2}`;
+      const overwrite = "overwrite" in (exporter.inputSchema?.properties ?? {}) ? { overwrite: true } : {};
+      try {
+        const res = await client.request("tools/call", { name: exporter.name, arguments: { [arg]: join39(out2, rel2), ...overwrite } }, timeoutMs);
+        if (!errorText(res) && EV_RE.test(readFileSync30(join39(out2, rel2), "utf8"))) return rel2;
+      } catch {
+      } finally {
+        EV_RE.lastIndex = 0;
+      }
+      rmSync7(join39(out2, rel2), { force: true });
+      return void 0;
+    };
+    for (const [i2, rel2] of artifacts.entries()) {
+      if (i2 >= max) {
+        report.artifacts.push({ path: rel2, status: "skipped", evidenceIds: [], error: `over the ${max}-artifact cap of one run` });
+        continue;
+      }
+      const abs = join39(repo, rel2);
+      const results = {};
+      const succeeded = [];
+      const problems = [];
+      const bundles = [];
+      for (const chain of probesFor(rel2)) {
+        if (!chain.every((n) => tools.has(n))) continue;
+        const [first, ...rest] = chain;
+        const args2 = callArgs2(tools.get(first), abs);
+        if (!args2) continue;
+        const label = chain.length > 1 ? chain[1] : first;
+        try {
+          const head = await client.request("tools/call", { name: first, arguments: args2 }, timeoutMs);
+          const opened = errorText(head);
+          if (opened) throw new Error(opened);
+          if (rest.length === 0) {
+            results[first] = head;
+            succeeded.push(first);
+            continue;
+          }
+          const [read2, close] = rest;
+          let readError;
+          try {
+            const readArgs = "detail" in (tools.get(read2)?.inputSchema?.properties ?? {}) ? { detail: "summary" } : {};
+            const res = await client.request("tools/call", { name: read2, arguments: readArgs }, timeoutMs);
+            readError = errorText(res);
+            results[label] = { open_binary: head, [read2]: res };
+            if (!readError) {
+              const saved = await exportBundle(`${slug(rel2)}.${read2}.bundle.json`);
+              if (saved) bundles.push(saved);
+            }
+          } finally {
+            await client.request("tools/call", { name: close, arguments: {} }, timeoutMs).catch(() => void 0);
+          }
+          if (readError) throw new Error(readError);
+          succeeded.push(label);
+        } catch (e) {
+          if (/rea exited|could not start/.test(e.message)) throw e;
+          problems.push(`${label}: ${e.message}`);
+        }
+      }
+      if (succeeded.length === 0) {
+        report.artifacts.push({
+          path: rel2,
+          status: "failed",
+          evidenceIds: [],
+          error: problems.join("; ") || "no static rea tool on this server inspects this kind of artifact"
+        });
+        continue;
+      }
+      const file = `${slug(rel2)}.json`;
+      const body2 = JSON.stringify({ artifact: rel2, tools: succeeded, results }, null, 2);
+      writeFileSync7(join39(dir, file), `${body2}
+`);
+      report.artifacts.push({
+        path: rel2,
+        status: "inspected",
+        tool: succeeded.join(", "),
+        file: `${REA_EVIDENCE_DIR}/${file}`,
+        evidenceIds: [...new Set(body2.match(EV_RE) ?? [])].sort(),
+        ...bundles.length ? { bundles } : {},
+        // What did not apply (a Go probe on a C library) or needs a backend
+        // the user has not installed (the native overview without Ghidra).
+        ...problems.length ? { notes: problems } : {}
+      });
+    }
+    if (report.artifacts.some((a) => a.status === "inspected")) {
+      const saved = await exportBundle("session.bundle.json");
+      if (saved) report.bundle = saved;
+    }
+  } catch (e) {
+    report.status = "failed";
+    report.error = e.message;
+  } finally {
+    client.close();
+  }
+  writeFileSync7(join39(dir, "INDEX.json"), `${JSON.stringify(report, null, 2)}
+`);
+  return report;
+}
+function formatReaReport(r, total) {
+  if (r.status === "unavailable") {
+    return total ? `  rea:      not installed \u2014 ${total} compiled artifact(s) left for the agent (see references/rea-companion.md)` : void 0;
+  }
+  const n = (s) => r.artifacts.filter((a) => a.status === s).length;
+  if (r.status === "failed" && n("inspected") === 0) return `  rea:      failed \u2014 ${r.error ?? "unknown error"} (see ${REA_EVIDENCE_DIR}/INDEX.json)`;
+  const ids = r.artifacts.reduce((k, a) => k + a.evidenceIds.length, 0);
+  return `  rea:      inspected ${n("inspected")}/${total} compiled artifact(s) \xB7 ${ids} evidence id(s)${n("failed") ? ` \xB7 ${n("failed")} failed` : ""}${n("skipped") ? ` \xB7 ${n("skipped")} skipped` : ""} \u2192 ${REA_EVIDENCE_DIR}/INDEX.json`;
+}
+
 // src/prd/render.ts
-import { join as join40 } from "path";
+import { join as join41 } from "path";
 
 // src/prd/templates.ts
 function agentNote(body2) {
@@ -32888,8 +33200,8 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync30, statSync as statSync16 } from "fs";
-import { join as join39 } from "path";
+import { readFileSync as readFileSync31, statSync as statSync17 } from "fs";
+import { join as join40 } from "path";
 
 // src/prd/markdown.ts
 import { posix as posix8 } from "path";
@@ -32988,12 +33300,12 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body2;
     try {
-      if (statSync16(join39(opts.repo, rel2)).size > MAX_EMBED_SOURCE_BYTES) {
+      if (statSync17(join40(opts.repo, rel2)).size > MAX_EMBED_SOURCE_BYTES) {
         parts2.push(`#### \`${rel2}\`
 `, "> _Too large to embed \u2014 see the file in the source repo._", "");
         continue;
       }
-      body2 = readFileSync30(join39(opts.repo, rel2), "utf8");
+      body2 = readFileSync31(join40(opts.repo, rel2), "utf8");
     } catch {
       continue;
     }
@@ -33019,8 +33331,8 @@ function mirrorSection(feature, opts) {
   const lines = ["Ground-truth source has been copied verbatim alongside this PRD. Reference it while rebuilding:\n"];
   for (const rel2 of feature.files) {
     copies.push({
-      from: join39(opts.repo, rel2),
-      to: join39(opts.out, "source", feature.slug, rel2)
+      from: join40(opts.repo, rel2),
+      to: join40(opts.out, "source", feature.slug, rel2)
     });
     lines.push(`- [\`${rel2}\`](<../../source/${feature.slug}/${rel2}>)`);
   }
@@ -33312,7 +33624,7 @@ function render(inv, opts) {
   }
   const dataCopy = (paths, sub) => {
     for (const rel2 of paths) {
-      copies.push({ from: join40(opts.repo, rel2), to: join40(opts.out, "data", sub, rel2) });
+      copies.push({ from: join41(opts.repo, rel2), to: join41(opts.out, "data", sub, rel2) });
     }
   };
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
@@ -33332,17 +33644,17 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync7, copyFileSync, existsSync as existsSync16, readFileSync as readFileSync31, readdirSync as readdirSync6 } from "fs";
-import { dirname as dirname9, join as join41 } from "path";
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync8, copyFileSync, existsSync as existsSync16, readFileSync as readFileSync32, readdirSync as readdirSync6 } from "fs";
+import { dirname as dirname9, join as join42 } from "path";
 function writeOutput(result, opts) {
   for (const a of result.artifacts) {
-    const dest = join41(opts.out, a.relPath);
-    mkdirSync5(dirname9(dest), { recursive: true });
-    writeFileSync7(dest, a.content, "utf8");
+    const dest = join42(opts.out, a.relPath);
+    mkdirSync6(dirname9(dest), { recursive: true });
+    writeFileSync8(dest, a.content, "utf8");
   }
   for (const c2 of result.copies) {
     if (!existsSync16(c2.from)) continue;
-    mkdirSync5(dirname9(c2.to), { recursive: true });
+    mkdirSync6(dirname9(c2.to), { recursive: true });
     try {
       copyFileSync(c2.from, c2.to);
     } catch {
@@ -33352,10 +33664,10 @@ function writeOutput(result, opts) {
 function writeArtifactsIfAbsent(artifacts, outDir) {
   const written = [];
   for (const a of artifacts) {
-    const dest = join41(outDir, a.relPath);
+    const dest = join42(outDir, a.relPath);
     if (existsSync16(dest)) continue;
-    mkdirSync5(dirname9(dest), { recursive: true });
-    writeFileSync7(dest, a.content, "utf8");
+    mkdirSync6(dirname9(dest), { recursive: true });
+    writeFileSync8(dest, a.content, "utf8");
     written.push(a.relPath);
   }
   return written;
@@ -33372,7 +33684,7 @@ var CALLOUT_BEARING_DOCS = [
 var LEDGERS = ["REVIEW.json", "VERIFY.json"];
 function readIfFile(path) {
   try {
-    return readFileSync31(path, "utf8");
+    return readFileSync32(path, "utf8");
   } catch {
     return void 0;
   }
@@ -33381,19 +33693,19 @@ function detectEnrichment(outDir) {
   if (!existsSync16(outDir)) return [];
   const witnesses = [];
   for (const ledger of LEDGERS) {
-    if (existsSync16(join41(outDir, ledger))) witnesses.push(`${ledger} \u2014 a semantic-gate ledger from a previous round`);
+    if (existsSync16(join42(outDir, ledger))) witnesses.push(`${ledger} \u2014 a semantic-gate ledger from a previous round`);
   }
   const resolved = (rel2) => {
-    const body2 = readIfFile(join41(outDir, rel2));
+    const body2 = readIfFile(join42(outDir, rel2));
     if (body2 !== void 0 && body2.trim() && !body2.includes(CALLOUT)) witnesses.push(`${rel2} \u2014 every agent callout resolved`);
   };
   for (const rel2 of CALLOUT_BEARING_DOCS) resolved(rel2);
   let slugs = [];
   try {
-    slugs = readdirSync6(join41(outDir, "features"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+    slugs = readdirSync6(join42(outDir, "features"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
   } catch {
   }
-  for (const slug of slugs) resolved(join41("features", slug, "PRD.md"));
+  for (const slug2 of slugs) resolved(join42("features", slug2, "PRD.md"));
   return witnesses;
 }
 function formatEnrichmentRefusal(outDir, witnesses) {
@@ -33411,20 +33723,20 @@ Pick one:
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync32, existsSync as existsSync17 } from "fs";
-import { join as join42, relative as relative11, sep as sep9 } from "path";
+import { readdirSync as readdirSync7, readFileSync as readFileSync33, existsSync as existsSync17 } from "fs";
+import { join as join43, relative as relative11, sep as sep9 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
   const out2 = [];
   const walk3 = (abs) => {
     for (const entry2 of readdirSync7(abs, { withFileTypes: true })) {
-      const child = join42(abs, entry2.name);
+      const child = join43(abs, entry2.name);
       const rel2 = relative11(dir, child).split(sep9).join("/");
       if (entry2.isDirectory()) {
         if (GROUND_TRUTH_DIRS.has(rel2)) continue;
         walk3(child);
       } else if (entry2.isFile() && entry2.name.endsWith(".md")) {
-        out2.push({ relPath: rel2, content: readFileSync32(child, "utf8") });
+        out2.push({ relPath: rel2, content: readFileSync33(child, "utf8") });
       }
     }
   };
@@ -33433,11 +33745,11 @@ function readMarkdownTree(dir) {
 }
 function bundleExisting(opts) {
   const dir = opts.out;
-  const invPath = join42(dir, "inventory.json");
+  const invPath = join43(dir, "inventory.json");
   if (!existsSync17(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
-  const inv = JSON.parse(readFileSync32(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync33(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -33448,11 +33760,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync33 } from "fs";
+import { readFileSync as readFileSync34 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync33(path, "utf8");
+    raw = readFileSync34(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -33767,17 +34079,17 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync36, readdirSync as readdirSync8, statSync as statSync17 } from "fs";
-import { join as join45, posix as posix10, relative as relative12 } from "path";
+import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync37, readdirSync as readdirSync8, statSync as statSync18 } from "fs";
+import { join as join46, posix as posix10, relative as relative12 } from "path";
 
 // src/unknowns.ts
-import { existsSync as existsSync19, readFileSync as readFileSync35, writeFileSync as writeFileSync9 } from "fs";
-import { join as join44 } from "path";
+import { existsSync as existsSync19, readFileSync as readFileSync36, writeFileSync as writeFileSync10 } from "fs";
+import { join as join45 } from "path";
 
 // src/verify.ts
 import { createHash as createHash6 } from "crypto";
-import { existsSync as existsSync18, readFileSync as readFileSync34, writeFileSync as writeFileSync8 } from "fs";
-import { join as join43 } from "path";
+import { existsSync as existsSync18, readFileSync as readFileSync35, writeFileSync as writeFileSync9 } from "fs";
+import { join as join44 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
 var VALID_CONFIDENCE = ["confirmed", "inferred", "gap"];
@@ -33835,7 +34147,7 @@ function featureEvidence(f) {
 function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
-    invRaw = readFileSync34(join43(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync35(join44(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -33848,9 +34160,9 @@ function buildWorklist(outDir, opts = {}) {
   const pairs = [];
   let n = 0;
   for (const f of inv.features ?? []) {
-    const prdPath = join43(outDir, "features", f.slug, "PRD.md");
+    const prdPath = join44(outDir, "features", f.slug, "PRD.md");
     if (!existsSync18(prdPath)) continue;
-    const reqs = requirements(readFileSync34(prdPath, "utf8"));
+    const reqs = requirements(readFileSync35(prdPath, "utf8"));
     const ev = featureEvidence(f);
     const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
     for (const req of reqs) {
@@ -33883,7 +34195,7 @@ function buildWorklist(outDir, opts = {}) {
 }
 function capUsedFor(outDir) {
   try {
-    const todo = JSON.parse(readFileSync34(join43(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync35(join44(outDir, "VERIFY.todo.json"), "utf8"));
     const max = todo?.coverage?.max;
     if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
   } catch {
@@ -33906,8 +34218,8 @@ function runVerify(outDir, opts = {}) {
       authority: null
     }))
   };
-  writeFileSync8(join43(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync8(join43(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync9(join44(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync9(join44(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -33934,7 +34246,7 @@ function renderWorklistMd(wl, total, kept) {
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync34(join43(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync35(join44(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -33982,7 +34294,7 @@ function resolveEvidence(ref2, inv, external = NO_EXTERNAL_EVIDENCE) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync34(join43(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync35(join44(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -34021,17 +34333,17 @@ function assertWorklistFresh(outDir, todo) {
   const preview = (xs) => `${xs.slice(0, 6).join("; ")}${xs.length > 6 ? "; \u2026" : ""}`;
   if (drift.length) {
     throw new Error(
-      `${join43(outDir, "VERIFY.todo.json")} is stale: ${drift.length} pair(s) no longer match the PRDs (${preview(drift)}) \u2014 the verdicts judge content that has since changed. Re-run \`--verify\` and re-adjudicate (fail-closed).`
+      `${join44(outDir, "VERIFY.todo.json")} is stale: ${drift.length} pair(s) no longer match the PRDs (${preview(drift)}) \u2014 the verdicts judge content that has since changed. Re-run \`--verify\` and re-adjudicate (fail-closed).`
     );
   }
   if (unbound.length) {
     throw new Error(
-      `${join43(outDir, "VERIFY.todo.json")} is stale: ${unbound.length} pair(s) carry no content fingerprint (${preview(unbound)}) \u2014 this worklist predates content binding, so the fold cannot prove the verdicts judge the CURRENT PRDs. Re-run \`--verify\` and re-adjudicate (fail-closed).`
+      `${join44(outDir, "VERIFY.todo.json")} is stale: ${unbound.length} pair(s) carry no content fingerprint (${preview(unbound)}) \u2014 this worklist predates content binding, so the fold cannot prove the verdicts judge the CURRENT PRDs. Re-run \`--verify\` and re-adjudicate (fail-closed).`
     );
   }
 }
 function applyVerdicts(outDir, verdictsPath) {
-  const raw = JSON.parse(readFileSync34(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync35(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
@@ -34093,12 +34405,12 @@ function applyVerdicts(outDir, verdictsPath) {
   }
   if (verdicts.length === 0) {
     throw new Error(
-      `${verdictsPath}: every row cites a claimId unknown to ${join43(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) \u2014 stale fragment? Re-run --verify and re-adjudicate.`
+      `${verdictsPath}: every row cites a claimId unknown to ${join44(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) \u2014 stale fragment? Re-run --verify and re-adjudicate.`
     );
   }
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   if (unknown.length) result.ignored = unknown;
-  writeFileSync8(join43(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  writeFileSync9(join44(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   const ledger = writeObligations(outDir, verdicts);
   result.obligations = { ledgerId: ledger.ledgerId, closureDigest: ledger.closureDigest, closed: ledger.closed, open: ledger.open, failed: ledger.failed };
   return result;
@@ -34148,7 +34460,7 @@ function reduceVerdicts(verdicts, inv, external) {
   };
 }
 function foldSemantic(outDir, check, opts = {}) {
-  const p = join43(outDir, "VERIFY.json");
+  const p = join44(outDir, "VERIFY.json");
   const skip = (msg) => {
     if (opts.allowUnverified) check.warnings.push(`${msg}; semantic gate skipped (--allow-unverified)`);
     else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
@@ -34159,7 +34471,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync34(p, "utf8"));
+    sem = JSON.parse(readFileSync35(p, "utf8"));
   } catch (e) {
     skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
     return;
@@ -34285,7 +34597,7 @@ function buildObligations(pairs, verdicts, inv, external) {
 }
 function readObligations(outDir) {
   try {
-    return JSON.parse(readFileSync34(join43(outDir, OBLIGATIONS_FILE), "utf8"));
+    return JSON.parse(readFileSync35(join44(outDir, OBLIGATIONS_FILE), "utf8"));
   } catch {
     return void 0;
   }
@@ -34298,7 +34610,7 @@ function writeObligations(outDir, verdicts) {
     pairs = [];
   }
   const ledger = buildObligations(pairs, verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
-  writeFileSync8(join43(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
+  writeFileSync9(join44(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
   return ledger;
 }
 function formatVerifyReport(r) {
@@ -34344,16 +34656,16 @@ function seal(rec) {
 }
 function readInventory(outDir) {
   try {
-    return JSON.parse(readFileSync35(join44(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync36(join45(outDir, "inventory.json"), "utf8"));
   } catch {
     throw new Error(`no readable inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
 }
 function readUnknowns(outDir) {
-  const path = join44(outDir, UNKNOWNS_FILE);
+  const path = join45(outDir, UNKNOWNS_FILE);
   if (!existsSync19(path)) return void 0;
   try {
-    const raw = JSON.parse(readFileSync35(path, "utf8"));
+    const raw = JSON.parse(readFileSync36(path, "utf8"));
     if (!Array.isArray(raw?.unknowns)) throw new Error("missing `unknowns` array");
     return raw;
   } catch (e) {
@@ -34381,7 +34693,7 @@ function ensureUnknowns(outDir) {
   const existing = readUnknowns(outDir);
   if (existing) return existing;
   const seeded = seedUnknowns(readInventory(outDir));
-  writeFileSync9(join44(outDir, UNKNOWNS_FILE), JSON.stringify(seeded, null, 2) + "\n");
+  writeFileSync10(join45(outDir, UNKNOWNS_FILE), JSON.stringify(seeded, null, 2) + "\n");
   return seeded;
 }
 function citationProblems(rec, inv, external) {
@@ -34453,7 +34765,7 @@ function applyUnknownUpdates(outDir, updates) {
   }
   const unknowns = [...byId.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
   const out2 = { version: 1, unknowns };
-  writeFileSync9(join44(outDir, UNKNOWNS_FILE), JSON.stringify(out2, null, 2) + "\n");
+  writeFileSync10(join45(outDir, UNKNOWNS_FILE), JSON.stringify(out2, null, 2) + "\n");
   return out2;
 }
 function foldUnknowns(outDir, check) {
@@ -34516,10 +34828,10 @@ function collectMarkdown(dir, base = dir) {
     return out2;
   }
   for (const name2 of entries) {
-    const full = join45(dir, name2);
+    const full = join46(dir, name2);
     let st;
     try {
-      st = statSync17(full);
+      st = statSync18(full);
     } catch {
       continue;
     }
@@ -34527,7 +34839,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2) || lstatSync5(full).isSymbolicLink()) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync36(full, "utf8") });
+      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync37(full, "utf8") });
     }
   }
   return out2;
@@ -34553,10 +34865,10 @@ function fileNames(dir, base = dir) {
     return out2;
   }
   for (const name2 of entries) {
-    const full = join45(dir, name2);
+    const full = join46(dir, name2);
     let st;
     try {
-      st = statSync17(full);
+      st = statSync18(full);
     } catch {
       continue;
     }
@@ -34569,9 +34881,9 @@ function fileNames(dir, base = dir) {
 function checkOutput(outDir, opts = {}) {
   const errors = [];
   const warnings = [];
-  const invPath = join45(outDir, "inventory.json");
+  const invPath = join46(outDir, "inventory.json");
   if (!existsSync20(invPath)) {
-    if (existsSync20(join45(outDir, "BRAINSTORM.md"))) {
+    if (existsSync20(join46(outDir, "BRAINSTORM.md"))) {
       scanScaffolding(collectMarkdown(outDir), errors);
       return { errors, warnings };
     }
@@ -34580,7 +34892,7 @@ function checkOutput(outDir, opts = {}) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync36(invPath, "utf8"));
+    inv = JSON.parse(readFileSync37(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -34621,7 +34933,7 @@ function checkOutput(outDir, opts = {}) {
     const hashOf = (file) => {
       if (!cache2.has(file)) {
         try {
-          cache2.set(file, sha256Hex(readFileSync36(join45(repo, file))).slice(0, 16));
+          cache2.set(file, sha256Hex(readFileSync37(join46(repo, file))).slice(0, 16));
         } catch {
           cache2.set(file, null);
         }
@@ -34659,7 +34971,7 @@ function checkOutput(outDir, opts = {}) {
     }
   }
   if (inv.i18n && inv.i18n.locales?.length) {
-    const transDir = join45(outDir, "data", "translations");
+    const transDir = join46(outDir, "data", "translations");
     const names = existsSync20(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
     for (const loc of inv.i18n.locales) {
@@ -34717,7 +35029,7 @@ function brokenLinks(outDir, docs) {
         decoded = decodeURI(target);
       } catch {
       }
-      if (!existsSync20(join45(outDir, posix10.normalize(posix10.join(dir, decoded))))) out2.push(`${d.rel}: broken link \u2192 ${target}`);
+      if (!existsSync20(join46(outDir, posix10.normalize(posix10.join(dir, decoded))))) out2.push(`${d.rel}: broken link \u2192 ${target}`);
     }
   }
   return out2;
@@ -34857,8 +35169,8 @@ function formatCheckReport(r, outDir) {
 
 // src/review.ts
 import { createHash as createHash7 } from "crypto";
-import { existsSync as existsSync21, readFileSync as readFileSync37, writeFileSync as writeFileSync10 } from "fs";
-import { join as join46 } from "path";
+import { existsSync as existsSync21, readFileSync as readFileSync38, writeFileSync as writeFileSync11 } from "fs";
+import { join as join47 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 var SEVERITIES3 = ["blocker", "major", "minor"];
 var CATEGORIES = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
@@ -34867,14 +35179,14 @@ function sha256(s) {
 }
 function readIfExists(path) {
   try {
-    return readFileSync37(path, "utf8");
+    return readFileSync38(path, "utf8");
   } catch {
     return "";
   }
 }
 function archHash(outDir) {
   return sha256(ARCH_DOCS.map((rel2) => `# ${rel2}
-` + readIfExists(join46(outDir, rel2))).join("\n"));
+` + readIfExists(join47(outDir, rel2))).join("\n"));
 }
 function baselineHash(b) {
   const feats = b.features.map((f) => `${f.feature}:${f.prdHash}`).sort().join("\n");
@@ -34890,9 +35202,9 @@ function currentBaseline(outDir) {
   }
   const features = [];
   for (const f of inv.features ?? []) {
-    const prdPath = join46(outDir, "features", f.slug, "PRD.md");
+    const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    features.push({ feature: f.slug, prdHash: sha256(readFileSync37(prdPath, "utf8")) });
+    features.push({ feature: f.slug, prdHash: sha256(readFileSync38(prdPath, "utf8")) });
   }
   return { archHash: archHash(outDir), features };
 }
@@ -34924,9 +35236,9 @@ function runReview(outDir) {
   const units = [];
   const changedSet = [];
   for (const f of inv.features ?? []) {
-    const prdPath = join46(outDir, "features", f.slug, "PRD.md");
+    const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    const prdHash = sha256(readFileSync37(prdPath, "utf8"));
+    const prdHash = sha256(readFileSync38(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -34944,14 +35256,14 @@ function runReview(outDir) {
     changedSet,
     units
   };
-  writeFileSync10(join46(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
-  writeFileSync10(join46(outDir, "REVIEW.md"), renderWorklistMd2(worklist));
+  writeFileSync11(join47(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
+  writeFileSync11(join47(outDir, "REVIEW.md"), renderWorklistMd2(worklist));
   return worklist;
 }
 function readInventory2(outDir) {
   let raw;
   try {
-    raw = readFileSync37(join46(outDir, "inventory.json"), "utf8");
+    raw = readFileSync38(join47(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -34962,11 +35274,11 @@ function readInventory2(outDir) {
   }
 }
 function readPrior(outDir) {
-  const reviewPath = join46(outDir, "REVIEW.json");
+  const reviewPath = join47(outDir, "REVIEW.json");
   if (!existsSync21(reviewPath)) return null;
   let rev;
   try {
-    rev = JSON.parse(readFileSync37(reviewPath, "utf8"));
+    rev = JSON.parse(readFileSync38(reviewPath, "utf8"));
   } catch {
     return null;
   }
@@ -34977,7 +35289,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync37(join46(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync38(join47(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -35102,7 +35414,7 @@ function reduceFindings(findings, ctx) {
   };
 }
 function applyFindings(outDir, findingsPath) {
-  const raw = JSON.parse(readFileSync37(findingsPath, "utf8"));
+  const raw = JSON.parse(readFileSync38(findingsPath, "utf8"));
   const findings = normalizeFindings(raw);
   let round;
   let changedSet = [];
@@ -35112,7 +35424,7 @@ function applyFindings(outDir, findingsPath) {
   let baseline;
   let todo;
   try {
-    todo = JSON.parse(readFileSync37(join46(outDir, "REVIEW.todo.json"), "utf8"));
+    todo = JSON.parse(readFileSync38(join47(outDir, "REVIEW.todo.json"), "utf8"));
   } catch {
   }
   if (todo) {
@@ -35129,23 +35441,23 @@ function applyFindings(outDir, findingsPath) {
     const drift = current ? baselineDrift(baseline, current) : null;
     if (drift) {
       throw new Error(
-        `${join46(outDir, "REVIEW.todo.json")} is stale: ${drift}. These findings judge content the tree has moved past, so applying them would commit a review baseline nobody reviewed. Re-run \`--review\` and re-review the flagged unit(s) (fail-closed).`
+        `${join47(outDir, "REVIEW.todo.json")} is stale: ${drift}. These findings judge content the tree has moved past, so applying them would commit a review baseline nobody reviewed. Re-run \`--review\` and re-review the flagged unit(s) (fail-closed).`
       );
     }
     const echoed = typeof raw?.contentHash === "string" ? raw.contentHash : void 0;
     if (echoed && todo.contentHash && echoed !== todo.contentHash) {
       throw new Error(
-        `${findingsPath} is stale: its contentHash names a different review round than ${join46(outDir, "REVIEW.todo.json")}. Re-review the current worklist and re-apply (fail-closed).`
+        `${findingsPath} is stale: its contentHash names a different review round than ${join47(outDir, "REVIEW.todo.json")}. Re-review the current worklist and re-apply (fail-closed).`
       );
     }
   }
   let priorFailures = [];
   let priorStale = 0;
   let priorRound = 0;
-  const reviewPath = join46(outDir, "REVIEW.json");
+  const reviewPath = join47(outDir, "REVIEW.json");
   if (existsSync21(reviewPath)) {
     try {
-      const prev = JSON.parse(readFileSync37(reviewPath, "utf8"));
+      const prev = JSON.parse(readFileSync38(reviewPath, "utf8"));
       priorFailures = prev.failures ?? [];
       priorStale = prev.staleRounds ?? 0;
       priorRound = prev.round ?? 0;
@@ -35163,7 +35475,7 @@ function applyFindings(outDir, findingsPath) {
     priorStale
   });
   if (baseline) result.baseline = baseline;
-  writeFileSync10(reviewPath, JSON.stringify(result, null, 2));
+  writeFileSync11(reviewPath, JSON.stringify(result, null, 2));
   return result;
 }
 function recomputeReviewGate(rev) {
@@ -35176,7 +35488,7 @@ function recomputeReviewGate(rev) {
   return [...ids].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 function foldReview(outDir, check, opts = {}) {
-  const p = join46(outDir, "REVIEW.json");
+  const p = join47(outDir, "REVIEW.json");
   const skip = (msg) => {
     if (opts.allowUnverified) check.warnings.push(`${msg}; review gate skipped (--allow-unverified)`);
     else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
@@ -35187,7 +35499,7 @@ function foldReview(outDir, check, opts = {}) {
   }
   let rev;
   try {
-    rev = JSON.parse(readFileSync37(p, "utf8"));
+    rev = JSON.parse(readFileSync38(p, "utf8"));
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
     return;
@@ -35235,8 +35547,8 @@ function formatReviewReport(r) {
 }
 
 // src/brainstorm.ts
-import { readFileSync as readFileSync38 } from "fs";
-import { join as join47 } from "path";
+import { readFileSync as readFileSync39 } from "fs";
+import { join as join48 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
 }
@@ -35307,7 +35619,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync38(join47(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync39(join48(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -35318,11 +35630,11 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync23, mkdirSync as mkdirSync6, readFileSync as readFileSync39, writeFileSync as writeFileSync11 } from "fs";
-import { join as join49, resolve as resolve14 } from "path";
+import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync40, writeFileSync as writeFileSync12 } from "fs";
+import { join as join50, resolve as resolve15 } from "path";
 
 // src/orchestrate-templates.ts
-import { join as join48 } from "path";
+import { join as join49 } from "path";
 var ONE_WRITER_FOOTER = `
 ## Return, don't write
 
@@ -35469,21 +35781,21 @@ var PHASE_SPECS = {
     title: "Find",
     schema: FINDINGS_SCHEMA,
     description: (n) => `Review the ${n} flagged feature PRD(s) of a reconstruction against the nine buildability checks (adversarial finder fan-out)`,
-    applyHint: (engine, out2) => `merge the findings into ${join48(out2, "findings.json")} ({ "findings": [...] }), then: node ${engine} --review --apply ${join48(out2, "findings.json")} --out ${out2} \u2014 then fan the surviving blockers out with --orchestrate --phase review-verify`
+    applyHint: (engine, out2) => `merge the findings into ${join49(out2, "findings.json")} ({ "findings": [...] }), then: node ${engine} --review --apply ${join49(out2, "findings.json")} --out ${out2} \u2014 then fan the surviving blockers out with --orchestrate --phase review-verify`
   },
   "review-verify": {
     role: "verifier",
     title: "Verify",
     schema: BLOCKER_VERDICT_SCHEMA,
     description: (n) => `Independently confirm or refute the ${n} open review blocker(s) of a reconstruction (adversarial verifier fan-out)`,
-    applyHint: (engine, out2) => `stamp each verdict/verifierNote onto its finding (match by id) in ${join48(out2, "findings.json")}, then re-run: node ${engine} --review --apply ${join48(out2, "findings.json")} --out ${out2} \u2014 a refuted blocker drops from the residual`
+    applyHint: (engine, out2) => `stamp each verdict/verifierNote onto its finding (match by id) in ${join49(out2, "findings.json")}, then re-run: node ${engine} --review --apply ${join49(out2, "findings.json")} --out ${out2} \u2014 a refuted blocker drops from the residual`
   },
   adjudicate: {
     role: "adjudicator",
     title: "Adjudicate",
     schema: ADJUDICATE_SCHEMA,
     description: (n) => `Adjudicate the ${n} requirement\u2194evidence pair(s) of a reconstruction's verification gate (fan-out, fail-closed fold)`,
-    applyHint: (engine, out2) => `fill the verdicts into ${join48(out2, "verdicts.json")}, then: node ${engine} --verify --apply ${join48(out2, "verdicts.json")} --out ${out2} && node ${engine} --check --semantic --out ${out2}`
+    applyHint: (engine, out2) => `fill the verdicts into ${join49(out2, "verdicts.json")}, then: node ${engine} --verify --apply ${join49(out2, "verdicts.json")} --out ${out2} && node ${engine} --check --semantic --out ${out2}`
   }
 };
 function phaseSpec(name2) {
@@ -35500,7 +35812,7 @@ function toBatches(groups, batchSize) {
 }
 function phaseWorkflowScript(ph, outAbs, engineAbs, batchSize) {
   const spec = phaseSpec(ph.name);
-  const scriptPath = join48(outAbs, "orchestration", `${ph.name}.workflow.mjs`);
+  const scriptPath = join49(outAbs, "orchestration", `${ph.name}.workflow.mjs`);
   const meta = { name: `reconstruct-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
   return [
     `export const meta = ${JSON.stringify(meta)}`,
@@ -35546,11 +35858,11 @@ function agentContracts(outAbs, engineAbs) {
 
 You draft ONE feature of a reconstruction at a time, to full PRD depth \u2014 the MAP half of the enrichment map-reduce (\`references/orchestration.md\`, Phase 1).
 
-Worklist: \`${join48(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join49(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
-1. Read ONLY its slice of the tree: the feature's \`files\` plus the \`inventory.hints.*Candidates\` (routes/api/schema/realtime/auth/design-system) that fall inside those files, its scaffold \`features/<slug>/PRD.md\` (including the embedded \`## Source material\`), and the copied ground truth under \`${join48(outAbs, "data")}\`. File paths in the inventory are relative to the analyzed repo \u2014 prefer the embedded source and \`data/\` copies; open the original repo only when the tree references paths it did not embed.
+1. Read ONLY its slice of the tree: the feature's \`files\` plus the \`inventory.hints.*Candidates\` (routes/api/schema/realtime/auth/design-system) that fall inside those files, its scaffold \`features/<slug>/PRD.md\` (including the embedded \`## Source material\`), and the copied ground truth under \`${join49(outAbs, "data")}\`. File paths in the inventory are relative to the analyzed repo \u2014 prefer the embedded source and \`data/\` copies; open the original repo only when the tree references paths it did not embed.
 2. Draft the COMPLETE \`features/<slug>/PRD.md\` content \u2014 the full spine (context & goal, user stories, numbered functional requirements, interfaces & data, Given/When/Then acceptance criteria, edge cases & failure modes, definition of done), resolving every \`> \u{1F9E0}\` callout.
 3. PROPOSE \u2014 do not write \u2014 the shared-doc rows your feature touches:
    - interface ROW PROPOSALS: method \xB7 path \xB7 kind \xB7 auth \xB7 input \xB7 output \xB7 side-effects;
@@ -35566,7 +35878,7 @@ ${footer}`,
 
 You are a FINDER of the AI buildability review \u2014 one adversarial reviewer per flagged feature (\`references/orchestration.md\`, Phase 2 step B; rubric: \`references/ai-review-rubric.md\`).
 
-Worklist: \`${join48(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join49(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
@@ -35580,7 +35892,7 @@ ${footer}`,
 
 You are an INDEPENDENT VERIFIER of the review loop \u2014 one fresh, adversarial agent per open blocker (\`references/orchestration.md\`, Phase 2 step C). A finding "counts" only when you confirm it.
 
-Worklist: \`${join48(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join49(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your blockers:
 
@@ -35594,7 +35906,7 @@ ${footer}`,
 
 You adjudicate the requirement\u2194source verification gate of a reconstruction \u2014 judging whether each PRD requirement TRACES to the original code (faithful inference) or was invented.
 
-Worklist: \`${join48(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join49(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your pairs:
 
@@ -35610,7 +35922,7 @@ ${footer}`
 function runbookMd(phases, outAbs, engineAbs) {
   const status = phases.map((p) => `| ${p.name} | \`${p.worklist}\` | ${p.ready ? `ready (${p.items} item(s))` : "not ready"} | \`${p.prerequisite}\` |`).join("\n");
   const engine = `node ${engineAbs}`;
-  const agents = join48(outAbs, "orchestration", "agents");
+  const agents = join49(outAbs, "orchestration", "agents");
   return `# reconstruct \u2014 sequential RUNBOOK (eco / no-subagent fallback)
 
 Out: \`${outAbs}\` \xB7 Engine: \`${engine}\`
@@ -35628,11 +35940,11 @@ ${status}
 
 ## The loop (play every role yourself, one unit at a time)
 
-1. **Analyze** (if not done): \`${engine} --repo <repo> --out ${outAbs}\` \u2192 \`${join48(outAbs, "inventory.json")}\` (greenfield: \`--scratch --plan <plan.json>\`).
-2. **Enrich \u2014 the map-reduce, played solo**: for EVERY \`inventory.json\` feature, apply \`${join48(agents, "drafter.md")}\` yourself (draft the PRD + the interface/entity row proposals), then play the reducer \u2014 merge every proposal into \`architecture/INTERFACES.md\` / \`architecture/DATA-MODEL.md\` and write the feature PRDs. Gate: \`${engine} --check --out ${outAbs}\`.
-3. **Review \u2014 find**: \`${engine} --review --out ${outAbs}\` writes \`${join48(outAbs, "REVIEW.todo.json")}\` (flagging only what changed). For EVERY flagged unit, apply \`${join48(agents, "finder.md")}\` yourself; save the findings as \`${join48(outAbs, "findings.json")}\` (\`{ "findings": [...] }\`), then reduce: \`${engine} --review --apply ${join48(outAbs, "findings.json")} --out ${outAbs}\`.
-4. **Review \u2014 verify**: for EVERY open blocker in \`${join48(outAbs, "REVIEW.json")}\` (\`failures[]\`), apply \`${join48(agents, "verifier.md")}\` yourself (confirm/refute + note, stamped onto the matching finding in \`findings.json\` by \`id\`), then re-reduce: \`${engine} --review --apply ${join48(outAbs, "findings.json")} --out ${outAbs}\`. Loop 2\u21924 until \`REVIEW.json.ok\` (or \`staleRounds >= 2\` / round > 5).
-5. **Adjudicate the requirement gate**: \`${engine} --verify --out ${outAbs}\` writes \`${join48(outAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join48(agents, "adjudicator.md")}\` yourself (verdict + confidence + note \u2192 \`${join48(outAbs, "verdicts.json")}\`), then fold: \`${engine} --verify --apply ${join48(outAbs, "verdicts.json")} --out ${outAbs}\`.
+1. **Analyze** (if not done): \`${engine} --repo <repo> --out ${outAbs}\` \u2192 \`${join49(outAbs, "inventory.json")}\` (greenfield: \`--scratch --plan <plan.json>\`).
+2. **Enrich \u2014 the map-reduce, played solo**: for EVERY \`inventory.json\` feature, apply \`${join49(agents, "drafter.md")}\` yourself (draft the PRD + the interface/entity row proposals), then play the reducer \u2014 merge every proposal into \`architecture/INTERFACES.md\` / \`architecture/DATA-MODEL.md\` and write the feature PRDs. Gate: \`${engine} --check --out ${outAbs}\`.
+3. **Review \u2014 find**: \`${engine} --review --out ${outAbs}\` writes \`${join49(outAbs, "REVIEW.todo.json")}\` (flagging only what changed). For EVERY flagged unit, apply \`${join49(agents, "finder.md")}\` yourself; save the findings as \`${join49(outAbs, "findings.json")}\` (\`{ "findings": [...] }\`), then reduce: \`${engine} --review --apply ${join49(outAbs, "findings.json")} --out ${outAbs}\`.
+4. **Review \u2014 verify**: for EVERY open blocker in \`${join49(outAbs, "REVIEW.json")}\` (\`failures[]\`), apply \`${join49(agents, "verifier.md")}\` yourself (confirm/refute + note, stamped onto the matching finding in \`findings.json\` by \`id\`), then re-reduce: \`${engine} --review --apply ${join49(outAbs, "findings.json")} --out ${outAbs}\`. Loop 2\u21924 until \`REVIEW.json.ok\` (or \`staleRounds >= 2\` / round > 5).
+5. **Adjudicate the requirement gate**: \`${engine} --verify --out ${outAbs}\` writes \`${join49(outAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join49(agents, "adjudicator.md")}\` yourself (verdict + confidence + note \u2192 \`${join49(outAbs, "verdicts.json")}\`), then fold: \`${engine} --verify --apply ${join49(outAbs, "verdicts.json")} --out ${outAbs}\`.
 6. **Gate**: \`${engine} --check --semantic --out ${outAbs}\` must exit 0 before presenting anything.
 
 Never fanned out (orchestrator-only, always serial): the greenfield interview, \`--brainstorm\`
@@ -35668,7 +35980,7 @@ function batchNotice(phase, items, batch, override) {
 }
 function readJson2(path) {
   try {
-    return JSON.parse(readFileSync39(path, "utf8"));
+    return JSON.parse(readFileSync40(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -35704,21 +36016,21 @@ function workspaceGroups(inv) {
   return [...groups.values()];
 }
 function listPhases(outDir, engineAbs, batchOverride) {
-  const out2 = resolve14(outDir);
-  const invPath = join49(out2, "inventory.json");
+  const out2 = resolve15(outDir);
+  const invPath = join50(out2, "inventory.json");
   const inv = readJson2(invPath);
   const invReady = !!inv && Array.isArray(inv.features);
   const enrichGroups = invReady ? workspaceGroups(inv) : [];
   const enrichIds = enrichGroups.flat();
-  const todoPath = join49(out2, "REVIEW.todo.json");
+  const todoPath = join50(out2, "REVIEW.todo.json");
   const todo = readJson2(todoPath);
   const findReady = !!todo && Array.isArray(todo.units);
   const findIds = findReady ? todo.units.filter((u) => u.needsReview).map((u) => u.feature) : [];
-  const revPath = join49(out2, "REVIEW.json");
+  const revPath = join50(out2, "REVIEW.json");
   const rev = readJson2(revPath);
   const verifyReady = !!rev && (Array.isArray(rev.failures) || Array.isArray(rev.findings));
   const blockerIds = verifyReady ? recomputeReviewGate(rev) : [];
-  const verPath = join49(out2, "VERIFY.todo.json");
+  const verPath = join50(out2, "VERIFY.todo.json");
   const ver = readJson2(verPath);
   const adjReady = !!ver && Array.isArray(ver.pairs);
   const adjIds = adjReady ? ver.pairs.map((p) => p.claimId) : [];
@@ -35766,7 +36078,7 @@ function listPhases(outDir, engineAbs, batchOverride) {
   ];
 }
 function orchestrateRun(outDir, engineAbs, opts = {}) {
-  const out2 = resolve14(outDir);
+  const out2 = resolve15(outDir);
   if (!existsSync23(out2)) {
     return { exitCode: 2, written: [], notices: [], errors: [`out dir not found: ${out2}`], phases: [] };
   }
@@ -35794,15 +36106,15 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
     }
     selected = [ph];
   }
-  const orchDir = join49(out2, "orchestration");
-  const agentsDir = join49(orchDir, "agents");
-  mkdirSync6(join49(orchDir, "out"), { recursive: true });
-  mkdirSync6(agentsDir, { recursive: true });
+  const orchDir = join50(out2, "orchestration");
+  const agentsDir = join50(orchDir, "agents");
+  mkdirSync7(join50(orchDir, "out"), { recursive: true });
+  mkdirSync7(agentsDir, { recursive: true });
   const written = [];
   const notices = [];
   for (const [name2, content] of Object.entries(agentContracts(out2, engineAbs))) {
-    const p = join49(agentsDir, `${name2}.md`);
-    writeFileSync11(p, content);
+    const p = join50(agentsDir, `${name2}.md`);
+    writeFileSync12(p, content);
     written.push(p);
   }
   if (!opts.eco) {
@@ -35816,13 +36128,13 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
       }
       const batch = batchSizeFor(ph.name, ph.items, opts.batchSize);
       notices.push(batchNotice(ph.name, ph.items, batch, opts.batchSize));
-      const p = join49(orchDir, `${ph.name}.workflow.mjs`);
-      writeFileSync11(p, phaseWorkflowScript(ph, out2, engineAbs, batch));
+      const p = join50(orchDir, `${ph.name}.workflow.mjs`);
+      writeFileSync12(p, phaseWorkflowScript(ph, out2, engineAbs, batch));
       written.push(p);
     }
   }
-  const rb = join49(orchDir, "RUNBOOK.md");
-  writeFileSync11(rb, runbookMd(phases, out2, engineAbs));
+  const rb = join50(orchDir, "RUNBOOK.md");
+  writeFileSync12(rb, runbookMd(phases, out2, engineAbs));
   written.push(rb);
   return { exitCode: 0, written, notices, errors: [], phases };
 }
@@ -35831,12 +36143,12 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 import { createInterface as createInterface2 } from "readline";
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync24, readFileSync as readFileSync40, realpathSync as realpathSync9, statSync as statSync18 } from "fs";
-import { isAbsolute as isAbsolute12, join as join51, relative as relative13, resolve as resolve16, sep as sep10 } from "path";
+import { existsSync as existsSync24, readFileSync as readFileSync41, realpathSync as realpathSync9, statSync as statSync19 } from "fs";
+import { isAbsolute as isAbsolute13, join as join52, relative as relative13, resolve as resolve17, sep as sep10 } from "path";
 
 // src/tree-lock.ts
 import { realpathSync as realpathSync8 } from "fs";
-import { basename as basename8, dirname as dirname10, join as join50, resolve as resolve15 } from "path";
+import { basename as basename8, dirname as dirname10, join as join51, resolve as resolve16 } from "path";
 var chains = /* @__PURE__ */ new Map();
 function withTreeLock(path, fn) {
   const dir = canonical(path);
@@ -35856,9 +36168,9 @@ function canonical(path) {
     return realpathSync8(path);
   } catch {
     try {
-      return join50(realpathSync8(dirname10(path)), basename8(path));
+      return join51(realpathSync8(dirname10(path)), basename8(path));
     } catch {
-      return resolve15(path);
+      return resolve16(path);
     }
   }
 }
@@ -35965,17 +36277,17 @@ function oneOf(v, allowed, key, fallback) {
 function requiredRepo(args2) {
   const repo = str2(args2.repo);
   if (!repo) throw new ToolError("`repo` is required: an absolute path to the repository to analyze.");
-  const abs = resolve16(repo);
+  const abs = resolve17(repo);
   if (!existsSync24(abs)) throw new ToolError(`repo not found: ${abs}`);
-  if (!statSync18(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
+  if (!statSync19(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
   return abs;
 }
 function requiredOut(args2, defaults) {
   const out2 = str2(args2.out) ?? defaults.defaultOut;
   if (!out2) throw new ToolError("`out` is required: the reconstruction tree to operate on.");
-  if (!isAbsolute12(out2)) throw new ToolError("`out` must be an absolute path.");
-  const abs = resolve16(out2);
-  if (!existsSync24(join51(abs, "inventory.json"))) {
+  if (!isAbsolute13(out2)) throw new ToolError("`out` must be an absolute path.");
+  const abs = resolve17(out2);
+  if (!existsSync24(join52(abs, "inventory.json"))) {
     throw new ToolError(`no reconstruction tree at ${abs} \u2014 scaffold one first with reconstruct_scaffold (it writes there).`, {
       kind: "run_first",
       hint: "Call reconstruct_scaffold for this repo (needs --allow-write), or pass the `out` of an existing tree."
@@ -36019,8 +36331,8 @@ async function callTool2(name2, args2, defaults = {}) {
   if (name2 === "reconstruct_view") return outcome2(handleView(args2, defaults));
   if (name2 === "reconstruct_scaffold") {
     const repo = requiredRepo(args2);
-    const out3 = str2(args2.out) ? resolve16(str2(args2.out)) : join51(repo, "reconstruction");
-    return await withTreeLock(out3, async () => outcome2(handleScaffold(args2, repo, out3)));
+    const out3 = str2(args2.out) ? resolve17(str2(args2.out)) : join52(repo, "reconstruction");
+    return await withTreeLock(out3, async () => outcome2(await handleScaffold(args2, repo, out3)));
   }
   const out2 = requiredOut(args2, defaults);
   return await withTreeLock(out2, async () => outcome2(dispatch(name2, args2, out2, defaults.allowWrite === true)));
@@ -36061,7 +36373,7 @@ function realOr(p) {
   try {
     return realpathSync9(p);
   } catch {
-    return resolve16(p);
+    return resolve17(p);
   }
 }
 function within2(real, root) {
@@ -36069,14 +36381,14 @@ function within2(real, root) {
 }
 function inRepoInventory(real, repo, out2) {
   if (!repo) return false;
-  const root = realOr(resolve16(repo));
+  const root = realOr(resolve17(repo));
   if (!within2(real, root) || real === root) return false;
   const rel2 = relative13(root, real).split(sep10).join("/");
   try {
-    const inv = JSON.parse(readFileSync40(join51(out2, "inventory.json"), "utf8"));
+    const inv = JSON.parse(readFileSync41(join52(out2, "inventory.json"), "utf8"));
     const listed2 = (inv.files ?? []).find((f) => f.path === rel2);
-    if (typeof listed2?.hash !== "string" || statSync18(real).size > MAX_READ_BYTES) return false;
-    return sha256Hex(readFileSync40(real)).slice(0, 16) === listed2.hash;
+    if (typeof listed2?.hash !== "string" || statSync19(real).size > MAX_READ_BYTES) return false;
+    return sha256Hex(readFileSync41(real)).slice(0, 16) === listed2.hash;
   } catch {
     return false;
   }
@@ -36084,7 +36396,7 @@ function inRepoInventory(real, repo, out2) {
 function handleInventory(args2) {
   const repo = requiredRepo(args2);
   const detail = oneOf(args2.detail, ["summary", "full"], "detail", "summary");
-  const inv = analyze(baseOptions(repo, join51(repo, "reconstruction"), args2));
+  const inv = analyze(baseOptions(repo, join52(repo, "reconstruction"), args2));
   const inventory_id = rememberInventory(inv);
   if (detail === "full") {
     return { repo, inventory_id, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
@@ -36111,7 +36423,7 @@ function handleView(args2, defaults) {
   } else {
     const out2 = requiredOut(args2, defaults);
     try {
-      inv = JSON.parse(readFileSync40(join51(out2, "inventory.json"), "utf8"));
+      inv = JSON.parse(readFileSync41(join52(out2, "inventory.json"), "utf8"));
     } catch (e) {
       throw new ToolError(`unreadable inventory.json in ${out2}: ${e.message}`, { kind: "run_first", hint: "Re-scaffold the tree." });
     }
@@ -36119,7 +36431,7 @@ function handleView(args2, defaults) {
   const page = viewSection(inv, section, { offset: num2(args2.offset), limit: num2(args2.limit), filter: str2(args2.filter) });
   return { ...id ? { inventory_id: id } : {}, ...page };
 }
-function handleScaffold(args2, repo, out2) {
+async function handleScaffold(args2, repo, out2) {
   const witnesses = detectEnrichment(out2);
   if (witnesses.length && !bool(args2.force)) {
     throw new ToolError(formatEnrichmentRefusal(out2, witnesses), {
@@ -36128,19 +36440,42 @@ function handleScaffold(args2, repo, out2) {
     });
   }
   const opts = baseOptions(repo, out2, args2);
+  const reaMode = oneOf(args2.rea, ["auto", "on", "off"], "rea", "auto");
   const inv = analyze(opts);
+  const opaque = opaqueArtifacts(inv.files);
+  const reaHint = 'Install rea (`npx rea-agents setup`) or call again with rea: "auto" or "off".';
+  try {
+    assertReaAvailable(reaMode, opaque);
+  } catch (e) {
+    throw new ToolError(e.message, { hint: reaHint });
+  }
   writeOutput(render(inv, opts), opts);
+  let rea;
+  try {
+    rea = await runRea(repo, out2, opaque, { mode: reaMode });
+  } catch (e) {
+    throw new ToolError(e.message, { hint: reaHint });
+  }
   return {
     repo,
     out: out2,
-    path: join51(out2, "SUMMARY.md"),
+    path: join52(out2, "SUMMARY.md"),
     features: inv.features?.length ?? 0,
+    ...opaque.length ? {
+      rea: {
+        status: rea.status,
+        compiledArtifacts: opaque.length,
+        inspected: rea.artifacts.filter((a) => a.status === "inspected").length,
+        ...rea.status === "unavailable" ? {} : { index: join52(out2, "evidence/rea/INDEX.json") },
+        ...rea.error ? { error: rea.error } : {}
+      }
+    } : {},
     next: "The scaffold is STRUCTURE with the judgement left blank. Read SUMMARY.md to orient, then resolve every callout it marks \u2014 the engine never reasons, so nothing in here is analysis until you write it."
   };
 }
 function handleCheck(args2, out2) {
   const repo = str2(args2.repo);
-  const res = checkOutput(out2, { repo: repo ? resolve16(repo) : void 0 });
+  const res = checkOutput(out2, { repo: repo ? resolve17(repo) : void 0 });
   if (bool(args2.semantic)) {
     const allowUnverified = bool(args2.allow_unverified);
     foldSemantic(out2, res, { allowUnverified });
@@ -36176,7 +36511,7 @@ function handleBundle(out2, kind) {
   }
   writeOutput(result, opts);
   const file = kind === "specs" ? "SPECS.md" : kind === "features" ? "FEATURES.md" : "RECONSTRUCTION.md";
-  return { out: out2, path: join51(out2, file), bundle: kind };
+  return { out: out2, path: join52(out2, file), bundle: kind };
 }
 function handleUnknowns(args2, out2, allowWrite) {
   if (Array.isArray(args2.updates) && !allowWrite) {
@@ -36198,7 +36533,7 @@ function handleUnknowns(args2, out2, allowWrite) {
   foldUnknowns(out2, gate);
   return {
     out: out2,
-    path: join51(out2, UNKNOWNS_FILE),
+    path: join52(out2, UNKNOWNS_FILE),
     ok: gate.errors.length === 0,
     ...ledger,
     gate,
@@ -36209,7 +36544,7 @@ function handleRead(args2, out2) {
   const raw = str2(args2.path);
   if (!raw) throw new ToolError("`path` is required \u2014 relative to the tree, or an absolute path inside the tree or the repo.");
   const repo = str2(args2.repo);
-  const target = isAbsolute12(raw) ? raw : join51(out2, raw);
+  const target = isAbsolute13(raw) ? raw : join52(out2, raw);
   let real;
   try {
     real = realpathSync9(target);
@@ -36224,11 +36559,11 @@ function handleRead(args2, out2) {
       } : {}
     );
   }
-  const st = statSync18(real);
+  const st = statSync19(real);
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
   if (st.size > MAX_READ_BYTES)
     throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`, { kind: "narrow_request", hint: "Use your own file tool with a byte range." });
-  const lines = readFileSync40(real, "utf8").split("\n");
+  const lines = readFileSync41(real, "utf8").split("\n");
   const total = lines.length;
   const start2 = Math.max(1, Math.floor(num2(args2.start_line) ?? 1));
   if (start2 > total)
@@ -36239,7 +36574,7 @@ function handleRead(args2, out2) {
   const requestedEnd = Math.floor(num2(args2.end_line) ?? total);
   const end = Math.min(total, Math.max(start2, requestedEnd), start2 + MAX_READ_LINES - 1);
   return {
-    path: isAbsolute12(raw) ? real : raw,
+    path: isAbsolute13(raw) ? real : raw,
     start_line: start2,
     end_line: end,
     total_lines: total,
@@ -36500,6 +36835,11 @@ var WRITE_TOOLS = [
           description: "How to carry the original code: mirror (paths), embed (inline it), describe (prose only). Default: embed."
         },
         granularity: { type: "string", enum: ["coarse", "fine"], description: "How aggressively trivial groups fold into Core. Default: coarse." },
+        rea: {
+          type: "string",
+          enum: ["auto", "on", "off"],
+          description: "Inspect the repo's compiled artifacts (.so, .dll, .wasm, .asar, APK\u2026) with the rea MCP server, statically, into evidence/rea/. auto (default) runs it when it is installed."
+        },
         include: { type: "array", items: { type: "string" }, description: "Keep only files matching these globs." },
         exclude: { type: "array", items: { type: "string" }, description: "Drop files matching these globs." },
         max_embed_bytes: { type: "number", description: "Cap on bytes of one file embedded into a PRD." },
@@ -36706,21 +37046,21 @@ function str3(v) {
 var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
-import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync41, realpathSync as realpathSync10, statSync as statSync19 } from "fs";
-import { basename as basename9, dirname as dirname11, join as join52, resolve as resolve17, sep as sep11 } from "path";
+import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync42, realpathSync as realpathSync10, statSync as statSync20 } from "fs";
+import { basename as basename9, dirname as dirname11, join as join53, resolve as resolve18, sep as sep11 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var SKILL_NAME = "reconstruct";
 var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
   const here = moduleDir ?? dirname11(fileURLToPath3(import.meta.url));
-  const candidates = [resolve17(here, ".."), resolve17(here, "..", "skills", SKILL_NAME), resolve17(here, "..", "..", "skills", SKILL_NAME)];
-  return candidates.find((dir) => existsSync25(join52(dir, "SKILL.md")));
+  const candidates = [resolve18(here, ".."), resolve18(here, "..", "skills", SKILL_NAME), resolve18(here, "..", "..", "skills", SKILL_NAME)];
+  return candidates.find((dir) => existsSync25(join53(dir, "SKILL.md")));
 }
 function listResources(moduleDir) {
   const root = resolveSkillRoot(moduleDir);
   if (!root) return [];
   const out2 = [describe(root, "SKILL.md", `${SKILL_NAME}: the skill`)];
-  const refDir = join52(root, "references");
+  const refDir = join53(root, "references");
   if (!existsSync25(refDir)) return out2;
   for (const rel2 of walkMarkdown(refDir, "references")) {
     out2.push(describe(root, rel2, `${SKILL_NAME} reference: ${basename9(rel2, ".md")}`));
@@ -36730,8 +37070,8 @@ function listResources(moduleDir) {
 function walkMarkdown(dir, prefix) {
   const out2 = [];
   for (const entry2 of readdirSync9(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
-    const rel2 = join52(prefix, entry2.name);
-    if (entry2.isDirectory()) out2.push(...walkMarkdown(join52(dir, entry2.name), rel2));
+    const rel2 = join53(prefix, entry2.name);
+    if (entry2.isDirectory()) out2.push(...walkMarkdown(join53(dir, entry2.name), rel2));
     else if (entry2.name.endsWith(".md")) out2.push(rel2);
   }
   return out2;
@@ -36744,7 +37084,7 @@ function readResource(uri, moduleDir) {
   if (!root) throw new ResourceError("no skill payload found next to this build \u2014 nothing to read");
   const rel2 = uri.slice(URI_SCHEME.length);
   if (!rel2) throw new ResourceError("empty resource path");
-  const target = resolve17(root, rel2);
+  const target = resolve18(root, rel2);
   const rootReal = realpathSync10(root);
   let targetReal;
   try {
@@ -36755,8 +37095,8 @@ function readResource(uri, moduleDir) {
   if (targetReal !== rootReal && !targetReal.startsWith(rootReal + sep11)) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
-  if (!statSync19(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
-  return { uri, mimeType: "text/markdown", text: readFileSync41(targetReal, "utf8") };
+  if (!statSync20(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
+  return { uri, mimeType: "text/markdown", text: readFileSync42(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
@@ -36767,14 +37107,14 @@ function describe(root, rel2, fallbackTitle) {
     title: fallbackTitle,
     mimeType: "text/markdown"
   };
-  const summary = firstProse(join52(root, rel2));
+  const summary = firstProse(join53(root, rel2));
   if (summary) decl.description = summary;
   return decl;
 }
 function firstProse(file) {
   let text;
   try {
-    text = readFileSync41(file, "utf8");
+    text = readFileSync42(file, "utf8");
   } catch {
     return void 0;
   }
@@ -37034,14 +37374,14 @@ function startHttpServer(opts = {}) {
   server.requestTimeout = 0;
   server.headersTimeout = 6e4;
   server.keepAliveTimeout = 12e4;
-  return new Promise((resolve19, reject) => {
+  return new Promise((resolve20, reject) => {
     server.once("error", reject);
     server.listen(opts.port ?? 0, bind, () => {
       server.removeListener("error", reject);
       const addr2 = server.address();
       const port = typeof addr2 === "object" && addr2 ? addr2.port : opts.port ?? 0;
       const host = bind.includes(":") ? `[${bind}]` : bind;
-      resolve19({
+      resolve20({
         server,
         port,
         url: `http://${host}:${port}${MCP_PATH}`,
@@ -37154,7 +37494,7 @@ function sendJson(res, status, body2, origin, extra = {}) {
 }
 var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
 function readBody(req) {
-  return new Promise((resolve19, reject) => {
+  return new Promise((resolve20, reject) => {
     const chunks = [];
     let size = 0;
     let over = false;
@@ -37178,7 +37518,7 @@ function readBody(req) {
     });
     req.on("end", () => {
       if (over) reject(new Error("too large"));
-      else resolve19(Buffer.concat(chunks).toString("utf8"));
+      else resolve20(Buffer.concat(chunks).toString("utf8"));
     });
     req.on("error", reject);
     req.on("aborted", () => reject(new Error("client aborted the request")));
@@ -37206,6 +37546,8 @@ Options:
   --level <level>      light | complex                  (default: light)
   --fidelity <mode>    mirror | embed | describe        (default: derived from mode+level)
   --granularity <g>    coarse | fine (feature grouping) (default: coarse)
+  --rea <mode>         auto | on | off \u2014 inspect compiled artifacts with the rea MCP server
+                       when it is installed (REA_BIN or rea on PATH)  (default: auto)
   --scratch            Build from a plan.json (greenfield), not a repo
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
@@ -37356,6 +37698,7 @@ var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "level",
   "fidelity",
   "granularity",
+  "rea",
   "plan",
   "max-embed-bytes",
   "include",
@@ -37540,18 +37883,19 @@ function parseArgs(argv) {
   if (scratch && raw.repo !== void 0) {
     fail("--scratch cannot be combined with --repo; scratch mode is greenfield and reads only --plan");
   }
-  const plan = raw.plan ? resolve18(raw.plan) : "";
+  const plan = raw.plan ? resolve19(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
-  const repo = resolve18(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && (!existsSync26(repo) || !statSync20(repo).isDirectory())) {
+  const repo = resolve19(raw.repo ?? process.cwd());
+  if (!standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && (!existsSync26(repo) || !statSync21(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf2("level", raw.level ?? "light", ["light", "complex"]);
   const mode = scratch ? "scratch" : oneOf2("mode", raw.mode ?? "preserve", ["preserve", "redesign"]);
   const fidelity = scratch ? "describe" : oneOf2("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
   const granularity = oneOf2("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
-  const out2 = resolve18(
-    raw.out ?? (standalone || check || verify || review || unknowns || brainstorm || orchestrate ? process.cwd() : scratch ? join53(process.cwd(), "reconstruction") : join53(repo, "reconstruction"))
+  const rea = oneOf2("rea", raw.rea ?? "auto", ["auto", "on", "off"]);
+  const out2 = resolve19(
+    raw.out ?? (standalone || check || verify || review || unknowns || brainstorm || orchestrate ? process.cwd() : scratch ? join54(process.cwd(), "reconstruction") : join54(repo, "reconstruction"))
   );
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   const transport = raw.transport ?? "stdio";
@@ -37571,13 +37915,14 @@ function parseArgs(argv) {
   const maxVerify = positive2("max-verify");
   const batchSize = positive2("batch-size");
   return {
-    ...raw.compare ? { compare: resolve18(raw.compare), original: resolve18(raw.original), rebuilt: resolve18(raw.rebuilt), runTests } : {},
+    ...raw.compare ? { compare: resolve19(raw.compare), original: resolve19(raw.original), rebuilt: resolve19(raw.rebuilt), runTests } : {},
     repo,
     out: out2,
     mode,
     level,
     fidelity,
     granularity,
+    rea,
     include: includeGlobs,
     exclude: excludeGlobs,
     json,
@@ -37634,7 +37979,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
   if (opts.verify) {
     try {
       if (opts.apply) {
-        const r = applyVerdicts(opts.out, resolve18(opts.apply));
+        const r = applyVerdicts(opts.out, resolve19(opts.apply));
         process.stdout.write(formatVerifyReport(r) + "\n");
         if (!r.ok) process.exit(1);
         return;
@@ -37656,7 +38001,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
   if (opts.review) {
     try {
       if (opts.apply) {
-        const r = applyFindings(opts.out, resolve18(opts.apply));
+        const r = applyFindings(opts.out, resolve19(opts.apply));
         process.stdout.write(formatReviewReport(r) + "\n");
         if (!r.ok) process.exit(1);
         return;
@@ -37675,7 +38020,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
   }
   if (opts.unknowns) {
     try {
-      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync42(resolve18(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
+      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync43(resolve19(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
       process.stdout.write((opts.json ? JSON.stringify(ledger, null, 2) : formatUnknowns(ledger)) + "\n");
       const gate = { errors: [], warnings: [] };
       foldUnknowns(opts.out, gate);
@@ -37773,7 +38118,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
 `
       );
     } else {
-      process.stdout.write(`Follow ${join53(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+      process.stdout.write(`Follow ${join54(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
     }
     if (!opts.phase && workflows.length === 0 && !opts.eco) {
@@ -37828,7 +38173,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     read ${join53(effOpts.out, "SUMMARY.md")} to orient, then ${join53(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     read ${join54(effOpts.out, "SUMMARY.md")} to orient, then ${join54(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -37862,9 +38207,21 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     return;
   }
   guardEnrichedOutput(opts);
+  const opaque = opaqueArtifacts(inv.files);
+  try {
+    assertReaAvailable(opts.rea ?? "off", opaque);
+  } catch (e) {
+    fail(e.message);
+  }
   try {
     const result = render(inv, opts);
     writeOutput(result, opts);
+  } catch (e) {
+    fail(e.message);
+  }
+  let reaLine;
+  try {
+    reaLine = formatReaReport(await runRea(opts.repo, opts.out, opaque, { mode: opts.rea ?? "off" }), opaque.length);
   } catch (e) {
     fail(e.message);
   }
@@ -37879,6 +38236,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
+    ...reaLine ? [reaLine] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
     ...opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
@@ -37886,7 +38244,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  output:   ${opts.out}`,
     // Orient from SUMMARY.md, not inventory.json: same picture, a fraction of the
     // tokens (inventory.json carries one entry per analyzed file).
-    `  next:     read ${join53(opts.out, "SUMMARY.md")} to orient, then ${join53(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     read ${join54(opts.out, "SUMMARY.md")} to orient, then ${join54(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }
