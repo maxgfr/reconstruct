@@ -53,8 +53,10 @@ npx skills add -g maxgfr/reconstruct
 npx skills add maxgfr/reconstruct -a codex opencode
 ```
 
-This installs the skill into your agent (Codex, OpenCode, Claude Code, Cursor, …). For local
-development of reconstruct itself:
+This installs the skill into your agent (Codex, OpenCode, Claude Code, Cursor, …). We recommend
+installing [rea](https://github.com/morluto/rea) alongside it (`--install-rea`, see
+[Installing rea](#installing-rea)), so repos that ship compiled artifacts get them inspected too.
+For local development of reconstruct itself:
 
 ```bash
 git clone https://github.com/maxgfr/reconstruct
@@ -104,6 +106,8 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--fidelity <mode>` | `mirror` \| `embed` \| `describe` | derived from mode+level | How real code is carried into the PRDs (see below). |
 | `--granularity <g>` | `coarse` \| `fine` | `coarse` | Feature grouping. `coarse` folds trivial, route-less single-file groups into Core; `fine` keeps them split. |
 | `--rea <mode>` | `auto` \| `on` \| `off` | `auto` | After the scaffold, inspect the repo's compiled artifacts (`.so`, `.dll`, `.wasm`, `.asar`, APK, …) with the [rea](https://github.com/morluto/rea) MCP server, statically, into `evidence/rea/`. `auto` runs it when it is installed (`REA_BIN`, else `rea` on `PATH`); `on` fails when it is missing; `off` never spawns it. See [rea underneath](#rea-underneath). |
+| `--install-rea` | flag | off | Offer to install [rea](https://github.com/morluto/rea): prints what it is and the exact command (`npm install --global rea-agents`), warns on an unsupported Node, then asks. Already installed: says so and changes nothing. Without a terminal it runs nothing unless `--yes`. Exits 0 (installed / already there), 1 (install failed), 2 (not confirmed). See [Installing rea](#installing-rea). |
+| `--yes` | flag | off | With `--install-rea` only: confirmed up front — install without prompting. For an agent, only after the user agreed. |
 | `--scratch` | flag | off | **Greenfield** mode: build from a `plan.json` interview instead of a repo. Forces `mode=scratch`, `fidelity=describe`; `--repo` is not used. See [From scratch](#from-scratch-greenfield). |
 | `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md). |
 | `--tdd` | flag | off | Emit test-first build guidance into the PRDs/`REBUILD.md` (each unit built red → green → refactor). Works in any mode. |
@@ -435,13 +439,62 @@ most 25 artifacts. `inventory.json` stays deterministic: rea's output lives only
 
 | Control | Effect |
 | --- | --- |
-| `--rea auto` (default) / MCP `rea: "auto"` | Run rea when installed, skip silently otherwise |
-| `--rea on` | Require it: fail when the `rea` executable is not found |
-| `--rea off` | Never spawn it |
+| `--rea auto` (default) / MCP `rea: "auto"` | Run rea when installed; otherwise propose installing it (CLI summary line, MCP `rea.install`) |
+| `--rea on` | Require it: fail before writing anything when the `rea` executable is not found |
+| `--rea off` | Never spawn it, never propose it |
 | `REA_BIN=/path/to/rea` | Use this executable instead of `rea` on `PATH` |
 
-Install rea with `npx rea-agents setup` (Node 22+). Its native backends (Ghidra, JADX, WABT…)
-are yours to provide, and commercial ones (IDA, Hopper, JEB) need your own licenses.
+### Installing rea
+
+reconstruct **proposes** rea and never installs it on its own. When a scaffold finds compiled
+artifacts and rea is missing:
+- the CLI summary says so and points to `--install-rea`;
+- `reconstruct_scaffold` returns a `rea.install` hint telling the agent to propose the install to
+  the user;
+- the artifact unknown in `UNKNOWNS.json` says the same.
+
+The MCP server has no install tool: installing software is the user's call, made on their own
+machine.
+
+**The one-liner** — run by you, or by an agent after you said yes:
+
+```bash
+node scripts/analyze.mjs --install-rea          # explains, shows the command, asks [y/N]
+node scripts/analyze.mjs --install-rea --yes    # already agreed: no prompt
+```
+
+It runs `npm install --global rea-agents` (MIT, npm registry), which puts `rea` on `PATH`, the
+only thing `--rea` needs. In a terminal it then offers `rea setup`, rea's own interactive
+registration of its MCP server and skill with your agents, which shows its plan before
+changing anything. Without a terminal and without `--yes`, it runs nothing and exits 2. It warns
+when Node is outside rea's supported range: 22.23.4+, 24.22.1+ or 26.12.1+ (Node 23, 25 and
+earlier 26.x are unsupported).
+
+**By hand**, the same steps:
+
+```bash
+npm install --global rea-agents     # or: curl -fsSL https://raw.githubusercontent.com/morluto/rea/main/install.sh | bash
+rea setup                           # optional: register with your agents (review the plan; --dry-run to preview)
+rea doctor --json                   # read-only audit of the install
+```
+
+Without a global install, `npx rea-agents setup` registers rea with your agents but does **not**
+put `rea` on `PATH`. reconstruct then cannot drive it underneath; point `REA_BIN` at an
+executable instead. Update with `rea update`, remove with `rea uninstall` (`--purge-data` also
+clears `~/.rea`).
+
+**Optional engines.** rea installs none of them. Each one deepens what the scaffold extracts:
+
+| Engine | What it adds | Setup | Check |
+| --- | --- | --- | --- |
+| Ghidra 12.1 + JDK 21 | Native overview: functions, strings, segments (`binary_overview`) | `GHIDRA_INSTALL_DIR=<extracted Ghidra>`, `JAVA_HOME` to a 64-bit JDK 21+ (macOS Homebrew: `/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home`) | `rea doctor --provider ghidra --json` |
+| Hopper (commercial; demo) | Native analysis on macOS/Linux | `rea setup --install-hopper` | `rea doctor --provider hopper --json` |
+| IDA (commercial) | Native analysis | rea's IDA provider guide | `rea doctor --provider ida --json` |
+| WABT 1.0.42 | WebAssembly inspection (`inspect_wasm_artifact`) | `REA_WABT_BIN_DIRECTORY=<absolute WABT bin dir>` | the scaffold's `evidence/rea/INDEX.json` notes |
+| pwntools | Binary layout (`inspect_binary_layout`, Linux x64) | install pwntools | same |
+
+Engine changes take effect on the next scaffold: reconstruct starts a fresh `rea mcp` each run.
+Commercial engines need your own licenses.
 
 ## Security
 
@@ -449,7 +502,7 @@ The analyzer only **reads** the target repository's filesystem and **copies** fi
 the output directory. It **never executes** the analyzed project's code, installs nothing,
 and makes no network calls. The one exception is [rea underneath](#rea-underneath): when the repo
 ships compiled artifacts and an `rea` executable is installed, the scaffold runs it (`--rea off`
-disables it), restricted to rea's static inspection tools. Review `scripts/` before running on
+disables it), restricted to rea's static inspection tools. It installs software only through `--install-rea`, which shows the command and asks first. Review `scripts/` before running on
 untrusted repositories.
 
 ---

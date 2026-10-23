@@ -156,7 +156,7 @@ function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints, wo
   if (opaque.length > 0) {
     const shown = opaque.slice(0, 5).join(", ") + (opaque.length > 5 ? ` and ${opaque.length - 5} more` : "");
     u.push(
-      `Compiled artifacts with no source in the repo were found (${shown}) — what they do is invisible to source analysis. When the rea MCP server is installed, the scaffold already inspected them (\`--rea\`, default auto): start from \`evidence/rea/INDEX.json\`, cite its \`rea:ev_…\` ids, and dig further with rea's tools (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\`, \`analyze_javascript_application\` for an ASAR), exporting into \`evidence/rea/\` — see \`references/rea-companion.md\`. Without rea, record each artifact's role as an unknown rather than guessing it.`,
+      `Compiled artifacts with no source in the repo were found (${shown}) — what they do is invisible to source analysis. When the rea MCP server is installed, the scaffold already inspected them (\`--rea\`, default auto): start from \`evidence/rea/INDEX.json\`, cite its \`rea:ev_…\` ids, and dig further with rea's tools (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\`, \`analyze_javascript_application\` for an ASAR), exporting into \`evidence/rea/\` — see \`references/rea-companion.md\`. No \`evidence/rea/INDEX.json\` means rea is not installed: propose installing it to the user (\`--install-rea\`, i.e. \`npm install --global rea-agents\`), re-scaffold after their go-ahead, and meanwhile record each artifact's role as an unknown rather than guessing it.`,
     );
   }
   return u;

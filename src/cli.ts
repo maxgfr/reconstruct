@@ -1,9 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { resolve, join } from "node:path";
+import { createInterface } from "node:readline";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { compareBehavior } from "./behavior.js";
 import { analyze, opaqueArtifacts } from "./analyze.js";
-import { assertReaAvailable, formatReaReport, type ReaMode, runRea } from "./rea.js";
+import { assertReaAvailable, formatReaReport, installRea, type ReaMode, runRea } from "./rea.js";
 import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
@@ -41,6 +43,8 @@ Options:
   --granularity <g>    coarse | fine (feature grouping) (default: coarse)
   --rea <mode>         auto | on | off — inspect compiled artifacts with the rea MCP server
                        when it is installed (REA_BIN or rea on PATH)  (default: auto)
+  --install-rea        Offer to install rea (npm install --global rea-agents): shows what will
+                       run, then asks; --yes confirms up front (after asking the user)
   --scratch            Build from a plan.json (greenfield), not a repo
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
@@ -248,6 +252,8 @@ export function parseArgs(argv: string[]): Options {
   let eco = false;
   let list = false;
   let force = false;
+  let installRea = false;
+  let yes = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -343,6 +349,14 @@ export function parseArgs(argv: string[]): Options {
       list = true;
       continue;
     }
+    if (arg === "--install-rea") {
+      installRea = true;
+      continue;
+    }
+    if (arg === "--yes") {
+      yes = true;
+      continue;
+    }
     if (arg === "--force") {
       force = true;
       continue;
@@ -381,9 +395,9 @@ export function parseArgs(argv: string[]): Options {
   // Reject the combination instead of picking a winner. (`--semantic` modifies
   // `--check`; `--apply` modifies `--verify`/`--review`; `--phase`/`--eco`/`--list`
   // modify `--orchestrate` — those are not actions.)
-  const actions = [check, verify, review, unknowns, brainstorm, orchestrate, raw.compare].filter(Boolean).length;
+  const actions = [check, verify, review, unknowns, brainstorm, orchestrate, raw.compare, installRea].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify, --review, --unknowns, --brainstorm and --orchestrate are mutually exclusive — run one at a time`);
+    fail(`--check, --verify, --review, --unknowns, --brainstorm, --orchestrate and --install-rea are mutually exclusive — run one at a time`);
   }
   // `--mcp` serves until killed, so anything combined with it would never run —
   // `--mcp --check` used to exit 0 having checked nothing.
@@ -397,6 +411,7 @@ export function parseArgs(argv: string[]): Options {
   }
   if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
   if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");
+  if (yes && !installRea) fail("--yes only confirms --install-rea.");
 
   // Scratch (greenfield) reads a --plan, not --repo. Bundle flags may append
   // artifacts to the freshly generated tree, as on a normal repository run.
@@ -501,6 +516,8 @@ export function parseArgs(argv: string[]): Options {
     eco,
     list,
     force,
+    installRea,
+    yes,
     ...(maxVerify !== undefined ? { maxVerify } : {}),
     ...(batchSize !== undefined ? { batchSize } : {}),
   };
@@ -597,6 +614,31 @@ async function main(): Promise<void> {
     } catch (e) {
       fail((e as Error).message);
     }
+  }
+
+  // Offer to install rea: prints what will run, confirms, installs. Never part
+  // of another run — a scaffold only suggests it.
+  if (opts.installRea) {
+    const interactive = Boolean(process.stdin.isTTY && process.stderr.isTTY);
+    process.exitCode = await installRea(
+      { yes: opts.yes === true },
+      {
+        env: process.env,
+        nodeVersion: process.version,
+        interactive,
+        ask: (question) =>
+          new Promise((answer) => {
+            const rl = createInterface({ input: process.stdin, output: process.stderr });
+            rl.question(question, (reply) => {
+              rl.close();
+              answer(/^y(es)?$/i.test(reply.trim()));
+            });
+          }),
+        run: (command, args) => spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32" && command.endsWith(".cmd") }).status ?? 1,
+        log: (line) => process.stderr.write(`${line}\n`),
+      },
+    );
+    return;
   }
 
   // Serve the tree over the Model Context Protocol. Returns only when the
@@ -820,7 +862,7 @@ async function main(): Promise<void> {
 
   let reaLine: string | undefined;
   try {
-    reaLine = formatReaReport(await runRea(opts.repo, opts.out, opaque, { mode: opts.rea ?? "off" }), opaque.length);
+    reaLine = formatReaReport(await runRea(opts.repo, opts.out, opaque, { mode: opts.rea ?? "off" }), opaque.length, opts.rea ?? "off");
   } catch (e) {
     fail((e as Error).message);
   }

@@ -44,6 +44,25 @@ explicitly — `$reconstruct` in Codex, `/reconstruct` in Claude Code or OpenCod
 
 > `reconstruct this repo in redesign + complex mode`.
 
+### Recommended: install rea too
+
+[rea](https://github.com/morluto/rea) reads what source analysis cannot: native libraries and
+executables, WebAssembly, .NET, Android, Electron and JavaScript apps. With it installed, every
+scaffold of a repo that ships compiled artifacts inspects them and writes citable evidence
+([rea underneath](#rea-underneath)). Without it, those artifacts stay opaque unknowns.
+
+```bash
+node scripts/analyze.mjs --install-rea   # shows what will run, then asks
+# or by hand:
+npm install --global rea-agents          # puts `rea` on PATH — all reconstruct needs
+rea setup                                # optional: register rea's MCP server + skill with your agents
+rea doctor --json                        # check the install and its engines
+```
+
+rea needs Node 22.23.4+, 24.22.1+ or 26.12.1+. Its deep engines are optional and yours to add:
+Ghidra 12.1 with JDK 21 (`GHIDRA_INSTALL_DIR`), Hopper, IDA, and WABT for WebAssembly. Details:
+[DOCUMENTATION § Installing rea](./DOCUMENTATION.md#installing-rea).
+
 ## What it produces
 
 ```
@@ -459,7 +478,7 @@ pnpm run typecheck
 The analyzer only **reads** the target repo's filesystem and **copies** files into the
 output. Analysis never executes the analyzed project's code. When the repo ships compiled
 artifacts and an `rea` executable is installed, the scaffold runs rea's static inspection tools
-on them; `--rea off` disables that. The separate
+on them; `--rea off` disables that. It installs rea only through `--install-rea`, which asks first. The separate
 `--compare --run-tests` mode explicitly executes local fixture commands; read them
 and authorize execution first. It is not sandboxed. Review `scripts/` before
 running on untrusted repositories.
