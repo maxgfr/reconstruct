@@ -31,8 +31,10 @@ yours.
 
 Use the **absolute path** to `scripts/analyze.mjs` inside the installed skill folder. `--help`
 lists every flag. Skip the skill for tiny single-file scripts, or when the user wants a running
-app now rather than a plan. It reads **source** repositories: for compiled binaries, app bundles
-or runtime behaviour with no source, use a binary reverse-engineering tool instead.
+app now rather than a plan. It reads **source** repositories. For what the source does not show
+(vendored binaries, `.wasm`, an `.asar` or APK, a shipped bundle, a target with no source at
+all), pair it with the **rea** reverse-engineering MCP server when available and cite its
+exported evidence: [rea-companion.md](references/rea-companion.md).
 
 **Inputs to confirm** (code path): target repo · output dir · **mode** `preserve` (keep the
 architecture) or `redesign` (same features, fresh architecture) · **level** `light` (faithful) or
@@ -94,6 +96,11 @@ in **[convergence-loop.md](references/convergence-loop.md)**. Do not improvise s
 - **Cite evidence, stamp authority.** Prefer `ev_…` ids from `inventory.json` `evidence[]`
   (file · line · content hash). A verdict resting on your reasoning alone is `authority: agent`
   and never closes an obligation. [evidence-model.md](references/evidence-model.md)
+- **See past the source with rea.** When `inventory.unknowns` flags compiled artifacts, or a
+  flow spans more code than you can follow, and rea's tools are in your list: inspect or trace
+  with it, export the bundle into `<OUT>/evidence/rea/`, cite `rea:ev_…` as `authority:
+  analyzer`. Not available? Tell the user (`npx rea-agents setup`) and record an unknown — never
+  guess what a binary does. [rea-companion.md](references/rea-companion.md)
 - **Record unknowns, don't guess.** What you cannot settle from the source goes into
   `UNKNOWNS.json` with the probes you would run; resolving one needs a citation. An unsettled
   `blocker` fails `--check`.
@@ -158,6 +165,7 @@ exists exits 2 and names the command that produces it. Protocol:
 | [ai-review-rubric.md](references/ai-review-rubric.md) | Layer 2 — the nine semantic buildability checks |
 | [verify-playbook.md](references/verify-playbook.md) | `--verify` — claims, evidence, verdicts, confidence, authority, **the cap** |
 | [evidence-model.md](references/evidence-model.md) | `evidence[]` ids, `UNKNOWNS.json`, `OBLIGATIONS.json`, finding codes, summary-first MCP |
+| [rea-companion.md](references/rea-companion.md) | Compiled artifacts, bundles or flows the source walk cannot see — inspect them with rea, cite `rea:ev_…` |
 | [orchestration.md](references/orchestration.md) | Fanning enrichment and the review loop across subagents |
 
 **Greenfield & ideation**

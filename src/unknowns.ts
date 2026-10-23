@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import { canonicalJson, sha256Hex } from "./evidence.js";
+import { canonicalJson, loadExternalEvidence, sha256Hex } from "./evidence.js";
 import type { Inventory, UnknownRecord, UnknownSeverity, UnknownStatus, UnknownsLedger } from "./types.js";
 import { resolveEvidence } from "./verify.js";
 
@@ -95,11 +95,11 @@ export interface UnknownUpdate {
  * The citation rules a record must meet, shared by `--apply` and the gate so a
  * hand-edited ledger cannot settle a question the apply path would refuse.
  */
-function citationProblems(rec: Pick<UnknownRecord, "status" | "evidence" | "contradicting">, inv: Inventory): string[] {
+function citationProblems(rec: Pick<UnknownRecord, "status" | "evidence" | "contradicting">, inv: Inventory, external: ReadonlySet<string>): string[] {
   const problems: string[] = [];
   if (rec.status === "resolved" && rec.evidence.length === 0) problems.push("`resolved` needs at least one `evidence` citation");
   for (const ref of [...rec.evidence, ...rec.contradicting]) {
-    if (!resolveEvidence(ref, inv)) problems.push(`citation does not resolve against the inventory: ${ref}`);
+    if (!resolveEvidence(ref, inv, external)) problems.push(`citation does not resolve against the inventory or the exported rea evidence: ${ref}`);
   }
   if (rec.status === "contradicted" && rec.contradicting.length === 0) problems.push("`contradicted` needs a `contradicting` citation");
   return problems;
@@ -123,6 +123,7 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
       : [];
   if (rows.length === 0) throw new Error("no updates: expected an array of unknown records (or { unknowns: [...] })");
   const inv = readInventory(outDir);
+  const external = loadExternalEvidence(outDir);
   const ledger = ensureUnknowns(outDir);
   const byId = new Map(ledger.unknowns.map((u) => [u.id, u]));
   let next = ledger.unknowns.reduce((n, u) => Math.max(n, Number(u.id.replace(/^U/, "")) || 0), 0);
@@ -149,7 +150,7 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
     const evidence = strList(row.evidence) ?? prev?.evidence ?? [];
     const contradicting = strList(row.contradicting) ?? prev?.contradicting ?? [];
     const recommendedProbes = strList(row.recommendedProbes) ?? prev?.recommendedProbes ?? [];
-    for (const p of citationProblems({ status, evidence, contradicting }, inv)) problems.push(`${label}: ${p}`);
+    for (const p of citationProblems({ status, evidence, contradicting }, inv, external)) problems.push(`${label}: ${p}`);
     const id = prev?.id ?? `U${++next}`;
     const feature = typeof row.feature === "string" ? row.feature : prev?.feature;
     const note = typeof row.note === "string" ? row.note : prev?.note;
@@ -201,6 +202,7 @@ export function foldUnknowns(outDir: string, check: CheckResult): void {
   } catch {
     // checkOutput already fails a tree without a readable inventory.
   }
+  const external = loadExternalEvidence(outDir);
   for (const u of ledger.unknowns) {
     const label = `${UNKNOWNS_FILE}: ${typeof u?.id === "string" ? u.id : "a record"}`;
     if (
@@ -222,7 +224,7 @@ export function foldUnknowns(outDir: string, check: CheckResult): void {
       check.warnings.push(`${label} was edited by hand (digest mismatch) — record changes with --unknowns --apply so the revision chain holds`);
     }
     if (inv) {
-      for (const p of citationProblems(u, inv)) check.errors.push(`${label}: ${p}`);
+      for (const p of citationProblems(u, inv, external)) check.errors.push(`${label}: ${p}`);
     }
     if (u.severity === "blocker" && UNSETTLED.has(u.status)) {
       check.errors.push(

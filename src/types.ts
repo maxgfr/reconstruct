@@ -510,9 +510,11 @@ export type EvidenceConfidence = "observed" | "derived" | "inferred";
 /**
  * What kind of artifact vouches for a fact. Orthogonal to confidence: an
  * observed fact from a test is weaker authority for shipped behaviour than an
- * observed fact from source, and an agent's inference is never source.
+ * observed fact from source, and an agent's inference is never source. `analyzer`
+ * is what an external analysis tool observed in an artifact (rea on a compiled
+ * binary or a traced application), cited as `rea:ev_…`.
  */
-export type EvidenceAuthority = "source" | "test" | "config" | "manifest" | "doc" | "plan" | "agent";
+export type EvidenceAuthority = "source" | "test" | "config" | "manifest" | "doc" | "plan" | "analyzer" | "agent";
 
 /** One content-addressed fact (see src/evidence.ts). */
 export interface EvidenceRecord {

@@ -77,7 +77,7 @@ reconstruction/
 Every route and env var the engine resolves gets a content-addressed record in
 `inventory.json` `evidence[]` — `ev_<hash>`, its file, **line** and content hash, plus two
 independent axes: **confidence** (observed · derived · inferred) and **authority** (source ·
-test · config · manifest · doc · plan · agent). Verdicts cite those ids; a `supported` verdict
+test · config · manifest · doc · plan · analyzer · agent). Verdicts cite those ids (and `rea:ev_…` ids exported from the [rea](https://github.com/morluto/rea) reverse-engineering MCP server, for compiled artifacts the source walk cannot see); a `supported` verdict
 resting on the agent's inference alone never closes an obligation; `--check --repo` flags
 evidence whose file changed since generation; and what nobody could settle goes into a
 fail-closed unknowns ledger instead of a confident guess. Details:
@@ -312,7 +312,7 @@ target.
 
 ### Resources — the skill's own documentation
 
-`SKILL.md` and all 45 `references/*.md` — including the 22 per-stack cheat-sheets under `references/stack-guides/` — are served under `skill://`, read off
+`SKILL.md` and all 46 `references/*.md` — including the 22 per-stack cheat-sheets under `references/stack-guides/` — are served under `skill://`, read off
 disk at request time — so a documentation fix reaches every client without a
 rebuild.
 

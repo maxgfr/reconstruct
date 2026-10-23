@@ -116,7 +116,7 @@ ${CORE_RULE}
 **Sequence:**
 
 1. \`reconstruct_read\` the feature's scaffolded PRD — it marks what is unresolved.
-2. \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : " the original source it points at"}. Read the real implementation before writing a word about it.
+2. \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : " the original source it points at"}. Read the real implementation before writing a word about it. When the feature crosses code the source does not show (a native library, a \`.wasm\` module, an \`.asar\`) or a flow too long to follow by reading, and the rea MCP server's tools are available, inspect or trace it there (\`trace_application_feature\` for a JS/Electron flow) and export the evidence into \`${out}/evidence/rea/\` — skill resource \`references/rea-companion.md\`.
 3. Write the PRD: what this feature does, the rules it enforces, the states it can be in, what it does when things go wrong.
 4. \`reconstruct_check\` when the feature is done.
 
@@ -159,8 +159,8 @@ ${CORE_RULE}
 **Sequence:**
 
 1. \`reconstruct_unknowns\` — the ledger, seeded from what the engine could not determine.
-2. For each unsettled record: \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : ""} the source its question points at, and its \`recommendedProbes\`.
-3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_…\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open. (\`updates\` need a server started with \`--allow-write\`; without it, hand the updates to the user for \`--unknowns --apply\`.)
+2. For each unsettled record: \`reconstruct_read\`${repo ? ` with \`repo: "${repo}"\`` : ""} the source its question points at, and its \`recommendedProbes\`. A question about a compiled artifact (a \`.so\`, \`.wasm\`, \`.asar\`, APK…) has no source to read: if the rea MCP server's tools are available, inspect it there and \`export_evidence_bundle\` into \`${out}/evidence/rea/\` (skill resource \`references/rea-companion.md\`).
+3. Record the outcome with \`reconstruct_unknowns\` \`updates\`: \`resolved\` with the citations that answer it (\`ev_…\` ids from \`inventory.json\`, \`route GET /x\`, \`entity User\`, \`path:line\`, or \`rea:ev_…\` from an exported rea bundle), \`contradicted\` with what disagrees, or a sharper question and new probes when it stays open. (\`updates\` need a server started with \`--allow-write\`; without it, hand the updates to the user for \`--unknowns --apply\`.)
 4. Anything you discover while enriching that you cannot settle goes in as a NEW record — a \`blocker\` when a builder would have to guess it.
 5. \`reconstruct_check\`: an unsettled blocker fails it.
 

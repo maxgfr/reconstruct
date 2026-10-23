@@ -19,7 +19,7 @@ proven**. Three files carry it, all inside `<OUT>`:
   "subject": "POST /api/users",
   "source": { "file": "apps/web/app/api/users/route.ts", "line": 4, "hash": "9f2c…" },
   "confidence": "observed",               // observed · derived · inferred
-  "authority": "source"                   // source · test · config · manifest · doc · plan · agent
+  "authority": "source"                   // source · test · config · manifest · doc · plan · analyzer · agent
 }
 ```
 
@@ -56,7 +56,8 @@ node scripts/analyze.mjs --unknowns --apply updates.json --out <OUT> # record ch
   chained to the previous `digest`).
 - `status`: `open` · `investigating` · `blocked` · `contradicted` · `resolved`. `resolved` needs
   at least one `evidence` citation and `contradicted` a `contradicting` one; every citation must
-  resolve against the inventory (an `ev_…` id, `route GET /x`, `entity User`, `path[:line]`).
+  resolve against the inventory (an `ev_…` id, `route GET /x`, `entity User`, `path[:line]`) or
+  the rea evidence exported into the tree (`rea:ev_…`, see [rea-companion.md](rea-companion.md)).
 - **Fail-closed:** one invalid row and nothing is written.
 - **The gate:** an unsettled `blocker` fails `--check` (structural, not only `--semantic`). Use
   `blocker` only when a builder would have to guess; `major`/`minor` otherwise.
