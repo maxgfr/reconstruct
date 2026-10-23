@@ -23,9 +23,27 @@ block a reconstruction on it.
 The engine does not walk `vendor/`, `dist/`, `build/`, `out/` or `target/`, so it never flags
 artifacts there: look in those directories yourself when the app ships something it built.
 
+## What the scaffold already did
+
+When an `rea` executable is installed (`REA_BIN`, else `rea` on `PATH`), the scaffold drives it
+itself: `--rea auto` (the default, CLI and `reconstruct_scaffold` alike) starts `rea mcp`,
+inspects every compiled artifact the walk found with rea's **static** tools only, and writes:
+
+| File | What it holds |
+| --- | --- |
+| `evidence/rea/INDEX.json` | Per artifact: the probes that succeeded, `inspected` / `failed` / `skipped`, the evidence ids, the bundles, and `notes` for the probes that did not apply (with rea's remediation, e.g. a missing WABT or Ghidra) |
+| `evidence/rea/<artifact>.json` | That inspection's full result (rea's summary detail) |
+| `evidence/rea/<artifact>.<tool>.bundle.json` | rea's own `export_evidence_bundle`, taken before `close_binary` clears it (kept only when it holds evidence ids) |
+
+**Start there.** Every id in those files is already citable as `rea:ev_…`. Go back to rea yourself
+only for what the index lists as `failed` or `skipped`, or for a question the summary does not
+answer. `--rea on` makes a missing rea an error, and `--rea off` never spawns it. The CLI summary
+prints one `rea:` line with the counts.
+
 ## Is it available?
 
-rea's tools appear in your tool list (`binary_session`, `open_binary`, …). If they do not and one
+No `evidence/rea/INDEX.json` after a scaffold of a repo with compiled artifacts means rea is not
+installed. rea's tools appear in your tool list (`binary_session`, `open_binary`, …). If they do not and one
 of the cases above applies, **tell the user** rather than installing anything: rea is set up with
 `npx rea-agents setup` (Node 22+) and registers itself with their agents; Ghidra, JADX, WABT and
 other backends are theirs to provide. Then carry on without it: record each artifact's role as

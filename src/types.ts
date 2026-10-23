@@ -27,6 +27,12 @@ export interface Options {
   json: boolean;
   /** Max bytes of a single file embedded into a PRD (embed fidelity). */
   maxEmbedBytes: number;
+  /**
+   * Inspect the repo's compiled artifacts with the rea MCP server after the
+   * scaffold (`--rea`). `auto` (the CLI and MCP default) runs it when it is
+   * installed; unset means `off`, so library callers never spawn a process.
+   */
+  rea?: "off" | "auto" | "on";
   /** Emit a single bundled markdown (`RECONSTRUCTION.md`) of the whole tree. */
   merge: boolean;
   /** Emit a one-page digest (`SUMMARY.md`) derived from the inventory. */

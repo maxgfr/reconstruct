@@ -83,6 +83,18 @@ evidence whose file changed since generation; and what nobody could settle goes 
 fail-closed unknowns ledger instead of a confident guess. Details:
 [`references/evidence-model.md`](./skills/reconstruct/references/evidence-model.md).
 
+### rea underneath
+
+What the source does not show (a vendored native library, a `.wasm` module, an Electron
+`.asar`, an APK), [rea](https://github.com/morluto/rea) can inspect. When the repo ships such
+artifacts and rea is installed (`npx rea-agents setup`), the scaffold drives rea's MCP server
+itself, using static inspection tools only. It writes one inspection per artifact, rea's evidence
+bundle and an `INDEX.json` into `<out>/evidence/rea/`, so every `rea:ev_…` id is citable from
+the first enrichment pass. The gate checks those citations against the exported files.
+`--rea auto|on|off` (default `auto`) controls it, and `REA_BIN` points at a specific executable.
+Without rea, nothing changes: the artifacts become unknowns for the agent.
+[DOCUMENTATION § rea underneath](./DOCUMENTATION.md#rea-underneath).
+
 ## Two axes + fidelity
 
 | Axis | Values | Effect |
@@ -445,7 +457,9 @@ pnpm run typecheck
 ## Security
 
 The analyzer only **reads** the target repo's filesystem and **copies** files into the
-output. Analysis never executes the analyzed project's code. The separate
+output. Analysis never executes the analyzed project's code. When the repo ships compiled
+artifacts and an `rea` executable is installed, the scaffold runs rea's static inspection tools
+on them; `--rea off` disables that. The separate
 `--compare --run-tests` mode explicitly executes local fixture commands; read them
 and authorize execution first. It is not sandboxed. Review `scripts/` before
 running on untrusted repositories.

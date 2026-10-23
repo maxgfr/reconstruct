@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { analyze } from "../analyze.js";
+import { analyze, opaqueArtifacts } from "../analyze.js";
 import { runBrainstorm } from "../brainstorm.js";
 import { checkFindings, checkOutput } from "../check.js";
 import { detectEnrichment, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
+import { assertReaAvailable, type ReaReport, runRea } from "../rea.js";
 import { sha256Hex } from "../evidence.js";
 import { foldReview, runReview } from "../review.js";
 import { foldSemantic, runVerify } from "../verify.js";
@@ -163,7 +164,7 @@ export async function callTool(name: string, args: Record<string, unknown>, defa
   if (name === "reconstruct_scaffold") {
     const repo = requiredRepo(args);
     const out = str(args.out) ? resolve(str(args.out)!) : join(repo, "reconstruction");
-    return await withTreeLock(out, async () => outcome(handleScaffold(args, repo, out)));
+    return await withTreeLock(out, async () => outcome(await handleScaffold(args, repo, out)));
   }
 
   const out = requiredOut(args, defaults);
@@ -294,7 +295,7 @@ function handleView(args: Record<string, unknown>, defaults: HandlerDefaults): u
   return { ...(id ? { inventory_id: id } : {}), ...page };
 }
 
-function handleScaffold(args: Record<string, unknown>, repo: string, out: string): unknown {
+async function handleScaffold(args: Record<string, unknown>, repo: string, out: string): Promise<unknown> {
   // Refuse to overwrite prose an agent wrote. It is the whole value of the
   // tree and there is no undo — so the refusal names the witnesses rather than
   // asking the caller to guess what would be lost.
@@ -307,13 +308,40 @@ function handleScaffold(args: Record<string, unknown>, repo: string, out: string
   }
 
   const opts = baseOptions(repo, out, args);
+  const reaMode = oneOf(args.rea, ["auto", "on", "off"] as const, "rea", "auto");
   const inv = analyze(opts);
+  // Same as the CLI: the compiled artifacts go to rea, when it is installed;
+  // `rea: "on"` without rea refuses before anything is written.
+  const opaque = opaqueArtifacts(inv.files);
+  const reaHint = 'Install rea (`npx rea-agents setup`) or call again with rea: "auto" or "off".';
+  try {
+    assertReaAvailable(reaMode, opaque);
+  } catch (e) {
+    throw new ToolError((e as Error).message, { hint: reaHint });
+  }
   writeOutput(render(inv, opts), opts);
+  let rea: ReaReport;
+  try {
+    rea = await runRea(repo, out, opaque, { mode: reaMode });
+  } catch (e) {
+    throw new ToolError((e as Error).message, { hint: reaHint });
+  }
   return {
     repo,
     out,
     path: join(out, "SUMMARY.md"),
     features: inv.features?.length ?? 0,
+    ...(opaque.length
+      ? {
+          rea: {
+            status: rea.status,
+            compiledArtifacts: opaque.length,
+            inspected: rea.artifacts.filter((a) => a.status === "inspected").length,
+            ...(rea.status === "unavailable" ? {} : { index: join(out, "evidence/rea/INDEX.json") }),
+            ...(rea.error ? { error: rea.error } : {}),
+          },
+        }
+      : {}),
     next:
       "The scaffold is STRUCTURE with the judgement left blank. Read SUMMARY.md to orient, then resolve every callout it marks — " +
       "the engine never reasons, so nothing in here is analysis until you write it.",

@@ -204,6 +204,12 @@ export const WRITE_TOOLS: ToolDecl[] = [
           description: "How to carry the original code: mirror (paths), embed (inline it), describe (prose only). Default: embed.",
         },
         granularity: { type: "string", enum: ["coarse", "fine"], description: "How aggressively trivial groups fold into Core. Default: coarse." },
+        rea: {
+          type: "string",
+          enum: ["auto", "on", "off"],
+          description:
+            "Inspect the repo's compiled artifacts (.so, .dll, .wasm, .asar, APK…) with the rea MCP server, statically, into evidence/rea/. auto (default) runs it when it is installed.",
+        },
         include: { type: "array", items: { type: "string" }, description: "Keep only files matching these globs." },
         exclude: { type: "array", items: { type: "string" }, description: "Drop files matching these globs." },
         max_embed_bytes: { type: "number", description: "Cap on bytes of one file embedded into a PRD." },
