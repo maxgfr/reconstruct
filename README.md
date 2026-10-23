@@ -495,8 +495,7 @@ See [shared engine maintenance](ENGINE-MAINTENANCE.md) for pins, source adoption
 that way: the agent may call it through its skill tool, but the description
 restricts it to explicit requests, so it runs when you ask for it, not on its
 own. You can still invoke it directly with `$reconstruct` in Codex, `/reconstruct` in
-Claude Code or OpenCode, prefixing the plugin namespace when it is installed as a
-Claude plugin.
+Claude Code or OpenCode.
 
 Making it explicit-only again is one setting, read by Claude Code and OpenCode,
 applied to the **installed** copy of the skill:
@@ -507,6 +506,5 @@ applied to the **installed** copy of the skill:
 
 Claude Code can do it without touching the file:
 `"skillOverrides": { "reconstruct": "user-invocable-only" }` in `settings.json`
-leaves `/reconstruct` working while hiding the skill from the model. Plugin installs
-ignore `skillOverrides`, so edit the frontmatter there. Updating or reinstalling the
-skill restores the shipped default, so reapply the change afterwards.
+leaves `/reconstruct` working while hiding the skill from the model.
+Updating or reinstalling the skill restores the shipped default, so reapply the change afterwards.
