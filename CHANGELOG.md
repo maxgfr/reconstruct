@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.29.1](https://github.com/maxgfr/reconstruct/compare/v2.29.0...v2.29.1) (2026-10-23)
+
+
+### Performance Improvements
+
+* one read per file, linear route regexes, faster comment stripping ([#43](https://github.com/maxgfr/reconstruct/issues/43)) ([f5c25fb](https://github.com/maxgfr/reconstruct/commit/f5c25fb833f4de28a628b4f3e265823f91c8c797))
+
 # [2.29.0](https://github.com/maxgfr/reconstruct/compare/v2.28.0...v2.29.0) (2026-10-23)
 
 
