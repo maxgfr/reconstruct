@@ -43,11 +43,27 @@ prints one `rea:` line with the counts.
 ## Is it available?
 
 No `evidence/rea/INDEX.json` after a scaffold of a repo with compiled artifacts means rea is not
-installed. rea's tools appear in your tool list (`binary_session`, `open_binary`, …). If they do not and one
-of the cases above applies, **tell the user** rather than installing anything: rea is set up with
-`npx rea-agents setup` (Node 22+) and registers itself with their agents; Ghidra, JADX, WABT and
-other backends are theirs to provide. Then carry on without it: record each artifact's role as
-an `UNKNOWNS.json` record with the rea probe you would have run as a `recommendedProbes` entry.
+installed. The CLI summary says `rea: not installed`, and `reconstruct_scaffold` returns
+`rea.install`. rea's MCP tools (`binary_session`, `open_binary`, …) are in your tool list only
+if the user registered rea with this agent.
+
+**Propose the install; never do it unasked.** Tell the user what rea would unlock *for this repo*
+(name the artifacts) and what will run:
+
+```bash
+node scripts/analyze.mjs --install-rea        # explains, shows the command, asks — or, after their yes:
+node scripts/analyze.mjs --install-rea --yes  # = npm install --global rea-agents
+```
+
+It needs Node 22.23.4+, 24.22.1+ or 26.12.1+. After the install, re-scaffold so the artifacts get
+inspected (`force: true` / `--force` if the tree is already enriched, or scaffold into a fresh
+`--out`). `rea setup` additionally registers rea's MCP server with their agents, which gives you its
+tools for the deeper loop below. Deep engines are optional and theirs to add: Ghidra 12.1 +
+JDK 21 (`GHIDRA_INSTALL_DIR`), Hopper, IDA, WABT (`REA_WABT_BIN_DIRECTORY`). `rea doctor --json`
+checks them.
+
+If they decline, carry on without it: record each artifact's role as an `UNKNOWNS.json` record,
+with the rea probe you would have run as a `recommendedProbes` entry.
 
 ## The loop
 

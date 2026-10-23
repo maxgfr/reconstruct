@@ -6,7 +6,7 @@ import { checkFindings, checkOutput } from "../check.js";
 import { detectEnrichment, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
-import { assertReaAvailable, type ReaReport, runRea } from "../rea.js";
+import { assertReaAvailable, REA_INSTALL_COMMAND, type ReaReport, runRea } from "../rea.js";
 import { sha256Hex } from "../evidence.js";
 import { foldReview, runReview } from "../review.js";
 import { foldSemantic, runVerify } from "../verify.js";
@@ -339,6 +339,15 @@ async function handleScaffold(args: Record<string, unknown>, repo: string, out: 
             inspected: rea.artifacts.filter((a) => a.status === "inspected").length,
             ...(rea.status === "unavailable" ? {} : { index: join(out, "evidence/rea/INDEX.json") }),
             ...(rea.error ? { error: rea.error } : {}),
+            // Not installed: the agent proposes it — the user decides, this server installs nothing.
+            ...(rea.status === "unavailable" && reaMode !== "off"
+              ? {
+                  install:
+                    `rea is not installed, so these ${opaque.length} compiled artifact(s) stay opaque. Propose installing it to the user: ` +
+                    `\`${REA_INSTALL_COMMAND.join(" ")}\` (Node 22.23.4+/24.22.1+/26.12.1+), or the skill's \`node scripts/analyze.mjs --install-rea\`; ` +
+                    "after their go-ahead and the install, re-run reconstruct_scaffold (force: true if the tree is enriched) to inspect them.",
+                }
+              : {}),
           },
         }
       : {}),

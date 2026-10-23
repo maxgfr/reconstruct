@@ -100,8 +100,11 @@ in **[convergence-loop.md](references/convergence-loop.md)**. Do not improvise s
   repo's compiled artifacts (`--rea`, default auto): read `<OUT>/evidence/rea/INDEX.json` first
   and cite its `rea:ev_…` ids as `authority: analyzer`. To go deeper (an artifact that failed,
   a flow spanning more code than you can follow), use rea's tools if they are in your list and
-  export into `<OUT>/evidence/rea/`. No rea at all? Tell the user (`npx rea-agents setup`) and
-  record an unknown — never guess what a binary does. [rea-companion.md](references/rea-companion.md)
+  export into `<OUT>/evidence/rea/`. **No rea?** (the scaffold's `rea: not installed` line, or
+  `rea.install` from `reconstruct_scaffold`): **propose installing it** — say what it unlocks
+  for this repo and the command (`node scripts/analyze.mjs --install-rea`, i.e. `npm install
+  --global rea-agents`). Run it with `--yes` only after the user agrees, then re-scaffold.
+  Meanwhile record an unknown — never guess what a binary does. [rea-companion.md](references/rea-companion.md)
 - **Record unknowns, don't guess.** What you cannot settle from the source goes into
   `UNKNOWNS.json` with the probes you would run; resolving one needs a citation. An unsettled
   `blocker` fails `--check`.

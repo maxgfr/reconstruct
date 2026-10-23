@@ -33,6 +33,10 @@ export interface Options {
    * installed; unset means `off`, so library callers never spawn a process.
    */
   rea?: "off" | "auto" | "on";
+  /** Offer to install rea (shows the command, then confirms). `--install-rea`. */
+  installRea?: boolean;
+  /** With `--install-rea`: confirmed beforehand, skip the prompt. `--yes`. */
+  yes?: boolean;
   /** Emit a single bundled markdown (`RECONSTRUCTION.md`) of the whole tree. */
   merge: boolean;
   /** Emit a one-page digest (`SUMMARY.md`) derived from the inventory. */

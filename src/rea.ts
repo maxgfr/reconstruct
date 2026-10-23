@@ -405,12 +405,104 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
 }
 
 /** One line for the CLI summary. */
-export function formatReaReport(r: ReaReport, total: number): string | undefined {
+export function formatReaReport(r: ReaReport, total: number, mode: ReaMode = "auto"): string | undefined {
   if (r.status === "unavailable") {
-    return total ? `  rea:      not installed — ${total} compiled artifact(s) left for the agent (see references/rea-companion.md)` : undefined;
+    if (!total) return undefined;
+    if (mode === "off") return `  rea:      off (--rea off) — ${total} compiled artifact(s) left for the agent`;
+    return `  rea:      not installed — ${total} compiled artifact(s) the source walk cannot read. Install rea to inspect them: --install-rea (see references/rea-companion.md)`;
   }
   const n = (s: string) => r.artifacts.filter((a) => a.status === s).length;
   if (r.status === "failed" && n("inspected") === 0) return `  rea:      failed — ${r.error ?? "unknown error"} (see ${REA_EVIDENCE_DIR}/INDEX.json)`;
   const ids = r.artifacts.reduce((k, a) => k + a.evidenceIds.length, 0);
   return `  rea:      inspected ${n("inspected")}/${total} compiled artifact(s) · ${ids} evidence id(s)${n("failed") ? ` · ${n("failed")} failed` : ""}${n("skipped") ? ` · ${n("skipped")} skipped` : ""} → ${REA_EVIDENCE_DIR}/INDEX.json`;
+}
+
+// ---------------------------------------------------------------------------
+// Proposing the install. reconstruct never installs rea on its own: the user
+// asks for it (`--install-rea`), sees exactly what will run, and confirms —
+// interactively, or with `--yes` once they have agreed to an agent asking.
+// ---------------------------------------------------------------------------
+
+/** The global npm install that puts `rea` on PATH (what `--rea` looks for). */
+export const REA_INSTALL_COMMAND = ["npm", "install", "--global", "rea-agents"] as const;
+
+/**
+ * rea's documented Node support: 22.x from 22.23.4, 24.x from 24.22.1, 26.x
+ * from 26.12.1, and later even majors. Odd majors and earlier patches are not.
+ */
+export function reaSupportsNode(version: string): boolean {
+  const [major = 0, minor = 0, patch = 0] = version.replace(/^v/, "").split(/[.-]/).map(Number);
+  const atLeast = (m: number, p: number) => minor > m || (minor === m && patch >= p);
+  if (major === 22) return atLeast(23, 4);
+  if (major === 24) return atLeast(22, 1);
+  if (major === 26) return atLeast(12, 1);
+  return major > 26 && major % 2 === 0;
+}
+
+export interface InstallReaDeps {
+  env: NodeJS.ProcessEnv;
+  nodeVersion: string;
+  /** Whether a human can answer a prompt. */
+  interactive: boolean;
+  ask(question: string): Promise<boolean>;
+  /** Run a command with inherited stdio; returns its exit status. */
+  run(command: string, args: string[]): number;
+  log(line: string): void;
+}
+
+/**
+ * Offer to install rea: say what it is and exactly what will run, confirm,
+ * install, then offer `rea setup` (registering rea with the user's agents).
+ * Returns the exit status: 0 installed or already there, 1 failed, 2 not
+ * confirmed (nothing was run).
+ */
+export async function installRea(opts: { yes: boolean }, deps: InstallReaDeps): Promise<number> {
+  const { log } = deps;
+  const existing = locateRea(deps.env);
+  if (existing) {
+    log(`reconstruct --install-rea: rea is already installed (${existing}).`);
+    log("  Update it with `rea update`; check its engines with `rea doctor --json`.");
+    return 0;
+  }
+  const command = REA_INSTALL_COMMAND.join(" ");
+  log("reconstruct --install-rea: rea (https://github.com/morluto/rea) is not installed.");
+  log("  It inspects what source analysis cannot read: native libraries and executables, WebAssembly,");
+  log("  .NET, Android, Electron and JavaScript apps. Once it is installed, every scaffold of a repo that");
+  log("  ships compiled artifacts writes citable evidence into <out>/evidence/rea/ (--rea, default auto).");
+  log(`  This will run: ${command}   (MIT-licensed, from the npm registry)`);
+  if (!reaSupportsNode(deps.nodeVersion)) {
+    log(`  ⚠ rea supports Node 22.23.4+, 24.22.1+ or 26.12.1+; this is Node ${deps.nodeVersion.replace(/^v/, "")} — it may refuse to run.`);
+  }
+  if (!opts.yes) {
+    if (!deps.interactive) {
+      log("  Nothing was run: confirm with the user, then re-run with --install-rea --yes (or run the command yourself).");
+      return 2;
+    }
+    if (!(await deps.ask("Install rea now? [y/N] "))) {
+      log("  Nothing was run. The command above installs it whenever you want.");
+      return 2;
+    }
+  }
+  const [npm, ...npmArgs] = REA_INSTALL_COMMAND;
+  const status = deps.run(process.platform === "win32" ? `${npm}.cmd` : npm, npmArgs);
+  if (status !== 0) {
+    log(`  ✗ \`${command}\` exited ${status}. Fix the npm error above (permissions: use a Node version manager or set npm's prefix), then retry.`);
+    return 1;
+  }
+  const installed = locateRea(deps.env);
+  if (!installed) {
+    log("  ✗ npm succeeded but `rea` is not on PATH — add npm's global bin directory to PATH, or point REA_BIN at it.");
+    return 1;
+  }
+  log(`  ✓ rea installed (${installed}). Scaffolds now inspect compiled artifacts automatically.`);
+  // Registering rea's own MCP server and skill with the user's agents is rea's
+  // job, and an interactive one (it shows its plan and asks): offered, never forced.
+  if (deps.interactive && !opts.yes && (await deps.ask("Register rea with your AI agents too (`rea setup` shows its plan first)? [y/N] "))) {
+    deps.run(installed, ["setup"]);
+  } else {
+    log("  Optional: `rea setup` registers rea's MCP server and skill with your agents (it shows its plan first).");
+  }
+  log("  Optional engines, checked with `rea doctor --provider <id> --json`: Ghidra 12.1 + JDK 21 (GHIDRA_INSTALL_DIR),");
+  log("  Hopper (`rea setup --install-hopper`), IDA; WABT 1.0.42 for WebAssembly (REA_WABT_BIN_DIRECTORY).");
+  return 0;
 }

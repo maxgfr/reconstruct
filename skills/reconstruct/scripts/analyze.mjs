@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
+import { spawnSync as spawnSync3 } from "child_process";
 import { resolve as resolve19, join as join54 } from "path";
+import { createInterface as createInterface3 } from "readline";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
 import { existsSync as existsSync26, readFileSync as readFileSync43, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
 
@@ -31996,7 +31998,7 @@ function computeUnknowns(stack, routes, hints, workspaces, files) {
   if (opaque.length > 0) {
     const shown = opaque.slice(0, 5).join(", ") + (opaque.length > 5 ? ` and ${opaque.length - 5} more` : "");
     u.push(
-      `Compiled artifacts with no source in the repo were found (${shown}) \u2014 what they do is invisible to source analysis. When the rea MCP server is installed, the scaffold already inspected them (\`--rea\`, default auto): start from \`evidence/rea/INDEX.json\`, cite its \`rea:ev_\u2026\` ids, and dig further with rea's tools (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\`, \`analyze_javascript_application\` for an ASAR), exporting into \`evidence/rea/\` \u2014 see \`references/rea-companion.md\`. Without rea, record each artifact's role as an unknown rather than guessing it.`
+      `Compiled artifacts with no source in the repo were found (${shown}) \u2014 what they do is invisible to source analysis. When the rea MCP server is installed, the scaffold already inspected them (\`--rea\`, default auto): start from \`evidence/rea/INDEX.json\`, cite its \`rea:ev_\u2026\` ids, and dig further with rea's tools (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\`, \`analyze_javascript_application\` for an ASAR), exporting into \`evidence/rea/\` \u2014 see \`references/rea-companion.md\`. No \`evidence/rea/INDEX.json\` means rea is not installed: propose installing it to the user (\`--install-rea\`, i.e. \`npm install --global rea-agents\`), re-scaffold after their go-ahead, and meanwhile record each artifact's role as an unknown rather than guessing it.`
     );
   }
   return u;
@@ -32376,14 +32378,73 @@ async function runRea(repo, out2, artifacts, opts) {
 `);
   return report;
 }
-function formatReaReport(r, total) {
+function formatReaReport(r, total, mode = "auto") {
   if (r.status === "unavailable") {
-    return total ? `  rea:      not installed \u2014 ${total} compiled artifact(s) left for the agent (see references/rea-companion.md)` : void 0;
+    if (!total) return void 0;
+    if (mode === "off") return `  rea:      off (--rea off) \u2014 ${total} compiled artifact(s) left for the agent`;
+    return `  rea:      not installed \u2014 ${total} compiled artifact(s) the source walk cannot read. Install rea to inspect them: --install-rea (see references/rea-companion.md)`;
   }
   const n = (s) => r.artifacts.filter((a) => a.status === s).length;
   if (r.status === "failed" && n("inspected") === 0) return `  rea:      failed \u2014 ${r.error ?? "unknown error"} (see ${REA_EVIDENCE_DIR}/INDEX.json)`;
   const ids = r.artifacts.reduce((k, a) => k + a.evidenceIds.length, 0);
   return `  rea:      inspected ${n("inspected")}/${total} compiled artifact(s) \xB7 ${ids} evidence id(s)${n("failed") ? ` \xB7 ${n("failed")} failed` : ""}${n("skipped") ? ` \xB7 ${n("skipped")} skipped` : ""} \u2192 ${REA_EVIDENCE_DIR}/INDEX.json`;
+}
+var REA_INSTALL_COMMAND = ["npm", "install", "--global", "rea-agents"];
+function reaSupportsNode(version) {
+  const [major = 0, minor = 0, patch = 0] = version.replace(/^v/, "").split(/[.-]/).map(Number);
+  const atLeast = (m, p) => minor > m || minor === m && patch >= p;
+  if (major === 22) return atLeast(23, 4);
+  if (major === 24) return atLeast(22, 1);
+  if (major === 26) return atLeast(12, 1);
+  return major > 26 && major % 2 === 0;
+}
+async function installRea(opts, deps) {
+  const { log } = deps;
+  const existing = locateRea(deps.env);
+  if (existing) {
+    log(`reconstruct --install-rea: rea is already installed (${existing}).`);
+    log("  Update it with `rea update`; check its engines with `rea doctor --json`.");
+    return 0;
+  }
+  const command = REA_INSTALL_COMMAND.join(" ");
+  log("reconstruct --install-rea: rea (https://github.com/morluto/rea) is not installed.");
+  log("  It inspects what source analysis cannot read: native libraries and executables, WebAssembly,");
+  log("  .NET, Android, Electron and JavaScript apps. Once it is installed, every scaffold of a repo that");
+  log("  ships compiled artifacts writes citable evidence into <out>/evidence/rea/ (--rea, default auto).");
+  log(`  This will run: ${command}   (MIT-licensed, from the npm registry)`);
+  if (!reaSupportsNode(deps.nodeVersion)) {
+    log(`  \u26A0 rea supports Node 22.23.4+, 24.22.1+ or 26.12.1+; this is Node ${deps.nodeVersion.replace(/^v/, "")} \u2014 it may refuse to run.`);
+  }
+  if (!opts.yes) {
+    if (!deps.interactive) {
+      log("  Nothing was run: confirm with the user, then re-run with --install-rea --yes (or run the command yourself).");
+      return 2;
+    }
+    if (!await deps.ask("Install rea now? [y/N] ")) {
+      log("  Nothing was run. The command above installs it whenever you want.");
+      return 2;
+    }
+  }
+  const [npm, ...npmArgs] = REA_INSTALL_COMMAND;
+  const status = deps.run(process.platform === "win32" ? `${npm}.cmd` : npm, npmArgs);
+  if (status !== 0) {
+    log(`  \u2717 \`${command}\` exited ${status}. Fix the npm error above (permissions: use a Node version manager or set npm's prefix), then retry.`);
+    return 1;
+  }
+  const installed = locateRea(deps.env);
+  if (!installed) {
+    log("  \u2717 npm succeeded but `rea` is not on PATH \u2014 add npm's global bin directory to PATH, or point REA_BIN at it.");
+    return 1;
+  }
+  log(`  \u2713 rea installed (${installed}). Scaffolds now inspect compiled artifacts automatically.`);
+  if (deps.interactive && !opts.yes && await deps.ask("Register rea with your AI agents too (`rea setup` shows its plan first)? [y/N] ")) {
+    deps.run(installed, ["setup"]);
+  } else {
+    log("  Optional: `rea setup` registers rea's MCP server and skill with your agents (it shows its plan first).");
+  }
+  log("  Optional engines, checked with `rea doctor --provider <id> --json`: Ghidra 12.1 + JDK 21 (GHIDRA_INSTALL_DIR),");
+  log("  Hopper (`rea setup --install-hopper`), IDA; WABT 1.0.42 for WebAssembly (REA_WABT_BIN_DIRECTORY).");
+  return 0;
 }
 
 // src/prd/render.ts
@@ -36467,7 +36528,11 @@ async function handleScaffold(args2, repo, out2) {
         compiledArtifacts: opaque.length,
         inspected: rea.artifacts.filter((a) => a.status === "inspected").length,
         ...rea.status === "unavailable" ? {} : { index: join52(out2, "evidence/rea/INDEX.json") },
-        ...rea.error ? { error: rea.error } : {}
+        ...rea.error ? { error: rea.error } : {},
+        // Not installed: the agent proposes it — the user decides, this server installs nothing.
+        ...rea.status === "unavailable" && reaMode !== "off" ? {
+          install: `rea is not installed, so these ${opaque.length} compiled artifact(s) stay opaque. Propose installing it to the user: \`${REA_INSTALL_COMMAND.join(" ")}\` (Node 22.23.4+/24.22.1+/26.12.1+), or the skill's \`node scripts/analyze.mjs --install-rea\`; after their go-ahead and the install, re-run reconstruct_scaffold (force: true if the tree is enriched) to inspect them.`
+        } : {}
       }
     } : {},
     next: "The scaffold is STRUCTURE with the judgement left blank. Read SUMMARY.md to orient, then resolve every callout it marks \u2014 the engine never reasons, so nothing in here is analysis until you write it."
@@ -37548,6 +37613,8 @@ Options:
   --granularity <g>    coarse | fine (feature grouping) (default: coarse)
   --rea <mode>         auto | on | off \u2014 inspect compiled artifacts with the rea MCP server
                        when it is installed (REA_BIN or rea on PATH)  (default: auto)
+  --install-rea        Offer to install rea (npm install --global rea-agents): shows what will
+                       run, then asks; --yes confirms up front (after asking the user)
   --scratch            Build from a plan.json (greenfield), not a repo
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
@@ -37741,6 +37808,8 @@ function parseArgs(argv) {
   let eco = false;
   let list = false;
   let force = false;
+  let installRea2 = false;
+  let yes = false;
   for (let i2 = 0; i2 < argv.length; i2++) {
     const arg = argv[i2];
     if (arg === "--run-tests") {
@@ -37835,6 +37904,14 @@ function parseArgs(argv) {
       list = true;
       continue;
     }
+    if (arg === "--install-rea") {
+      installRea2 = true;
+      continue;
+    }
+    if (arg === "--yes") {
+      yes = true;
+      continue;
+    }
     if (arg === "--force") {
       force = true;
       continue;
@@ -37863,9 +37940,9 @@ function parseArgs(argv) {
     }
     fail(`unexpected argument: ${arg} (run --help for usage)`);
   }
-  const actions = [check, verify, review, unknowns, brainstorm, orchestrate, raw.compare].filter(Boolean).length;
+  const actions = [check, verify, review, unknowns, brainstorm, orchestrate, raw.compare, installRea2].filter(Boolean).length;
   if (actions > 1) {
-    fail(`--check, --verify, --review, --unknowns, --brainstorm and --orchestrate are mutually exclusive \u2014 run one at a time`);
+    fail(`--check, --verify, --review, --unknowns, --brainstorm, --orchestrate and --install-rea are mutually exclusive \u2014 run one at a time`);
   }
   if (mcp && (actions > 0 || scratch || merge || features || specs)) {
     fail(
@@ -37877,6 +37954,7 @@ function parseArgs(argv) {
   }
   if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
   if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");
+  if (yes && !installRea2) fail("--yes only confirms --install-rea.");
   if (scratch && raw.plan === void 0) {
     fail(`--scratch requires --plan <path> (the plan.json produced by the interview)`);
   }
@@ -37951,6 +38029,8 @@ function parseArgs(argv) {
     eco,
     list,
     force,
+    installRea: installRea2,
+    yes,
     ...maxVerify !== void 0 ? { maxVerify } : {},
     ...batchSize !== void 0 ? { batchSize } : {}
   };
@@ -38029,6 +38109,28 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
     } catch (e) {
       fail(e.message);
     }
+  }
+  if (opts.installRea) {
+    const interactive = Boolean(process.stdin.isTTY && process.stderr.isTTY);
+    process.exitCode = await installRea(
+      { yes: opts.yes === true },
+      {
+        env: process.env,
+        nodeVersion: process.version,
+        interactive,
+        ask: (question) => new Promise((answer) => {
+          const rl = createInterface3({ input: process.stdin, output: process.stderr });
+          rl.question(question, (reply) => {
+            rl.close();
+            answer(/^y(es)?$/i.test(reply.trim()));
+          });
+        }),
+        run: (command, args2) => spawnSync3(command, args2, { stdio: "inherit", shell: process.platform === "win32" && command.endsWith(".cmd") }).status ?? 1,
+        log: (line2) => process.stderr.write(`${line2}
+`)
+      }
+    );
+    return;
   }
   if (opts.mcp) {
     const srv = opts.mcpServer ?? { transport: "stdio", port: 7343, allowWrite: false, allowRemote: false };
@@ -38221,7 +38323,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
   }
   let reaLine;
   try {
-    reaLine = formatReaReport(await runRea(opts.repo, opts.out, opaque, { mode: opts.rea ?? "off" }), opaque.length);
+    reaLine = formatReaReport(await runRea(opts.repo, opts.out, opaque, { mode: opts.rea ?? "off" }), opaque.length, opts.rea ?? "off");
   } catch (e) {
     fail(e.message);
   }
