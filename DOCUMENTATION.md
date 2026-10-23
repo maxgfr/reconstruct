@@ -103,6 +103,7 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--level <level>` | `light` \| `complex` | `light` | Faithful & concise, or also surface improvements the agent folds in. |
 | `--fidelity <mode>` | `mirror` \| `embed` \| `describe` | derived from mode+level | How real code is carried into the PRDs (see below). |
 | `--granularity <g>` | `coarse` \| `fine` | `coarse` | Feature grouping. `coarse` folds trivial, route-less single-file groups into Core; `fine` keeps them split. |
+| `--rea <mode>` | `auto` \| `on` \| `off` | `auto` | After the scaffold, inspect the repo's compiled artifacts (`.so`, `.dll`, `.wasm`, `.asar`, APK, …) with the [rea](https://github.com/morluto/rea) MCP server, statically, into `evidence/rea/`. `auto` runs it when it is installed (`REA_BIN`, else `rea` on `PATH`); `on` fails when it is missing; `off` never spawns it. See [rea underneath](#rea-underneath). |
 | `--scratch` | flag | off | **Greenfield** mode: build from a `plan.json` interview instead of a repo. Forces `mode=scratch`, `fidelity=describe`; `--repo` is not used. See [From scratch](#from-scratch-greenfield). |
 | `--plan <path>` | path | — | The `plan.json` driving `--scratch` (required with it). Schema: [`references/scratch-plan-schema.md`](./skills/reconstruct/references/scratch-plan-schema.md). |
 | `--tdd` | flag | off | Emit test-first build guidance into the PRDs/`REBUILD.md` (each unit built red → green → refactor). Works in any mode. |
@@ -234,6 +235,7 @@ reconstruction/
 ├── source/                    # (fidelity=mirror only) copied real source, per feature
 ├── UNKNOWNS.json              # (--unknowns) residual-unknowns ledger, revisioned + hash-chained
 ├── OBLIGATIONS.json           # (--verify --apply) requirement obligations: closed / open / failed + closure digest
+├── evidence/rea/              # (--rea, when rea is installed) INDEX.json + one rea inspection per compiled artifact + rea's exported bundles
 └── inventory.json             # machine-readable manifest of the whole analysis, incl. evidence[]
 ```
 
@@ -295,6 +297,7 @@ walk → detect → candidates → adapters → features → prd → output
 | **features** | [`src/features.ts`](./src/features.ts) | Group files into features (skipping route groups `(...)` / dynamic `[...]` segments), order them by **dependency tier** (foundations → feature pages → tests/docs), and apply `--granularity`. |
 | **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts — including the `INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md` skeletons — and decide which real files to copy/embed/describe. |
 | **output** | [`src/output.ts`](./src/output.ts) | Write artifacts and copy ground-truth files to `--out`. |
+| **rea** | [`src/rea.ts`](./src/rea.ts) | When the repo ships compiled artifacts and rea is installed: drive the rea MCP server over stdio, one static inspection per artifact, into `evidence/rea/` (see [rea underneath](#rea-underneath)). |
 
 Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).
 
@@ -378,11 +381,76 @@ guidance is in [`references/architecture-analysis.md`](./skills/reconstruct/refe
 
 ---
 
+## rea underneath
+
+The analyzer reads source. A vendored native library, a `.wasm` module, an Electron `.asar` or an
+APK has none to read, so the engine hands those to [rea](https://github.com/morluto/rea)
+("Reverse Engineer Anything"), a local MCP server that inspects binaries (Ghidra, Hopper or IDA
+backends), WebAssembly, .NET, Android, Apple, Electron and JavaScript applications.
+
+**What runs, and when.** On a scaffold (CLI or `reconstruct_scaffold`), if the repo has
+compiled artifacts with no source (`.so` / `.dylib` / `.dll` / `.exe` / `.node`, `.wasm`,
+`.apk` / `.aab` / `.ipa`, `.asar`, `.dex`, `.beam`, `.pck`, extension-less executables, outside
+the ignored `vendor/`, `dist/`, `build/`, `out/` and `target/` directories) and rea is installed,
+[`src/rea.ts`](./src/rea.ts):
+
+1. starts `rea mcp` and speaks MCP to it over stdio (no dependency; the tool list and argument
+   names are read from rea's own `tools/list`);
+2. runs every static probe that fits the artifact and keeps each one that succeeds:
+
+   | Artifact | Probes |
+   | --- | --- |
+   | `.asar` | `analyze_javascript_application` |
+   | `.wasm` | `inspect_wasm_artifact`, `inspect_binary_layout` |
+   | `.apk` / `.aab` | `inspect_android_package`, `identify_flutter_build` |
+   | `.dll` / `.exe` | `inspect_managed_artifact`, `inspect_binary_layout`, `inspect_pe_resources`, `inspect_go_binary`, `inspect_rust_binary`, native overview |
+   | `.so` / `.dylib` / `.node` / executables | `inspect_binary_layout`, `inspect_macho`, `inspect_go_binary`, `inspect_rust_binary`, native overview |
+   | anything else (`.ipa`, `.pck`, …) | `inspect_artifact` |
+
+   Target-bound tools run in an `open_binary` → tool → `close_binary` session. The native
+   overview is `binary_overview`, with rea picking Ghidra, Hopper or IDA;
+3. writes each artifact's results to `evidence/rea/<artifact>.json`, and rea's own export
+   (`export_evidence_bundle`, taken before `close_binary` clears it) to
+   `evidence/rea/<artifact>.<tool>.bundle.json`. A bundle without any evidence id is not kept. The run
+   goes to `evidence/rea/INDEX.json`: per artifact, the probes that succeeded, their evidence ids,
+   bundles, and `notes` for the probes that did not apply.
+
+Several probes need tools rea does not install: WABT for `inspect_wasm_artifact`, pwntools for
+`inspect_binary_layout` (Linux x64), Ghidra and Java for the native overview. A missing one shows
+up as a note or a failure in `INDEX.json`, with rea's remediation (e.g. "Supply WABT 1.0.42 via
+absolute `REA_WABT_BIN_DIRECTORY`"). With rea-agents 6.7 and no backend installed, a macOS
+executable is still inspected through `inspect_macho`.
+
+Every `ev_…` id in those files is citable from the first enrichment pass as `rea:ev_…`, with
+`authority: "analyzer"`. The gate resolves those citations against the files: an id that is not
+there fails as fabricated. See
+[`references/rea-companion.md`](./skills/reconstruct/references/rea-companion.md).
+
+**What never happens.** The engine never installs rea, never uses `npx`, and only calls an
+allowlist of **static** tools: rea's `capture_*` tools, which execute the target, are never called. A
+missing rea, a crash, a timeout (180 s per call) or an unsupported artifact is recorded in
+`INDEX.json` and never fails the reconstruction, unless you passed `--rea on`. One run inspects at
+most 25 artifacts. `inventory.json` stays deterministic: rea's output lives only under
+`evidence/rea/`.
+
+| Control | Effect |
+| --- | --- |
+| `--rea auto` (default) / MCP `rea: "auto"` | Run rea when installed, skip silently otherwise |
+| `--rea on` | Require it: fail when the `rea` executable is not found |
+| `--rea off` | Never spawn it |
+| `REA_BIN=/path/to/rea` | Use this executable instead of `rea` on `PATH` |
+
+Install rea with `npx rea-agents setup` (Node 22+). Its native backends (Ghidra, JADX, WABT…)
+are yours to provide, and commercial ones (IDA, Hopper, JEB) need your own licenses.
+
 ## Security
 
 The analyzer only **reads** the target repository's filesystem and **copies** files into
 the output directory. It **never executes** the analyzed project's code, installs nothing,
-and makes no network calls. Review `scripts/` before running on untrusted repositories.
+and makes no network calls. The one exception is [rea underneath](#rea-underneath): when the repo
+ships compiled artifacts and an `rea` executable is installed, the scaffold runs it (`--rea off`
+disables it), restricted to rea's static inspection tools. Review `scripts/` before running on
+untrusted repositories.
 
 ---
 

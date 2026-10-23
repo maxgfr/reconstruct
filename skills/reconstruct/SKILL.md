@@ -96,11 +96,12 @@ in **[convergence-loop.md](references/convergence-loop.md)**. Do not improvise s
 - **Cite evidence, stamp authority.** Prefer `ev_…` ids from `inventory.json` `evidence[]`
   (file · line · content hash). A verdict resting on your reasoning alone is `authority: agent`
   and never closes an obligation. [evidence-model.md](references/evidence-model.md)
-- **See past the source with rea.** When `inventory.unknowns` flags compiled artifacts, or a
-  flow spans more code than you can follow, and rea's tools are in your list: inspect or trace
-  with it, export the bundle into `<OUT>/evidence/rea/`, cite `rea:ev_…` as `authority:
-  analyzer`. Not available? Tell the user (`npx rea-agents setup`) and record an unknown — never
-  guess what a binary does. [rea-companion.md](references/rea-companion.md)
+- **See past the source with rea.** When rea is installed, the scaffold already ran it on the
+  repo's compiled artifacts (`--rea`, default auto): read `<OUT>/evidence/rea/INDEX.json` first
+  and cite its `rea:ev_…` ids as `authority: analyzer`. To go deeper (an artifact that failed,
+  a flow spanning more code than you can follow), use rea's tools if they are in your list and
+  export into `<OUT>/evidence/rea/`. No rea at all? Tell the user (`npx rea-agents setup`) and
+  record an unknown — never guess what a binary does. [rea-companion.md](references/rea-companion.md)
 - **Record unknowns, don't guess.** What you cannot settle from the source goes into
   `UNKNOWNS.json` with the probes you would run; resolving one needs a citation. An unsettled
   `blocker` fails `--check`.

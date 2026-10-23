@@ -2,7 +2,8 @@ import { resolve, join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { compareBehavior } from "./behavior.js";
-import { analyze } from "./analyze.js";
+import { analyze, opaqueArtifacts } from "./analyze.js";
+import { assertReaAvailable, formatReaReport, type ReaMode, runRea } from "./rea.js";
 import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
@@ -38,6 +39,8 @@ Options:
   --level <level>      light | complex                  (default: light)
   --fidelity <mode>    mirror | embed | describe        (default: derived from mode+level)
   --granularity <g>    coarse | fine (feature grouping) (default: coarse)
+  --rea <mode>         auto | on | off — inspect compiled artifacts with the rea MCP server
+                       when it is installed (REA_BIN or rea on PATH)  (default: auto)
   --scratch            Build from a plan.json (greenfield), not a repo
   --plan <path>        The plan.json driving --scratch   (required with --scratch)
   --tdd                Emit test-first build guidance into the PRDs/REBUILD
@@ -199,6 +202,7 @@ const VALUE_FLAGS = new Set([
   "level",
   "fidelity",
   "granularity",
+  "rea",
   "plan",
   "max-embed-bytes",
   "include",
@@ -432,6 +436,7 @@ export function parseArgs(argv: string[]): Options {
     ? ("describe" as Fidelity)
     : oneOf<Fidelity>("fidelity", raw.fidelity ?? defaultFidelity(mode, level), ["mirror", "embed", "describe"]);
   const granularity = oneOf<Granularity>("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
+  const rea = oneOf<ReaMode>("rea", raw.rea ?? "auto", ["auto", "on", "off"]);
   const out = resolve(
     raw.out ??
       (standalone || check || verify || review || unknowns || brainstorm || orchestrate
@@ -467,6 +472,7 @@ export function parseArgs(argv: string[]): Options {
     level,
     fidelity,
     granularity,
+    rea,
     include: includeGlobs,
     exclude: excludeGlobs,
     json,
@@ -796,9 +802,25 @@ async function main(): Promise<void> {
   }
 
   guardEnrichedOutput(opts);
+  // What the source walk cannot read, rea can: the compiled artifacts are
+  // inspected right after the write, so their evidence is citable from the
+  // first enrichment pass. `--rea on` without rea refuses before writing.
+  const opaque = opaqueArtifacts(inv.files);
+  try {
+    assertReaAvailable(opts.rea ?? "off", opaque);
+  } catch (e) {
+    fail((e as Error).message);
+  }
   try {
     const result = render(inv, opts);
     writeOutput(result, opts);
+  } catch (e) {
+    fail((e as Error).message);
+  }
+
+  let reaLine: string | undefined;
+  try {
+    reaLine = formatReaReport(await runRea(opts.repo, opts.out, opaque, { mode: opts.rea ?? "off" }), opaque.length);
   } catch (e) {
     fail((e as Error).message);
   }
@@ -824,6 +846,7 @@ async function main(): Promise<void> {
       ? [`  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    ⚠ ${w}`)]
       : []),
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
+    ...(reaLine ? [reaLine] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
     ...(opts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
     ...(opts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : []),
