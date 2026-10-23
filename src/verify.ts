@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
-import { canonicalJson, sha256Hex } from "./evidence.js";
+import { canonicalJson, loadExternalEvidence, NO_EXTERNAL_EVIDENCE, sha256Hex } from "./evidence.js";
 import type {
   ClaimEvidencePair,
   ConfidenceKind,
@@ -27,7 +27,7 @@ export interface BuiltWorklist {
 }
 const VALID: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
 const VALID_CONFIDENCE: ConfidenceKind[] = ["confirmed", "inferred", "gap"];
-const VALID_AUTHORITY: EvidenceAuthority[] = ["source", "test", "config", "manifest", "doc", "plan", "agent"];
+const VALID_AUTHORITY: EvidenceAuthority[] = ["source", "test", "config", "manifest", "doc", "plan", "analyzer", "agent"];
 
 // The feature-PRD sections whose list items are testable requirements/claims.
 const CLAIM_SECTIONS = new Set(["## Functional requirements", "## Acceptance criteria"]);
@@ -234,7 +234,7 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
       `(+ a short \`note\`), and stamp each \`confidence\` to confirmed (evidence read and ` +
       `decisive) · inferred (consistent but indirect — a pattern or standard behavior) · gap ` +
       `(evidence thin; needs a human). Stamp \`authority\` with what vouches for the verdict — ` +
-      `source · test · config · manifest · doc · plan, or agent when it rests on your reasoning ` +
+      `source · test · config · manifest · doc · plan · analyzer (rea evidence, cited as rea:ev_…), or agent when it rests on your reasoning ` +
       `alone (an agent-authority \`supported\` is folded as partial). When an \`inventory.json\` ` +
       `\`evidence[]\` id matches, cite it as \`evidenceRef\`. Save it (e.g. as \`verdicts.json\`), then run ` +
       `\`node scripts/analyze.mjs --verify --apply verdicts.json --out <dir>\`.`,
@@ -275,12 +275,16 @@ function readInventoryIfPresent(outDir: string): Inventory | undefined {
  * manufacture false positives. A file path may carry a `:line[-line]` locator:
  * when the inventory records that file's length, a locator pointing past the end
  * is rejected (a wrong/fabricated line the ledger has the data to catch); an
- * in-range locator, or one on a file whose length is unknown, resolves.
+ * in-range locator, or one on a file whose length is unknown, resolves. A
+ * `rea:ev_<64 hex>` id resolves iff an evidence bundle exported into the tree
+ * carries it (`external`, see `loadExternalEvidence`).
  */
-export function resolveEvidence(ref: string, inv: Inventory): boolean {
+export function resolveEvidence(ref: string, inv: Inventory, external: ReadonlySet<string> = NO_EXTERNAL_EVIDENCE): boolean {
   const features = inv.features ?? [];
   // A content-addressed evidence id resolves iff the inventory recorded it.
   if (/^ev_[0-9a-f]{16}$/.test(ref)) return (inv.evidence ?? []).some((e) => e.id === ref);
+  // rea evidence resolves iff a bundle exported into the tree carries it.
+  if (/^rea:ev_[0-9a-f]{64}$/.test(ref)) return external.has(ref);
   const feat = /^feature (\S+)( \(no captured evidence\))?$/.exec(ref);
   if (feat) return features.some((f) => f.slug === feat[1]);
 
@@ -493,7 +497,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
       `${verdictsPath}: every row cites a claimId unknown to ${join(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) — stale fragment? Re-run --verify and re-adjudicate.`,
     );
   }
-  const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir));
+  const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   if (unknown.length) result.ignored = unknown;
   writeFileSync(join(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   const ledger = writeObligations(outDir, verdicts);
@@ -505,7 +509,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
 // source REFUTES it, if it is `unsupported` (traces to nothing — invented), or —
 // when an inventory is provided — if its cited evidence does not resolve
 // (fabricated citation).
-export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResult {
+export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory, external?: ReadonlySet<string>): VerifyResult {
   const counts: Record<VerdictKind, number> = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
   // Inference is not proof: `supported` on agent authority alone counts as partial.
   const inferenceOnly = verdicts.filter((v) => v.verdict === "supported" && v.authority === "agent").map((v) => v.claimId);
@@ -528,7 +532,7 @@ export function reduceVerdicts(verdicts: Verdict[], inv?: Inventory): VerifyResu
     }
     if (v.verdict === "refuted" || v.verdict === "unsupported") {
       failures.push({ claimId: v.claimId, evidenceRef: v.evidenceRef, verdict: v.verdict, note: v.note });
-    } else if (inv && !resolveEvidence(v.evidenceRef, inv)) {
+    } else if (inv && !resolveEvidence(v.evidenceRef, inv, external)) {
       failures.push({
         claimId: v.claimId,
         evidenceRef: v.evidenceRef,
@@ -583,7 +587,7 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
     skip("--semantic: VERIFY.json carries no verdicts[] ledger — regenerate it with `--verify` then `--verify --apply <verdicts.json>`");
     return;
   }
-  const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir));
+  const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   // A green semantic exit must mean the gate ENGAGED: an empty verdicts[] (the
   // old fail-open fold wrote one for fragments it could not read) or a ledger
   // whose verdicts were all dropped leaves 0 adjudications — a bypass, not a pass.
@@ -703,7 +707,7 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   }
 
   // The obligation ledger written at --apply time must still describe this tree.
-  const ledger = buildObligations(all, sem.verdicts, readInventoryIfPresent(outDir));
+  const ledger = buildObligations(all, sem.verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   const recorded = readObligations(outDir);
   if (recorded && recorded.closureDigest !== ledger.closureDigest) {
     check.warnings.push(
@@ -724,7 +728,7 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
 
 export const OBLIGATIONS_FILE = "OBLIGATIONS.json";
 
-export function buildObligations(pairs: ClaimEvidencePair[], verdicts: Verdict[], inv?: Inventory): ObligationLedger {
+export function buildObligations(pairs: ClaimEvidencePair[], verdicts: Verdict[], inv?: Inventory, external?: ReadonlySet<string>): ObligationLedger {
   const byId = new Map(verdicts.filter((v) => v.verdict).map((v) => [v.claimId, v]));
   const obligations: Obligation[] = pairs.map((p) => {
     const raw = byId.get(p.claimId);
@@ -732,7 +736,7 @@ export function buildObligations(pairs: ClaimEvidencePair[], verdicts: Verdict[]
     const v = raw && (!p.fingerprint || raw.fingerprint === p.fingerprint) ? raw : undefined;
     const evidence = v ? [v.evidenceRef] : [];
     let status: Obligation["status"] = "open";
-    if (v && (v.verdict === "refuted" || v.verdict === "unsupported" || (inv && !resolveEvidence(v.evidenceRef, inv)))) status = "failed";
+    if (v && (v.verdict === "refuted" || v.verdict === "unsupported" || (inv && !resolveEvidence(v.evidenceRef, inv, external)))) status = "failed";
     else if (v && v.verdict === "supported" && v.authority !== "agent" && v.confidence !== "gap") status = "closed";
     return {
       id: p.claimId,
@@ -775,7 +779,7 @@ export function writeObligations(outDir: string, verdicts: Verdict[]): Obligatio
   } catch {
     pairs = [];
   }
-  const ledger = buildObligations(pairs, verdicts, readInventoryIfPresent(outDir));
+  const ledger = buildObligations(pairs, verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   writeFileSync(join(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
   return ledger;
 }

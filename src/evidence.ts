@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { EvidenceAuthority, EvidenceRecord, FileInfo, RouteInfo } from "./types.js";
 
 // Content-addressed evidence: every fact the engine resolved statically gets a
@@ -10,6 +12,48 @@ import type { EvidenceAuthority, EvidenceRecord, FileInfo, RouteInfo } from "./t
 //     config, a manifest, the greenfield plan, or an agent's own judgement.
 // The id is a hash of the canonical record, so the same fact always gets the
 // same id and an edited record is detectably a different one.
+
+/**
+ * Where a tree keeps evidence exported by the rea reverse-engineering MCP
+ * server (`export_evidence_bundle`): what rea observed in compiled artifacts or
+ * traced through an application, for facts the source walk cannot see.
+ */
+export const REA_EVIDENCE_DIR = "evidence/rea";
+const REA_EVIDENCE_MAX_BYTES = 64 * 1024 * 1024;
+export const NO_EXTERNAL_EVIDENCE: ReadonlySet<string> = new Set();
+
+/**
+ * The citable rea evidence of a tree: `rea:ev_<64 hex>` for every evidence id
+ * found in a bundle under `<out>/evidence/rea/` (any `.json`, any depth, no
+ * symlinked directories). Format-agnostic on purpose — rea owns its bundle
+ * schema; a citation resolves iff the exported bundle carries that id, so an
+ * id that was never exported is a fabricated citation like any other.
+ */
+export function loadExternalEvidence(outDir: string): ReadonlySet<string> {
+  const ids = new Set<string>();
+  const visit = (dir: string, depth: number): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory() && depth < 8) visit(p, depth + 1);
+      else if (e.isFile() && e.name.endsWith(".json")) {
+        try {
+          if (statSync(p).size > REA_EVIDENCE_MAX_BYTES) continue;
+          for (const m of readFileSync(p, "utf8").matchAll(/"(ev_[0-9a-f]{64})"/g)) ids.add(`rea:${m[1]}`);
+        } catch {
+          // An unreadable bundle contributes nothing: its citations will not resolve.
+        }
+      }
+    }
+  };
+  visit(join(outDir, REA_EVIDENCE_DIR), 0);
+  return ids;
+}
 
 /** Canonical JSON: object keys sorted at every depth, no whitespace. */
 export function canonicalJson(value: unknown): string {

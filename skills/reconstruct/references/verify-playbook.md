@@ -125,6 +125,7 @@ A second, independent axis: **what kind of artifact** backs the verdict.
 | `config` / `manifest` | Configuration, `.env`, a package manifest. |
 | `doc` | The repo's own documentation — may be stale. |
 | `plan` | Greenfield: the interview, `CONTEXT.md`, an ADR. |
+| `analyzer` | What rea observed in a compiled artifact or traced through the app, cited as `rea:ev_…` from a bundle exported into `evidence/rea/` ([rea-companion.md](rea-companion.md)). |
 | `agent` | Your own reasoning, no artifact behind it. |
 
 A `supported` verdict with `authority: "agent"` is **folded as `partial`**: inference never

@@ -14,6 +14,7 @@ import { detectStylingLibraries } from "./design.js";
 import { extractDependencies, extractScripts, extractEnvVarSources, collectByCategory } from "./adapters/generic.js";
 import { buildEvidence } from "./evidence.js";
 import { detectRoutes } from "./adapters/registry.js";
+import { cmp } from "./adapters/util.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
 import { VERSION } from "./types.js";
@@ -151,7 +152,28 @@ function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints, wo
       "Design-system source files were found (Tailwind/theme configs, token modules, global CSS) — capture the visual contract (tokens with their exact values, theming, typography, components, a11y) from `hints.designSystemCandidates` in `architecture/DESIGN-SYSTEM.md`.",
     );
   }
+  const opaque = opaqueArtifacts(files);
+  if (opaque.length > 0) {
+    const shown = opaque.slice(0, 5).join(", ") + (opaque.length > 5 ? ` and ${opaque.length - 5} more` : "");
+    u.push(
+      `Compiled artifacts with no source in the repo were found (${shown}) — what they do is invisible to source analysis. If the rea MCP server is available, inspect each with it (\`open_binary\` / \`inspect_artifact\`, \`inspect_wasm_artifact\` for WebAssembly, \`analyze_javascript_application\` for an ASAR), export the evidence into \`evidence/rea/\` and cite it as \`rea:ev_…\` — see \`references/rea-companion.md\`. Otherwise record each artifact's role as an unknown rather than guessing it.`,
+    );
+  }
   return u;
+}
+
+// Shipped compiled artifacts whose behaviour the source does not show: native
+// libraries and executables, WebAssembly, mobile packages, Electron archives,
+// Dalvik/BEAM bytecode, Godot packs. A binary with no extension is usually an
+// executable.
+const OPAQUE_EXTS = new Set([".so", ".dylib", ".dll", ".exe", ".node", ".wasm", ".apk", ".aab", ".xapk", ".ipa", ".asar", ".dex", ".beam", ".pck"]);
+
+/** Repo files that are compiled artifacts with no source of their own, sorted. */
+export function opaqueArtifacts(files: FileInfo[]): string[] {
+  return files
+    .filter((f) => OPAQUE_EXTS.has(f.ext.toLowerCase()) || /\.so\.\d[\d.]*$/.test(f.path) || (f.binary && f.ext === "" && f.size > 0))
+    .map((f) => f.path)
+    .sort(cmp);
 }
 
 /** Deterministic, LLM-free analysis of a repository into a structured inventory. */
