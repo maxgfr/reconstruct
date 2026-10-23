@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
-import { readText } from "../read-cache.js";
+import { cachedRead } from "../read-cache.js";
 import type { FileInfo } from "../types.js";
 
 /**
@@ -45,7 +45,7 @@ export function readSources(files: FileInfo[], repo: string, exts: string[]): Ma
         // Comments blanked to spaces (offsets and line numbers unchanged): a
         // commented-out `app.get("/old")` is not a route, and an apostrophe in
         // a `// don't` comment must not be read as an open string literal.
-        const raw = readText(abs);
+        const raw = cachedRead(abs);
         src = raw === null ? null : stripComments(raw, f.ext);
       }
     } catch {

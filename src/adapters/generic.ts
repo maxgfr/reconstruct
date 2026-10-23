@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { readJsonManifest } from "../detect/manifest.js";
-import { readText } from "../read-cache.js";
+import { cachedRead } from "../read-cache.js";
 import type { DependencyInfo, FileInfo } from "../types.js";
 import { cmp, lineAt } from "./util.js";
 
 function read(repo: string, rel: string): string | null {
-  return readText(join(repo, rel));
+  return cachedRead(join(repo, rel));
 }
 
 function asStringMap(value: unknown): Record<string, string> {

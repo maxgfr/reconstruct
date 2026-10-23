@@ -38,12 +38,12 @@ function remember(abs: string, text: string | null): void {
 }
 
 /** Offer the walk's already-decoded text, so the next reader does not touch the disk. */
-export function primeText(abs: string, text: string): void {
+export function primeRead(abs: string, text: string): void {
   if (cache && !cache.has(abs)) remember(abs, text);
 }
 
 /** A file's UTF-8 text, or null when it cannot be read. */
-export function readText(abs: string): string | null {
+export function cachedRead(abs: string): string | null {
   const hit = cache?.get(abs);
   if (hit !== undefined) return hit;
   let text: string | null;

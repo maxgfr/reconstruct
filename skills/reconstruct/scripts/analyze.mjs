@@ -28157,10 +28157,10 @@ function remember(abs, text) {
   budget -= text.length;
   cache.set(abs, text);
 }
-function primeText(abs, text) {
+function primeRead(abs, text) {
   if (cache && !cache.has(abs)) remember(abs, text);
 }
-function readText2(abs) {
+function cachedRead(abs) {
   const hit = cache?.get(abs);
   if (hit !== void 0) return hit;
   let text;
@@ -28326,7 +28326,7 @@ function readFacts(abs, ext, size, prime) {
   }
   const binary2 = BINARY_EXTS.has(ext) || buf.subarray(0, SNIFF_BYTES).includes(0);
   const hash = createHash4("sha256").update(buf).digest("hex").slice(0, 16);
-  if (prime && !binary2 && size <= PRIME_MAX_BYTES) primeText(abs, buf.toString("utf8"));
+  if (prime && !binary2 && size <= PRIME_MAX_BYTES) primeRead(abs, buf.toString("utf8"));
   return { binary: binary2, lines: binary2 ? 0 : countLines3(buf), hash };
 }
 function countLines3(content) {
@@ -28429,7 +28429,7 @@ function readSources(files, repo, exts) {
     let src = null;
     try {
       if ((f.size || statSync14(abs).size) <= MAX_SOURCE_BYTES) {
-        const raw = readText2(abs);
+        const raw = cachedRead(abs);
         src = raw === null ? null : stripComments(raw, f.ext);
       }
     } catch {
@@ -28883,7 +28883,7 @@ function pythonRefResolver(path, src, sources) {
 
 // src/adapters/generic.ts
 function read(repo, rel2) {
-  return readText2(join33(repo, rel2));
+  return cachedRead(join33(repo, rel2));
 }
 function asStringMap(value) {
   if (!value || typeof value !== "object") return {};
@@ -29713,7 +29713,7 @@ function baseName2(path) {
   return path.split("/").pop() ?? "";
 }
 function safeRead2(repo, rel2) {
-  return readText2(join36(repo, rel2)) ?? "";
+  return cachedRead(join36(repo, rel2)) ?? "";
 }
 function detectCandidates(repo, files, stack) {
   void stack;

@@ -3,7 +3,7 @@ import { closeSync, openSync, readSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { categorize as engineCategorize, parseGitignore, isIgnored, walk as engineWalk } from "./vendor/codeindex-engine.mjs";
 import type { IgnoreRule } from "./vendor/codeindex-engine.mjs";
-import { primeText } from "./read-cache.js";
+import { primeRead } from "./read-cache.js";
 import type { FileCategory, FileInfo } from "./types.js";
 
 const DEFAULT_IGNORE_DIRS = new Set([
@@ -221,7 +221,7 @@ function readFacts(abs: string, ext: string, size: number, prime: boolean): { bi
   const binary = BINARY_EXTS.has(ext) || buf.subarray(0, SNIFF_BYTES).includes(0);
   const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
   // Source the later stages will scan: hand them this read (no-op outside an analysis).
-  if (prime && !binary && size <= PRIME_MAX_BYTES) primeText(abs, buf.toString("utf8"));
+  if (prime && !binary && size <= PRIME_MAX_BYTES) primeRead(abs, buf.toString("utf8"));
   return { binary, lines: binary ? 0 : countLines(buf), hash };
 }
 
