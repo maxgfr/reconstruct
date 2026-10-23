@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.29.0](https://github.com/maxgfr/reconstruct/compare/v2.28.0...v2.29.0) (2026-10-23)
+
+
+### Features
+
+* propose installing rea, and document it ([#41](https://github.com/maxgfr/reconstruct/issues/41)) ([d546f57](https://github.com/maxgfr/reconstruct/commit/d546f5745d91cb12b2a4cdfdea628f100ea0abcb))
+
 # [2.28.0](https://github.com/maxgfr/reconstruct/compare/v2.27.0...v2.28.0) (2026-10-23)
 
 
