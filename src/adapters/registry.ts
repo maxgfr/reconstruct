@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo, StackInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { cmp } from "./util.js";
+import { cmp, withSourceCache } from "./util.js";
 import { nextjsAdapter } from "./nextjs.js";
 import { flaskAdapter } from "./flask.js";
 import { fastapiAdapter } from "./fastapi.js";
@@ -45,8 +45,9 @@ export function detectRoutes(files: FileInfo[], stack: StackInfo, repo: string):
   );
   const seen = new Set<string>();
   const merged: RouteInfo[] = [];
-  for (const adapter of active) {
-    for (const r of adapter.detectRoutes(files, repo)) {
+  const results = withSourceCache(() => active.map((adapter) => adapter.detectRoutes(files, repo)));
+  for (const found of results) {
+    for (const r of found) {
       // Method is part of the identity: `GET /items` and `POST /items` are two
       // distinct operations, not one route. Verb-agnostic routes (method
       // undefined) still de-dupe on kind+route+file.

@@ -3,6 +3,7 @@ import { closeSync, openSync, readSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { categorize as engineCategorize, parseGitignore, isIgnored, walk as engineWalk } from "./vendor/codeindex-engine.mjs";
 import type { IgnoreRule } from "./vendor/codeindex-engine.mjs";
+import { primeRead } from "./read-cache.js";
 import type { FileCategory, FileInfo } from "./types.js";
 
 const DEFAULT_IGNORE_DIRS = new Set([
@@ -195,31 +196,42 @@ function isProbablyBinary(abs: string, ext: string): boolean {
 // report 0 lines — the inventory still records the file and its byte size.
 const MAX_COUNT_LINES_BYTES = 8 * 1024 * 1024; // 8 MB
 
+// The categories the candidate, env-var and route scans read again, up to the
+// adapters' own per-file cap: their text is kept from the walk's read.
+const PRIMED_CATEGORIES = new Set<FileCategory>(["code", "config", "schema", "style"]);
+const PRIME_MAX_BYTES = 2 * 1024 * 1024;
+
 /**
- * Line count (text files) and content hash (every file) in one read. The hash
- * is the first 16 hex of sha256 — enough to tell, later, that a file cited as
- * evidence has changed since the tree was generated.
+ * Binary sniff, line count (text files) and content hash (every file) in one
+ * read. The hash is the first 16 hex of sha256 — enough to tell, later, that a
+ * file cited as evidence has changed since the tree was generated.
  */
-function readFacts(abs: string, size: number, binary: boolean): { lines: number; hash?: string } {
-  if (size > MAX_COUNT_LINES_BYTES) return { lines: 0 };
+function readFacts(abs: string, ext: string, size: number, prime: boolean): { binary: boolean; lines: number; hash?: string } {
+  // Past the cap: sniff the head only, record no line count or hash.
+  if (size > MAX_COUNT_LINES_BYTES) return { binary: isProbablyBinary(abs, ext), lines: 0 };
+  let buf: Buffer;
   try {
-    const buf = readFileSync(abs);
-    const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
-    return { lines: binary ? 0 : countLines(buf.toString("utf8")), hash };
+    buf = readFileSync(abs);
   } catch {
-    return { lines: 0 };
+    return { binary: true, lines: 0 };
   }
+  // One read serves all three facts: the NUL sniff on the head, the hash, and
+  // the line count straight off the bytes ("\n" is one byte in UTF-8 and never
+  // part of a multi-byte sequence, so no decode is needed).
+  const binary = BINARY_EXTS.has(ext) || buf.subarray(0, SNIFF_BYTES).includes(0);
+  const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
+  // Source the later stages will scan: hand them this read (no-op outside an analysis).
+  if (prime && !binary && size <= PRIME_MAX_BYTES) primeRead(abs, buf.toString("utf8"));
+  return { binary, lines: binary ? 0 : countLines(buf), hash };
 }
 
-function countLines(content: string): number {
+function countLines(content: Buffer): number {
   if (content.length === 0) return 0;
   let n = 1;
-  for (let i = 0; i < content.length; i++) {
-    if (content.charCodeAt(i) === 10) n++;
-  }
+  for (let i = content.indexOf(10); i !== -1; i = content.indexOf(10, i + 1)) n++;
   // A trailing newline terminates the last line; it does not start a new one
   // (`wc -l` semantics plus the unterminated last line, if any).
-  return content.charCodeAt(content.length - 1) === 10 ? n - 1 : n;
+  return content[content.length - 1] === 10 ? n - 1 : n;
 }
 
 export interface WalkOptions {
@@ -267,9 +279,9 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
     },
   });
   const files: FileInfo[] = result.files.map(({ rel, abs, ext, size }) => {
-    const binary = isProbablyBinary(abs, ext);
-    const { lines, hash } = readFacts(abs, size, binary);
-    return { path: rel, ext, size, lines, category: categorize(rel, ext), binary, ...(hash ? { hash } : {}) };
+    const category = categorize(rel, ext);
+    const { binary, lines, hash } = readFacts(abs, ext, size, PRIMED_CATEGORIES.has(category));
+    return { path: rel, ext, size, lines, category, binary, ...(hash ? { hash } : {}) };
   });
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { files, excludedCount: result.excluded + linkSkips };

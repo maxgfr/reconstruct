@@ -10,9 +10,9 @@ const DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\s*\\(`, "g");
 const BLUEPRINT_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?Blueprint\s*\(/g;
 // `app.register_blueprint(bp, url_prefix=...)` — receiver kept so blueprints
 // registered onto another blueprint (nested) compose the parent prefix.
-const REGISTER_RE = /(\w+)\.register_blueprint\s*\(/g;
+const REGISTER_RE = /\b(\w+)\.register_blueprint\s*\(/g;
 // Functional / class-based registration: `app.add_url_rule("/x", view_func=…, methods=[…])`.
-const ADD_URL_RE = /(\w+)\.add_url_rule\s*\(/g;
+const ADD_URL_RE = /\b(\w+)\.add_url_rule\s*\(/g;
 
 const openParen = (m: RegExpMatchArray): number => (m.index ?? 0) + m[0].length - 1;
 const urlPrefixOf = (call: PyCall): string => pyString(call.kwargs.get("url_prefix")) ?? "";

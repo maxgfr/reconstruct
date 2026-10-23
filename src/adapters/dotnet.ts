@@ -4,9 +4,9 @@ import { joinRoute, lineAt, readSources } from "./util.js";
 
 // --- Minimal APIs -----------------------------------------------------------
 // `app.MapGet("/health", handler)` / `todos.MapPost("/", handler)`.
-const MAP_VERB_RE = /(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
+const MAP_VERB_RE = /\b(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
 // `app.MapMethods("/x", new[] { "GET", "POST" }, handler)` — verbs as an argument.
-const MAP_METHODS_RE = /(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
+const MAP_METHODS_RE = /\b(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
 // Assignment group: `var todos = app.MapGroup("/api/todos");`. Resolved
 // transitively so a nested group composes its parent's prefix.
 const MAP_GROUP_RE = /(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)\s*\.\s*MapGroup\(\s*(?:@?\$?)"([^"]*)"/g;

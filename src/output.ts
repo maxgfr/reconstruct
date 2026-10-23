@@ -1,19 +1,29 @@
-import { mkdirSync, writeFileSync, copyFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Artifact, Options, RenderResult } from "./types.js";
 
 /** Flush a RenderResult to disk: write artifacts, then copy ground-truth files. */
 export function writeOutput(result: RenderResult, opts: Options): void {
+  // One mkdir per directory, not one per file: a mirror copy of a large repo
+  // is tens of thousands of files in a few hundred directories.
+  const made = new Set<string>();
+  const ensureDir = (dir: string) => {
+    if (made.has(dir)) return;
+    mkdirSync(dir, { recursive: true });
+    made.add(dir);
+  };
   for (const a of result.artifacts) {
     const dest = join(opts.out, a.relPath);
-    mkdirSync(dirname(dest), { recursive: true });
+    ensureDir(dirname(dest));
     writeFileSync(dest, a.content, "utf8");
   }
   for (const c of result.copies) {
     if (!existsSync(c.from)) continue;
-    mkdirSync(dirname(c.to), { recursive: true });
+    ensureDir(dirname(c.to));
     try {
-      copyFileSync(c.from, c.to);
+      // A copy-on-write clone where the filesystem offers one (APFS, btrfs,
+      // XFS): no data is copied. Elsewhere Node falls back to a plain copy.
+      copyFileSync(c.from, c.to, constants.COPYFILE_FICLONE);
     } catch {
       // Skip files that disappear or are unreadable mid-run.
     }

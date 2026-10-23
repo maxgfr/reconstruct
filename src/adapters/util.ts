@@ -1,5 +1,6 @@
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
+import { cachedRead } from "../read-cache.js";
 import type { FileInfo } from "../types.js";
 
 /**
@@ -9,21 +10,49 @@ import type { FileInfo } from "../types.js";
  */
 export const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
+// The comment-stripped sources of the current detection pass, keyed by
+// absolute path. Six JS adapters read the same files; within one pass each
+// file is read and stripped once. Scoped to `withSourceCache`, so nothing
+// outlives a pass and a file edited between two analyses is always re-read.
+let sourceCache: Map<string, string | null> | null = null;
+
+/** Run `fn` with one shared read of every source file it asks for. */
+export function withSourceCache<T>(fn: () => T): T {
+  if (sourceCache) return fn();
+  sourceCache = new Map();
+  try {
+    return fn();
+  } finally {
+    sourceCache = null;
+  }
+}
+
 /** Read the source of every walked file whose extension is in `exts`. */
 export function readSources(files: FileInfo[], repo: string, exts: string[]): Map<string, string> {
   const set = new Set(exts);
   const out = new Map<string, string>();
   for (const f of files) {
     if (!set.has(f.ext)) continue;
+    const abs = join(repo, f.path);
+    const cached = sourceCache?.get(abs);
+    if (cached !== undefined) {
+      if (cached !== null) out.set(f.path, cached);
+      continue;
+    }
+    let src: string | null = null;
     try {
-      if ((f.size || statSync(join(repo, f.path)).size) > MAX_SOURCE_BYTES) continue;
-      // Comments blanked to spaces (offsets and line numbers unchanged): a
-      // commented-out `app.get("/old")` is not a route, and an apostrophe in a
-      // `// don't` comment must not be read as an open string literal.
-      out.set(f.path, stripComments(readFileSync(join(repo, f.path), "utf8"), f.ext));
+      if ((f.size || statSync(abs).size) <= MAX_SOURCE_BYTES) {
+        // Comments blanked to spaces (offsets and line numbers unchanged): a
+        // commented-out `app.get("/old")` is not a route, and an apostrophe in
+        // a `// don't` comment must not be read as an open string literal.
+        const raw = cachedRead(abs);
+        src = raw === null ? null : stripComments(raw, f.ext);
+      }
     } catch {
       /* unreadable — skip */
     }
+    sourceCache?.set(abs, src);
+    if (src !== null) out.set(f.path, src);
   }
   return out;
 }
@@ -106,10 +135,26 @@ export function regexLiteralAllowedAt(src: string, i: number, last: string): boo
 export function stripComments(src: string, ext: string): string {
   const syntax = SYNTAX_BY_EXT[ext.toLowerCase()];
   if (!syntax) return src;
-  const out = src.split("");
+  // No comment introducer at all: nothing to blank (most data-ish files).
+  if (syntax === "python" ? !src.includes("#") : syntax === "ruby" ? !src.includes("#") && !src.includes("=begin") : !src.includes("/")) return src;
   const n = src.length;
+  // Blanked ranges, flat [from, to, …] in increasing order (the scanner only
+  // moves forward); the result is assembled once from slices.
+  const ranges: number[] = [];
   const blank = (from: number, to: number) => {
-    for (let k = from; k < to && k < n; k++) if (out[k] !== "\n") out[k] = " ";
+    if (to > from) ranges.push(from, Math.min(to, n));
+  };
+  const assemble = (): string => {
+    if (ranges.length === 0) return src;
+    let res = "";
+    let at = 0;
+    for (let k = 0; k < ranges.length; k += 2) {
+      const from = ranges[k] as number;
+      const to = ranges[k + 1] as number;
+      res += src.slice(at, from) + src.slice(from, to).replace(/[^\n]/g, " ");
+      at = to;
+    }
+    return res + src.slice(at);
   };
   const eolFrom = (from: number) => {
     const eol = src.indexOf("\n", from);
@@ -165,11 +210,12 @@ export function stripComments(src: string, ext: string): string {
         i = skipString("/", i, false);
         last = "a";
       } else {
-        if (!/\s/.test(c)) last = /[\w$)\]}]/.test(c) ? "a" : c;
+        const code = src.charCodeAt(i);
+        if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 125 /* } */ ? "a" : c;
         i++;
       }
     }
-    return out.join("");
+    return assemble();
   }
 
   // JS template literals nest (`${ `inner` }`): each entry is the brace depth
@@ -268,10 +314,30 @@ export function stripComments(src: string, ext: string): string {
         depth--;
       }
     }
-    if (!/\s/.test(c)) last = /[\w$)\].]/.test(c) ? "a" : c;
+    const code = src.charCodeAt(i);
+    if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 /* . */ ? "a" : c;
     i++;
   }
-  return out.join("");
+  return assemble();
+}
+
+/** `/\s/` on one UTF-16 unit, without a regex for the ASCII range. */
+function isSpaceCode(code: number): boolean {
+  if (code < 128) return code === 32 || (code >= 9 && code <= 13);
+  return /\s/.test(String.fromCharCode(code));
+}
+
+/** `[\w$)\]]`: a char that ends an operand, so a following `/` divides. */
+function isOperandEnd(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 || // _
+    code === 36 || // $
+    code === 41 || // )
+    code === 93 // ]
+  );
 }
 
 /** JS/TS source extensions the JS-family route adapters read. */

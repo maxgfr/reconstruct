@@ -5,7 +5,7 @@ import { spawnSync as spawnSync3 } from "child_process";
 import { resolve as resolve19, join as join54 } from "path";
 import { createInterface as createInterface3 } from "readline";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
-import { existsSync as existsSync26, readFileSync as readFileSync43, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync42, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
 
 // src/behavior.ts
 import { spawnSync } from "child_process";
@@ -105,7 +105,7 @@ import { basename as basename7 } from "path";
 
 // src/walk.ts
 import { createHash as createHash4 } from "crypto";
-import { closeSync, openSync, readSync, readFileSync as readFileSync23 } from "fs";
+import { closeSync, openSync, readSync, readFileSync as readFileSync24 } from "fs";
 import { join as join31, resolve as resolve13 } from "path";
 
 // src/vendor/codeindex-engine.mjs
@@ -11404,9 +11404,9 @@ function scanRepo(root, opts = {}) {
   const languages = {};
   const docText = new LazyDocText();
   const mtimes = /* @__PURE__ */ new Map();
-  const cache2 = opts.cache;
-  let allReused = cache2 !== void 0;
-  let cacheDirty = cache2 === void 0;
+  const cache3 = opts.cache;
+  let allReused = cache3 !== void 0;
+  let cacheDirty = cache3 === void 0;
   const it = keptFiles(root, opts);
   let step = it.next();
   for (; !step.done; step = it.next()) {
@@ -11467,7 +11467,7 @@ function scanRepo(root, opts = {}) {
     files.push(record2);
   }
   files.sort(byKey((f) => f.rel));
-  if (cache2 !== void 0 && files.length !== cache2.size) {
+  if (cache3 !== void 0 && files.length !== cache3.size) {
     allReused = false;
     cacheDirty = true;
   }
@@ -11598,14 +11598,14 @@ function entry(v, rel2) {
 }
 function parseCacheEntries(value) {
   if (!object(value) || value.schemaVersion !== SCHEMA_VERSION || value.extractorVersion !== EXTRACTOR_VERSION || !object(value.files)) return void 0;
-  const cache2 = /* @__PURE__ */ new Map();
+  const cache3 = /* @__PURE__ */ new Map();
   for (const [rel2, candidate] of Object.entries(value.files)) {
     if (rel2.split("/").some((part) => part === "" || part === "." || part === "..") || !entry(candidate, rel2)) {
       return void 0;
     }
-    cache2.set(rel2, candidate);
+    cache3.set(rel2, candidate);
   }
-  return cache2;
+  return cache3;
 }
 function extractionProfile(files, maxCallsPerFile, ast) {
   const grammars = grammarKeysForExts(files.filter((f) => f.kind === "code").map((f) => f.ext)).filter(ast);
@@ -11621,10 +11621,10 @@ function parseExtractionProfile(value) {
   const grammars = [...value.grammars];
   return calls === void 0 ? { grammars } : { grammars, maxCallsPerFile: calls };
 }
-function compatibleEntries(cache2, stored, current) {
+function compatibleEntries(cache3, stored, current) {
   const alike = extractedAlike(stored, current);
   const kept = /* @__PURE__ */ new Map();
-  for (const [rel2, entry2] of cache2) {
+  for (const [rel2, entry2] of cache3) {
     if (alike(entry2.record.kind, entry2.record.ext)) kept.set(rel2, entry2);
   }
   return kept;
@@ -11859,10 +11859,10 @@ function toCacheMap(scan2) {
   for (const f of scan2.files) m.set(f.rel, { hash: f.hash, record: f, size: f.size, mtimeMs: scan2.mtimes.get(f.rel) });
   return m;
 }
-function needsGrammarWarm(walked, cache2, fullHash = false) {
+function needsGrammarWarm(walked, cache3, fullHash = false) {
   const codeFiles = walked.files.filter((file) => classify(file.rel, file.ext) === "code");
   return fullHash && codeFiles.length > 0 || codeFiles.some((file) => {
-    const cached = cache2.get(file.rel);
+    const cached = cache3.get(file.rel);
     return !cached || cached.size !== file.size || cached.mtimeMs !== file.mtimeMs;
   });
 }
@@ -11965,11 +11965,11 @@ function bothArtifacts(scan2, onDisk) {
 function preloadSession(repo, opts, indexDir = INDEX_DIR) {
   const persisted = readPersistedIndex(repo, indexDir);
   if (!persisted) return void 0;
-  const cache2 = compatibleEntries(persisted.cacheMap, persisted.meta.extraction, {
+  const cache3 = compatibleEntries(persisted.cacheMap, persisted.meta.extraction, {
     maxCallsPerFile: opts.maxCallsPerFile,
     ast: grammarReady
   });
-  const scan2 = scanRepo(repo, { ...opts, cache: cache2 });
+  const scan2 = scanRepo(repo, { ...opts, cache: cache3 });
   return { scan: scan2, cacheMap: toCacheMap(scan2), arts: preloadArtifacts(repo, scan2, persisted.meta, indexDir) };
 }
 async function preloadSessionLazy(repo, opts, warm, indexDir = INDEX_DIR) {
@@ -11979,13 +11979,13 @@ async function preloadSessionLazy(repo, opts, warm, indexDir = INDEX_DIR) {
   const walked = scanOpts.precomputedWalk ?? walk(repo, scanWalkOptions(repo, scanOpts));
   const resolvable = ast === false ? /* @__PURE__ */ new Set() : resolvableGrammarKeys();
   const compatible = (tier) => compatibleEntries(persisted.cacheMap, persisted.meta.extraction, { maxCallsPerFile: scanOpts.maxCallsPerFile, ast: tier });
-  let cache2 = compatible((key) => grammarReady(key) || resolvable.has(key));
-  const needsWarm = needsGrammarWarm(walked, cache2, scanOpts.fullHash);
+  let cache3 = compatible((key) => grammarReady(key) || resolvable.has(key));
+  const needsWarm = needsGrammarWarm(walked, cache3, scanOpts.fullHash);
   if (needsWarm) {
     await warm();
-    cache2 = compatible(grammarReady);
+    cache3 = compatible(grammarReady);
   }
-  const scan2 = await scanRepoParallel(repo, { ...scanOpts, workers, cache: cache2, precomputedWalk: walked });
+  const scan2 = await scanRepoParallel(repo, { ...scanOpts, workers, cache: cache3, precomputedWalk: walked });
   const onDisk = persistedArtifacts(repo, scan2, persisted.meta, indexDir);
   let artifactsTried = false;
   let artifacts;
@@ -12035,7 +12035,7 @@ function treeDrift(walked, stamps, alike, fullHash = false) {
   drift.deleted = stamps.size - (walked.length - drift.added);
   return drift;
 }
-function renderFreshness(scan2, meta, extraction, cache2) {
+function renderFreshness(scan2, meta, extraction, cache3) {
   const files = /* @__PURE__ */ Object.create(null);
   for (const f of scan2.files) files[f.rel] = [f.hash, f.size, scan2.mtimes.get(f.rel)];
   return JSON.stringify({
@@ -12047,7 +12047,7 @@ function renderFreshness(scan2, meta, extraction, cache2) {
     symbolsSha1: meta.symbolsSha1,
     embed: meta.embed,
     extraction,
-    cache: cache2,
+    cache: cache3,
     files
   }) + "\n";
 }
@@ -12065,8 +12065,8 @@ function readFreshness(repo, indexDir = INDEX_DIR) {
   if (value === null || typeof value !== "object" || value.schemaVersion !== SCHEMA_VERSION || value.extractorVersion !== EXTRACTOR_VERSION) {
     return void 0;
   }
-  const cache2 = value.cache;
-  if (!cache2 || cache2.size !== cacheStat.size || cache2.mtimeMs !== cacheStat.mtimeMs) return void 0;
+  const cache3 = value.cache;
+  if (!cache3 || cache3.size !== cacheStat.size || cache3.mtimeMs !== cacheStat.mtimeMs) return void 0;
   const str22 = (v) => typeof v === "string" ? v : void 0;
   const embed = value.embed;
   if (embed !== void 0 && (embed === null || typeof embed !== "object")) return void 0;
@@ -20316,14 +20316,14 @@ async function openLspSession(transport, options) {
     if (dead) return;
     transport.write(encodeMessage({ jsonrpc: "2.0", method, params }));
   };
-  const request = (method, params, budget = timeoutMs) => {
+  const request = (method, params, budget2 = timeoutMs) => {
     if (dead) return Promise.reject(dead);
     const id = nextId++;
     return new Promise((resolve132, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new LspTimeout(method, budget));
-      }, budget);
+        reject(new LspTimeout(method, budget2));
+      }, budget2);
       timer.unref?.();
       pending.set(id, { resolve: resolve132, reject, timer });
       transport.write(encodeMessage({ jsonrpc: "2.0", id, method, params }));
@@ -20917,14 +20917,14 @@ function atDeclaration(site, defs) {
 }
 async function settle(lease, server, ask, classify2, staticUses) {
   let answer = await ask();
-  let budget = timeoutFor(server);
+  let budget2 = timeoutFor(server);
   for (const delay of [...SETTLE_DELAYS_MS, Infinity]) {
     const kind = classify2(answer);
     if (kind === "full") lease.markWarm();
     if (kind !== "thin") return { answer, partial: false };
     if (!staticUses || lease.warm) return { answer, partial: false };
-    if (delay > budget) break;
-    budget -= delay;
+    if (delay > budget2) break;
+    budget2 -= delay;
     await new Promise((resolve132) => setTimeout(resolve132, delay));
     answer = await ask();
   }
@@ -27540,13 +27540,13 @@ ${HELP}`);
     }
     const persisted = flags2.noIndexCache ? void 0 : readPersistedIndex(flags2.repo, outDir);
     const meta = persisted?.meta ?? {};
-    const cache2 = persisted && compatibleEntries(persisted.cacheMap, persisted.meta.extraction, {
+    const cache3 = persisted && compatibleEntries(persisted.cacheMap, persisted.meta.extraction, {
       maxCallsPerFile: flags2.maxCalls,
       ast: grammarReady
     });
     const scan2 = await scanRepoParallel(flags2.repo, {
       ...scanOptions(flags2, precomputedWalk),
-      cache: cache2,
+      cache: cache3,
       out: outDir,
       workers: flags2.workers
     });
@@ -28132,6 +28132,47 @@ ${HELP}`);
 }
 init_text();
 
+// src/read-cache.ts
+import { readFileSync as readFileSync23 } from "fs";
+var BUDGET_CHARS = 128 * 1024 * 1024;
+var cache = null;
+var budget = 0;
+function withReadCache(fn) {
+  if (cache) return fn();
+  cache = /* @__PURE__ */ new Map();
+  budget = BUDGET_CHARS;
+  try {
+    return fn();
+  } finally {
+    cache = null;
+  }
+}
+function remember(abs, text) {
+  if (!cache) return;
+  if (text === null) {
+    cache.set(abs, null);
+    return;
+  }
+  if (text.length > budget) return;
+  budget -= text.length;
+  cache.set(abs, text);
+}
+function primeRead(abs, text) {
+  if (cache && !cache.has(abs)) remember(abs, text);
+}
+function cachedRead(abs) {
+  const hit = cache?.get(abs);
+  if (hit !== void 0) return hit;
+  let text;
+  try {
+    text = readFileSync23(abs, "utf8");
+  } catch {
+    text = null;
+  }
+  remember(abs, text);
+  return text;
+}
+
 // src/walk.ts
 var DEFAULT_IGNORE_DIRS = /* @__PURE__ */ new Set([
   ".git",
@@ -28243,7 +28284,7 @@ function matchesScope(rules, rel2) {
 }
 function isReconstructOutput(dir) {
   try {
-    const head = readFileSync23(join31(dir, "inventory.json"), "utf8").slice(0, 4096);
+    const head = readFileSync24(join31(dir, "inventory.json"), "utf8").slice(0, 4096);
     return /"generatedWith"\s*:\s*"reconstruct@/.test(head);
   } catch {
     return false;
@@ -28273,23 +28314,26 @@ function isProbablyBinary(abs, ext) {
   }
 }
 var MAX_COUNT_LINES_BYTES = 8 * 1024 * 1024;
-function readFacts(abs, size, binary2) {
-  if (size > MAX_COUNT_LINES_BYTES) return { lines: 0 };
+var PRIMED_CATEGORIES = /* @__PURE__ */ new Set(["code", "config", "schema", "style"]);
+var PRIME_MAX_BYTES = 2 * 1024 * 1024;
+function readFacts(abs, ext, size, prime) {
+  if (size > MAX_COUNT_LINES_BYTES) return { binary: isProbablyBinary(abs, ext), lines: 0 };
+  let buf;
   try {
-    const buf = readFileSync23(abs);
-    const hash = createHash4("sha256").update(buf).digest("hex").slice(0, 16);
-    return { lines: binary2 ? 0 : countLines3(buf.toString("utf8")), hash };
+    buf = readFileSync24(abs);
   } catch {
-    return { lines: 0 };
+    return { binary: true, lines: 0 };
   }
+  const binary2 = BINARY_EXTS.has(ext) || buf.subarray(0, SNIFF_BYTES).includes(0);
+  const hash = createHash4("sha256").update(buf).digest("hex").slice(0, 16);
+  if (prime && !binary2 && size <= PRIME_MAX_BYTES) primeRead(abs, buf.toString("utf8"));
+  return { binary: binary2, lines: binary2 ? 0 : countLines3(buf), hash };
 }
 function countLines3(content) {
   if (content.length === 0) return 0;
   let n = 1;
-  for (let i2 = 0; i2 < content.length; i2++) {
-    if (content.charCodeAt(i2) === 10) n++;
-  }
-  return content.charCodeAt(content.length - 1) === 10 ? n - 1 : n;
+  for (let i2 = content.indexOf(10); i2 !== -1; i2 = content.indexOf(10, i2 + 1)) n++;
+  return content[content.length - 1] === 10 ? n - 1 : n;
 }
 function walk2(repo, opts = {}) {
   const includeRules = compileScopeGlobs(opts.include);
@@ -28313,9 +28357,9 @@ function walk2(repo, opts = {}) {
     }
   });
   const files = result.files.map(({ rel: rel2, abs, ext, size }) => {
-    const binary2 = isProbablyBinary(abs, ext);
-    const { lines, hash } = readFacts(abs, size, binary2);
-    return { path: rel2, ext, size, lines, category: categorize2(rel2, ext), binary: binary2, ...hash ? { hash } : {} };
+    const category = categorize2(rel2, ext);
+    const { binary: binary2, lines, hash } = readFacts(abs, ext, size, PRIMED_CATEGORIES.has(category));
+    return { path: rel2, ext, size, lines, category, binary: binary2, ...hash ? { hash } : {} };
   });
   files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   return { files, excludedCount: result.excluded + linkSkips };
@@ -28326,11 +28370,11 @@ import { existsSync as existsSync15, readdirSync as readdirSync4 } from "fs";
 import { join as join35 } from "path";
 
 // src/detect/manifest.ts
-import { readFileSync as readFileSync24 } from "fs";
+import { readFileSync as readFileSync25 } from "fs";
 function readJsonManifest(absPath, relLabel, warnings) {
   let raw;
   try {
-    raw = readFileSync24(absPath, "utf8");
+    raw = readFileSync25(absPath, "utf8");
   } catch {
     return null;
   }
@@ -28344,7 +28388,7 @@ function readJsonManifest(absPath, relLabel, warnings) {
 }
 function safeRead(path) {
   try {
-    return readFileSync24(path, "utf8");
+    return readFileSync25(path, "utf8");
   } catch {
     return "";
   }
@@ -28355,23 +28399,43 @@ import { existsSync as existsSync14 } from "fs";
 import { join as join34 } from "path";
 
 // src/adapters/generic.ts
-import { readFileSync as readFileSync26 } from "fs";
 import { join as join33 } from "path";
 
 // src/adapters/util.ts
-import { readFileSync as readFileSync25, statSync as statSync14 } from "fs";
+import { statSync as statSync14 } from "fs";
 import { join as join32 } from "path";
 var MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+var sourceCache = null;
+function withSourceCache(fn) {
+  if (sourceCache) return fn();
+  sourceCache = /* @__PURE__ */ new Map();
+  try {
+    return fn();
+  } finally {
+    sourceCache = null;
+  }
+}
 function readSources(files, repo, exts) {
   const set = new Set(exts);
   const out2 = /* @__PURE__ */ new Map();
   for (const f of files) {
     if (!set.has(f.ext)) continue;
+    const abs = join32(repo, f.path);
+    const cached = sourceCache?.get(abs);
+    if (cached !== void 0) {
+      if (cached !== null) out2.set(f.path, cached);
+      continue;
+    }
+    let src = null;
     try {
-      if ((f.size || statSync14(join32(repo, f.path)).size) > MAX_SOURCE_BYTES) continue;
-      out2.set(f.path, stripComments(readFileSync25(join32(repo, f.path), "utf8"), f.ext));
+      if ((f.size || statSync14(abs).size) <= MAX_SOURCE_BYTES) {
+        const raw = cachedRead(abs);
+        src = raw === null ? null : stripComments(raw, f.ext);
+      }
     } catch {
     }
+    sourceCache?.set(abs, src);
+    if (src !== null) out2.set(f.path, src);
   }
   return out2;
 }
@@ -28425,10 +28489,23 @@ function regexLiteralAllowedAt(src, i2, last) {
 function stripComments(src, ext) {
   const syntax = SYNTAX_BY_EXT[ext.toLowerCase()];
   if (!syntax) return src;
-  const out2 = src.split("");
+  if (syntax === "python" ? !src.includes("#") : syntax === "ruby" ? !src.includes("#") && !src.includes("=begin") : !src.includes("/")) return src;
   const n = src.length;
+  const ranges = [];
   const blank2 = (from, to) => {
-    for (let k = from; k < to && k < n; k++) if (out2[k] !== "\n") out2[k] = " ";
+    if (to > from) ranges.push(from, Math.min(to, n));
+  };
+  const assemble = () => {
+    if (ranges.length === 0) return src;
+    let res = "";
+    let at = 0;
+    for (let k = 0; k < ranges.length; k += 2) {
+      const from = ranges[k];
+      const to = ranges[k + 1];
+      res += src.slice(at, from) + src.slice(from, to).replace(/[^\n]/g, " ");
+      at = to;
+    }
+    return res + src.slice(at);
   };
   const eolFrom = (from) => {
     const eol = src.indexOf("\n", from);
@@ -28474,11 +28551,12 @@ function stripComments(src, ext) {
         i3 = skipString("/", i3, false);
         last = "a";
       } else {
-        if (!/\s/.test(c2)) last = /[\w$)\]}]/.test(c2) ? "a" : c2;
+        const code = src.charCodeAt(i3);
+        if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 125 ? "a" : c2;
         i3++;
       }
     }
-    return out2.join("");
+    return assemble();
   }
   const templates = [];
   let depth = 0;
@@ -28567,10 +28645,24 @@ function stripComments(src, ext) {
         depth--;
       }
     }
-    if (!/\s/.test(c2)) last = /[\w$)\].]/.test(c2) ? "a" : c2;
+    const code = src.charCodeAt(i2);
+    if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 ? "a" : c2;
     i2++;
   }
-  return out2.join("");
+  return assemble();
+}
+function isSpaceCode(code) {
+  if (code < 128) return code === 32 || code >= 9 && code <= 13;
+  return /\s/.test(String.fromCharCode(code));
+}
+function isOperandEnd(code) {
+  return code >= 48 && code <= 57 || // 0-9
+  code >= 65 && code <= 90 || // A-Z
+  code >= 97 && code <= 122 || // a-z
+  code === 95 || // _
+  code === 36 || // $
+  code === 41 || // )
+  code === 93;
 }
 var JS_SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
 function dirOf8(p) {
@@ -28791,11 +28883,7 @@ function pythonRefResolver(path, src, sources) {
 
 // src/adapters/generic.ts
 function read(repo, rel2) {
-  try {
-    return readFileSync26(join33(repo, rel2), "utf8");
-  } catch {
-    return null;
-  }
+  return cachedRead(join33(repo, rel2));
 }
 function asStringMap(value) {
   if (!value || typeof value !== "object") return {};
@@ -29475,7 +29563,7 @@ function detectNodeVersion(repo, warnings) {
 }
 
 // src/detect/candidates.ts
-import { readFileSync as readFileSync27 } from "fs";
+import { readFileSync as readFileSync26 } from "fs";
 import { join as join36 } from "path";
 var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
   ".ts",
@@ -29625,11 +29713,7 @@ function baseName2(path) {
   return path.split("/").pop() ?? "";
 }
 function safeRead2(repo, rel2) {
-  try {
-    return readFileSync27(join36(repo, rel2), "utf8");
-  } catch {
-    return "";
-  }
+  return cachedRead(join36(repo, rel2)) ?? "";
 }
 function detectCandidates(repo, files, stack) {
   void stack;
@@ -29718,7 +29802,7 @@ var CONVENTIONAL_ENTRIES = [
 function detectEntryPoints(repo, files) {
   const entries = /* @__PURE__ */ new Set();
   try {
-    const pkg = JSON.parse(readFileSync27(join36(repo, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync26(join36(repo, "package.json"), "utf8"));
     for (const key of ["main", "module"]) {
       const v = pkg[key];
       if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
@@ -29755,7 +29839,7 @@ function hasUI(inv) {
 
 // src/evidence.ts
 import { createHash as createHash5 } from "crypto";
-import { readdirSync as readdirSync5, readFileSync as readFileSync28, statSync as statSync15 } from "fs";
+import { readdirSync as readdirSync5, readFileSync as readFileSync27, statSync as statSync15 } from "fs";
 import { join as join37 } from "path";
 var REA_EVIDENCE_DIR = "evidence/rea";
 var REA_EVIDENCE_MAX_BYTES = 64 * 1024 * 1024;
@@ -29775,7 +29859,7 @@ function loadExternalEvidence(outDir) {
       else if (e.isFile() && e.name.endsWith(".json")) {
         try {
           if (statSync15(p).size > REA_EVIDENCE_MAX_BYTES) continue;
-          for (const m of readFileSync28(p, "utf8").matchAll(/"(ev_[0-9a-f]{64})"/g)) ids.add(`rea:${m[1]}`);
+          for (const m of readFileSync27(p, "utf8").matchAll(/"(ev_[0-9a-f]{64})"/g)) ids.add(`rea:${m[1]}`);
         } catch {
         }
       }
@@ -29964,8 +30048,8 @@ var nextjsAdapter = {
 var HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
 var DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\s*\\(`, "g");
 var BLUEPRINT_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?Blueprint\s*\(/g;
-var REGISTER_RE = /(\w+)\.register_blueprint\s*\(/g;
-var ADD_URL_RE = /(\w+)\.add_url_rule\s*\(/g;
+var REGISTER_RE = /\b(\w+)\.register_blueprint\s*\(/g;
+var ADD_URL_RE = /\b(\w+)\.add_url_rule\s*\(/g;
 var openParen = (m) => (m.index ?? 0) + m[0].length - 1;
 var urlPrefixOf = (call2) => pyString(call2.kwargs.get("url_prefix")) ?? "";
 var kindOf2 = (block) => /render_template\s*\(/.test(block) ? "page" : "api";
@@ -30069,7 +30153,7 @@ var flaskAdapter = {
 var METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
 var DECORATOR_RE2 = new RegExp(`@(\\w+)\\.(${METHODS})\\s*\\(`, "g");
 var ROUTER_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?APIRouter\s*\(/g;
-var INCLUDE_RE = /(\w+)\.include_router\s*\(/g;
+var INCLUDE_RE = /\b(\w+)\.include_router\s*\(/g;
 var openParen2 = (m) => (m.index ?? 0) + m[0].length - 1;
 var prefixOf = (call2) => pyString(call2.kwargs.get("prefix")) ?? "";
 var lastSeg = (mod) => mod.split(".").pop() ?? mod;
@@ -30288,11 +30372,11 @@ var ROUTER_RE = new RegExp(
 var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
-var USE_RE = /(\w+)\s*\.\s*use\s*\(/g;
+var USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 var VERBS = "get|post|put|delete|patch|options|head|all|ws";
-var ROUTE_RE = new RegExp(String.raw`(\w+)(\s*\.\s*)(${VERBS})\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
+var ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
 var VERB_RE = new RegExp(`^(?:${VERBS})$`);
-var ROUTE_CHAIN_RE = /(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
+var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
 var LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
 var IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 var INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
@@ -30422,10 +30506,10 @@ var APP_RE2 = new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE3}=\s*(?:r
 var FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*require\()\s*["'`]fastify-plugin["'`]/g;
 var REQUIRE_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE2 = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
-var REGISTER_RE2 = /(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
+var REGISTER_RE2 = /\b(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
 var PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
-var ROUTE_RE2 = /(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
-var ROUTE_OBJ_RE = /(\w+)\.route\(\s*\{/g;
+var ROUTE_RE2 = /\b(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+var ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
 var URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
 var METHOD_RE2 = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 function methodOf3(verb) {
@@ -30729,8 +30813,8 @@ var honoAdapter = {
 // src/adapters/django.ts
 var ENTRY_RE = /\b(path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*([\w.]+)/g;
 var MOUNT_RE = /\b(path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\s*\(/g;
-var DRF_ROUTER_RE = /(\w+)\s*=\s*(?:routers\.)?(?:Default|Simple)Router\(/g;
-var DRF_REGISTER_RE = /(\w+)\.register\(\s*r?["']([^"']*)["']/g;
+var DRF_ROUTER_RE = /\b(\w+)\s*=\s*(?:routers\.)?(?:Default|Simple)Router\(/g;
+var DRF_REGISTER_RE = /\b(\w+)\.register\(\s*r?["']([^"']*)["']/g;
 var DRF_MOUNT_RE = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\(\s*(\w+)\.urls/g;
 function cleanRegex(pattern) {
   return pattern.replace(/^\^/, "").replace(/\$$/, "").replace(/\(\?P<(\w+)>[^)]*\)/g, "<$1>");
@@ -30968,12 +31052,12 @@ var railsAdapter = {
 // src/adapters/go.ts
 var VERB_TOKENS = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
 var VERB_RE4 = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
-var HANDLE_VERB_RE = /(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
-var HANDLEFUNC_RE = /(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
+var HANDLE_VERB_RE = /\b(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
+var HANDLEFUNC_RE = /\b(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
 var METHODS_CHAIN_RE = /\.Methods\(\s*([^)]*)\)/;
-var GROUP_RE = /(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
-var ROUTE_OPEN_RE = /(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
-var MOUNT_RE3 = /(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
+var GROUP_RE = /\b(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
+var ROUTE_OPEN_RE = /\b(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
+var MOUNT_RE3 = /\b(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
 var STD_VERBS = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/;
 var ROUTER_TYPE = "(?:chi\\.(?:Router|Mux)|gin\\.(?:Engine|RouterGroup|IRouter|IRoutes)|echo\\.(?:Echo|Group)|fiber\\.(?:App|Router)|mux\\.Router|http\\.ServeMux|httprouter\\.Router)\\b";
 var TYPED_ROUTER_RE = new RegExp(`\\b(\\w+)\\s+\\*?${ROUTER_TYPE}`, "g");
@@ -31335,8 +31419,8 @@ var trpcAdapter = {
 };
 
 // src/adapters/dotnet.ts
-var MAP_VERB_RE = /(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
-var MAP_METHODS_RE = /(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
+var MAP_VERB_RE = /\b(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
+var MAP_METHODS_RE = /\b(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
 var MAP_GROUP_RE = /(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)\s*\.\s*MapGroup\(\s*(?:@?\$?)"([^"]*)"/g;
 var ROUTE_ATTR_RE = /[[,]\s*Route\(\s*(?:@?\$?)"([^"]*)"\s*[,)]/g;
 var CLASS_DECL_RE = /\bclass\s+(\w+)\s*(?:<[^>{;]*>\s*)?(?::|$|\{|\(|where\b)/gm;
@@ -31460,8 +31544,9 @@ function detectRoutes(files, stack, repo) {
   );
   const seen = /* @__PURE__ */ new Set();
   const merged = [];
-  for (const adapter of active) {
-    for (const r of adapter.detectRoutes(files, repo)) {
+  const results = withSourceCache(() => active.map((adapter) => adapter.detectRoutes(files, repo)));
+  for (const found of results) {
+    for (const r of found) {
       const key = `${r.method ?? ""} ${r.kind} ${r.route} ${r.file}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -31473,7 +31558,7 @@ function detectRoutes(files, stack, repo) {
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync29 } from "fs";
+import { readFileSync as readFileSync28 } from "fs";
 import { join as join38, basename as basename6, extname as extname5 } from "path";
 var LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
 var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
@@ -31507,7 +31592,7 @@ function localeOf(path) {
 }
 function keysIn(repo, f) {
   try {
-    const raw = readFileSync29(join38(repo, f.path), "utf8");
+    const raw = readFileSync28(join38(repo, f.path), "utf8");
     if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
     return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
   } catch {
@@ -32008,6 +32093,9 @@ function opaqueArtifacts(files) {
   return files.filter((f) => OPAQUE_EXTS.has(f.ext.toLowerCase()) || /\.so\.\d[\d.]*$/.test(f.path) || f.binary && f.ext === "" && f.size > 0).map((f) => f.path).sort(cmp);
 }
 function analyze(opts) {
+  return withReadCache(() => analyzeRepo(opts));
+}
+function analyzeRepo(opts) {
   const { files, excludedCount } = walk2(opts.repo, {
     include: opts.include,
     exclude: opts.exclude,
@@ -32078,7 +32166,7 @@ function analyze(opts) {
 
 // src/rea.ts
 import { spawn as spawn2 } from "child_process";
-import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync30, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
+import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync29, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
 import { delimiter, isAbsolute as isAbsolute12, join as join39, resolve as resolve14 } from "path";
 var DEFAULT_TIMEOUT_MS3 = 18e4;
 var DEFAULT_MAX_ARTIFACTS = 25;
@@ -32285,7 +32373,7 @@ async function runRea(repo, out2, artifacts, opts) {
       const overwrite = "overwrite" in (exporter.inputSchema?.properties ?? {}) ? { overwrite: true } : {};
       try {
         const res = await client.request("tools/call", { name: exporter.name, arguments: { [arg]: join39(out2, rel2), ...overwrite } }, timeoutMs);
-        if (!errorText(res) && EV_RE.test(readFileSync30(join39(out2, rel2), "utf8"))) return rel2;
+        if (!errorText(res) && EV_RE.test(readFileSync29(join39(out2, rel2), "utf8"))) return rel2;
       } catch {
       } finally {
         EV_RE.lastIndex = 0;
@@ -33261,7 +33349,7 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync31, statSync as statSync17 } from "fs";
+import { readFileSync as readFileSync30, statSync as statSync17 } from "fs";
 import { join as join40 } from "path";
 
 // src/prd/markdown.ts
@@ -33366,7 +33454,7 @@ function embedSection(feature, opts) {
 `, "> _Too large to embed \u2014 see the file in the source repo._", "");
         continue;
       }
-      body2 = readFileSync31(join40(opts.repo, rel2), "utf8");
+      body2 = readFileSync30(join40(opts.repo, rel2), "utf8");
     } catch {
       continue;
     }
@@ -33705,19 +33793,25 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync8, copyFileSync, existsSync as existsSync16, readFileSync as readFileSync32, readdirSync as readdirSync6 } from "fs";
+import { constants as constants2, copyFileSync, existsSync as existsSync16, mkdirSync as mkdirSync6, readdirSync as readdirSync6, readFileSync as readFileSync31, writeFileSync as writeFileSync8 } from "fs";
 import { dirname as dirname9, join as join42 } from "path";
 function writeOutput(result, opts) {
+  const made = /* @__PURE__ */ new Set();
+  const ensureDir = (dir) => {
+    if (made.has(dir)) return;
+    mkdirSync6(dir, { recursive: true });
+    made.add(dir);
+  };
   for (const a of result.artifacts) {
     const dest = join42(opts.out, a.relPath);
-    mkdirSync6(dirname9(dest), { recursive: true });
+    ensureDir(dirname9(dest));
     writeFileSync8(dest, a.content, "utf8");
   }
   for (const c2 of result.copies) {
     if (!existsSync16(c2.from)) continue;
-    mkdirSync6(dirname9(c2.to), { recursive: true });
+    ensureDir(dirname9(c2.to));
     try {
-      copyFileSync(c2.from, c2.to);
+      copyFileSync(c2.from, c2.to, constants2.COPYFILE_FICLONE);
     } catch {
     }
   }
@@ -33745,7 +33839,7 @@ var CALLOUT_BEARING_DOCS = [
 var LEDGERS = ["REVIEW.json", "VERIFY.json"];
 function readIfFile(path) {
   try {
-    return readFileSync32(path, "utf8");
+    return readFileSync31(path, "utf8");
   } catch {
     return void 0;
   }
@@ -33784,7 +33878,7 @@ Pick one:
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync33, existsSync as existsSync17 } from "fs";
+import { readdirSync as readdirSync7, readFileSync as readFileSync32, existsSync as existsSync17 } from "fs";
 import { join as join43, relative as relative11, sep as sep9 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
@@ -33797,7 +33891,7 @@ function readMarkdownTree(dir) {
         if (GROUND_TRUTH_DIRS.has(rel2)) continue;
         walk3(child);
       } else if (entry2.isFile() && entry2.name.endsWith(".md")) {
-        out2.push({ relPath: rel2, content: readFileSync33(child, "utf8") });
+        out2.push({ relPath: rel2, content: readFileSync32(child, "utf8") });
       }
     }
   };
@@ -33810,7 +33904,7 @@ function bundleExisting(opts) {
   if (!existsSync17(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
-  const inv = JSON.parse(readFileSync33(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync32(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -33821,11 +33915,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync34 } from "fs";
+import { readFileSync as readFileSync33 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync34(path, "utf8");
+    raw = readFileSync33(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -34140,16 +34234,16 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync37, readdirSync as readdirSync8, statSync as statSync18 } from "fs";
+import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync36, readdirSync as readdirSync8, statSync as statSync18 } from "fs";
 import { join as join46, posix as posix10, relative as relative12 } from "path";
 
 // src/unknowns.ts
-import { existsSync as existsSync19, readFileSync as readFileSync36, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync19, readFileSync as readFileSync35, writeFileSync as writeFileSync10 } from "fs";
 import { join as join45 } from "path";
 
 // src/verify.ts
 import { createHash as createHash6 } from "crypto";
-import { existsSync as existsSync18, readFileSync as readFileSync35, writeFileSync as writeFileSync9 } from "fs";
+import { existsSync as existsSync18, readFileSync as readFileSync34, writeFileSync as writeFileSync9 } from "fs";
 import { join as join44 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
@@ -34208,7 +34302,7 @@ function featureEvidence(f) {
 function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
-    invRaw = readFileSync35(join44(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync34(join44(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -34223,7 +34317,7 @@ function buildWorklist(outDir, opts = {}) {
   for (const f of inv.features ?? []) {
     const prdPath = join44(outDir, "features", f.slug, "PRD.md");
     if (!existsSync18(prdPath)) continue;
-    const reqs = requirements(readFileSync35(prdPath, "utf8"));
+    const reqs = requirements(readFileSync34(prdPath, "utf8"));
     const ev = featureEvidence(f);
     const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
     for (const req of reqs) {
@@ -34256,7 +34350,7 @@ function buildWorklist(outDir, opts = {}) {
 }
 function capUsedFor(outDir) {
   try {
-    const todo = JSON.parse(readFileSync35(join44(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync34(join44(outDir, "VERIFY.todo.json"), "utf8"));
     const max = todo?.coverage?.max;
     if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
   } catch {
@@ -34307,7 +34401,7 @@ function renderWorklistMd(wl, total, kept) {
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync35(join44(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync34(join44(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -34355,7 +34449,7 @@ function resolveEvidence(ref2, inv, external = NO_EXTERNAL_EVIDENCE) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync35(join44(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync34(join44(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -34404,7 +34498,7 @@ function assertWorklistFresh(outDir, todo) {
   }
 }
 function applyVerdicts(outDir, verdictsPath) {
-  const raw = JSON.parse(readFileSync35(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync34(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
@@ -34532,7 +34626,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync35(p, "utf8"));
+    sem = JSON.parse(readFileSync34(p, "utf8"));
   } catch (e) {
     skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
     return;
@@ -34658,7 +34752,7 @@ function buildObligations(pairs, verdicts, inv, external) {
 }
 function readObligations(outDir) {
   try {
-    return JSON.parse(readFileSync35(join44(outDir, OBLIGATIONS_FILE), "utf8"));
+    return JSON.parse(readFileSync34(join44(outDir, OBLIGATIONS_FILE), "utf8"));
   } catch {
     return void 0;
   }
@@ -34717,7 +34811,7 @@ function seal(rec) {
 }
 function readInventory(outDir) {
   try {
-    return JSON.parse(readFileSync36(join45(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync35(join45(outDir, "inventory.json"), "utf8"));
   } catch {
     throw new Error(`no readable inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -34726,7 +34820,7 @@ function readUnknowns(outDir) {
   const path = join45(outDir, UNKNOWNS_FILE);
   if (!existsSync19(path)) return void 0;
   try {
-    const raw = JSON.parse(readFileSync36(path, "utf8"));
+    const raw = JSON.parse(readFileSync35(path, "utf8"));
     if (!Array.isArray(raw?.unknowns)) throw new Error("missing `unknowns` array");
     return raw;
   } catch (e) {
@@ -34900,7 +34994,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2) || lstatSync5(full).isSymbolicLink()) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync37(full, "utf8") });
+      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync36(full, "utf8") });
     }
   }
   return out2;
@@ -34953,7 +35047,7 @@ function checkOutput(outDir, opts = {}) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync37(invPath, "utf8"));
+    inv = JSON.parse(readFileSync36(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -34990,16 +35084,16 @@ function checkOutput(outDir, opts = {}) {
   warnings.push(...brokenLinks(outDir, docs));
   if (opts.repo && inv.evidence?.length) {
     const repo = opts.repo;
-    const cache2 = /* @__PURE__ */ new Map();
+    const cache3 = /* @__PURE__ */ new Map();
     const hashOf = (file) => {
-      if (!cache2.has(file)) {
+      if (!cache3.has(file)) {
         try {
-          cache2.set(file, sha256Hex(readFileSync37(join46(repo, file))).slice(0, 16));
+          cache3.set(file, sha256Hex(readFileSync36(join46(repo, file))).slice(0, 16));
         } catch {
-          cache2.set(file, null);
+          cache3.set(file, null);
         }
       }
-      return cache2.get(file) ?? null;
+      return cache3.get(file) ?? null;
     };
     for (const s of staleEvidence(inv.evidence, hashOf)) {
       warnings.push(`stale evidence ${s.id} (${s.subject}): ${s.file} \u2014 ${s.reason}; re-run the analyzer and re-verify`);
@@ -35230,7 +35324,7 @@ function formatCheckReport(r, outDir) {
 
 // src/review.ts
 import { createHash as createHash7 } from "crypto";
-import { existsSync as existsSync21, readFileSync as readFileSync38, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync21, readFileSync as readFileSync37, writeFileSync as writeFileSync11 } from "fs";
 import { join as join47 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 var SEVERITIES3 = ["blocker", "major", "minor"];
@@ -35240,7 +35334,7 @@ function sha256(s) {
 }
 function readIfExists(path) {
   try {
-    return readFileSync38(path, "utf8");
+    return readFileSync37(path, "utf8");
   } catch {
     return "";
   }
@@ -35265,7 +35359,7 @@ function currentBaseline(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    features.push({ feature: f.slug, prdHash: sha256(readFileSync38(prdPath, "utf8")) });
+    features.push({ feature: f.slug, prdHash: sha256(readFileSync37(prdPath, "utf8")) });
   }
   return { archHash: archHash(outDir), features };
 }
@@ -35299,7 +35393,7 @@ function runReview(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    const prdHash = sha256(readFileSync38(prdPath, "utf8"));
+    const prdHash = sha256(readFileSync37(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -35324,7 +35418,7 @@ function runReview(outDir) {
 function readInventory2(outDir) {
   let raw;
   try {
-    raw = readFileSync38(join47(outDir, "inventory.json"), "utf8");
+    raw = readFileSync37(join47(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -35339,7 +35433,7 @@ function readPrior(outDir) {
   if (!existsSync21(reviewPath)) return null;
   let rev;
   try {
-    rev = JSON.parse(readFileSync38(reviewPath, "utf8"));
+    rev = JSON.parse(readFileSync37(reviewPath, "utf8"));
   } catch {
     return null;
   }
@@ -35350,7 +35444,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync38(join47(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync37(join47(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -35475,7 +35569,7 @@ function reduceFindings(findings, ctx) {
   };
 }
 function applyFindings(outDir, findingsPath) {
-  const raw = JSON.parse(readFileSync38(findingsPath, "utf8"));
+  const raw = JSON.parse(readFileSync37(findingsPath, "utf8"));
   const findings = normalizeFindings(raw);
   let round;
   let changedSet = [];
@@ -35485,7 +35579,7 @@ function applyFindings(outDir, findingsPath) {
   let baseline;
   let todo;
   try {
-    todo = JSON.parse(readFileSync38(join47(outDir, "REVIEW.todo.json"), "utf8"));
+    todo = JSON.parse(readFileSync37(join47(outDir, "REVIEW.todo.json"), "utf8"));
   } catch {
   }
   if (todo) {
@@ -35518,7 +35612,7 @@ function applyFindings(outDir, findingsPath) {
   const reviewPath = join47(outDir, "REVIEW.json");
   if (existsSync21(reviewPath)) {
     try {
-      const prev = JSON.parse(readFileSync38(reviewPath, "utf8"));
+      const prev = JSON.parse(readFileSync37(reviewPath, "utf8"));
       priorFailures = prev.failures ?? [];
       priorStale = prev.staleRounds ?? 0;
       priorRound = prev.round ?? 0;
@@ -35560,7 +35654,7 @@ function foldReview(outDir, check, opts = {}) {
   }
   let rev;
   try {
-    rev = JSON.parse(readFileSync38(p, "utf8"));
+    rev = JSON.parse(readFileSync37(p, "utf8"));
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
     return;
@@ -35608,7 +35702,7 @@ function formatReviewReport(r) {
 }
 
 // src/brainstorm.ts
-import { readFileSync as readFileSync39 } from "fs";
+import { readFileSync as readFileSync38 } from "fs";
 import { join as join48 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
@@ -35680,7 +35774,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync39(join48(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync38(join48(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -35691,7 +35785,7 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync40, writeFileSync as writeFileSync12 } from "fs";
+import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync39, writeFileSync as writeFileSync12 } from "fs";
 import { join as join50, resolve as resolve15 } from "path";
 
 // src/orchestrate-templates.ts
@@ -36041,7 +36135,7 @@ function batchNotice(phase, items, batch, override) {
 }
 function readJson2(path) {
   try {
-    return JSON.parse(readFileSync40(path, "utf8"));
+    return JSON.parse(readFileSync39(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -36204,7 +36298,7 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 import { createInterface as createInterface2 } from "readline";
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync24, readFileSync as readFileSync41, realpathSync as realpathSync9, statSync as statSync19 } from "fs";
+import { existsSync as existsSync24, readFileSync as readFileSync40, realpathSync as realpathSync9, statSync as statSync19 } from "fs";
 import { isAbsolute as isAbsolute13, join as join52, relative as relative13, resolve as resolve17, sep as sep10 } from "path";
 
 // src/tree-lock.ts
@@ -36241,20 +36335,20 @@ var VIEW_SECTIONS = ["files", "routes", "features", "evidence", "envVars", "depe
 var VIEW_DEFAULT_LIMIT = 100;
 var VIEW_MAX_LIMIT = 500;
 var CACHE_MAX = 16;
-var cache = /* @__PURE__ */ new Map();
+var cache2 = /* @__PURE__ */ new Map();
 function inventoryId(inv) {
   const { generatedWith: _ignored, ...rest } = inv;
   return `inv_${sha256Hex(canonicalJson(rest)).slice(0, 16)}`;
 }
 function rememberInventory(inv) {
   const id = inventoryId(inv);
-  cache.delete(id);
-  cache.set(id, inv);
-  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  cache2.delete(id);
+  cache2.set(id, inv);
+  while (cache2.size > CACHE_MAX) cache2.delete(cache2.keys().next().value);
   return id;
 }
 function recallInventory(id) {
-  return cache.get(id);
+  return cache2.get(id);
 }
 function summarizeInventory(inv) {
   const sizes = {};
@@ -36446,10 +36540,10 @@ function inRepoInventory(real, repo, out2) {
   if (!within2(real, root) || real === root) return false;
   const rel2 = relative13(root, real).split(sep10).join("/");
   try {
-    const inv = JSON.parse(readFileSync41(join52(out2, "inventory.json"), "utf8"));
+    const inv = JSON.parse(readFileSync40(join52(out2, "inventory.json"), "utf8"));
     const listed2 = (inv.files ?? []).find((f) => f.path === rel2);
     if (typeof listed2?.hash !== "string" || statSync19(real).size > MAX_READ_BYTES) return false;
-    return sha256Hex(readFileSync41(real)).slice(0, 16) === listed2.hash;
+    return sha256Hex(readFileSync40(real)).slice(0, 16) === listed2.hash;
   } catch {
     return false;
   }
@@ -36484,7 +36578,7 @@ function handleView(args2, defaults) {
   } else {
     const out2 = requiredOut(args2, defaults);
     try {
-      inv = JSON.parse(readFileSync41(join52(out2, "inventory.json"), "utf8"));
+      inv = JSON.parse(readFileSync40(join52(out2, "inventory.json"), "utf8"));
     } catch (e) {
       throw new ToolError(`unreadable inventory.json in ${out2}: ${e.message}`, { kind: "run_first", hint: "Re-scaffold the tree." });
     }
@@ -36628,7 +36722,7 @@ function handleRead(args2, out2) {
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
   if (st.size > MAX_READ_BYTES)
     throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`, { kind: "narrow_request", hint: "Use your own file tool with a byte range." });
-  const lines = readFileSync41(real, "utf8").split("\n");
+  const lines = readFileSync40(real, "utf8").split("\n");
   const total = lines.length;
   const start2 = Math.max(1, Math.floor(num2(args2.start_line) ?? 1));
   if (start2 > total)
@@ -37111,7 +37205,7 @@ function str3(v) {
 var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
-import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync42, realpathSync as realpathSync10, statSync as statSync20 } from "fs";
+import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync41, realpathSync as realpathSync10, statSync as statSync20 } from "fs";
 import { basename as basename9, dirname as dirname11, join as join53, resolve as resolve18, sep as sep11 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var SKILL_NAME = "reconstruct";
@@ -37161,7 +37255,7 @@ function readResource(uri, moduleDir) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
   if (!statSync20(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
-  return { uri, mimeType: "text/markdown", text: readFileSync42(targetReal, "utf8") };
+  return { uri, mimeType: "text/markdown", text: readFileSync41(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
@@ -37179,7 +37273,7 @@ function describe(root, rel2, fallbackTitle) {
 function firstProse(file) {
   let text;
   try {
-    text = readFileSync42(file, "utf8");
+    text = readFileSync41(file, "utf8");
   } catch {
     return void 0;
   }
@@ -38100,7 +38194,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
   }
   if (opts.unknowns) {
     try {
-      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync43(resolve19(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
+      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync42(resolve19(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
       process.stdout.write((opts.json ? JSON.stringify(ledger, null, 2) : formatUnknowns(ledger)) + "\n");
       const gate = { errors: [], warnings: [] };
       foldUnknowns(opts.out, gate);
