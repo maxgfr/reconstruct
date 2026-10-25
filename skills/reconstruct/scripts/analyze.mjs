@@ -215,7 +215,7 @@ var EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.31.11";
+    ENGINE_VERSION = "2.31.12";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 18;
   }
