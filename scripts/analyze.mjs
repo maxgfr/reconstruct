@@ -31976,7 +31976,7 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
 }
 
 // src/types.ts
-var VERSION = "2.29.2";
+var VERSION = "2.29.3";
 
 // src/analyze.ts
 var ROUTE_BEARING_FRAMEWORKS = /* @__PURE__ */ new Set([
