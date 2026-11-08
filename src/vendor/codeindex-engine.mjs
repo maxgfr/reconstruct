@@ -19,7 +19,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.31.14";
+    ENGINE_VERSION = "2.31.15";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 18;
   }
@@ -3804,7 +3804,7 @@ var init_literals = __esm({
   }
 });
 
-// node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js
+// node_modules/.pnpm/web-tree-sitter@0.27.2/node_modules/web-tree-sitter/web-tree-sitter.js
 function assertInternal(x) {
   if (x !== INTERNAL) throw new Error("Illegal constructor");
 }
@@ -3884,17 +3884,17 @@ function unmarshalNode(tree, address = TRANSFER_BUFFER) {
   });
   return result;
 }
-function marshalTreeCursor(cursor, address = TRANSFER_BUFFER) {
-  C.setValue(address + 0 * SIZE_OF_INT, cursor[0], "i32");
-  C.setValue(address + 1 * SIZE_OF_INT, cursor[1], "i32");
-  C.setValue(address + 2 * SIZE_OF_INT, cursor[2], "i32");
-  C.setValue(address + 3 * SIZE_OF_INT, cursor[3], "i32");
+function marshalTreeCursor({ handles }, address = TRANSFER_BUFFER) {
+  C.setValue(address + 0 * SIZE_OF_INT, handles[0], "i32");
+  C.setValue(address + 1 * SIZE_OF_INT, handles[1], "i32");
+  C.setValue(address + 2 * SIZE_OF_INT, handles[2], "i32");
+  C.setValue(address + 3 * SIZE_OF_INT, handles[3], "i32");
 }
-function unmarshalTreeCursor(cursor) {
-  cursor[0] = C.getValue(TRANSFER_BUFFER + 0 * SIZE_OF_INT, "i32");
-  cursor[1] = C.getValue(TRANSFER_BUFFER + 1 * SIZE_OF_INT, "i32");
-  cursor[2] = C.getValue(TRANSFER_BUFFER + 2 * SIZE_OF_INT, "i32");
-  cursor[3] = C.getValue(TRANSFER_BUFFER + 3 * SIZE_OF_INT, "i32");
+function unmarshalTreeCursor({ handles }) {
+  handles[0] = C.getValue(TRANSFER_BUFFER + 0 * SIZE_OF_INT, "i32");
+  handles[1] = C.getValue(TRANSFER_BUFFER + 1 * SIZE_OF_INT, "i32");
+  handles[2] = C.getValue(TRANSFER_BUFFER + 2 * SIZE_OF_INT, "i32");
+  handles[3] = C.getValue(TRANSFER_BUFFER + 3 * SIZE_OF_INT, "i32");
 }
 function marshalPoint(address, point) {
   C.setValue(address, point.row, "i32");
@@ -5300,7 +5300,7 @@ async function Module2(moduleArg = {}) {
   Module["loadWebAssemblyModule"] = loadWebAssemblyModule;
   Module["LE_HEAP_STORE_I64"] = LE_HEAP_STORE_I64;
   var ASM_CONSTS = {};
-  var _malloc, _calloc, _realloc, _free, _ts_range_edit, _memcmp, _ts_language_symbol_count, _ts_language_state_count, _ts_language_abi_version, _ts_language_name, _ts_language_field_count, _ts_language_next_state, _ts_language_symbol_name, _ts_language_symbol_for_name, _strncmp, _ts_language_symbol_type, _ts_language_field_name_for_id, _ts_lookahead_iterator_new, _ts_lookahead_iterator_delete, _ts_lookahead_iterator_reset_state, _ts_lookahead_iterator_reset, _ts_lookahead_iterator_next, _ts_lookahead_iterator_current_symbol, _ts_point_edit, _ts_parser_delete, _ts_parser_reset, _ts_parser_set_language, _ts_parser_set_included_ranges, _ts_query_new, _ts_query_delete, _iswspace, _iswalnum, _ts_query_copy, _ts_query_pattern_count, _ts_query_capture_count, _ts_query_string_count, _ts_query_capture_name_for_id, _ts_query_capture_quantifier_for_id, _ts_query_string_value_for_id, _ts_query_predicates_for_pattern, _ts_query_start_byte_for_pattern, _ts_query_end_byte_for_pattern, _ts_query_is_pattern_rooted, _ts_query_is_pattern_non_local, _ts_query_is_pattern_guaranteed_at_step, _ts_query_disable_capture, _ts_query_disable_pattern, _ts_tree_copy, _ts_tree_delete, _ts_init, _ts_parser_new_wasm, _ts_parser_enable_logger_wasm, _ts_parser_parse_wasm, _ts_parser_included_ranges_wasm, _ts_language_type_is_named_wasm, _ts_language_type_is_visible_wasm, _ts_language_metadata_wasm, _ts_language_supertypes_wasm, _ts_language_subtypes_wasm, _ts_tree_root_node_wasm, _ts_tree_root_node_with_offset_wasm, _ts_tree_edit_wasm, _ts_tree_included_ranges_wasm, _ts_tree_get_changed_ranges_wasm, _ts_tree_cursor_new_wasm, _ts_tree_cursor_copy_wasm, _ts_tree_cursor_delete_wasm, _ts_tree_cursor_reset_wasm, _ts_tree_cursor_reset_to_wasm, _ts_tree_cursor_goto_first_child_wasm, _ts_tree_cursor_goto_last_child_wasm, _ts_tree_cursor_goto_first_child_for_index_wasm, _ts_tree_cursor_goto_first_child_for_position_wasm, _ts_tree_cursor_goto_next_sibling_wasm, _ts_tree_cursor_goto_previous_sibling_wasm, _ts_tree_cursor_goto_descendant_wasm, _ts_tree_cursor_goto_parent_wasm, _ts_tree_cursor_current_node_type_id_wasm, _ts_tree_cursor_current_node_state_id_wasm, _ts_tree_cursor_current_node_is_named_wasm, _ts_tree_cursor_current_node_is_missing_wasm, _ts_tree_cursor_current_node_id_wasm, _ts_tree_cursor_start_position_wasm, _ts_tree_cursor_end_position_wasm, _ts_tree_cursor_start_index_wasm, _ts_tree_cursor_end_index_wasm, _ts_tree_cursor_current_field_id_wasm, _ts_tree_cursor_current_depth_wasm, _ts_tree_cursor_current_descendant_index_wasm, _ts_tree_cursor_current_node_wasm, _ts_node_symbol_wasm, _ts_node_field_name_for_child_wasm, _ts_node_field_name_for_named_child_wasm, _ts_node_children_by_field_id_wasm, _ts_node_first_child_for_byte_wasm, _ts_node_first_named_child_for_byte_wasm, _ts_node_grammar_symbol_wasm, _ts_node_child_count_wasm, _ts_node_named_child_count_wasm, _ts_node_child_wasm, _ts_node_named_child_wasm, _ts_node_child_by_field_id_wasm, _ts_node_next_sibling_wasm, _ts_node_prev_sibling_wasm, _ts_node_next_named_sibling_wasm, _ts_node_prev_named_sibling_wasm, _ts_node_descendant_count_wasm, _ts_node_parent_wasm, _ts_node_child_with_descendant_wasm, _ts_node_descendant_for_index_wasm, _ts_node_named_descendant_for_index_wasm, _ts_node_descendant_for_position_wasm, _ts_node_named_descendant_for_position_wasm, _ts_node_start_point_wasm, _ts_node_end_point_wasm, _ts_node_start_index_wasm, _ts_node_end_index_wasm, _ts_node_to_string_wasm, _ts_node_children_wasm, _ts_node_named_children_wasm, _ts_node_descendants_of_type_wasm, _ts_node_is_named_wasm, _ts_node_has_changes_wasm, _ts_node_has_error_wasm, _ts_node_is_error_wasm, _ts_node_is_missing_wasm, _ts_node_is_extra_wasm, _ts_node_parse_state_wasm, _ts_node_next_parse_state_wasm, _ts_query_matches_wasm, _ts_query_captures_wasm, _memset, _memcpy, _memmove, _iswalpha, _iswblank, _iswdigit, _iswlower, _iswpunct, _iswupper, _iswxdigit, _memchr, _strlen, _strcmp, _strncat, _strncpy, _towlower, _towupper, _setThrew, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, ___wasm_apply_data_relocs;
+  var _malloc, _calloc, _realloc, _free, _ts_range_edit, _memcmp, _ts_language_symbol_count, _ts_language_state_count, _ts_language_abi_version, _ts_language_name, _ts_language_field_count, _ts_language_next_state, _ts_language_symbol_name, _ts_language_symbol_for_name, _strncmp, _strlen, _ts_language_symbol_type, _ts_language_field_name_for_id, _ts_lookahead_iterator_new, _ts_lookahead_iterator_delete, _ts_lookahead_iterator_reset_state, _ts_lookahead_iterator_reset, _ts_lookahead_iterator_next, _ts_lookahead_iterator_current_symbol, _ts_point_edit, _ts_parser_delete, _ts_parser_reset, _ts_parser_set_language, _ts_parser_set_included_ranges, _ts_query_new, _ts_query_delete, _iswspace, _iswalnum, _ts_query_copy, _ts_query_pattern_count, _ts_query_capture_count, _ts_query_string_count, _ts_query_capture_name_for_id, _ts_query_capture_quantifier_for_id, _ts_query_string_value_for_id, _ts_query_predicates_for_pattern, _ts_query_start_byte_for_pattern, _ts_query_end_byte_for_pattern, _ts_query_is_pattern_rooted, _ts_query_is_pattern_non_local, _ts_query_is_pattern_guaranteed_at_step, _ts_query_disable_capture, _ts_query_disable_pattern, _ts_tree_copy, _ts_tree_delete, _ts_init, _ts_parser_new_wasm, _ts_parser_enable_logger_wasm, _ts_parser_parse_wasm, _ts_parser_included_ranges_wasm, _ts_language_type_is_named_wasm, _ts_language_type_is_visible_wasm, _ts_language_metadata_wasm, _ts_language_supertypes_wasm, _ts_language_subtypes_wasm, _ts_tree_root_node_wasm, _ts_tree_root_node_with_offset_wasm, _ts_tree_edit_wasm, _ts_tree_included_ranges_wasm, _ts_tree_get_changed_ranges_wasm, _ts_tree_cursor_new_wasm, _ts_tree_cursor_copy_wasm, _ts_tree_cursor_delete_wasm, _ts_tree_cursor_reset_wasm, _ts_tree_cursor_reset_to_wasm, _ts_tree_cursor_goto_first_child_wasm, _ts_tree_cursor_goto_last_child_wasm, _ts_tree_cursor_goto_first_child_for_index_wasm, _ts_tree_cursor_goto_first_child_for_position_wasm, _ts_tree_cursor_goto_next_sibling_wasm, _ts_tree_cursor_goto_previous_sibling_wasm, _ts_tree_cursor_goto_descendant_wasm, _ts_tree_cursor_goto_parent_wasm, _ts_tree_cursor_current_node_type_id_wasm, _ts_tree_cursor_current_node_state_id_wasm, _ts_tree_cursor_current_node_is_named_wasm, _ts_tree_cursor_current_node_is_missing_wasm, _ts_tree_cursor_current_node_id_wasm, _ts_tree_cursor_start_position_wasm, _ts_tree_cursor_end_position_wasm, _ts_tree_cursor_start_index_wasm, _ts_tree_cursor_end_index_wasm, _ts_tree_cursor_current_field_id_wasm, _ts_tree_cursor_current_depth_wasm, _ts_tree_cursor_current_descendant_index_wasm, _ts_tree_cursor_current_node_wasm, _ts_node_symbol_wasm, _ts_node_field_name_for_child_wasm, _ts_node_field_name_for_named_child_wasm, _ts_node_children_by_field_id_wasm, _ts_node_first_child_for_byte_wasm, _ts_node_first_named_child_for_byte_wasm, _ts_node_grammar_symbol_wasm, _ts_node_child_count_wasm, _ts_node_named_child_count_wasm, _ts_node_child_wasm, _ts_node_named_child_wasm, _ts_node_child_by_field_id_wasm, _ts_node_next_sibling_wasm, _ts_node_prev_sibling_wasm, _ts_node_next_named_sibling_wasm, _ts_node_prev_named_sibling_wasm, _ts_node_descendant_count_wasm, _ts_node_parent_wasm, _ts_node_child_with_descendant_wasm, _ts_node_descendant_for_index_wasm, _ts_node_named_descendant_for_index_wasm, _ts_node_descendant_for_position_wasm, _ts_node_named_descendant_for_position_wasm, _ts_node_start_point_wasm, _ts_node_end_point_wasm, _ts_node_start_index_wasm, _ts_node_end_index_wasm, _ts_node_to_string_wasm, _ts_node_children_wasm, _ts_node_named_children_wasm, _ts_node_descendants_of_type_wasm, _ts_node_is_named_wasm, _ts_node_has_changes_wasm, _ts_node_has_error_wasm, _ts_node_is_error_wasm, _ts_node_is_missing_wasm, _ts_node_is_extra_wasm, _ts_node_parse_state_wasm, _ts_node_next_parse_state_wasm, _ts_query_matches_wasm, _ts_query_captures_wasm, _memset, _memcpy, _memmove, _iswalpha, _iswblank, _iswdigit, _iswlower, _iswpunct, _iswupper, _iswxdigit, _memchr, _strcmp, _strncat, _strncpy, _towlower, _towupper, _setThrew, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, ___wasm_apply_data_relocs;
   function assignWasmExports(wasmExports2) {
     Module["_malloc"] = _malloc = wasmExports2["malloc"];
     Module["_calloc"] = _calloc = wasmExports2["calloc"];
@@ -5317,6 +5317,7 @@ async function Module2(moduleArg = {}) {
     Module["_ts_language_symbol_name"] = _ts_language_symbol_name = wasmExports2["ts_language_symbol_name"];
     Module["_ts_language_symbol_for_name"] = _ts_language_symbol_for_name = wasmExports2["ts_language_symbol_for_name"];
     Module["_strncmp"] = _strncmp = wasmExports2["strncmp"];
+    Module["_strlen"] = _strlen = wasmExports2["strlen"];
     Module["_ts_language_symbol_type"] = _ts_language_symbol_type = wasmExports2["ts_language_symbol_type"];
     Module["_ts_language_field_name_for_id"] = _ts_language_field_name_for_id = wasmExports2["ts_language_field_name_for_id"];
     Module["_ts_lookahead_iterator_new"] = _ts_lookahead_iterator_new = wasmExports2["ts_lookahead_iterator_new"];
@@ -5444,7 +5445,6 @@ async function Module2(moduleArg = {}) {
     Module["_iswupper"] = _iswupper = wasmExports2["iswupper"];
     Module["_iswxdigit"] = _iswxdigit = wasmExports2["iswxdigit"];
     Module["_memchr"] = _memchr = wasmExports2["memchr"];
-    Module["_strlen"] = _strlen = wasmExports2["strlen"];
     Module["_strcmp"] = _strcmp = wasmExports2["strcmp"];
     Module["_strncat"] = _strncat = wasmExports2["strncat"];
     Module["_strncpy"] = _strncpy = wasmExports2["strncpy"];
@@ -5740,9 +5740,12 @@ function parsePattern(index, stepType, stepValueId, captureNames, stringValues, 
     steps.length = 0;
   }
 }
+function indexForByteOffset(source, byteOffset) {
+  return new TextEncoder().encodeInto(source, new Uint8Array(byteOffset)).read;
+}
 var __defProp2, __name, Edit, SIZE_OF_SHORT, SIZE_OF_INT, SIZE_OF_CURSOR, SIZE_OF_NODE, SIZE_OF_POINT, SIZE_OF_RANGE, ZERO_POINT, INTERNAL, C, finalizer, LookaheadIterator, finalizer2, Tree, finalizer3, TreeCursor, Node, LANGUAGE_FUNCTION_REGEX, Language, web_tree_sitter_default, Module3, TRANSFER_BUFFER, LANGUAGE_VERSION, MIN_COMPATIBLE_VERSION, finalizer4, Parser, PREDICATE_STEP_TYPE_CAPTURE, PREDICATE_STEP_TYPE_STRING, QUERY_WORD_REGEX, CaptureQuantifier, isCaptureStep, isStringStep, QueryErrorKind, QueryError, finalizer5, Query;
 var init_web_tree_sitter = __esm({
-  "node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js"() {
+  "node_modules/.pnpm/web-tree-sitter@0.27.2/node_modules/web-tree-sitter/web-tree-sitter.js"() {
     "use strict";
     __defProp2 = Object.defineProperty;
     __name = (target, value) => __defProp2(target, "name", { value, configurable: true });
@@ -6059,29 +6062,17 @@ var init_web_tree_sitter = __esm({
         return result;
       }
     };
-    finalizer3 = newFinalizer((address) => {
-      C._ts_tree_cursor_delete_wasm(address);
+    finalizer3 = newFinalizer((handles) => {
+      marshalTreeCursor({ handles });
+      C._ts_tree_cursor_delete_wasm(0);
     });
     TreeCursor = class _TreeCursor {
       static {
         __name(this, "TreeCursor");
       }
       /** @internal */
-      // @ts-expect-error: never read
-      [0] = 0;
-      // Internal handle for Wasm
-      /** @internal */
-      // @ts-expect-error: never read
-      [1] = 0;
-      // Internal handle for Wasm
-      /** @internal */
-      // @ts-expect-error: never read
-      [2] = 0;
-      // Internal handle for Wasm
-      /** @internal */
-      // @ts-expect-error: never read
-      [3] = 0;
-      // Internal handle for Wasm
+      handles = [0, 0, 0, 0];
+      // Internal handles for Wasm, shared with the finalizer.
       /** @internal */
       tree;
       /** @internal */
@@ -6089,21 +6080,20 @@ var init_web_tree_sitter = __esm({
         assertInternal(internal);
         this.tree = tree;
         unmarshalTreeCursor(this);
-        finalizer3?.register(this, this.tree[0], this);
+        finalizer3?.register(this, this.handles, this);
       }
       /** Creates a deep copy of the tree cursor. This allocates new memory. */
       copy() {
-        const copy = new _TreeCursor(INTERNAL, this.tree);
+        marshalTreeCursor(this);
         C._ts_tree_cursor_copy_wasm(this.tree[0]);
-        unmarshalTreeCursor(copy);
-        return copy;
+        return new _TreeCursor(INTERNAL, this.tree);
       }
       /** Delete the tree cursor, freeing its resources. */
       delete() {
         finalizer3?.unregister(this);
         marshalTreeCursor(this);
         C._ts_tree_cursor_delete_wasm(this.tree[0]);
-        this[0] = this[1] = this[2] = 0;
+        this.handles.fill(0);
       }
       /** Get the tree cursor's current {@link Node}. */
       get currentNode() {
@@ -6314,10 +6304,10 @@ var init_web_tree_sitter = __esm({
       }
       /**
        * Move this cursor to the first child of its current node that contains or
-       * starts after the given byte offset.
+       * starts after the given position.
        *
-       * This returns the index of the child node if one was found, and returns
-       * `null` if no such child was found.
+       * This returns `true` if the cursor successfully moved to a child node, and returns
+       * `false` if no such child was found.
        */
       gotoFirstChildForPosition(goalPosition) {
         marshalTreeCursor(this);
@@ -6333,8 +6323,9 @@ var init_web_tree_sitter = __esm({
       reset(node) {
         marshalNode(node);
         marshalTreeCursor(this, TRANSFER_BUFFER + SIZE_OF_NODE);
-        C._ts_tree_cursor_reset_wasm(this.tree[0]);
+        C._ts_tree_cursor_reset_wasm(node.tree[0]);
         unmarshalTreeCursor(this);
+        this.tree = node.tree;
       }
       /**
        * Re-initialize a tree cursor to the same position as another cursor.
@@ -6347,6 +6338,7 @@ var init_web_tree_sitter = __esm({
         marshalTreeCursor(cursor, TRANSFER_BUFFER + SIZE_OF_CURSOR);
         C._ts_tree_cursor_reset_to_wasm(this.tree[0], cursor.tree[0]);
         unmarshalTreeCursor(this);
+        this.tree = cursor.tree;
       }
     };
     Node = class {
@@ -6705,15 +6697,13 @@ var init_web_tree_sitter = __esm({
         if (!Array.isArray(types)) types = [types];
         const symbols = [];
         const typesBySymbol = this.tree.language.types;
-        for (const node_type of types) {
-          if (node_type == "ERROR") {
-            symbols.push(65535);
-          }
-        }
         for (let i2 = 0, n = typesBySymbol.length; i2 < n; i2++) {
           if (types.includes(typesBySymbol[i2])) {
             symbols.push(i2);
           }
+        }
+        if (types.includes("ERROR")) {
+          symbols.push(65535);
         }
         const symbolsAddress = C._malloc(SIZE_OF_INT * symbols.length);
         for (let i2 = 0, n = symbols.length; i2 < n; i2++) {
@@ -6869,31 +6859,9 @@ var init_web_tree_sitter = __esm({
        * you want to keep and continue to use after an edit.
        */
       edit(edit) {
-        if (this.startIndex >= edit.oldEndIndex) {
-          this.startIndex = edit.newEndIndex + (this.startIndex - edit.oldEndIndex);
-          let subbedPointRow;
-          let subbedPointColumn;
-          if (this.startPosition.row > edit.oldEndPosition.row) {
-            subbedPointRow = this.startPosition.row - edit.oldEndPosition.row;
-            subbedPointColumn = this.startPosition.column;
-          } else {
-            subbedPointRow = 0;
-            subbedPointColumn = this.startPosition.column;
-            if (this.startPosition.column >= edit.oldEndPosition.column) {
-              subbedPointColumn = this.startPosition.column - edit.oldEndPosition.column;
-            }
-          }
-          if (subbedPointRow > 0) {
-            this.startPosition.row += subbedPointRow;
-            this.startPosition.column = subbedPointColumn;
-          } else {
-            this.startPosition.column += subbedPointColumn;
-          }
-        } else if (this.startIndex > edit.startIndex) {
-          this.startIndex = edit.newEndIndex;
-          this.startPosition.row = edit.newEndPosition.row;
-          this.startPosition.column = edit.newEndPosition.column;
-        }
+        const { point, index } = edit.editPoint(this.startPosition, this.startIndex);
+        this.startPosition = point;
+        this.startIndex = index;
       }
       /** Get the S-expression representation of this node. */
       toString() {
@@ -7414,6 +7382,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
     __name(parseIsPredicate, "parseIsPredicate");
     __name(parseSetDirective, "parseSetDirective");
     __name(parsePattern, "parsePattern");
+    __name(indexForByteOffset, "indexForByteOffset");
     finalizer5 = newFinalizer((address) => {
       C._ts_query_delete(address);
     });
@@ -7428,6 +7397,8 @@ ${JSON.stringify(symbolNames, null, 2)}`);
       exceededMatchLimit;
       /** @internal */
       textPredicates;
+      /** @internal */
+      source;
       /** The names of the captures used in the query. */
       captureNames;
       /** The quantifiers of the captures used in the query. */
@@ -7566,6 +7537,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
         this.captureNames = captureNames;
         this.captureQuantifiers = captureQuantifiers;
         this.textPredicates = textPredicates;
+        this.source = source;
         this.predicates = predicates;
         this.setProperties = setProperties;
         this.assertedProperties = assertedProperties;
@@ -7802,23 +7774,25 @@ ${JSON.stringify(symbolNames, null, 2)}`);
       didExceedMatchLimit() {
         return this.exceededMatchLimit;
       }
-      /** Get the byte offset where the given pattern starts in the query's source. */
+      /** Get the index where the given pattern starts in the query's source. */
       startIndexForPattern(patternIndex) {
         if (patternIndex >= this.predicates.length) {
           throw new Error(
             `Pattern index is ${patternIndex} but the pattern count is ${this.predicates.length}`
           );
         }
-        return C._ts_query_start_byte_for_pattern(this[0], patternIndex);
+        const byteOffset = C._ts_query_start_byte_for_pattern(this[0], patternIndex);
+        return indexForByteOffset(this.source, byteOffset);
       }
-      /** Get the byte offset where the given pattern ends in the query's source. */
+      /** Get the index where the given pattern ends in the query's source. */
       endIndexForPattern(patternIndex) {
         if (patternIndex >= this.predicates.length) {
           throw new Error(
             `Pattern index is ${patternIndex} but the pattern count is ${this.predicates.length}`
           );
         }
-        return C._ts_query_end_byte_for_pattern(this[0], patternIndex);
+        const byteOffset = C._ts_query_end_byte_for_pattern(this[0], patternIndex);
+        return indexForByteOffset(this.source, byteOffset);
       }
       /** Get the number of patterns in the query. */
       patternCount() {
@@ -7837,13 +7811,14 @@ ${JSON.stringify(symbolNames, null, 2)}`);
         return C._ts_query_is_pattern_non_local(this[0], patternIndex) === 1;
       }
       /**
-       * Check if a given step in a query is 'definite'.
+       * Check if the step at the given index in the query's source is 'definite'.
        *
        * A query step is 'definite' if its parent pattern will be guaranteed to
        * match successfully once it reaches the step.
        */
-      isPatternGuaranteedAtStep(byteIndex) {
-        return C._ts_query_is_pattern_guaranteed_at_step(this[0], byteIndex) === 1;
+      isPatternGuaranteedAtStep(index) {
+        const byteOffset = C.lengthBytesUTF8(this.source.slice(0, index));
+        return C._ts_query_is_pattern_guaranteed_at_step(this[0], byteOffset) === 1;
       }
     };
   }

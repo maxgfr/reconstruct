@@ -1,10 +1,10 @@
 {
-  "tag": "v2.31.14",
-  "engineVersion": "2.31.14",
+  "tag": "v2.31.15",
+  "engineVersion": "2.31.15",
   "sha256": {
-    "codeindex-engine.mjs": "984f60460ef66c35862d6e16e3c2ee6d6236a450e94c4624c943d6f69689dd23",
-    "codeindex-engine.d.mts": "31de63209c3e54ae2c224249fbf70ea26b88a4a6fda237018d1734ea9dde4837"
+    "codeindex-engine.mjs": "6c961e473634d2bbd51d7a8da86aab3a2c660af2c83f4a207c9797142c2e662b",
+    "codeindex-engine.d.mts": "69e7253eff48efe5717ec77bfd76bfe10911508d7eec5de43702e0642b89dec7"
   },
-  "syncedAt": "2026-10-31T13:07:54.504Z",
-  "commit": "83248c06d54325057f9437748cdc9d52ff5fda1e"
+  "syncedAt": "2026-11-08T13:55:16.482Z",
+  "commit": "fc80dbcb53d11a10cc1b33377003f61db6592d94"
 }
