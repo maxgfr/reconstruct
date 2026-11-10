@@ -63,7 +63,7 @@ function requirements(prd: string): string[] {
       continue;
     }
     if (!inSection) continue;
-    const m = /^(?:[-*+]|\d+\.)\s+(.*)$/.exec(line);
+    const m = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line);
     if (!m) continue;
     const text = m[1]!.replace(/^\[[ xX]\]\s*/, "").trim();
     if (!text || text.startsWith("🧠") || /fill this in/i.test(text)) continue;
@@ -664,10 +664,18 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   const boundIds = new Set<string>();
   const staleIds: string[] = [];
   const unboundIds: string[] = [];
+  const orphanIds: string[] = [];
   for (const v of sem.verdicts) {
     if (!v.verdict) continue;
     const cur = currentById.get(v.claimId);
-    if (!cur) continue; // an id the PRDs no longer derive — surfaces as `ignored`, never as coverage
+    if (!cur) {
+      // An id the PRDs no longer derive: the verdict judges a requirement that
+      // is gone (removed, or rewritten into prose the extractor does not
+      // list). It never counts as coverage — and a ledger made only of such
+      // verdicts must not pass on an `ok` computed from them.
+      orphanIds.push(v.claimId);
+      continue;
+    }
     // A pair the engine itself could not fingerprint falls back to id coverage.
     if (!cur.fingerprint) boundIds.add(v.claimId);
     else if (typeof v.fingerprint !== "string" || !v.fingerprint) unboundIds.push(v.claimId);
@@ -683,6 +691,13 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
     return `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}`;
   };
   const previewIds = (ids: string[]): string => `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", …" : ""}`;
+  if (orphanIds.length) {
+    skip(
+      `--semantic: ${orphanIds.length} adjudicated verdict(s) judge requirements the PRDs no longer contain ` +
+        `(${previewIds(orphanIds)}) — requirements were removed or rewritten (only \`-\`/\`*\`/\`+\`/\`1.\`/\`1)\` list items under the requirement sections are verifiable); ` +
+        `re-run --verify then --verify --apply <verdicts.json>`,
+    );
+  }
   if (staleIds.length) {
     skip(
       `--semantic: ${staleIds.length} verdict(s) were adjudicated against content that has since changed ` +

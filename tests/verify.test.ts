@@ -701,3 +701,35 @@ describe("foldSemantic on a hand-edited, malformed ledger", () => {
     });
   }
 });
+
+describe("foldSemantic when the PRDs no longer derive the verified requirements", () => {
+  function verified(dir: string): void {
+    tree(dir, PRD);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, {}));
+  }
+
+  it("fails when the requirements were rewritten into a form the extractor does not list (verdicts orphaned)", () => {
+    const dir = scratch();
+    verified(dir);
+    // Rewrite every requirement as prose: the stored verdicts now judge nothing on disk.
+    writeFileSync(
+      join(dir, "features", "01-auth", "PRD.md"),
+      "# Auth\n## Functional requirements\nUsers log in.\n## Acceptance criteria\nIt works.\n## Definition of done\n- [ ] done\n",
+    );
+    const check = { errors: [] as string[], warnings: [] as string[] };
+    foldSemantic(dir, check);
+    expect(check.errors.join(" ")).toMatch(/no longer contain/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("offers `1)`-style numbered requirements for verification", () => {
+    const dir = scratch();
+    tree(
+      dir,
+      "# Auth\n## Functional requirements\n1) The system authenticates a user via POST /api/login.\n2) Passwords are hashed before storage.\n## Definition of done\n",
+    );
+    expect(runVerify(dir).pairs.length).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

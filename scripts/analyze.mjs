@@ -34924,7 +34924,7 @@ function requirements(prd) {
       continue;
     }
     if (!inSection) continue;
-    const m = /^(?:[-*+]|\d+\.)\s+(.*)$/.exec(line2);
+    const m = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line2);
     if (!m) continue;
     const text = m[1].replace(/^\[[ xX]\]\s*/, "").trim();
     if (!text || text.startsWith("\u{1F9E0}") || /fill this in/i.test(text)) continue;
@@ -35319,10 +35319,14 @@ function foldSemantic(outDir, check, opts = {}) {
   const boundIds = /* @__PURE__ */ new Set();
   const staleIds = [];
   const unboundIds = [];
+  const orphanIds = [];
   for (const v of sem.verdicts) {
     if (!v.verdict) continue;
     const cur = currentById.get(v.claimId);
-    if (!cur) continue;
+    if (!cur) {
+      orphanIds.push(v.claimId);
+      continue;
+    }
     if (!cur.fingerprint) boundIds.add(v.claimId);
     else if (typeof v.fingerprint !== "string" || !v.fingerprint) unboundIds.push(v.claimId);
     else if (v.fingerprint !== cur.fingerprint) staleIds.push(v.claimId);
@@ -35337,6 +35341,11 @@ function foldSemantic(outDir, check, opts = {}) {
     return `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}`;
   };
   const previewIds = (ids) => `${ids.slice(0, 6).join(", ")}${ids.length > 6 ? ", \u2026" : ""}`;
+  if (orphanIds.length) {
+    skip(
+      `--semantic: ${orphanIds.length} adjudicated verdict(s) judge requirements the PRDs no longer contain (${previewIds(orphanIds)}) \u2014 requirements were removed or rewritten (only \`-\`/\`*\`/\`+\`/\`1.\`/\`1)\` list items under the requirement sections are verifiable); re-run --verify then --verify --apply <verdicts.json>`
+    );
+  }
   if (staleIds.length) {
     skip(
       `--semantic: ${staleIds.length} verdict(s) were adjudicated against content that has since changed (${previewIds(staleIds)}) \u2014 the requirement text or the evidence captured for it no longer matches what was judged, so the stored verdict says nothing about the CURRENT PRDs; re-run --verify then --verify --apply <verdicts.json>`
