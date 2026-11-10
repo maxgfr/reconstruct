@@ -43,3 +43,24 @@ describe("trpc: CommonJS renamed destructuring", () => {
     expect(sig(routes)).toEqual(["QUERY user.list"]);
   });
 });
+
+describe("trpc: the documented `export const router = t.router` factory", () => {
+  it("finds routers built with the bare router({...}) alias, same-file and imported", () => {
+    const routes = routesOf(trpcAdapter, {
+      "server/trpc.ts": "const t = initTRPC.create();\nexport const router = t.router;\nexport const publicProcedure = t.procedure;\n",
+      "server/routers/user.ts":
+        'import { router, publicProcedure } from "../trpc";\nexport const userRouter = router({ byId: publicProcedure.query(() => 1) });\n',
+      "server/routers/_app.ts":
+        'import { router, publicProcedure } from "../trpc";\nimport { userRouter } from "./user";\nexport const appRouter = router({ hello: publicProcedure.query(() => 1), user: userRouter, admin: router({ ping: publicProcedure.mutation(() => 1) }) });\n',
+    });
+    expect(sig(routes)).toEqual(["MUTATION admin.ping", "QUERY hello", "QUERY user.byId"]);
+  });
+
+  it("does not treat an unrelated router(...) call as a tRPC router", () => {
+    const routes = routesOf(trpcAdapter, {
+      "src/app.ts": 'import { router } from "./express-helpers";\nexport const r = router({ hello: something.query(() => 1) });\n',
+      "src/express-helpers.ts": "export function router(o) { return o; }\n",
+    });
+    expect(routes).toEqual([]);
+  });
+});

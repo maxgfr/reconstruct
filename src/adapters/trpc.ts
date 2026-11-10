@@ -5,7 +5,10 @@ import { JS_SRC_EXTS as SRC_EXTS, lineAt, readSources, regexLiteralAllowedAt, re
 // A router declaration: `export const userRouter = createTRPCRouter({ … })` or
 // the raw factory form `const adminRouter = t.router({ … })`. Captures the var
 // name; the object body is balance-scanned from the `{` that follows.
-const ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:createTRPCRouter|\w+\.router)\s*\(/g;
+const ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(\w+(?:\.router)?)\s*\(/g;
+// The factory alias the tRPC docs recommend: `export const router = t.router;`
+// (a property read, not a call). Routers are then built as `router({ … })`.
+const FACTORY_ALIAS_RE = /(?:const|let|var)\s+(\w+)\s*=\s*\w+\.router\s*(?=[;,)\n]|$)/gm;
 const REQUIRE_RE = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 const IMPORT_RE = /import\s+\{([^}]*)\}\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 // A procedure chain ends in exactly one of these; a subscription wins, else a
@@ -189,16 +192,25 @@ function procedureMethod(value: string): string | null {
   return null;
 }
 
-const INLINE_ROUTER_RE = /^(?:createTRPCRouter|\w+\.router)\s*\(/;
+const INLINE_CALL_RE = /^(\w+(?:\.router)?)\s*\(/;
+
+/**
+ * Whether `callee` builds a tRPC router: `createTRPCRouter`, any `x.router`, or
+ * a bare name bound to the `t.router` factory (`factories`, per file).
+ */
+function isRouterFactory(callee: string, factories: ReadonlySet<string>): boolean {
+  return callee === "createTRPCRouter" || callee.endsWith(".router") || factories.has(callee);
+}
 
 /** Parse the object body `src[start, end)` into a RouterDef (procedures + child references). */
-function parseRouterBody(src: string, start: number, end: number, file: string): RouterDef {
+function parseRouterBody(src: string, start: number, end: number, file: string, factories: ReadonlySet<string>): RouterDef {
   const def: RouterDef = { file, procedures: [], children: [], inlineChildren: [] };
   for (const { key, value, keyAt, valueAt } of topLevelEntries(src, start, end)) {
     // Inline router first: its body holds `.query(`/`.mutation(` markers too.
-    if (INLINE_ROUTER_RE.test(value)) {
+    const call = INLINE_CALL_RE.exec(value);
+    if (call && isRouterFactory(call[1] as string, factories)) {
       const inner = extractObjectBody(src, valueAt + value.indexOf("(") + 1);
-      if (inner !== null) def.inlineChildren.push({ name: key, def: parseRouterBody(src, inner.start, inner.end, file) });
+      if (inner !== null) def.inlineChildren.push({ name: key, def: parseRouterBody(src, inner.start, inner.end, file, factories) });
       continue;
     }
     const method = procedureMethod(value);
@@ -214,7 +226,7 @@ function parseRouterBody(src: string, start: number, end: number, file: string):
 
 /**
  * tRPC routing: procedures live on routers built with `createTRPCRouter({ … })`
- * (or the raw `t.router({ … })`), composed into a tree by nesting routers under
+ * (or the raw `t.router({ … })`, or a `router({ … })` alias of `t.router`), composed into a tree by nesting routers under
  * keys (`{ user: userRouter }`), same-file or cross-file. This adapter resolves
  * each procedure's dot-path (`user.list`) and its kind (QUERY / MUTATION /
  * SUBSCRIPTION) by walking the tree from every root router. Router composition it
@@ -234,6 +246,8 @@ export const trpcAdapter: RouteAdapter = {
     // identifiers from imports (`import { userRouter as u }` binds `u` to the
     // target's `userRouter`; CommonJS renames with `userRouter: u`).
     const importsByFile = new Map<string, Map<string, { target: string; exported: string }>>();
+    // Per file: bare names bound to the `t.router` factory there.
+    const aliasesByFile = new Map<string, Set<string>>();
     for (const [path, src] of sources) {
       const imports = new Map<string, { target: string; exported: string }>();
       for (const re of [IMPORT_RE, REQUIRE_RE]) {
@@ -250,12 +264,24 @@ export const trpcAdapter: RouteAdapter = {
         }
       }
       importsByFile.set(path, imports);
+      const aliases = new Set<string>();
+      for (const m of src.matchAll(FACTORY_ALIAS_RE)) aliases.add(m[1] as string);
+      if (aliases.size) aliasesByFile.set(path, aliases);
+    }
 
+    for (const [path, src] of sources) {
+      // The bare factory names valid in THIS file: declared here, or imported
+      // from the file that declares them — an unrelated `router()` never counts.
+      const factories = new Set(aliasesByFile.get(path) ?? []);
+      for (const [local, { target, exported }] of importsByFile.get(path) ?? []) {
+        if (aliasesByFile.get(target)?.has(exported)) factories.add(local);
+      }
       for (const m of src.matchAll(ROUTER_DECL_RE)) {
+        if (!isRouterFactory(m[2] as string, factories)) continue;
         const varName = m[1] as string;
         const body = extractObjectBody(src, (m.index ?? 0) + m[0].length);
         if (body === null) continue; // not an object literal (mergeRouters, etc.)
-        routers.set(`${path}::${varName}`, parseRouterBody(src, body.start, body.end, path));
+        routers.set(`${path}::${varName}`, parseRouterBody(src, body.start, body.end, path, factories));
       }
     }
 

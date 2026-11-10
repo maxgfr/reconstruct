@@ -31186,7 +31186,8 @@ var goAdapter = {
 };
 
 // src/adapters/trpc.ts
-var ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:createTRPCRouter|\w+\.router)\s*\(/g;
+var ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(\w+(?:\.router)?)\s*\(/g;
+var FACTORY_ALIAS_RE = /(?:const|let|var)\s+(\w+)\s*=\s*\w+\.router\s*(?=[;,)\n]|$)/gm;
 var REQUIRE_RE4 = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE4 = /import\s+\{([^}]*)\}\s+from\s+["'`](\.[^"'`]*)["'`]/g;
 var METHOD_MARKERS = [
@@ -31316,13 +31317,17 @@ function procedureMethod(value) {
   for (const [re, method] of METHOD_MARKERS) if (re.test(value)) return method;
   return null;
 }
-var INLINE_ROUTER_RE = /^(?:createTRPCRouter|\w+\.router)\s*\(/;
-function parseRouterBody(src, start2, end, file) {
+var INLINE_CALL_RE = /^(\w+(?:\.router)?)\s*\(/;
+function isRouterFactory(callee, factories) {
+  return callee === "createTRPCRouter" || callee.endsWith(".router") || factories.has(callee);
+}
+function parseRouterBody(src, start2, end, file, factories) {
   const def = { file, procedures: [], children: [], inlineChildren: [] };
   for (const { key, value, keyAt, valueAt } of topLevelEntries(src, start2, end)) {
-    if (INLINE_ROUTER_RE.test(value)) {
+    const call2 = INLINE_CALL_RE.exec(value);
+    if (call2 && isRouterFactory(call2[1], factories)) {
       const inner = extractObjectBody(src, valueAt + value.indexOf("(") + 1);
-      if (inner !== null) def.inlineChildren.push({ name: key, def: parseRouterBody(src, inner.start, inner.end, file) });
+      if (inner !== null) def.inlineChildren.push({ name: key, def: parseRouterBody(src, inner.start, inner.end, file, factories) });
       continue;
     }
     const method = procedureMethod(value);
@@ -31343,6 +31348,7 @@ var trpcAdapter = {
     const sources = readSources(files, repo, JS_SRC_EXTS);
     const routers = /* @__PURE__ */ new Map();
     const importsByFile = /* @__PURE__ */ new Map();
+    const aliasesByFile = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const imports = /* @__PURE__ */ new Map();
       for (const re of [IMPORT_RE4, REQUIRE_RE4]) {
@@ -31356,11 +31362,21 @@ var trpcAdapter = {
         }
       }
       importsByFile.set(path, imports);
+      const aliases = /* @__PURE__ */ new Set();
+      for (const m of src.matchAll(FACTORY_ALIAS_RE)) aliases.add(m[1]);
+      if (aliases.size) aliasesByFile.set(path, aliases);
+    }
+    for (const [path, src] of sources) {
+      const factories = new Set(aliasesByFile.get(path) ?? []);
+      for (const [local, { target, exported }] of importsByFile.get(path) ?? []) {
+        if (aliasesByFile.get(target)?.has(exported)) factories.add(local);
+      }
       for (const m of src.matchAll(ROUTER_DECL_RE)) {
+        if (!isRouterFactory(m[2], factories)) continue;
         const varName = m[1];
         const body2 = extractObjectBody(src, (m.index ?? 0) + m[0].length);
         if (body2 === null) continue;
-        routers.set(`${path}::${varName}`, parseRouterBody(src, body2.start, body2.end, path));
+        routers.set(`${path}::${varName}`, parseRouterBody(src, body2.start, body2.end, path, factories));
       }
     }
     const resolveRef = (file, ref2) => {
