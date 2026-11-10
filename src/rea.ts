@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { accessSync, constants, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { REA_EVIDENCE_DIR } from "./evidence.js";
@@ -241,6 +242,23 @@ function slug(path: string): string {
   return path.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "artifact";
 }
 
+/**
+ * The evidence file stem of each artifact. The readable slug flattens every
+ * separator to `_`, so `lib/x.so` and `lib_x.so` share one — and the second
+ * artifact's evidence would overwrite the first's while INDEX.json still listed
+ * both. Colliding slugs get a short, path-derived (so stable) hash suffix.
+ */
+export function artifactSlugs(paths: readonly string[]): Map<string, string> {
+  const count = new Map<string, number>();
+  for (const p of new Set(paths)) count.set(slug(p), (count.get(slug(p)) ?? 0) + 1);
+  return new Map(
+    paths.map((p) => {
+      const base = slug(p);
+      return [p, (count.get(base) ?? 0) > 1 ? `${base}-${createHash("sha256").update(p).digest("hex").slice(0, 8)}` : base];
+    }),
+  );
+}
+
 const EV_RE = /\bev_[0-9a-f]{64}\b/g;
 
 /**
@@ -316,6 +334,7 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
       return undefined;
     };
 
+    const slugs = artifactSlugs(artifacts);
     for (const [i, rel] of artifacts.entries()) {
       if (i >= max) {
         report.artifacts.push({ path: rel, status: "skipped", evidenceIds: [], error: `over the ${max}-artifact cap of one run` });
@@ -351,7 +370,7 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
             results[label] = { open_binary: head, [read]: res };
             // close_binary clears rea's retained records: export them first.
             if (!readError) {
-              const saved = await exportBundle(`${slug(rel)}.${read}.bundle.json`);
+              const saved = await exportBundle(`${slugs.get(rel)}.${read}.bundle.json`);
               if (saved) bundles.push(saved);
             }
           } finally {
@@ -373,7 +392,7 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
         });
         continue;
       }
-      const file = `${slug(rel)}.json`;
+      const file = `${slugs.get(rel)}.json`;
       const body = JSON.stringify({ artifact: rel, tools: succeeded, results }, null, 2);
       writeFileSync(join(dir, file), `${body}\n`);
       report.artifacts.push({

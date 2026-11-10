@@ -32141,6 +32141,7 @@ function analyzeRepo(opts) {
 
 // src/rea.ts
 import { spawn as spawn2 } from "child_process";
+import { createHash as createHash6 } from "crypto";
 import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync29, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
 import { delimiter, isAbsolute as isAbsolute12, join as join39, resolve as resolve14 } from "path";
 var DEFAULT_TIMEOUT_MS3 = 18e4;
@@ -32301,6 +32302,16 @@ function probesFor(path) {
 function slug(path) {
   return path.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "artifact";
 }
+function artifactSlugs(paths) {
+  const count2 = /* @__PURE__ */ new Map();
+  for (const p of new Set(paths)) count2.set(slug(p), (count2.get(slug(p)) ?? 0) + 1);
+  return new Map(
+    paths.map((p) => {
+      const base = slug(p);
+      return [p, (count2.get(base) ?? 0) > 1 ? `${base}-${createHash6("sha256").update(p).digest("hex").slice(0, 8)}` : base];
+    })
+  );
+}
 var EV_RE = /\bev_[0-9a-f]{64}\b/g;
 function errorText(result) {
   const r = result;
@@ -32356,6 +32367,7 @@ async function runRea(repo, out2, artifacts, opts) {
       rmSync7(join39(out2, rel2), { force: true });
       return void 0;
     };
+    const slugs = artifactSlugs(artifacts);
     for (const [i2, rel2] of artifacts.entries()) {
       if (i2 >= max) {
         report.artifacts.push({ path: rel2, status: "skipped", evidenceIds: [], error: `over the ${max}-artifact cap of one run` });
@@ -32389,7 +32401,7 @@ async function runRea(repo, out2, artifacts, opts) {
             readError = errorText(res);
             results[label] = { open_binary: head, [read2]: res };
             if (!readError) {
-              const saved = await exportBundle(`${slug(rel2)}.${read2}.bundle.json`);
+              const saved = await exportBundle(`${slugs.get(rel2)}.${read2}.bundle.json`);
               if (saved) bundles.push(saved);
             }
           } finally {
@@ -32411,7 +32423,7 @@ async function runRea(repo, out2, artifacts, opts) {
         });
         continue;
       }
-      const file = `${slug(rel2)}.json`;
+      const file = `${slugs.get(rel2)}.json`;
       const body2 = JSON.stringify({ artifact: rel2, tools: succeeded, results }, null, 2);
       writeFileSync7(join39(dir, file), `${body2}
 `);
@@ -34227,7 +34239,7 @@ import { existsSync as existsSync19, readFileSync as readFileSync35, writeFileSy
 import { join as join45 } from "path";
 
 // src/verify.ts
-import { createHash as createHash6 } from "crypto";
+import { createHash as createHash7 } from "crypto";
 import { existsSync as existsSync18, readFileSync as readFileSync34, writeFileSync as writeFileSync9 } from "fs";
 import { join as join44 } from "path";
 var VERIFY_MAX = 60;
@@ -34268,7 +34280,7 @@ function requirements(prd) {
   return out2;
 }
 function claimFingerprint(p) {
-  return createHash6("sha256").update(`${p.feature}
+  return createHash7("sha256").update(`${p.feature}
 ${p.evidenceRef}
 ${p.digest}
 ${p.fullClaim}`).digest("hex").slice(0, 16);
@@ -35308,14 +35320,14 @@ function formatCheckReport(r, outDir) {
 }
 
 // src/review.ts
-import { createHash as createHash7 } from "crypto";
+import { createHash as createHash8 } from "crypto";
 import { existsSync as existsSync21, readFileSync as readFileSync37, writeFileSync as writeFileSync11 } from "fs";
 import { join as join47 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 var SEVERITIES3 = ["blocker", "major", "minor"];
 var CATEGORIES = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
 function sha256(s) {
-  return createHash7("sha256").update(s).digest("hex");
+  return createHash8("sha256").update(s).digest("hex");
 }
 function readIfExists(path) {
   try {
