@@ -432,3 +432,15 @@ describe("mergeSpecs", () => {
     expect(out).toContain("RECONSTRUCTION.md");
   });
 });
+
+describe("demoteHeadings — fenced code next to a setext underline", () => {
+  it("never turns a closing fence into a heading", () => {
+    const md = "Intro\n\n```\ncode\n```\n===\n";
+    expect(demoteHeadings(md)).not.toMatch(/^#+ ```/m);
+    expect(demoteHeadings(md)).toContain("```\n===");
+  });
+
+  it("still converts a real setext H1", () => {
+    expect(demoteHeadings("Title\n===\n")).toBe("## Title\n");
+  });
+});

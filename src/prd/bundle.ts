@@ -34,20 +34,25 @@ export function demoteHeadings(md: string, by = 1): string {
   }
 
   let fence: Fence | null = null;
+  // Index in `out` of the last line that belongs to a fenced block (its
+  // opener, content or closer): never the content of a setext heading.
+  let lastCode = -1;
   for (; i < lines.length; i++) {
     const line = lines[i] as string;
     if (fence !== null) {
       if (closesFence(line, fence)) fence = null;
       out.push(line);
+      lastCode = out.length - 1;
       continue;
     }
     fence = fenceOpen(line);
     if (fence !== null) {
       out.push(line);
+      lastCode = out.length - 1;
       continue;
     }
     // setext H1: a `===` underline directly under a plain-text line.
-    if (/^\s{0,3}=+\s*$/.test(line) && out.length && isSetextContent(out[out.length - 1] as string)) {
+    if (/^\s{0,3}=+\s*$/.test(line) && out.length && out.length - 1 !== lastCode && isSetextContent(out[out.length - 1] as string)) {
       const level = Math.min(6, 1 + by);
       out[out.length - 1] = `${"#".repeat(level)} ${(out[out.length - 1] as string).trim()}`;
       continue; // drop the underline
