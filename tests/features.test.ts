@@ -133,3 +133,13 @@ describe("workspace-aware feature grouping", () => {
     expect(colSlugs).toContain("packages-web");
   });
 });
+
+describe("every resolved route reaches a feature", () => {
+  it("keeps a route declared in a non-code file (e.g. a config-category routes file)", () => {
+    const files = [file("src/app.ts"), file("gateway/routes.config.ts", "config"), file("package.json", "config")];
+    const routes = [route("/billing/invoices", "gateway/routes.config.ts", "api")];
+    const features = buildFeatures(files, routes, null, "coarse");
+    const placed = features.flatMap((f) => f.routes.map((r) => r.route));
+    expect(placed).toEqual(["/billing/invoices"]);
+  });
+});

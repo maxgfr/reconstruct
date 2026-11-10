@@ -385,6 +385,14 @@ export function buildFeatures(
     }
   }
 
+  // A route whose URL key and declaring file's key both match no code group
+  // (declared in a config-category file outside every code directory) would
+  // reach no feature PRD — only INTERFACES.md. It gets its own group, holding
+  // the file(s) that declare it.
+  for (const [key, keyed] of routesByKey) {
+    if (!codeGroups.has(key)) codeGroups.set(key, [...new Set(keyed.map((r) => r.file))]);
+  }
+
   const records: Record_[] = [];
 
   for (const [key, groupFiles] of codeGroups.entries()) {

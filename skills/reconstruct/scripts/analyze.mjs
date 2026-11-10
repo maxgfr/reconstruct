@@ -32318,6 +32318,9 @@ function buildFeatures(files, routes, i18n, granularity = "coarse", workspaces =
       }
     }
   }
+  for (const [key, keyed] of routesByKey) {
+    if (!codeGroups.has(key)) codeGroups.set(key, [...new Set(keyed.map((r) => r.file))]);
+  }
   const records = [];
   for (const [key, groupFiles] of codeGroups.entries()) {
     const featureRoutes = routesByKey.get(key) ?? [];
