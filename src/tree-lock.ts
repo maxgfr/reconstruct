@@ -49,9 +49,3 @@ function canonical(path: string): string {
     }
   }
 }
-
-// Test seam: drop every pending chain. Never call this from product code — an
-// in-flight lock holder would stop serializing against later arrivals.
-export function resetTreeLocks(): void {
-  chains.clear();
-}
