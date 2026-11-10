@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./check.js";
 import { canonicalJson, loadExternalEvidence, NO_EXTERNAL_EVIDENCE, sha256Hex } from "./evidence.js";
+import { isSectionHeading } from "./prd/markdown.js";
 import type {
   ClaimEvidencePair,
   ConfidenceKind,
@@ -30,7 +31,7 @@ const VALID_CONFIDENCE: ConfidenceKind[] = ["confirmed", "inferred", "gap"];
 const VALID_AUTHORITY: EvidenceAuthority[] = ["source", "test", "config", "manifest", "doc", "plan", "analyzer", "agent"];
 
 // The feature-PRD sections whose list items are testable requirements/claims.
-const CLAIM_SECTIONS = new Set(["## Functional requirements", "## Acceptance criteria"]);
+const CLAIM_SECTIONS = ["## Functional requirements", "## Acceptance criteria"];
 
 const STOP = new Set(
   "the a an is are be to of in on for and or with via from this that it its as at by into using used user users system when then given so each via must should can will every".split(
@@ -58,7 +59,7 @@ function requirements(prd: string): string[] {
   for (const raw of prd.split(/\r?\n/)) {
     const line = raw.trim();
     if (/^##\s/.test(line)) {
-      inSection = CLAIM_SECTIONS.has(line);
+      inSection = CLAIM_SECTIONS.some((h) => isSectionHeading(line, h));
       continue;
     }
     if (!inSection) continue;

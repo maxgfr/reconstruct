@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, posix, relative } from "node:path";
 import { sha256Hex, staleEvidence } from "./evidence.js";
-import { fencedLines } from "./prd/markdown.js";
+import { fencedLines, isSectionHeading } from "./prd/markdown.js";
 import { foldUnknowns } from "./unknowns.js";
 import { hasUI } from "./design.js";
 import type { Inventory } from "./types.js";
@@ -207,7 +207,7 @@ export function checkOutput(outDir: string, opts: { repo?: string } = {}): Check
   for (const d of docs) {
     if (!d.rel.includes("features/") || !d.rel.endsWith("PRD.md")) continue;
     for (const h of FEATURE_SPINE) {
-      if (!d.content.includes(h)) {
+      if (!d.content.split(/\r?\n/).some((l) => isSectionHeading(l, h))) {
         errors.push(`${d.rel}: missing required section "${h}"`);
       } else if (!sectionHasContent(d.content, h)) {
         // A heading whose body is empty (or only its scaffold callout) is not a
@@ -423,7 +423,7 @@ function declaresDesignSystem(doc: string): boolean {
 /** The body of a `## <heading>` section: lines until the next level-2 heading. */
 function sectionBody(doc: string, heading: string): string {
   const lines = doc.split(/\r?\n/);
-  const start = lines.findIndex((l) => l.trim() === heading);
+  const start = lines.findIndex((l) => isSectionHeading(l, heading));
   if (start === -1) return "";
   const body: string[] = [];
   for (let i = start + 1; i < lines.length; i++) {

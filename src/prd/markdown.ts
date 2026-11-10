@@ -83,3 +83,17 @@ export function rebaseLinks(md: string, fromDir: string): string {
     })
     .join("\n");
 }
+
+/**
+ * True when `line` is the `heading` (e.g. `## Acceptance criteria`), optionally
+ * followed by a non-word suffix: `## Acceptance criteria (Given/When/Then)` or
+ * `## Functional requirements:` count, `### Functional requirements` and
+ * `## Acceptance criteriaX` do not. One predicate for every reader of the
+ * feature spine, so the gate and the verifier agree on where a section starts.
+ */
+export function isSectionHeading(line: string, heading: string): boolean {
+  const t = line.trim();
+  if (!t.startsWith(heading)) return false;
+  const next = t.charAt(heading.length);
+  return next === "" || !/\w/.test(next);
+}

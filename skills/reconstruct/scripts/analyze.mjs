@@ -33391,6 +33391,12 @@ function rebaseLinks(md, fromDir) {
     ).join("");
   }).join("\n");
 }
+function isSectionHeading(line2, heading) {
+  const t = line2.trim();
+  if (!t.startsWith(heading)) return false;
+  const next = t.charAt(heading.length);
+  return next === "" || !/\w/.test(next);
+}
 
 // src/prd/fidelity.ts
 var FENCE_LANG = {
@@ -34249,7 +34255,7 @@ var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
 var VALID_CONFIDENCE = ["confirmed", "inferred", "gap"];
 var VALID_AUTHORITY = ["source", "test", "config", "manifest", "doc", "plan", "analyzer", "agent"];
-var CLAIM_SECTIONS = /* @__PURE__ */ new Set(["## Functional requirements", "## Acceptance criteria"]);
+var CLAIM_SECTIONS = ["## Functional requirements", "## Acceptance criteria"];
 var STOP = new Set(
   "the a an is are be to of in on for and or with via from this that it its as at by into using used user users system when then given so each via must should can will every".split(
     " "
@@ -34269,7 +34275,7 @@ function requirements(prd) {
   for (const raw of prd.split(/\r?\n/)) {
     const line2 = raw.trim();
     if (/^##\s/.test(line2)) {
-      inSection = CLAIM_SECTIONS.has(line2);
+      inSection = CLAIM_SECTIONS.some((h) => isSectionHeading(line2, h));
       continue;
     }
     if (!inSection) continue;
@@ -35113,7 +35119,7 @@ function checkOutput(outDir, opts = {}) {
   for (const d of docs) {
     if (!d.rel.includes("features/") || !d.rel.endsWith("PRD.md")) continue;
     for (const h of FEATURE_SPINE) {
-      if (!d.content.includes(h)) {
+      if (!d.content.split(/\r?\n/).some((l) => isSectionHeading(l, h))) {
         errors.push(`${d.rel}: missing required section "${h}"`);
       } else if (!sectionHasContent(d.content, h)) {
         errors.push(`${d.rel}: section "${h}" has no content \u2014 fill it (a heading alone is not a PRD section)`);
@@ -35246,7 +35252,7 @@ function declaresDesignSystem(doc) {
 }
 function sectionBody(doc, heading) {
   const lines = doc.split(/\r?\n/);
-  const start2 = lines.findIndex((l) => l.trim() === heading);
+  const start2 = lines.findIndex((l) => isSectionHeading(l, heading));
   if (start2 === -1) return "";
   const body2 = [];
   for (let i2 = start2 + 1; i2 < lines.length; i2++) {

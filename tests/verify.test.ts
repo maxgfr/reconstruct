@@ -668,3 +668,18 @@ describe("evidence resolution (fabricated citations)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("runVerify reads the same spine headings as --check", () => {
+  it("extracts requirements under a suffixed heading the structural gate accepts", () => {
+    const dir = scratch();
+    tree(
+      dir,
+      PRD.replace("## Functional requirements", "## Functional requirements (MVP)").replace(
+        "## Acceptance criteria",
+        "## Acceptance criteria (Given/When/Then)",
+      ),
+    );
+    expect(runVerify(dir).pairs.length).toBe(3);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

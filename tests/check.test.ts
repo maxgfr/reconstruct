@@ -312,3 +312,37 @@ describe("checkOutput — brainstorm", () => {
     expect(errors.join("\n")).toMatch(/inventory\.json|reconstruction/i);
   });
 });
+
+describe("checkOutput — feature PRD spine headings", () => {
+  it("accepts a spine heading with a descriptive suffix and counts its content", () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      "# Auth\n## Functional requirements (MVP)\n\n- Users can sign in.\n\n## Acceptance criteria (Given/When/Then)\n\nGiven a user, when they sign in, then a session starts.\n\n## Definition of done\n\n- [ ] done\n",
+    );
+    expect(checkOutput(dir).errors).toEqual([]);
+  });
+
+  it("reports a level-3 heading as a missing section, not as an empty one", () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      "# Auth\n### Functional requirements\n\n- x y\n\n## Acceptance criteria\n\nGiven.\n\n## Definition of done\n\n- [ ] done\n",
+    );
+    const errors = checkOutput(dir).errors.join("\n");
+    expect(errors).toMatch(/missing required section "## Functional requirements"/);
+    expect(errors).not.toMatch(/has no content/);
+  });
+
+  it("does not take a heading word-prefix for the section (## Acceptance criteriaX)", () => {
+    const dir = cleanTree();
+    write(
+      dir,
+      "features/01-auth/PRD.md",
+      "# Auth\n## Functional requirements\n\nDone.\n\n## Acceptance criteriaX\n\nGiven.\n\n## Definition of done\n\n- [ ] done\n",
+    );
+    expect(checkOutput(dir).errors.join("\n")).toMatch(/missing required section "## Acceptance criteria"/);
+  });
+});
