@@ -19,7 +19,8 @@ const lastSeg = (mod: string): string => mod.split(".").pop() ?? mod;
  * `APIRouter(prefix=…)` and the decorator path. Mounts are resolved across files
  * via imports (relative, aliased, `src/`-rooted), support the `module.router`
  * attribute form, and compose transitively for nested `router.include_router(...)`.
- * The HTTP method (incl. `websocket` → `WS` and `api_route(methods=[…])`) is
+ * A router included several times gets every mount's prefix. The HTTP method
+ * (incl. `websocket` → `WS` and `api_route(methods=[…])`, GET by default) is
  * preserved.
  */
 export const fastapiAdapter: RouteAdapter = {
@@ -47,8 +48,10 @@ export const fastapiAdapter: RouteAdapter = {
       return routerKeys.find((k) => k.endsWith(`::${attr}`) && lastSeg(moduleName(k.split("::")[0] as string)) === mod) ?? null;
     };
 
-    // 2. Include edges: childKey -> { receiverKey|null (app), mountPrefix }.
-    const includeOf = new Map<string, { receiverKey: string | null; mountPrefix: string }>();
+    // 2. Include edges: childKey -> every { receiverKey|null (app), mountPrefix }.
+    //    A router included twice (`prefix="/v1"` and `prefix="/v2"`) serves its
+    //    routes under both.
+    const includeOf = new Map<string, { receiverKey: string | null; mountPrefix: string }[]>();
     const resolvers = new Map<string, (expr: string) => string | null>();
     for (const [path, src] of sources) {
       const resolve = pythonRefResolver(path, src, sources);
@@ -61,22 +64,28 @@ export const fastapiAdapter: RouteAdapter = {
         const childKey = resolved && ownPrefix.has(resolved) ? resolved : bySegment(expr);
         if (!childKey) continue;
         const receiverKey = resolve(m[1] as string);
-        includeOf.set(childKey, {
-          receiverKey: receiverKey && ownPrefix.has(receiverKey) ? receiverKey : null,
-          mountPrefix: prefixOf(call),
-        });
+        includeOf.set(childKey, [
+          ...(includeOf.get(childKey) ?? []),
+          { receiverKey: receiverKey && ownPrefix.has(receiverKey) ? receiverKey : null, mountPrefix: prefixOf(call) },
+        ]);
       }
     }
 
-    // The full path prefix a router's own decorators get: parent chain + own prefix.
-    const fullPrefix = (key: string, seen = new Set<string>()): string => {
-      if (seen.has(key)) return "";
-      seen.add(key);
+    // Every full path prefix a router's own decorators get: each include chain
+    // (parent prefixes + mount prefix) + own prefix. `seen` is the current
+    // chain, so a cycle stops without hiding a sibling mount.
+    const fullPrefixes = (key: string, seen: ReadonlySet<string> = new Set()): string[] => {
+      if (seen.has(key)) return [""];
       const own = ownPrefix.get(key) ?? "";
-      const inc = includeOf.get(key);
-      if (!inc) return own;
-      const parent = inc.receiverKey ? fullPrefix(inc.receiverKey, seen) : "";
-      return joinRoute(parent, inc.mountPrefix, own);
+      const incs = includeOf.get(key);
+      if (!incs) return [own];
+      const chain = new Set(seen).add(key);
+      const out = new Set<string>();
+      for (const inc of incs) {
+        const parents = inc.receiverKey ? fullPrefixes(inc.receiverKey, chain) : [""];
+        for (const parent of parents) out.add(joinRoute(parent, inc.mountPrefix, own));
+      }
+      return [...out];
     };
 
     // 3. Emit a route per decorator (one per HTTP method).
@@ -90,14 +99,14 @@ export const fastapiAdapter: RouteAdapter = {
         const decorator = m[2] as string;
         // A router decorated in another file than its definition resolves via imports.
         const key = resolve(m[1] as string);
-        const prefix = key && ownPrefix.has(key) ? fullPrefix(key) : "";
-        const route = joinRoute(prefix, subPath);
+        const prefixes = key && ownPrefix.has(key) ? fullPrefixes(key) : [""];
         const line = lineAt(src, m.index ?? 0);
-        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? pyMethods(call.kwargs.get("methods")) : [decorator.toUpperCase()];
-        if (methods.length) {
+        // `api_route` without `methods=` registers GET (Starlette's default).
+        const listed = decorator === "api_route" ? pyMethods(call.kwargs.get("methods")) : [];
+        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? (listed.length ? listed : ["GET"]) : [decorator.toUpperCase()];
+        for (const prefix of prefixes) {
+          const route = joinRoute(prefix, subPath);
           for (const method of methods) routes.push({ route, file: path, line, kind: "api", method });
-        } else {
-          routes.push({ route, file: path, line, kind: "api" });
         }
       }
     }

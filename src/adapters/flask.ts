@@ -84,7 +84,8 @@ function viewFuncKind(src: string, from: number, viewFunc: string | undefined): 
  * registration prefix overrides the constructor's). Blueprints are resolved
  * across files through imports (relative, aliased, `module.bp` attribute) and
  * those registered onto another blueprint compose the parent's prefix
- * transitively. The HTTP method is preserved (shortcut decorator or `methods=[…]`).
+ * transitively; a blueprint registered several times gets every registration's
+ * prefix. The HTTP method is preserved (shortcut decorator or `methods=[…]`).
  */
 export const flaskAdapter: RouteAdapter = {
   id: "flask",
@@ -100,8 +101,10 @@ export const flaskAdapter: RouteAdapter = {
       }
     }
 
-    // 2. Registrations: childKey -> { receiverKey, regPrefix }.
-    const regOf = new Map<string, { receiverKey: string | null; regPrefix: string }>();
+    // 2. Registrations: childKey -> every { receiverKey, regPrefix }. A blueprint
+    //    registered twice (`url_prefix="/v1"` and `"/v2"`, with distinct `name=`)
+    //    serves its routes under both.
+    const regOf = new Map<string, { receiverKey: string | null; regPrefix: string }[]>();
     const resolvers = new Map<string, (expr: string) => string | null>();
     for (const [path, src] of sources) {
       const resolve = pythonRefResolver(path, src, sources);
@@ -112,32 +115,37 @@ export const flaskAdapter: RouteAdapter = {
         if (!/^[\w.]+$/.test(expr)) continue;
         const childKey = resolve(expr);
         if (!childKey || !ownPrefix.has(childKey)) continue;
-        regOf.set(childKey, { receiverKey: resolve(m[1] as string), regPrefix: urlPrefixOf(call) });
+        regOf.set(childKey, [...(regOf.get(childKey) ?? []), { receiverKey: resolve(m[1] as string), regPrefix: urlPrefixOf(call) }]);
       }
     }
 
-    // The full mount prefix for a blueprint key: registration prefix overrides the
-    // constructor's; a blueprint registered onto another inherits the parent's.
-    const effectivePrefix = (key: string, seen = new Set<string>()): string => {
-      if (seen.has(key)) return "";
-      seen.add(key);
+    // Every full mount prefix for a blueprint key, one per registration chain:
+    // the registration prefix overrides the constructor's; a blueprint
+    // registered onto another inherits each of the parent's. `seen` is the
+    // current chain, so a cycle stops without hiding a sibling registration.
+    const effectivePrefixes = (key: string, seen: ReadonlySet<string> = new Set()): string[] => {
+      if (seen.has(key)) return [""];
       const own = ownPrefix.get(key) ?? "";
-      const reg = regOf.get(key);
-      if (!reg) return own;
-      const childPrefix = reg.regPrefix || own;
-      if (reg.receiverKey && ownPrefix.has(reg.receiverKey)) {
-        return joinRoute(effectivePrefix(reg.receiverKey, seen), childPrefix);
+      const regs = regOf.get(key);
+      if (!regs) return [own];
+      const chain = new Set(seen).add(key);
+      const out = new Set<string>();
+      for (const reg of regs) {
+        const childPrefix = reg.regPrefix || own;
+        if (reg.receiverKey && ownPrefix.has(reg.receiverKey)) {
+          for (const parent of effectivePrefixes(reg.receiverKey, chain)) out.add(joinRoute(parent, childPrefix));
+        } else out.add(childPrefix);
       }
-      return childPrefix;
+      return [...out];
     };
 
     // 3. Emit routes from decorators and add_url_rule, prefixing blueprint routes.
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
       const resolve = resolvers.get(path) as (expr: string) => string | null;
-      const prefixForObj = (obj: string): string => {
+      const prefixesForObj = (obj: string): string[] => {
         const key = resolve(obj);
-        return key && ownPrefix.has(key) ? effectivePrefix(key) : "";
+        return key && ownPrefix.has(key) ? effectivePrefixes(key) : [""];
       };
 
       for (const m of src.matchAll(DECORATOR_RE)) {
@@ -145,24 +153,26 @@ export const flaskAdapter: RouteAdapter = {
         const rule = pyString(call.args[0] ?? call.kwargs.get("rule"));
         if (rule === null) continue;
         const decorator = m[2] as string;
-        const route = joinRoute(prefixForObj(m[1] as string), rule);
         const line = lineAt(src, m.index ?? 0);
         const kind = decoratedKind(src, m.index ?? 0);
         const methods = decorator === "route" ? pyMethods(call.kwargs.get("methods")) : [decorator.toUpperCase()];
         const verbs = methods.length ? methods : ["GET"]; // @route defaults to GET
-        for (const method of verbs) routes.push({ route, file: path, line, kind, method });
+        for (const prefix of prefixesForObj(m[1] as string)) {
+          const route = joinRoute(prefix, rule);
+          for (const method of verbs) routes.push({ route, file: path, line, kind, method });
+        }
       }
 
       for (const m of src.matchAll(ADD_URL_RE)) {
         const call = parsePyCall(src, matchOpenParen(m));
         const rule = pyString(call.args[0] ?? call.kwargs.get("rule"));
         if (rule === null) continue;
-        const route = joinRoute(prefixForObj(m[1] as string), rule);
         const line = lineAt(src, m.index ?? 0);
         const kind = viewFuncKind(src, m.index ?? 0, (call.kwargs.get("view_func") ?? call.args[2])?.trim());
         const verbs = pyMethods(call.kwargs.get("methods"));
-        for (const method of verbs.length ? verbs : ["GET"]) {
-          routes.push({ route, file: path, line, kind, method });
+        for (const prefix of prefixesForObj(m[1] as string)) {
+          const route = joinRoute(prefix, rule);
+          for (const method of verbs.length ? verbs : ["GET"]) routes.push({ route, file: path, line, kind, method });
         }
       }
     }

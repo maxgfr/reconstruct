@@ -28761,7 +28761,19 @@ function pythonImportAliases(src) {
   const out2 = /* @__PURE__ */ new Map();
   for (const m of src.matchAll(/^[ \t]*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
     const module2 = m[1];
-    for (const part of (m[2] ?? m[3]).split(",")) {
+    const lines = [m[2] ?? m[3]];
+    if (m[2] === void 0) {
+      const CONTINUED = /\\[ \t]*\r?$/;
+      let end = (m.index ?? 0) + m[0].length;
+      while (CONTINUED.test(lines[lines.length - 1]) && end < src.length) {
+        lines[lines.length - 1] = lines[lines.length - 1].replace(CONTINUED, "");
+        const nl = src.indexOf("\n", end + 1);
+        const next = nl === -1 ? src.length : nl;
+        lines.push(src.slice(end + 1, next));
+        end = next;
+      }
+    }
+    for (const part of lines.join(" ").split(",")) {
       const asMatch = part.trim().match(/^(\w+)(?:\s+as\s+(\w+))?$/);
       if (!asMatch) continue;
       const name2 = asMatch[1];
@@ -30122,50 +30134,55 @@ var flaskAdapter = {
         if (!/^[\w.]+$/.test(expr)) continue;
         const childKey = resolve20(expr);
         if (!childKey || !ownPrefix.has(childKey)) continue;
-        regOf.set(childKey, { receiverKey: resolve20(m[1]), regPrefix: urlPrefixOf(call2) });
+        regOf.set(childKey, [...regOf.get(childKey) ?? [], { receiverKey: resolve20(m[1]), regPrefix: urlPrefixOf(call2) }]);
       }
     }
-    const effectivePrefix = (key, seen = /* @__PURE__ */ new Set()) => {
-      if (seen.has(key)) return "";
-      seen.add(key);
+    const effectivePrefixes = (key, seen = /* @__PURE__ */ new Set()) => {
+      if (seen.has(key)) return [""];
       const own = ownPrefix.get(key) ?? "";
-      const reg = regOf.get(key);
-      if (!reg) return own;
-      const childPrefix = reg.regPrefix || own;
-      if (reg.receiverKey && ownPrefix.has(reg.receiverKey)) {
-        return joinRoute(effectivePrefix(reg.receiverKey, seen), childPrefix);
+      const regs = regOf.get(key);
+      if (!regs) return [own];
+      const chain = new Set(seen).add(key);
+      const out2 = /* @__PURE__ */ new Set();
+      for (const reg of regs) {
+        const childPrefix = reg.regPrefix || own;
+        if (reg.receiverKey && ownPrefix.has(reg.receiverKey)) {
+          for (const parent of effectivePrefixes(reg.receiverKey, chain)) out2.add(joinRoute(parent, childPrefix));
+        } else out2.add(childPrefix);
       }
-      return childPrefix;
+      return [...out2];
     };
     const routes = [];
     for (const [path, src] of sources) {
       const resolve20 = resolvers.get(path);
-      const prefixForObj = (obj) => {
+      const prefixesForObj = (obj) => {
         const key = resolve20(obj);
-        return key && ownPrefix.has(key) ? effectivePrefix(key) : "";
+        return key && ownPrefix.has(key) ? effectivePrefixes(key) : [""];
       };
       for (const m of src.matchAll(DECORATOR_RE)) {
         const call2 = parsePyCall(src, matchOpenParen(m));
         const rule2 = pyString(call2.args[0] ?? call2.kwargs.get("rule"));
         if (rule2 === null) continue;
         const decorator = m[2];
-        const route2 = joinRoute(prefixForObj(m[1]), rule2);
         const line2 = lineAt(src, m.index ?? 0);
         const kind = decoratedKind(src, m.index ?? 0);
         const methods = decorator === "route" ? pyMethods(call2.kwargs.get("methods")) : [decorator.toUpperCase()];
         const verbs = methods.length ? methods : ["GET"];
-        for (const method of verbs) routes.push({ route: route2, file: path, line: line2, kind, method });
+        for (const prefix of prefixesForObj(m[1])) {
+          const route2 = joinRoute(prefix, rule2);
+          for (const method of verbs) routes.push({ route: route2, file: path, line: line2, kind, method });
+        }
       }
       for (const m of src.matchAll(ADD_URL_RE)) {
         const call2 = parsePyCall(src, matchOpenParen(m));
         const rule2 = pyString(call2.args[0] ?? call2.kwargs.get("rule"));
         if (rule2 === null) continue;
-        const route2 = joinRoute(prefixForObj(m[1]), rule2);
         const line2 = lineAt(src, m.index ?? 0);
         const kind = viewFuncKind(src, m.index ?? 0, (call2.kwargs.get("view_func") ?? call2.args[2])?.trim());
         const verbs = pyMethods(call2.kwargs.get("methods"));
-        for (const method of verbs.length ? verbs : ["GET"]) {
-          routes.push({ route: route2, file: path, line: line2, kind, method });
+        for (const prefix of prefixesForObj(m[1])) {
+          const route2 = joinRoute(prefix, rule2);
+          for (const method of verbs.length ? verbs : ["GET"]) routes.push({ route: route2, file: path, line: line2, kind, method });
         }
       }
     }
@@ -30212,20 +30229,24 @@ var fastapiAdapter = {
         const childKey = resolved && ownPrefix.has(resolved) ? resolved : bySegment(expr);
         if (!childKey) continue;
         const receiverKey = resolve20(m[1]);
-        includeOf.set(childKey, {
-          receiverKey: receiverKey && ownPrefix.has(receiverKey) ? receiverKey : null,
-          mountPrefix: prefixOf(call2)
-        });
+        includeOf.set(childKey, [
+          ...includeOf.get(childKey) ?? [],
+          { receiverKey: receiverKey && ownPrefix.has(receiverKey) ? receiverKey : null, mountPrefix: prefixOf(call2) }
+        ]);
       }
     }
-    const fullPrefix = (key, seen = /* @__PURE__ */ new Set()) => {
-      if (seen.has(key)) return "";
-      seen.add(key);
+    const fullPrefixes = (key, seen = /* @__PURE__ */ new Set()) => {
+      if (seen.has(key)) return [""];
       const own = ownPrefix.get(key) ?? "";
-      const inc = includeOf.get(key);
-      if (!inc) return own;
-      const parent = inc.receiverKey ? fullPrefix(inc.receiverKey, seen) : "";
-      return joinRoute(parent, inc.mountPrefix, own);
+      const incs = includeOf.get(key);
+      if (!incs) return [own];
+      const chain = new Set(seen).add(key);
+      const out2 = /* @__PURE__ */ new Set();
+      for (const inc of incs) {
+        const parents = inc.receiverKey ? fullPrefixes(inc.receiverKey, chain) : [""];
+        for (const parent of parents) out2.add(joinRoute(parent, inc.mountPrefix, own));
+      }
+      return [...out2];
     };
     const routes = [];
     for (const [path, src] of sources) {
@@ -30236,14 +30257,13 @@ var fastapiAdapter = {
         if (subPath === null) continue;
         const decorator = m[2];
         const key = resolve20(m[1]);
-        const prefix = key && ownPrefix.has(key) ? fullPrefix(key) : "";
-        const route2 = joinRoute(prefix, subPath);
+        const prefixes = key && ownPrefix.has(key) ? fullPrefixes(key) : [""];
         const line2 = lineAt(src, m.index ?? 0);
-        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? pyMethods(call2.kwargs.get("methods")) : [decorator.toUpperCase()];
-        if (methods.length) {
+        const listed2 = decorator === "api_route" ? pyMethods(call2.kwargs.get("methods")) : [];
+        const methods = decorator === "websocket" ? ["WS"] : decorator === "api_route" ? listed2.length ? listed2 : ["GET"] : [decorator.toUpperCase()];
+        for (const prefix of prefixes) {
+          const route2 = joinRoute(prefix, subPath);
           for (const method of methods) routes.push({ route: route2, file: path, line: line2, kind: "api", method });
-        } else {
-          routes.push({ route: route2, file: path, line: line2, kind: "api" });
         }
       }
     }

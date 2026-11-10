@@ -506,13 +506,27 @@ export function methodOf(verb: string): string {
 /**
  * Map `alias -> "module::name"` for every `from module import name [as alias]`,
  * including the parenthesised form `from module import (\n  a,\n  b as c,\n)`
- * (spread over lines, trailing comma allowed; comments are already blanked).
+ * (spread over lines, trailing comma allowed; comments are already blanked)
+ * and the backslash-continued form `from module import a, \` + `    b`.
  */
 export function pythonImportAliases(src: string): Map<string, string> {
   const out = new Map<string, string>();
   for (const m of src.matchAll(/^[ \t]*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
     const module = m[1] as string;
-    for (const part of (m[2] ?? (m[3] as string)).split(",")) {
+    const lines = [m[2] ?? (m[3] as string)];
+    if (m[2] === undefined) {
+      // Follow `\` line continuations; each continuation line is read once.
+      const CONTINUED = /\\[ \t]*\r?$/;
+      let end = (m.index ?? 0) + m[0].length;
+      while (CONTINUED.test(lines[lines.length - 1] as string) && end < src.length) {
+        lines[lines.length - 1] = (lines[lines.length - 1] as string).replace(CONTINUED, "");
+        const nl = src.indexOf("\n", end + 1);
+        const next = nl === -1 ? src.length : nl;
+        lines.push(src.slice(end + 1, next));
+        end = next;
+      }
+    }
+    for (const part of lines.join(" ").split(",")) {
       const asMatch = part.trim().match(/^(\w+)(?:\s+as\s+(\w+))?$/);
       if (!asMatch) continue;
       const name = asMatch[1] as string;
