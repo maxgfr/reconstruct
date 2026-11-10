@@ -173,6 +173,15 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+/** The canonical path when it exists (symlinks such as macOS `/tmp` resolved), else the resolved path. */
+function realOrResolved(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
 function oneOf<T extends string>(name: string, value: string, allowed: readonly T[]): T {
   if (!(allowed as readonly string[]).includes(value)) {
     fail(`invalid --${name} "${value}" (expected: ${allowed.join(", ")})`);
@@ -460,6 +469,15 @@ export function parseArgs(argv: string[]): Options {
           ? join(process.cwd(), "reconstruction")
           : join(repo, "reconstruction")),
   );
+  // The walk prunes an --out *inside* the repo, but never the repo root itself:
+  // writing the tree into the repo makes the next run ingest (and re-mirror) its
+  // own output one level deeper each time, and overwrites the repo's own
+  // SUMMARY.md / REBUILD.md / inventory.json.
+  const analyzesRepo =
+    !standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && !mcp && !raw.compare && !installRea;
+  if (analyzesRepo && realOrResolved(out) === realOrResolved(repo)) {
+    fail(`--out must not be the repository root (${repo}) — pick a subdirectory such as ${join(repo, "reconstruction")}`);
+  }
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
   // `--mcp` server knobs, read the same way as every other valued flag.
   const transport = raw.transport ?? "stdio";

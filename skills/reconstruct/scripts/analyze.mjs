@@ -37811,6 +37811,13 @@ function fail(message) {
 `);
   process.exit(1);
 }
+function realOrResolved(path) {
+  try {
+    return realpathSync11(path);
+  } catch {
+    return resolve19(path);
+  }
+}
 function oneOf2(name2, value, allowed) {
   if (!allowed.includes(value)) {
     fail(`invalid --${name2} "${value}" (expected: ${allowed.join(", ")})`);
@@ -38044,6 +38051,10 @@ function parseArgs(argv) {
   const out2 = resolve19(
     raw.out ?? (standalone || check || verify || review || unknowns || brainstorm || orchestrate ? process.cwd() : scratch ? join54(process.cwd(), "reconstruction") : join54(repo, "reconstruction"))
   );
+  const analyzesRepo = !standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && !mcp && !raw.compare && !installRea2;
+  if (analyzesRepo && realOrResolved(out2) === realOrResolved(repo)) {
+    fail(`--out must not be the repository root (${repo}) \u2014 pick a subdirectory such as ${join54(repo, "reconstruction")}`);
+  }
   const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
   const transport = raw.transport ?? "stdio";
   const port = raw.port ? Number(raw.port) : 7343;
