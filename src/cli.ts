@@ -262,8 +262,8 @@ const VALUE_FLAGS = new Set([
   "phase",
   "max-verify",
   "batch-size",
-  // `--mcp` only. The flag set is global, so these are accepted (and ignored)
-  // in every other mode — the same as --phase and --batch-size already are.
+  // `--mcp` only (rejected in every other mode, like --phase and --batch-size
+  // outside --orchestrate).
   "transport",
   "port",
   "bind",
@@ -458,6 +458,26 @@ export function parseArgs(argv: string[]): Options {
   }
   if (raw.compare && (scratch || mcp || merge || summary || features || specs || raw.repo || raw.apply || semantic || allowUnverified)) {
     fail("--compare cannot be combined with other modes or semantic/apply options.");
+  }
+  // Modifiers are only meaningful with the mode they modify. Silently
+  // ignoring one ran something else: `--apply v.json` without `--verify` did a
+  // full analysis and re-rendered the tree; `--semantic` without `--check`
+  // looked like a gate that never ran.
+  const validation = check || verify || review || unknowns || brainstorm || orchestrate;
+  if (raw.apply !== undefined && !verify && !review && !unknowns) fail("--apply only applies to --verify, --review or --unknowns");
+  if ((semantic || allowUnverified) && !check) fail("--semantic and --allow-unverified only apply to --check");
+  if ((raw.phase !== undefined || eco || list || raw["batch-size"] !== undefined) && !orchestrate) {
+    fail("--phase, --eco, --list and --batch-size only apply to --orchestrate");
+  }
+  if (raw["max-verify"] !== undefined && !verify) fail("--max-verify only applies to --verify");
+  const serverFlags = ["transport", "port", "bind", "allow-origin", "max-response-bytes"].filter((k) => raw[k] !== undefined).map((k) => `--${k}`);
+  if (allowWrite) serverFlags.push("--allow-write");
+  if (allowRemote) serverFlags.push("--allow-remote");
+  if (serverFlags.length && !mcp) fail(`${serverFlags.join(", ")} only apply to --mcp`);
+  if (raw.plan !== undefined && !scratch) fail("--plan only applies to --scratch");
+  if (validation && (scratch || merge || summary || features || specs)) {
+    const mode = check ? "--check" : verify ? "--verify" : review ? "--review" : unknowns ? "--unknowns" : brainstorm ? "--brainstorm" : "--orchestrate";
+    fail(`--scratch, --merge, --summary, --features and --specs cannot be combined with ${mode} — it reads the tree and renders nothing`);
   }
   if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
   if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");

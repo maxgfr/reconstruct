@@ -140,10 +140,9 @@ describe("parseArgs: --force / --max-verify / --batch-size", () => {
   });
 
   it("parses --force, --max-verify and --batch-size", () => {
-    const o = parseArgs(["--repo", FIXTURE, "--force", "--max-verify", "200", "--batch-size", "3"]);
-    expect(o.force).toBe(true);
-    expect(o.maxVerify).toBe(200);
-    expect(o.batchSize).toBe(3);
+    expect(parseArgs(["--repo", FIXTURE, "--force"]).force).toBe(true);
+    expect(parseArgs(["--verify", "--out", FIXTURE, "--max-verify", "200"]).maxVerify).toBe(200);
+    expect(parseArgs(["--orchestrate", "--out", FIXTURE, "--batch-size", "3"]).batchSize).toBe(3);
   });
 
   // parseArgs reports usage errors via fail() → process.exit(1); trap the exit so
@@ -152,16 +151,16 @@ describe("parseArgs: --force / --max-verify / --batch-size", () => {
 
   it("rejects a non-positive or non-integer cap", () => {
     for (const args of [
-      ["--max-verify", "0"],
-      ["--max-verify", "-1"],
-      ["--batch-size", "1.5"],
-      ["--batch-size", "abc"],
+      ["--verify", "--max-verify", "0"],
+      ["--verify", "--max-verify", "-1"],
+      ["--orchestrate", "--batch-size", "1.5"],
+      ["--orchestrate", "--batch-size", "abc"],
     ]) {
       vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
         throw new Error(`process.exit(${code})`);
       }) as never);
       const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-      expect(() => parseArgs(["--repo", FIXTURE, ...args]), args.join(" ")).toThrow(/process\.exit\(1\)/);
+      expect(() => parseArgs(["--out", FIXTURE, ...args]), args.join(" ")).toThrow(/process\.exit\(1\)/);
       expect(stderr.mock.calls.map((c) => String(c[0])).join("")).toMatch(/expected a positive integer/);
       vi.restoreAllMocks();
     }

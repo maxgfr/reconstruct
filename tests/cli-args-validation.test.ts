@@ -75,3 +75,43 @@ describe("parseArgs: --include / --exclude brace lists", () => {
     expect(parseArgs(["--repo", REPO, "--include", "weird{name"]).include).toEqual(["weird{name"]);
   });
 });
+
+describe("parseArgs: a modifier flag needs the mode it modifies", () => {
+  const cases: [string, string[], RegExp][] = [
+    [
+      "--apply without --verify/--review/--unknowns (would re-render the tree)",
+      ["--apply", "v.json", "--out", "/tmp/x"],
+      /--apply only applies to --verify, --review or --unknowns/,
+    ],
+    ["--semantic without --check", ["--verify", "--semantic", "--out", "/tmp/x"], /--semantic and --allow-unverified only apply to --check/],
+    ["--allow-unverified without --check", ["--review", "--allow-unverified", "--out", "/tmp/x"], /--semantic and --allow-unverified only apply to --check/],
+    ["--phase without --orchestrate", ["--check", "--phase", "enrich-map", "--out", "/tmp/x"], /--phase.*only apply to --orchestrate/],
+    ["--list without --orchestrate", ["--check", "--list", "--out", "/tmp/x"], /--phase.*only apply to --orchestrate/],
+    ["--batch-size without --orchestrate", ["--verify", "--batch-size", "4", "--out", "/tmp/x"], /--phase.*only apply to --orchestrate/],
+    ["--max-verify without --verify", ["--check", "--max-verify", "9", "--out", "/tmp/x"], /--max-verify only applies to --verify/],
+    ["MCP server flags without --mcp", ["--repo", REPO, "--port", "9000"], /only apply to --mcp/],
+    ["--allow-write without --mcp", ["--repo", REPO, "--allow-write"], /only apply to --mcp/],
+    ["--plan without --scratch", ["--repo", REPO, "--plan", "p.json"], /--plan only applies to --scratch/],
+    ["a bundle flag with a validation action", ["--check", "--specs", "--out", "/tmp/x"], /cannot be combined with --check/],
+    ["--scratch with a validation action", ["--check", "--scratch", "--plan", "p.json", "--out", "/tmp/x"], /cannot be combined with --check/],
+  ];
+  for (const [label, argv, pattern] of cases) {
+    it(`rejects ${label}`, () => expectFail(argv, pattern));
+  }
+
+  it("keeps every documented combination", () => {
+    for (const argv of [
+      ["--check", "--semantic", "--allow-unverified", "--out", "/tmp/x"],
+      ["--verify", "--apply", "v.json", "--max-verify", "128", "--out", "/tmp/x"],
+      ["--review", "--apply", "f.json", "--out", "/tmp/x"],
+      ["--unknowns", "--apply", "u.json", "--out", "/tmp/x"],
+      ["--orchestrate", "--phase", "enrich-map", "--eco", "--batch-size", "4", "--out", "/tmp/x"],
+      ["--orchestrate", "--list", "--out", "/tmp/x"],
+      ["--mcp", "--transport", "http", "--port", "7343", "--allow-write", "--out", "/tmp/x"],
+      ["--scratch", "--plan", "p.json", "--out", "/tmp/x", "--level", "complex", "--tdd", "--specs"],
+      ["--check", "--repo", REPO, "--out", "/tmp/x"],
+    ]) {
+      expect(() => parseArgs(argv)).not.toThrow();
+    }
+  });
+});

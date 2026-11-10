@@ -38065,8 +38065,8 @@ var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "phase",
   "max-verify",
   "batch-size",
-  // `--mcp` only. The flag set is global, so these are accepted (and ignored)
-  // in every other mode — the same as --phase and --batch-size already are.
+  // `--mcp` only (rejected in every other mode, like --phase and --batch-size
+  // outside --orchestrate).
   "transport",
   "port",
   "bind",
@@ -38243,6 +38243,22 @@ function parseArgs(argv) {
   }
   if (raw.compare && (scratch || mcp || merge || summary || features || specs || raw.repo || raw.apply || semantic || allowUnverified)) {
     fail("--compare cannot be combined with other modes or semantic/apply options.");
+  }
+  const validation = check || verify || review || unknowns || brainstorm || orchestrate;
+  if (raw.apply !== void 0 && !verify && !review && !unknowns) fail("--apply only applies to --verify, --review or --unknowns");
+  if ((semantic || allowUnverified) && !check) fail("--semantic and --allow-unverified only apply to --check");
+  if ((raw.phase !== void 0 || eco || list || raw["batch-size"] !== void 0) && !orchestrate) {
+    fail("--phase, --eco, --list and --batch-size only apply to --orchestrate");
+  }
+  if (raw["max-verify"] !== void 0 && !verify) fail("--max-verify only applies to --verify");
+  const serverFlags = ["transport", "port", "bind", "allow-origin", "max-response-bytes"].filter((k) => raw[k] !== void 0).map((k) => `--${k}`);
+  if (allowWrite) serverFlags.push("--allow-write");
+  if (allowRemote) serverFlags.push("--allow-remote");
+  if (serverFlags.length && !mcp) fail(`${serverFlags.join(", ")} only apply to --mcp`);
+  if (raw.plan !== void 0 && !scratch) fail("--plan only applies to --scratch");
+  if (validation && (scratch || merge || summary || features || specs)) {
+    const mode2 = check ? "--check" : verify ? "--verify" : review ? "--review" : unknowns ? "--unknowns" : brainstorm ? "--brainstorm" : "--orchestrate";
+    fail(`--scratch, --merge, --summary, --features and --specs cannot be combined with ${mode2} \u2014 it reads the tree and renders nothing`);
   }
   if (raw.compare && (!raw.original || !raw.rebuilt)) fail("--compare requires --original and --rebuilt directories.");
   if (!raw.compare && (runTests || raw.original || raw.rebuilt)) fail("--run-tests, --original and --rebuilt require --compare.");
