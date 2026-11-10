@@ -31519,6 +31519,10 @@ var dotnetAdapter = {
           routes.push({ route: joinRoute(expandTokens(own.replace(/^~/, ""), cls.name)), file: path, line: line2, kind: "api", method });
           continue;
         }
+        if (!cls.templates.length) {
+          if (own !== void 0) routes.push({ route: joinRoute(expandTokens(own, cls.name)), file: path, line: line2, kind: "api", method });
+          continue;
+        }
         for (const template of new Set(cls.templates)) {
           routes.push({
             route: joinRoute(expandTokens(template, cls.name), expandTokens(own ?? "", cls.name)),

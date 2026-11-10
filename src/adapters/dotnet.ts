@@ -155,8 +155,13 @@ export const dotnetAdapter: RouteAdapter = {
           routes.push({ route: joinRoute(expandTokens(own.replace(/^~/, ""), cls.name)), file: path, line, kind: "api", method });
           continue;
         }
-        // A controller with no [Route] attribute is conventionally routed; skip
-        // rather than invent a path.
+        // No class-level [Route]: an action carrying its own template is
+        // attribute-routed on its own (`[HttpGet("api/health")]`); one without
+        // is conventionally routed — skip rather than invent a path.
+        if (!cls.templates.length) {
+          if (own !== undefined) routes.push({ route: joinRoute(expandTokens(own, cls.name)), file: path, line, kind: "api", method });
+          continue;
+        }
         for (const template of new Set(cls.templates)) {
           routes.push({
             route: joinRoute(expandTokens(template, cls.name), expandTokens(own ?? "", cls.name)),

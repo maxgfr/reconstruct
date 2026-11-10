@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { djangoAdapter } from "../src/adapters/django.js";
+import { dotnetAdapter } from "../src/adapters/dotnet.js";
 import { detectI18n } from "../src/adapters/i18n.js";
 import { railsAdapter } from "../src/adapters/rails.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
@@ -117,5 +118,24 @@ describe("i18n: underscore locale tags (en_US, pt_BR)", () => {
   it("takes the locale from an underscore-tagged file name", () => {
     const { repo, infos } = repoOf({ "config/locales/zh_Hant_TW.json": '{"a":1}', "config/locales/en.json": '{"a":1}' }, "i18n");
     expect(detectI18n(repo, infos)?.locales).toEqual(["en", "zh_Hant_TW"]);
+  });
+});
+
+describe("dotnet: attribute-routed actions in a controller without [Route]", () => {
+  it("emits an action's own template and still skips conventionally-routed ones", () => {
+    const routes = routesOf(dotnetAdapter, {
+      "Controllers/HealthController.cs": [
+        "[ApiController]",
+        "public class HealthController : ControllerBase",
+        "{",
+        '    [HttpGet("api/health")]',
+        "    public IActionResult Get() => Ok();",
+        "",
+        "    [HttpPost]",
+        "    public IActionResult Conventional() => Ok();",
+        "}",
+      ].join("\n"),
+    });
+    expect(sig(routes)).toEqual(["GET /api/health"]);
   });
 });
