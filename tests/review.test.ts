@@ -290,3 +290,17 @@ describe("foldReview recomputes the gate (no trusted summary)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("a tree with no feature PRDs", () => {
+  it("--review --apply commits the round instead of failing as stale (the arch hash survives zero units)", () => {
+    const dir = scratch();
+    tree(dir, []);
+    writeFileSync(join(dir, "ARCHITECTURE.md"), "# Arch\n");
+    const todo = runReview(dir);
+    expect(todo.units).toEqual([]);
+    expect(() => applyFindings(dir, writeFindings(dir, []))).not.toThrow();
+    // …and a later --review on the unchanged tree sees no architecture drift.
+    expect(runReview(dir).changedSet).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

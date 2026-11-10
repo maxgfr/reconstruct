@@ -128,6 +128,7 @@ export function runReview(outDir: string): ReviewWorklist {
     // file may echo it so `--review --apply` can tell last round's findings from
     // this round's (see `applyFindings`).
     contentHash: baselineHash({ archHash: arch, features: units.map((u) => ({ feature: u.feature, prdHash: u.prdHash })) }),
+    archHash: arch,
     changedSet,
     units,
   };
@@ -185,7 +186,7 @@ function readPrior(outDir: string): Prior | null {
     try {
       const todo = JSON.parse(readFileSync(join(outDir, "REVIEW.todo.json"), "utf8")) as ReviewWorklist;
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
-      priorArch = todo.units?.[0]?.archHash ?? "";
+      priorArch = todo.archHash ?? todo.units?.[0]?.archHash ?? "";
     } catch {
       /* no prior todo — treat all as changed */
     }
@@ -387,7 +388,7 @@ export function applyFindings(outDir: string, findingsPath: string): ReviewResul
     currentFeatures = (todo.units ?? []).map((u) => u.feature);
     // The hashes this round adjudicates — the next --review diffs against these.
     baseline = {
-      archHash: todo.units?.[0]?.archHash ?? "",
+      archHash: todo.archHash ?? todo.units?.[0]?.archHash ?? "",
       features: (todo.units ?? []).map((u) => ({ feature: u.feature, prdHash: u.prdHash })),
     };
     // A baseline is a claim that a reviewer JUDGED this content. Committing one

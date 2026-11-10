@@ -35425,6 +35425,7 @@ function runReview(outDir) {
     // file may echo it so `--review --apply` can tell last round's findings from
     // this round's (see `applyFindings`).
     contentHash: baselineHash({ archHash: arch, features: units.map((u) => ({ feature: u.feature, prdHash: u.prdHash })) }),
+    archHash: arch,
     changedSet,
     units
   };
@@ -35463,7 +35464,7 @@ function readPrior(outDir) {
     try {
       const todo = JSON.parse(readFileSync37(join47(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
-      priorArch = todo.units?.[0]?.archHash ?? "";
+      priorArch = todo.archHash ?? todo.units?.[0]?.archHash ?? "";
     } catch {
     }
   }
@@ -35606,7 +35607,7 @@ function applyFindings(outDir, findingsPath) {
     reviewedFeatures = (todo.units ?? []).filter((u) => u.needsReview).map((u) => u.feature);
     currentFeatures = (todo.units ?? []).map((u) => u.feature);
     baseline = {
-      archHash: todo.units?.[0]?.archHash ?? "",
+      archHash: todo.archHash ?? todo.units?.[0]?.archHash ?? "",
       features: (todo.units ?? []).map((u) => ({ feature: u.feature, prdHash: u.prdHash }))
     };
     const current = currentBaseline(outDir);

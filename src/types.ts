@@ -905,6 +905,11 @@ export interface ReviewWorklist {
    * baseline.
    */
   contentHash?: string;
+  /**
+   * The shared architecture-docs hash this round covers. Also on every unit,
+   * but a tree with no feature PRDs has no unit to carry it.
+   */
+  archHash?: string;
   /** Features changed since the previous round (all of them on the first round). */
   changedSet: string[];
   units: ReviewUnit[];
