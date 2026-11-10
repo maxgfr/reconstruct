@@ -30517,29 +30517,66 @@ var TYPE3 = String.raw`(?::\s*[\w$.]+(?:<[^>]*>)?\s*)?`;
 var APP_RE2 = new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE3}=\s*(?:require\(\s*["'\`]fastify["'\`]\s*\)|[Ff]astify)\s*\(`, "g");
 var FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*require\()\s*["'`]fastify-plugin["'`]/g;
 var REQUIRE_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var IMPORT_RE2 = /import\s+(\w+)\s+from\s+["'`](\.[^"'`]*)["'`]/g;
-var REGISTER_RE2 = /\b(\w+)\.register\(\s*(?:require\(\s*["'`](\.[^"'`]*)["'`]\s*\)|(\w+))\s*(?:,\s*\{([^}]*)\})?/g;
+var IMPORT_RE2 = /import\s+(\w+)\s*(?:,\s*\{[^}]*\}\s*)?from\s+["'`](\.[^"'`]*)["'`]/g;
+var IMPORT_NAMED_RE = /import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["'`](\.[^"'`]*)["'`]/g;
+var REQUIRE_NAMED_RE2 = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var REGISTER_RE2 = /\b(\w+)\s*\.\s*register\s*\(/g;
+var INLINE_REQUIRE_RE2 = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
+var IDENT_RE2 = /^[A-Za-z_$][\w$]*$/;
 var PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
-var ROUTE_RE2 = /\b(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]([^"'`]*)["'`]/g;
+var VERBS2 = "get|head|post|put|delete|options|patch|all";
+var ROUTE_RE2 = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS2})\s*\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
+var VERB_RE2 = new RegExp(`^(?:${VERBS2})$`);
+var LITERAL_RE2 = /^(["'`])([^"'`]*)\1$/;
+var WS_OPTS_RE = /^\{[^}]*\bwebsocket\s*:\s*true/;
+var isWsOpts = (opts) => opts !== void 0 && WS_OPTS_RE.test(opts);
 var ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
 var URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
 var METHOD_RE2 = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 function pluginParam(src) {
-  const names = /* @__PURE__ */ new Set(["fp", "fastifyPlugin"]);
-  for (const m of src.matchAll(FP_IMPORT_RE)) names.add(m[1] ?? m[2]);
-  const fp = String.raw`(?:(${[...names].join("|")})\s*\(\s*)?`;
-  const fn = String.raw`(?:(?:async\s+)?function\s*\w*\s*\(\s*(\w+)|(?:async\s*)?\(\s*(\w+))`;
+  const { fp, fn } = pluginPatterns(src);
   const exp2 = String.raw`(?:module\.exports\s*=|export\s+default)\s*`;
   const direct = src.match(new RegExp(exp2 + fp + fn));
   if (direct) return { param: direct[2] ?? direct[3], wrapped: direct[1] !== void 0 };
   const named = src.match(new RegExp(String.raw`${exp2}${fp}(\w+)\s*(?:,[^)]*)?\)?\s*;?\s*$`, "m"));
   if (!named) return null;
-  const name2 = named[2];
-  const decl = src.match(new RegExp(String.raw`function\s+${name2}\s*\(\s*(\w+)`));
-  if (decl) return { param: decl[1], wrapped: named[1] !== void 0 };
+  const decl = declaredPluginParam(src, named[2]);
+  return decl && { param: decl.param, wrapped: named[1] !== void 0 || decl.wrapped };
+}
+function pluginPatterns(src) {
+  const names = /* @__PURE__ */ new Set(["fp", "fastifyPlugin"]);
+  for (const m of src.matchAll(FP_IMPORT_RE)) names.add(m[1] ?? m[2]);
+  return {
+    fp: String.raw`(?:(${[...names].join("|")})\s*\(\s*)?`,
+    fn: String.raw`(?:(?:async\s+)?function\s*\w*\s*\(\s*(\w+)|(?:async\s*)?\(\s*(\w+))`
+  };
+}
+function declaredPluginParam(src, name2) {
+  const decl = src.match(new RegExp(String.raw`function\s*\*?\s*${name2}\s*\(\s*(\w+)`));
+  if (decl) return { param: decl[1], wrapped: false };
+  const { fp, fn } = pluginPatterns(src);
   const expr = src.match(new RegExp(String.raw`(?:const|let|var)\s+${name2}\s*${TYPE3}=\s*${fp}${fn}`));
-  if (expr) return { param: expr[2] ?? expr[3], wrapped: named[1] !== void 0 || expr[1] !== void 0 };
+  if (expr) return { param: expr[2] ?? expr[3], wrapped: expr[1] !== void 0 };
   return null;
+}
+function moduleSpecs2(src) {
+  const out2 = /* @__PURE__ */ new Map();
+  for (const m of src.matchAll(REQUIRE_RE2)) out2.set(m[1], { spec: m[2] });
+  for (const m of src.matchAll(IMPORT_RE2)) out2.set(m[1], { spec: m[2] });
+  for (const re of [IMPORT_NAMED_RE, REQUIRE_NAMED_RE2]) {
+    for (const m of src.matchAll(re)) {
+      for (const part of m[1].split(",")) {
+        const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
+        if (IDENT_RE2.test(local) && IDENT_RE2.test(exported)) out2.set(local, { spec: m[2], exported });
+      }
+    }
+  }
+  return out2;
+}
+function registeredPlugin(arg, moduleOf) {
+  const inline = arg.match(INLINE_REQUIRE_RE2)?.[1];
+  if (inline) return { spec: inline };
+  return IDENT_RE2.test(arg) ? moduleOf.get(arg) : void 0;
 }
 function localVars2(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
@@ -30552,27 +30589,47 @@ var fastifyAdapter = {
     const appVarsByFile = /* @__PURE__ */ new Map();
     const pluginParamByFile = /* @__PURE__ */ new Map();
     const unencapsulated = /* @__PURE__ */ new Set();
+    const modulesByFile = /* @__PURE__ */ new Map();
+    const registersByFile = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       appVarsByFile.set(path, localVars2(src, APP_RE2));
       const plugin = pluginParam(src);
       if (plugin) pluginParamByFile.set(path, plugin.param);
       if (plugin?.wrapped) unencapsulated.add(path);
+      modulesByFile.set(path, moduleSpecs2(src));
+      const registers = [];
+      for (const m of src.matchAll(REGISTER_RE2)) {
+        const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        if (call2?.args.length) registers.push({ receiver: m[1], args: call2.args });
+      }
+      registersByFile.set(path, registers);
+    }
+    for (const [path, registers] of registersByFile) {
+      for (const { args: args2 } of registers) {
+        const imported = registeredPlugin(args2[0], modulesByFile.get(path));
+        if (!imported?.exported) continue;
+        const target = resolveModule(path, imported.spec, sources);
+        if (!target || pluginParamByFile.has(target)) continue;
+        const decl = declaredPluginParam(sources.get(target), imported.exported);
+        if (!decl) continue;
+        pluginParamByFile.set(target, decl.param);
+        if (decl.wrapped) unencapsulated.add(target);
+      }
     }
     const edges = /* @__PURE__ */ new Map();
-    for (const [path, src] of sources) {
+    for (const [path] of sources) {
       const receivers = new Set(appVarsByFile.get(path));
       const param = pluginParamByFile.get(path);
       if (param) receivers.add(param);
-      const moduleOf = /* @__PURE__ */ new Map();
-      for (const m of src.matchAll(REQUIRE_RE2)) moduleOf.set(m[1], m[2]);
-      for (const m of src.matchAll(IMPORT_RE2)) moduleOf.set(m[1], m[2]);
-      for (const m of src.matchAll(REGISTER_RE2)) {
-        if (!receivers.has(m[1])) continue;
-        const spec = m[2] ?? moduleOf.get(m[3]);
+      const moduleOf = modulesByFile.get(path);
+      for (const { receiver, args: args2 } of registersByFile.get(path) ?? []) {
+        if (!receivers.has(receiver)) continue;
+        const spec = registeredPlugin(args2[0], moduleOf)?.spec;
         if (!spec) continue;
         const target = resolveModule(path, spec, sources);
         if (!target) continue;
-        const prefix = unencapsulated.has(target) ? "" : (m[4] ?? "").match(PREFIX_RE)?.[1] ?? "";
+        const opts = args2[1]?.startsWith("{") ? args2[1] : "";
+        const prefix = unencapsulated.has(target) ? "" : opts.match(PREFIX_RE)?.[1] ?? "";
         const list = edges.get(path);
         if (list) list.push({ target, prefix });
         else edges.set(path, [{ target, prefix }]);
@@ -30601,15 +30658,26 @@ var fastifyAdapter = {
       for (const m of src.matchAll(ROUTE_RE2)) {
         const prefix = prefixFor(m[1]);
         if (prefix === null) continue;
-        const tail = src.slice((m.index ?? 0) + m[0].length).slice(0, 200);
-        const isWs = /^\s*,\s*\{[^}]*\bwebsocket\s*:\s*true/.test(tail);
+        const call2 = callArgs(src, (m.index ?? 0) + m[0].indexOf("(", m[1].length));
         routes.push({
           route: joinRoute(prefix, m[3]),
           file: path,
           line: lineAt(src, m.index ?? 0),
           kind: "api",
-          method: isWs ? "WS" : methodOf(m[2])
+          method: isWsOpts(call2?.args[1]) ? "WS" : methodOf(m[2])
         });
+        if (!call2) continue;
+        for (const c2 of chainCalls(src, call2.end)) {
+          const p = c2.args[0]?.match(LITERAL_RE2)?.[2];
+          if (!VERB_RE2.test(c2.name) || p === void 0) continue;
+          routes.push({
+            route: joinRoute(prefix, p),
+            file: path,
+            line: lineAt(src, c2.index),
+            kind: "api",
+            method: isWsOpts(c2.args[1]) ? "WS" : methodOf(c2.name)
+          });
+        }
       }
       for (const m of src.matchAll(ROUTE_OBJ_RE)) {
         const prefix = prefixFor(m[1]);
@@ -30642,26 +30710,26 @@ var HEAD_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)(?=\s*\.\s*[A-Za-z_$][\w$]*\s*\()/g;
 var ASSIGN_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?::\s*[\w$.]+(?:<[^;=]*>)?\s*)?=\s*$/;
 var DEFAULT_BEFORE_RE = /(?:\bexport\s+default|\bmodule\.exports\s*=)\s*$/;
 var REQUIRE_RE3 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var REQUIRE_NAMED_RE2 = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var REQUIRE_NAMED_RE3 = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var IMPORT_RE3 = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
 var EXPORT_DEFAULT_RE = /(?:export\s+default|module\.exports\s*=)\s+(\w+)\s*;?/;
 var EXPORT_DECL_RE = /export\s+(?:const|let|var)\s+(\w+)/g;
 var EXPORT_LIST_RE2 = /export\s*\{([^}]*)\}/g;
 var EXPORT_PROP_RE = /(?:module\.)?exports\.(\w+)\s*=\s*(\w+)/g;
-var VERB_RE2 = /^(?:get|post|put|delete|patch|options|all)$/;
-var LITERAL_RE2 = /^(["'`])([^"'`]*)\1$/;
-var IDENT_RE2 = /^[A-Za-z_$][\w$]*$/;
-var literal2 = (arg) => arg?.match(LITERAL_RE2)?.[2];
-function moduleSpecs2(src) {
+var VERB_RE3 = /^(?:get|post|put|delete|patch|options|all)$/;
+var LITERAL_RE3 = /^(["'`])([^"'`]*)\1$/;
+var IDENT_RE3 = /^[A-Za-z_$][\w$]*$/;
+var literal2 = (arg) => arg?.match(LITERAL_RE3)?.[2];
+function moduleSpecs3(src) {
   const out2 = /* @__PURE__ */ new Map();
   const named = (list, spec) => {
     for (const part of list.split(",")) {
       const [name2, alias] = part.trim().split(/\s+as\s+|\s*:\s*/).map((s) => s.trim());
-      if (name2 && IDENT_RE2.test(alias ?? name2)) out2.set(alias ?? name2, { spec, name: name2 });
+      if (name2 && IDENT_RE3.test(alias ?? name2)) out2.set(alias ?? name2, { spec, name: name2 });
     }
   };
   for (const m of src.matchAll(REQUIRE_RE3)) out2.set(m[1], { spec: m[2], name: "default" });
-  for (const m of src.matchAll(REQUIRE_NAMED_RE2)) named(m[1], m[2]);
+  for (const m of src.matchAll(REQUIRE_NAMED_RE3)) named(m[1], m[2]);
   for (const m of src.matchAll(IMPORT_RE3)) {
     if (m[1]) out2.set(m[1], { spec: m[3], name: "default" });
     if (m[2]) named(m[2], m[3]);
@@ -30746,11 +30814,11 @@ var honoAdapter = {
     const incoming = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const vars = varsByFile.get(path) ?? /* @__PURE__ */ new Map();
-      const moduleOf = moduleSpecs2(src);
+      const moduleOf = moduleSpecs3(src);
       for (const { recv, fresh: fresh2, rel: rel2, call: call2 } of callsByFile.get(path) ?? []) {
         const p = literal2(call2.args[0]);
         const mounted = call2.args[1];
-        if (call2.name !== "route" || p === void 0 || !mounted || !IDENT_RE2.test(mounted)) continue;
+        if (call2.name !== "route" || p === void 0 || !mounted || !IDENT_RE3.test(mounted)) continue;
         let target = null;
         const imported = moduleOf.get(mounted);
         if (vars.has(mounted)) {
@@ -30789,7 +30857,7 @@ var honoAdapter = {
       for (const { recv, fresh: fresh2, rel: rel2, call: call2 } of callsByFile.get(path) ?? []) {
         let verbs;
         let routePath;
-        if (VERB_RE2.test(call2.name)) {
+        if (VERB_RE3.test(call2.name)) {
           verbs = [call2.name];
           routePath = literal2(call2.args[0]);
         } else if (call2.name === "on") {
@@ -30943,7 +31011,7 @@ var SINGULAR_ACTIONS = {
   edit: [{ method: "GET", segs: ["edit"] }]
 };
 var ROOT_RE = /^root\b/;
-var VERB_RE3 = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
+var VERB_RE4 = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
 var RESOURCES_RE = /\b(resources|resource)\s+((?::\w+\b(?!\s*=>)\s*,\s*)*:\w+\b(?!\s*=>))([^\n]*)/g;
 var ON_RE = /(?:\bon:|:on\s*=>)\s*:(member|collection)\b/;
 var NAMESPACE_RE = /^namespace\s+:?(\w+)/;
@@ -30954,7 +31022,7 @@ var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
 var STATEMENT_OPENER_RE = /^(?:if|unless|case|begin|def|class|module|while|until|for)\b/;
 var LOOP_RE = /^(?:while|until|for)\b/;
 var BLOCK_TOKEN_RE = /(?<![\w.:@$])(do|end)(?![\w?!:])/g;
-var LITERAL_RE3 = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|%[iwIWqQ]?\[[^\]]*\]|%[iwIWqQ]?\([^)]*\)/g;
+var LITERAL_RE4 = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|%[iwIWqQ]?\[[^\]]*\]|%[iwIWqQ]?\([^)]*\)/g;
 var MEMBER_RE = /^member\b/;
 var COLLECTION_RE = /^collection\b/;
 function singularize(n) {
@@ -31038,7 +31106,7 @@ var railsAdapter = {
         const line2 = rawLine.trim();
         if (!line2 || line2.startsWith("#")) continue;
         if (ROOT_RE.test(line2)) emit2(joinRoute(...verbPrefix()), "GET");
-        for (const m of line2.matchAll(VERB_RE3)) {
+        for (const m of line2.matchAll(VERB_RE4)) {
           const p = m[2] ?? m[3];
           const on = line2.slice((m.index ?? 0) + m[0].length).match(ON_RE)?.[1];
           emit2(joinRoute(...verbPrefix(on), p), m[1].toUpperCase());
@@ -31058,7 +31126,7 @@ var railsAdapter = {
         }
         const mount = line2.match(MOUNT_RE2);
         if (mount) emit2(joinRoute(...nestPrefix(frames.length), mount[1]), void 0, "api");
-        const code = line2.replace(LITERAL_RE3, '""');
+        const code = line2.replace(LITERAL_RE4, '""');
         const tokens2 = [...code.matchAll(BLOCK_TOKEN_RE)].map((m) => m[1]);
         if (LOOP_RE.test(code)) {
           const loopDo = tokens2.indexOf("do");
@@ -31078,7 +31146,7 @@ var railsAdapter = {
 
 // src/adapters/go.ts
 var VERB_TOKENS = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
-var VERB_RE4 = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
+var VERB_RE5 = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
 var HANDLE_VERB_RE = /\b(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
 var HANDLEFUNC_RE = /\b(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
 var METHODS_CHAIN_RE = /\.Methods\(\s*([^)]*)\)/;
@@ -31183,7 +31251,7 @@ var goAdapter = {
       );
       const prefixAt = (recv, idx) => joinRoute(closurePrefix(idx), groupPrefix(recv, scopeAt(idx)));
       const at = (idx) => ({ file: path, line: lineAt(src, idx) });
-      for (const m of src.matchAll(VERB_RE4)) {
+      for (const m of src.matchAll(VERB_RE5)) {
         const routePath = m[3];
         if (!routePath.startsWith("/")) continue;
         if (!routers.has(m[1])) continue;
