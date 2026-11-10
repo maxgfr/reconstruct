@@ -37612,6 +37612,7 @@ async function runStdioServer(opts = {}) {
     void p.finally(() => inFlight.delete(p));
     return p;
   };
+  const batches = /* @__PURE__ */ new Set();
   const drainToLimit = async () => {
     while (inFlight.size >= MAX_IN_FLIGHT) await Promise.race(inFlight);
   };
@@ -37633,13 +37634,17 @@ async function runStdioServer(opts = {}) {
         continue;
       }
       if (Array.isArray(parsed2)) {
-        track(
-          (async () => {
-            const out2 = [];
-            await Promise.all(parsed2.map((m) => server.handle(m, (r) => void out2.push(r))));
-            if (out2.length) emit2(JSON.stringify(out2) + "\n");
-          })().catch(reportInternal(send))
-        );
+        const out2 = [];
+        const parts2 = [];
+        for (const m of parsed2) {
+          await drainToLimit();
+          parts2.push(track(server.handle(m, (r) => void out2.push(r)).catch(reportInternal(send))));
+        }
+        const answered = Promise.all(parts2).then(() => {
+          if (out2.length) emit2(JSON.stringify(out2) + "\n");
+        });
+        batches.add(answered);
+        void answered.finally(() => batches.delete(answered));
         continue;
       }
       if (parsed2 === null || typeof parsed2 !== "object") {
@@ -37649,6 +37654,7 @@ async function runStdioServer(opts = {}) {
       track(server.handle(parsed2, send).catch(reportInternal(send)));
     }
     await Promise.all(inFlight);
+    await Promise.all(batches);
   } finally {
     rl.close();
     restore?.();

@@ -58,6 +58,9 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
     void p.finally(() => inFlight.delete(p));
     return p;
   };
+  // Batches whose array frame is still being assembled (not counted against
+  // the cap — their elements are).
+  const batches = new Set<Promise<void>>();
   const drainToLimit = async () => {
     while (inFlight.size >= MAX_IN_FLIGHT) await Promise.race(inFlight);
   };
@@ -85,14 +88,19 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
       if (Array.isArray(parsed)) {
         // A batch answers as one array, so the client can match it to what it
         // sent. Notifications inside it contribute nothing, and a batch of only
-        // notifications produces no frame at all.
-        track(
-          (async () => {
-            const out: JsonRpcMessage[] = [];
-            await Promise.all(parsed.map((m) => server.handle(m as JsonRpcMessage, (r) => void out.push(r))));
-            if (out.length) emit(JSON.stringify(out) + "\n");
-          })().catch(reportInternal(send)),
-        );
+        // notifications produces no frame at all. Each element is its own
+        // in-flight entry: a batch of 20 calls must not run 20 at once.
+        const out: JsonRpcMessage[] = [];
+        const parts: Promise<void>[] = [];
+        for (const m of parsed) {
+          await drainToLimit();
+          parts.push(track(server.handle(m as JsonRpcMessage, (r) => void out.push(r)).catch(reportInternal(send))));
+        }
+        const answered = Promise.all(parts).then(() => {
+          if (out.length) emit(JSON.stringify(out) + "\n");
+        });
+        batches.add(answered);
+        void answered.finally(() => batches.delete(answered));
         continue;
       }
 
@@ -110,6 +118,7 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
     // process.exit() here would drop these frames, because stdout on a pipe is
     // asynchronous and exit() does not flush it.
     await Promise.all(inFlight);
+    await Promise.all(batches);
   } finally {
     rl.close();
     restore?.();
