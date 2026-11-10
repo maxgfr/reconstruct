@@ -124,7 +124,8 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
   if (rows.length === 0) throw new Error("no updates: expected an array of unknown records (or { unknowns: [...] })");
   const inv = readInventory(outDir);
   const external = loadExternalEvidence(outDir);
-  const ledger = ensureUnknowns(outDir);
+  // Seed in memory only: the ledger is persisted once, after every row passed.
+  const ledger = readUnknowns(outDir) ?? seedUnknowns(inv);
   const byId = new Map(ledger.unknowns.map((u) => [u.id, u]));
   let next = ledger.unknowns.reduce((n, u) => Math.max(n, Number(u.id.replace(/^U/, "")) || 0), 0);
   const problems: string[] = [];
@@ -147,9 +148,16 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
     if (!SEVERITIES.includes(severity)) problems.push(`${label}: severity must be one of ${SEVERITIES.join(", ")}`);
     const status = (row.status ?? prev?.status ?? "open") as UnknownStatus;
     if (!STATUSES.includes(status)) problems.push(`${label}: status must be one of ${STATUSES.join(", ")}`);
-    const evidence = strList(row.evidence) ?? prev?.evidence ?? [];
-    const contradicting = strList(row.contradicting) ?? prev?.contradicting ?? [];
-    const recommendedProbes = strList(row.recommendedProbes) ?? prev?.recommendedProbes ?? [];
+    // A list given in the wrong shape is an error, never a silent "keep the old value".
+    const list = (key: "evidence" | "contradicting" | "recommendedProbes"): string[] => {
+      if (row[key] === undefined) return prev?.[key] ?? [];
+      const v = strList(row[key]);
+      if (!v) problems.push(`${label}: \`${key}\` must be an array of strings`);
+      return v ?? [];
+    };
+    const evidence = list("evidence");
+    const contradicting = list("contradicting");
+    const recommendedProbes = list("recommendedProbes");
     for (const p of citationProblems({ status, evidence, contradicting }, inv, external)) problems.push(`${label}: ${p}`);
     const id = prev?.id ?? `U${++next}`;
     const feature = typeof row.feature === "string" ? row.feature : prev?.feature;
@@ -175,7 +183,9 @@ export function applyUnknownUpdates(outDir: string, updates: unknown): UnknownsL
   if (problems.length) {
     throw new Error(`${problems.length} invalid unknown update(s) — fix them and re-apply (fail-closed):\n  - ${problems.join("\n  - ")}`);
   }
-  const unknowns = [...byId.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+  // U<n> ids in numeric order; a hand-edited non-numeric id sorts after them, by name.
+  const num = (id: string) => (/^U\d+$/.test(id) ? Number(id.slice(1)) : Number.POSITIVE_INFINITY);
+  const unknowns = [...byId.values()].sort((a, b) => num(a.id) - num(b.id) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const out: UnknownsLedger = { version: 1, unknowns };
   writeFileSync(join(outDir, UNKNOWNS_FILE), JSON.stringify(out, null, 2) + "\n");
   return out;
@@ -237,9 +247,14 @@ export function foldUnknowns(outDir: string, check: CheckResult): void {
 /** Human-readable summary of the ledger. */
 export function formatUnknowns(ledger: UnknownsLedger): string {
   const counts = new Map<string, number>();
-  for (const u of ledger.unknowns) counts.set(u.status, (counts.get(u.status) ?? 0) + 1);
+  for (const u of ledger.unknowns) counts.set(u?.status ?? "malformed", (counts.get(u?.status ?? "malformed") ?? 0) + 1);
   const lines = [`reconstruct --unknowns: ${ledger.unknowns.length} record(s) · ${[...counts.entries()].map(([s, n]) => `${n} ${s}`).join(" · ") || "none"}`];
-  for (const u of ledger.unknowns) {
+  for (const [i, u] of ledger.unknowns.entries()) {
+    // A hand-edited ledger may hold anything; --check reports it, the listing must not crash on it.
+    if (typeof u?.id !== "string" || typeof u.question !== "string") {
+      lines.push(`  #${i + 1} malformed record — fix it or re-record it with --unknowns --apply`);
+      continue;
+    }
     lines.push(`  ${u.id} [${u.severity} · ${u.status} · r${u.revision}]${u.feature ? ` (${u.feature})` : ""} ${u.question.slice(0, 160)}`);
   }
   return lines.join("\n");

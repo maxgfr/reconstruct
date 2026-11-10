@@ -9,7 +9,7 @@ import { callTool } from "../src/mcp/handlers.js";
 import { writeOutput } from "../src/output.js";
 import { render } from "../src/prd/render.js";
 import type { Inventory, Options, UnknownsLedger } from "../src/types.js";
-import { applyUnknownUpdates, ensureUnknowns, UNKNOWNS_FILE, unknownDigest } from "../src/unknowns.js";
+import { applyUnknownUpdates, ensureUnknowns, formatUnknowns, UNKNOWNS_FILE, unknownDigest } from "../src/unknowns.js";
 
 // The residual-unknowns ledger: revisioned, hash-chained records; resolution
 // needs a citation that resolves; an unsettled blocker fails the gate.
@@ -131,5 +131,24 @@ describe("MCP reconstruct_unknowns", () => {
     const recorded = JSON.parse((await callTool("reconstruct_unknowns", { out, updates }, { allowWrite: true })).text);
     expect(recorded.ok).toBe(false);
     expect(recorded.gate.errors[0]).toMatch(/blocker U\d+ is open/);
+  });
+});
+
+describe("fail-closed apply (malformed rows)", () => {
+  it("rejects a citation list that is not an array of strings instead of silently keeping the old value", () => {
+    expect(() => applyUnknownUpdates(out, [{ question: "Q?", contradicting: "src/app.js:1" }])).toThrow(/contradicting.*array of strings/);
+    expect(() => applyUnknownUpdates(out, [{ question: "Q?", evidence: [1] }])).toThrow(/evidence.*array of strings/);
+    expect(() => applyUnknownUpdates(out, [{ question: "Q?", recommendedProbes: "probe" }])).toThrow(/recommendedProbes.*array of strings/);
+  });
+
+  it("writes nothing — not even the seeded ledger — when an update is rejected", () => {
+    expect(existsSync(join(out, UNKNOWNS_FILE))).toBe(false);
+    expect(() => applyUnknownUpdates(out, [{ id: "U999", status: "resolved" }])).toThrow(/fail-closed/);
+    expect(existsSync(join(out, UNKNOWNS_FILE))).toBe(false);
+  });
+
+  it("formats a hand-edited ledger with a malformed row instead of crashing", () => {
+    const ledger = { version: 1, unknowns: [null, { id: "X1" }] } as unknown as UnknownsLedger;
+    expect(formatUnknowns(ledger)).toMatch(/malformed/);
   });
 });

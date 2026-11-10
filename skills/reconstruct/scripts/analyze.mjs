@@ -34865,7 +34865,7 @@ function applyUnknownUpdates(outDir, updates) {
   if (rows.length === 0) throw new Error("no updates: expected an array of unknown records (or { unknowns: [...] })");
   const inv = readInventory(outDir);
   const external = loadExternalEvidence(outDir);
-  const ledger = ensureUnknowns(outDir);
+  const ledger = readUnknowns(outDir) ?? seedUnknowns(inv);
   const byId = new Map(ledger.unknowns.map((u) => [u.id, u]));
   let next = ledger.unknowns.reduce((n, u) => Math.max(n, Number(u.id.replace(/^U/, "")) || 0), 0);
   const problems = [];
@@ -34887,9 +34887,15 @@ function applyUnknownUpdates(outDir, updates) {
     if (!SEVERITIES2.includes(severity)) problems.push(`${label}: severity must be one of ${SEVERITIES2.join(", ")}`);
     const status = row.status ?? prev?.status ?? "open";
     if (!STATUSES.includes(status)) problems.push(`${label}: status must be one of ${STATUSES.join(", ")}`);
-    const evidence = strList(row.evidence) ?? prev?.evidence ?? [];
-    const contradicting = strList(row.contradicting) ?? prev?.contradicting ?? [];
-    const recommendedProbes = strList(row.recommendedProbes) ?? prev?.recommendedProbes ?? [];
+    const list = (key) => {
+      if (row[key] === void 0) return prev?.[key] ?? [];
+      const v = strList(row[key]);
+      if (!v) problems.push(`${label}: \`${key}\` must be an array of strings`);
+      return v ?? [];
+    };
+    const evidence = list("evidence");
+    const contradicting = list("contradicting");
+    const recommendedProbes = list("recommendedProbes");
     for (const p of citationProblems({ status, evidence, contradicting }, inv, external)) problems.push(`${label}: ${p}`);
     const id = prev?.id ?? `U${++next}`;
     const feature = typeof row.feature === "string" ? row.feature : prev?.feature;
@@ -34915,7 +34921,8 @@ function applyUnknownUpdates(outDir, updates) {
     throw new Error(`${problems.length} invalid unknown update(s) \u2014 fix them and re-apply (fail-closed):
   - ${problems.join("\n  - ")}`);
   }
-  const unknowns = [...byId.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+  const num3 = (id) => /^U\d+$/.test(id) ? Number(id.slice(1)) : Number.POSITIVE_INFINITY;
+  const unknowns = [...byId.values()].sort((a, b) => num3(a.id) - num3(b.id) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const out2 = { version: 1, unknowns };
   writeFileSync10(join45(outDir, UNKNOWNS_FILE), JSON.stringify(out2, null, 2) + "\n");
   return out2;
@@ -34959,9 +34966,13 @@ function foldUnknowns(outDir, check) {
 }
 function formatUnknowns(ledger) {
   const counts = /* @__PURE__ */ new Map();
-  for (const u of ledger.unknowns) counts.set(u.status, (counts.get(u.status) ?? 0) + 1);
+  for (const u of ledger.unknowns) counts.set(u?.status ?? "malformed", (counts.get(u?.status ?? "malformed") ?? 0) + 1);
   const lines = [`reconstruct --unknowns: ${ledger.unknowns.length} record(s) \xB7 ${[...counts.entries()].map(([s, n]) => `${n} ${s}`).join(" \xB7 ") || "none"}`];
-  for (const u of ledger.unknowns) {
+  for (const [i2, u] of ledger.unknowns.entries()) {
+    if (typeof u?.id !== "string" || typeof u.question !== "string") {
+      lines.push(`  #${i2 + 1} malformed record \u2014 fix it or re-record it with --unknowns --apply`);
+      continue;
+    }
     lines.push(`  ${u.id} [${u.severity} \xB7 ${u.status} \xB7 r${u.revision}]${u.feature ? ` (${u.feature})` : ""} ${u.question.slice(0, 160)}`);
   }
   return lines.join("\n");
