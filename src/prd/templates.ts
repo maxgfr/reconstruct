@@ -709,14 +709,22 @@ export function designSystemDoc(inv: Inventory, opts: Options): string {
   return out.join("\n");
 }
 
+/** A mermaid node label: a raw `"` would close the quoted label early. */
+function mermaidLabel(text: string): string {
+  return text.replace(/"/g, "#quot;");
+}
+
 export function diagramDoc(inv: Inventory): string {
-  const nodes = inv.features.map((f, i) => `  F${i}["${f.name}"]`).join("\n");
+  const nodes = inv.features.map((f, i) => `  F${i}["${mermaidLabel(f.name)}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
-  const edges = inv.features
-    .filter((f) => f.kind === "feature")
-    .map((f, i) => (inv.i18n ? `  F${i} --> DATA` : ""))
-    .filter(Boolean)
-    .join("\n");
+  // Index into the FULL feature list — the node ids above — then keep only the
+  // code features (filtering first renumbered them onto the wrong nodes).
+  const edges = inv.i18n
+    ? inv.features
+        .map((f, i) => (f.kind === "feature" ? `  F${i} --> DATA` : ""))
+        .filter(Boolean)
+        .join("\n")
+    : "";
 
   const workspaceGraph = inv.workspaces?.length
     ? [
@@ -727,7 +735,7 @@ export function diagramDoc(inv: Inventory): string {
         "",
         "```mermaid",
         "graph TD",
-        ...inv.workspaces.map((w, i) => `  W${i}["${w.name}"]`),
+        ...inv.workspaces.map((w, i) => `  W${i}["${mermaidLabel(w.name)}"]`),
         ...inv.workspaces
           .flatMap((w, i) =>
             (w.dependsOn ?? []).map((dep) => {

@@ -33122,10 +33122,13 @@ function designSystemDoc(inv, opts) {
   }
   return out2.join("\n");
 }
+function mermaidLabel2(text) {
+  return text.replace(/"/g, "#quot;");
+}
 function diagramDoc(inv) {
-  const nodes = inv.features.map((f, i2) => `  F${i2}["${f.name}"]`).join("\n");
+  const nodes = inv.features.map((f, i2) => `  F${i2}["${mermaidLabel2(f.name)}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
-  const edges = inv.features.filter((f) => f.kind === "feature").map((f, i2) => inv.i18n ? `  F${i2} --> DATA` : "").filter(Boolean).join("\n");
+  const edges = inv.i18n ? inv.features.map((f, i2) => f.kind === "feature" ? `  F${i2} --> DATA` : "").filter(Boolean).join("\n") : "";
   const workspaceGraph = inv.workspaces?.length ? [
     "",
     "## Workspace graph",
@@ -33134,7 +33137,7 @@ function diagramDoc(inv) {
     "",
     "```mermaid",
     "graph TD",
-    ...inv.workspaces.map((w, i2) => `  W${i2}["${w.name}"]`),
+    ...inv.workspaces.map((w, i2) => `  W${i2}["${mermaidLabel2(w.name)}"]`),
     ...inv.workspaces.flatMap(
       (w, i2) => (w.dependsOn ?? []).map((dep) => {
         const j = inv.workspaces?.findIndex((x) => x.name === dep) ?? -1;
