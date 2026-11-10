@@ -35139,17 +35139,30 @@ function readTodoPairs(outDir) {
     return void 0;
   }
 }
-function currentPairs(outDir, max) {
-  try {
-    const byClaim = /* @__PURE__ */ new Map();
-    for (const p of buildWorklist(outDir, { maxVerify: max }).worklist.pairs) byClaim.set(p.claimId, p);
-    return byClaim;
-  } catch {
-    return void 0;
-  }
+function currentPairs(outDir, max, derived) {
+  const pairs = derived();
+  if (!pairs) return void 0;
+  const byClaim = /* @__PURE__ */ new Map();
+  for (const p of capPairs(outDir, pairs, max).worklist.pairs) byClaim.set(p.claimId, p);
+  return byClaim;
 }
-function assertWorklistFresh(outDir, todo) {
-  const current = currentPairs(outDir, capUsedFor(outDir));
+function derivedOnce(outDir) {
+  let done = false;
+  let value;
+  return () => {
+    if (!done) {
+      done = true;
+      try {
+        value = derivePairs(outDir);
+      } catch {
+        value = void 0;
+      }
+    }
+    return value;
+  };
+}
+function assertWorklistFresh(outDir, todo, derived) {
+  const current = currentPairs(outDir, capUsedFor(outDir), derived);
   if (!current) throw new Error("Cannot derive the current PRDs and inventory to validate VERIFY.todo.json; restore the run before applying verdicts.");
   const drift = [];
   const unbound = [];
@@ -35185,8 +35198,9 @@ function applyVerdicts(outDir, verdictsPath) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
   }
   const todo = readTodoPairs(outDir);
-  if (todo) assertWorklistFresh(outDir, todo);
-  const bind = todo ?? currentPairs(outDir, Number.MAX_SAFE_INTEGER);
+  const derived = derivedOnce(outDir);
+  if (todo) assertWorklistFresh(outDir, todo, derived);
+  const bind = todo ?? currentPairs(outDir, Number.MAX_SAFE_INTEGER, derived);
   const problems = [];
   const unknown = [];
   const verdicts = [];
@@ -35247,7 +35261,7 @@ function applyVerdicts(outDir, verdictsPath) {
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   if (unknown.length) result.ignored = unknown;
   writeFileSync9(join45(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
-  const ledger = writeObligations(outDir, verdicts);
+  const ledger = writeObligations(outDir, verdicts, derived());
   result.obligations = { ledgerId: ledger.ledgerId, closureDigest: ledger.closureDigest, closed: ledger.closed, open: ledger.open, failed: ledger.failed };
   return result;
 }
@@ -35452,10 +35466,10 @@ function readObligations(outDir) {
     return void 0;
   }
 }
-function writeObligations(outDir, verdicts) {
+function writeObligations(outDir, verdicts, derived) {
   let pairs = [];
   try {
-    pairs = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
+    pairs = capPairs(outDir, derived ?? derivePairs(outDir), Number.MAX_SAFE_INTEGER).worklist.pairs;
   } catch {
     pairs = [];
   }

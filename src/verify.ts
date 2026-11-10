@@ -366,14 +366,29 @@ function readTodoPairs(outDir: string): Map<string, ClaimEvidencePair> | undefin
  * tree is unreadable (no/!JSON inventory). Deriving with the run's own cap keeps
  * the comparison against VERIFY.todo.json like-for-like.
  */
-function currentPairs(outDir: string, max: number): Map<string, ClaimEvidencePair> | undefined {
-  try {
-    const byClaim = new Map<string, ClaimEvidencePair>();
-    for (const p of buildWorklist(outDir, { maxVerify: max }).worklist.pairs) byClaim.set(p.claimId, p);
-    return byClaim;
-  } catch {
-    return undefined;
-  }
+function currentPairs(outDir: string, max: number, derived: () => ScoredPair[] | undefined): Map<string, ClaimEvidencePair> | undefined {
+  const pairs = derived();
+  if (!pairs) return undefined;
+  const byClaim = new Map<string, ClaimEvidencePair>();
+  for (const p of capPairs(outDir, pairs, max).worklist.pairs) byClaim.set(p.claimId, p);
+  return byClaim;
+}
+
+/** `derivePairs` at most once, `undefined` when the tree cannot be read. */
+function derivedOnce(outDir: string): () => ScoredPair[] | undefined {
+  let done = false;
+  let value: ScoredPair[] | undefined;
+  return () => {
+    if (!done) {
+      done = true;
+      try {
+        value = derivePairs(outDir);
+      } catch {
+        value = undefined;
+      }
+    }
+    return value;
+  };
 }
 
 /**
@@ -387,8 +402,8 @@ function currentPairs(outDir: string, max: number): Map<string, ClaimEvidencePai
  * A worklist with no fingerprints predates content binding and cannot be
  * proven either way, so it is stale by the same fail-closed rule.
  */
-function assertWorklistFresh(outDir: string, todo: Map<string, ClaimEvidencePair>): void {
-  const current = currentPairs(outDir, capUsedFor(outDir));
+function assertWorklistFresh(outDir: string, todo: Map<string, ClaimEvidencePair>, derived: () => ScoredPair[] | undefined): void {
+  const current = currentPairs(outDir, capUsedFor(outDir), derived);
   if (!current) throw new Error("Cannot derive the current PRDs and inventory to validate VERIFY.todo.json; restore the run before applying verdicts.");
   const drift: string[] = [];
   const unbound: string[] = [];
@@ -438,12 +453,15 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
     throw new Error(`${verdictsPath}: no verdict rows found — expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
   }
   const todo = readTodoPairs(outDir);
+  // The PRDs are read and their pairs derived once for the freshness check,
+  // the binding and the obligations ledger (it used to be three times).
+  const derived = derivedOnce(outDir);
   // Prove the worklist still describes the tree BEFORE any backfill, so a stale
   // run can never launder old judgements into current content.
-  if (todo) assertWorklistFresh(outDir, todo);
+  if (todo) assertWorklistFresh(outDir, todo, derived);
   // A fresh derivation validates an existing row fingerprint; it cannot supply
   // a generation-time binding to an old row whose worklist has been lost.
-  const bind = todo ?? currentPairs(outDir, Number.MAX_SAFE_INTEGER);
+  const bind = todo ?? currentPairs(outDir, Number.MAX_SAFE_INTEGER, derived);
   const problems: string[] = [];
   const unknown: string[] = [];
   const verdicts: Verdict[] = [];
@@ -512,7 +530,7 @@ export function applyVerdicts(outDir: string, verdictsPath: string): VerifyResul
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   if (unknown.length) result.ignored = unknown;
   writeFileSync(join(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
-  const ledger = writeObligations(outDir, verdicts);
+  const ledger = writeObligations(outDir, verdicts, derived());
   result.obligations = { ledgerId: ledger.ledgerId, closureDigest: ledger.closureDigest, closed: ledger.closed, open: ledger.open, failed: ledger.failed };
   return result;
 }
@@ -809,10 +827,10 @@ export function readObligations(outDir: string): ObligationLedger | undefined {
 }
 
 /** Recompute and persist the ledger for the tree's current PRDs and verdicts. */
-export function writeObligations(outDir: string, verdicts: Verdict[]): ObligationLedger {
+export function writeObligations(outDir: string, verdicts: Verdict[], derived?: ScoredPair[]): ObligationLedger {
   let pairs: ClaimEvidencePair[] = [];
   try {
-    pairs = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
+    pairs = capPairs(outDir, derived ?? derivePairs(outDir), Number.MAX_SAFE_INTEGER).worklist.pairs;
   } catch {
     pairs = [];
   }
