@@ -39235,7 +39235,10 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  features: ${inv.features.length} \xB7 routes: ${inv.routes.length} \xB7 locales: ${inv.i18n ? inv.i18n.locales.length : 0}`,
     `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth/design-system) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
     ...inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce((n, w) => n + (w.dependsOn?.length ?? 0), 0)} dependency edge(s)`] : [],
-    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
+    // The vendored walk prunes ignored directories (node_modules, gitignored
+    // dirs, an --exclude'd folder) without entering them, so their files are
+    // not part of this count — say so rather than under-report silently.
+    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""} (ignored directories are pruned whole and not counted)`,
     ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
     ...copyWarning ? [`  mirror:   \u26A0 ${copyWarning}`] : [],
     ...pruneLine ? [`  stale:    ${pruneLine}`] : [],

@@ -571,7 +571,11 @@ export interface Inventory {
   workspaces?: Workspace[];
   /** Detected runtime constraints (e.g. required Node version). */
   runtime?: { node?: string };
-  /** Count of files skipped by ignore rules — surfaced for transparency. */
+  /**
+   * Count of files skipped one by one by ignore rules — surfaced for
+   * transparency. Ignored DIRECTORIES (node_modules, gitignored or excluded
+   * folders) are pruned without being entered, so their files are not counted.
+   */
   excludedCount: number;
   /**
    * Content-addressed provenance for every statically resolved fact (routes,
