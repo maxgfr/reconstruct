@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.29.8](https://github.com/maxgfr/reconstruct/compare/v2.29.7...v2.29.8) (2026-11-10)
+
+
+### Bug Fixes
+
+* **check:** agree on feature-spine headings across --check and --verify ([ca1a673](https://github.com/maxgfr/reconstruct/commit/ca1a6733345cec45d2e9f2ac7459006214255c3d))
+* **cli:** expand {a,b} brace lists in --include/--exclude ([e7d751a](https://github.com/maxgfr/reconstruct/commit/e7d751a0f739cc53eadb5d77c716eb51bba7d25a))
+* **cli:** refuse --out equal to the analysed repository root ([c422f35](https://github.com/maxgfr/reconstruct/commit/c422f3554ad91fa3d8cf499b71144d36a664989f))
+* **cli:** reject an empty --flag= value ([53a355b](https://github.com/maxgfr/reconstruct/commit/53a355bbfe592f3f5454af5c52514d5cc393d6fe))
+* **cli:** validate --port, --max-response-bytes and --max-embed-bytes ([871734e](https://github.com/maxgfr/reconstruct/commit/871734e88a0e2a6d5c6094e2ac7977ce4ac532fc))
+* **deps:** parse requirements.txt extras, inline comments and markers ([a3fa675](https://github.com/maxgfr/reconstruct/commit/a3fa6757068077e4f171a4429bddfbd88ae9c0b4))
+* **deps:** read every go.mod require form ([5e77ff9](https://github.com/maxgfr/reconstruct/commit/5e77ff96bf6624eb0e21a89f7f1da71ae2d49f9e))
+* **django:** prefix routes declared inside an inline include([...]) ([c827541](https://github.com/maxgfr/reconstruct/commit/c827541357664fe951dd264ac238cd04ca226a7a))
+* **dotnet:** keep attribute-routed actions of controllers without [Route] ([d230d65](https://github.com/maxgfr/reconstruct/commit/d230d65b895746c9cb63b7acf3fac48223aa907b))
+* **i18n:** recognise underscore locale tags such as pt_BR and en_US ([0d15285](https://github.com/maxgfr/reconstruct/commit/0d152859ed2a983dd0c1ca85b8b58c7a46b86453))
+* **output:** report mirror copies that fail instead of swallowing them ([1b61fdb](https://github.com/maxgfr/reconstruct/commit/1b61fdbbe25a2fadb2247010a4a3f0d2382fdb36))
+* **prd:** attach module-diagram data edges to the right features ([eb85cdd](https://github.com/maxgfr/reconstruct/commit/eb85cddbbd7fb864bee10e12cf7ca6f02f578d23))
+* **prd:** escape pipes in route tables ([3edd276](https://github.com/maxgfr/reconstruct/commit/3edd2768f0a359c3af1ce9add49cd0d5ee2f37b4))
+* **rails:** expand multi-resource lines, verb on: options and more mount forms ([61a0f93](https://github.com/maxgfr/reconstruct/commit/61a0f93405e9368ef769aa7d3cbb63f50b98acdb))
+* **rea:** give colliding artifact slugs distinct evidence files ([8889d0e](https://github.com/maxgfr/reconstruct/commit/8889d0e3eba60d76f0539d23caa3de7fc3ea3efd))
+* **review:** keep the architecture hash when a round has no units ([80a8597](https://github.com/maxgfr/reconstruct/commit/80a8597c0f0098d60032e11f0843be3405cf7046))
+* **scratch:** validate plan.json entry shapes before rendering ([83f46f7](https://github.com/maxgfr/reconstruct/commit/83f46f701a34dfa5905652e8add5fcbf391ab312))
+* **trpc:** detect routers built with the documented router() alias ([4baa7df](https://github.com/maxgfr/reconstruct/commit/4baa7dfa1264efaf1f3fb13954e2b074dff74b85))
+* **trpc:** resolve child routers imported under an alias ([c4b3eb8](https://github.com/maxgfr/reconstruct/commit/c4b3eb8e8614e0321bf3c73ae49f208c0f4dad5f))
+* **unknowns:** make --unknowns --apply genuinely fail-closed ([cd6dfb2](https://github.com/maxgfr/reconstruct/commit/cd6dfb2a19500e1a21a7350392761aee8df43308))
+* **verify:** report malformed VERIFY.json verdicts instead of crashing ([1b99221](https://github.com/maxgfr/reconstruct/commit/1b992211897972692756b19fdc5b60415179d6f6))
+
 ## [2.29.7](https://github.com/maxgfr/reconstruct/compare/v2.29.6...v2.29.7) (2026-11-09)
 
 
