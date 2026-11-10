@@ -73,12 +73,16 @@ export function extractDependencies(repo: string, files: FileInfo[], warnings?: 
   if (present.has("go.mod")) {
     const raw = read(repo, "go.mod") ?? "";
     const runtime: Record<string, string> = {};
-    const block = raw.match(/require\s*\(([\s\S]*?)\)/);
-    const lines = block ? (block[1] as string).split(/\r?\n/) : raw.split(/\r?\n/);
-    for (const line of lines) {
+    const add = (line: string): void => {
       const m = line.trim().match(/^([^\s]+)\s+(v[^\s]+)/);
       if (m) runtime[m[1] as string] = m[2] as string;
-    }
+    };
+    // Every `require ( … )` block AND every single-line `require path vX` —
+    // `go mod tidy` writes several blocks (direct, then `// indirect`), and a
+    // one-dependency module uses the single-line form. `replace`/`exclude`
+    // directives are not requirements.
+    for (const block of raw.matchAll(/^[ \t]*require[ \t]*\(([\s\S]*?)\)/gm)) for (const line of (block[1] as string).split(/\r?\n/)) add(line);
+    for (const single of raw.matchAll(/^[ \t]*require[ \t]+([^\s(].*)$/gm)) add(single[1] as string);
     result.push({ manager: "go modules", manifest: "go.mod", runtime, dev: {} });
   }
 

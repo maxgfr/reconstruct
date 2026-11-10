@@ -65,3 +65,32 @@ describe("extractDependencies — Ruby / Java ecosystems", () => {
     expect(gradle?.dev["org.junit.jupiter:junit-jupiter"]).toBe("5.9.0");
   });
 });
+
+describe("extractDependencies — go.mod require forms", () => {
+  it("reads single-line requires and every require block, but not replace targets", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "go.mod",
+        [
+          "module example.com/app",
+          "",
+          "go 1.22",
+          "",
+          "require github.com/gin-gonic/gin v1.9.1",
+          "",
+          "require (",
+          "\tgithub.com/a/one v1.0.0",
+          ")",
+          "",
+          "require (",
+          "\tgithub.com/b/two v2.1.0 // indirect",
+          ")",
+          "",
+          "replace github.com/a/one v1.0.0 => ../one",
+        ].join("\n"),
+      ),
+    );
+    const gomod = extractDependencies(dir, files).find((d) => d.manager === "go modules");
+    expect(gomod?.runtime).toEqual({ "github.com/gin-gonic/gin": "v1.9.1", "github.com/a/one": "v1.0.0", "github.com/b/two": "v2.1.0" });
+  });
+});

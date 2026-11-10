@@ -28914,12 +28914,12 @@ function extractDependencies(repo, files, warnings, labelBase = "") {
   if (present.has("go.mod")) {
     const raw = read(repo, "go.mod") ?? "";
     const runtime = {};
-    const block = raw.match(/require\s*\(([\s\S]*?)\)/);
-    const lines = block ? block[1].split(/\r?\n/) : raw.split(/\r?\n/);
-    for (const line2 of lines) {
+    const add = (line2) => {
       const m = line2.trim().match(/^([^\s]+)\s+(v[^\s]+)/);
       if (m) runtime[m[1]] = m[2];
-    }
+    };
+    for (const block of raw.matchAll(/^[ \t]*require[ \t]*\(([\s\S]*?)\)/gm)) for (const line2 of block[1].split(/\r?\n/)) add(line2);
+    for (const single of raw.matchAll(/^[ \t]*require[ \t]+([^\s(].*)$/gm)) add(single[1]);
     result.push({ manager: "go modules", manifest: "go.mod", runtime, dev: {} });
   }
   if (present.has("composer.json")) {
