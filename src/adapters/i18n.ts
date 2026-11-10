@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { cachedRead } from "../read-cache.js";
 import { join, basename, extname } from "node:path";
 import type { FileInfo, I18nInfo } from "../types.js";
 
@@ -62,7 +62,8 @@ function localeOf(path: string): string {
 /** Leaf-key count of one i18n file (JSON tree, or approx for yaml/po/properties). */
 function keysIn(repo: string, f: FileInfo): number {
   try {
-    const raw = readFileSync(join(repo, f.path), "utf8");
+    const raw = cachedRead(join(repo, f.path));
+    if (raw === null) return 0;
     if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
     return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
   } catch {

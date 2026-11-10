@@ -12,17 +12,20 @@ import { readFileSync } from "node:fs";
 const BUDGET_CHARS = 128 * 1024 * 1024;
 
 let cache: Map<string, string | null> | null = null;
+let memo: Map<string, unknown> | null = null;
 let budget = 0;
 
 /** Run `fn` with a shared read cache (re-entrant: an inner call reuses the outer cache). */
 export function withReadCache<T>(fn: () => T): T {
   if (cache) return fn();
   cache = new Map();
+  memo = new Map();
   budget = BUDGET_CHARS;
   try {
     return fn();
   } finally {
     cache = null;
+    memo = null;
   }
 }
 
@@ -40,6 +43,19 @@ function remember(abs: string, text: string | null): void {
 /** Offer the walk's already-decoded text, so the next reader does not touch the disk. */
 export function primeRead(abs: string, text: string): void {
   if (cache && !cache.has(abs)) remember(abs, text);
+}
+
+/**
+ * `compute()` once per analysis for `key` (outside `withReadCache`, every call
+ * computes). For derived facts several detectors need — e.g. the workspace
+ * discovery both the inventory and the dependency graph start from.
+ */
+export function scopedMemo<T>(key: string, compute: () => T): T {
+  if (!memo) return compute();
+  if (memo.has(key)) return memo.get(key) as T;
+  const value = compute();
+  memo.set(key, value);
+  return value;
 }
 
 /** A file's UTF-8 text, or null when it cannot be read. */

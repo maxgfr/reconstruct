@@ -76,3 +76,31 @@ describe("stripComments", () => {
     expect(performance.now() - t).toBeLessThan(2000);
   });
 });
+
+describe("manifests and derived facts share the per-analysis cache", () => {
+  it("readJsonManifest / safeRead read a manifest once inside a pass", async () => {
+    const { readJsonManifest, safeRead } = await import("../src/detect/manifest.js");
+    const { repo } = repoWith("");
+    const pkg = join(repo, "package.json");
+    writeFileSync(pkg, '{"name":"v1"}');
+    withReadCache(() => {
+      expect(readJsonManifest(pkg, "package.json")?.name).toBe("v1");
+      writeFileSync(pkg, '{"name":"v2"}');
+      expect(readJsonManifest(pkg, "package.json")?.name).toBe("v1");
+      expect(safeRead(pkg)).toBe('{"name":"v1"}');
+    });
+    expect(readJsonManifest(pkg, "package.json")?.name).toBe("v2");
+  });
+
+  it("scopedMemo computes once per pass and every time outside one", async () => {
+    const { scopedMemo } = await import("../src/read-cache.js");
+    let calls = 0;
+    const compute = () => ++calls;
+    withReadCache(() => {
+      expect(scopedMemo("k", compute)).toBe(1);
+      expect(scopedMemo("k", compute)).toBe(1);
+    });
+    expect(scopedMemo("k", compute)).toBe(2);
+    expect(scopedMemo("k", compute)).toBe(3);
+  });
+});

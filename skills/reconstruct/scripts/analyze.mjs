@@ -5,7 +5,7 @@ import { spawnSync as spawnSync3 } from "child_process";
 import { resolve as resolve19, join as join54 } from "path";
 import { createInterface as createInterface3 } from "readline";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
-import { existsSync as existsSync26, readFileSync as readFileSync42, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync39, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
 
 // src/behavior.ts
 import { spawnSync } from "child_process";
@@ -12161,10 +12161,10 @@ var init_status = __esm({
   }
 });
 function filesInDir(ctx, dir, ext) {
-  const memo = ctx.dirFilesMemo ??= /* @__PURE__ */ new Map();
+  const memo2 = ctx.dirFilesMemo ??= /* @__PURE__ */ new Map();
   const key = ext + "\0" + dir;
-  let list = memo.get(key);
-  if (!list) memo.set(key, list = (ctx.filesByDir.get(dir) ?? []).filter((f) => f.endsWith(ext)).sort());
+  let list = memo2.get(key);
+  if (!list) memo2.set(key, list = (ctx.filesByDir.get(dir) ?? []).filter((f) => f.endsWith(ext)).sort());
   return list;
 }
 function distToSrcCandidates(target) {
@@ -13114,17 +13114,17 @@ function resolveImport(fromRel, ext, spec, ctx) {
     }
     const dir = fromRel.includes("/") ? posix2.dirname(fromRel) : "";
     const key = dir + "\0" + spec;
-    const memo = ctx.jsMemo ??= /* @__PURE__ */ new Map();
-    let r = memo.get(key);
-    if (!r) memo.set(key, r = resolveJs(fromRel, spec, ctx));
+    const memo2 = ctx.jsMemo ??= /* @__PURE__ */ new Map();
+    let r = memo2.get(key);
+    if (!r) memo2.set(key, r = resolveJs(fromRel, spec, ctx));
     return { ...r };
   }
   if (PY2.has(ext)) {
     const dir = fromRel.includes("/") ? posix2.dirname(fromRel) : "";
     const key = dir + "\0" + spec;
-    const memo = ctx.pyMemo ??= /* @__PURE__ */ new Map();
-    let r = memo.get(key);
-    if (!r) memo.set(key, r = resolvePython(fromRel, spec, ctx));
+    const memo2 = ctx.pyMemo ??= /* @__PURE__ */ new Map();
+    let r = memo2.get(key);
+    if (!r) memo2.set(key, r = resolvePython(fromRel, spec, ctx));
     return { ...r };
   }
   if (ext === ".go") return resolveGo(fromRel, spec, ctx);
@@ -13670,8 +13670,8 @@ function goImplementations(scan2) {
   const isInterface = (s) => !!s.signature?.startsWith(s.name) && /^(\[[^\]]*\])?\s+interface\b/.test(s.signature.slice(s.name.length));
   const setMemo = /* @__PURE__ */ new Map();
   const methodSet = (key, iface, seen) => {
-    const memo = setMemo.get(key);
-    if (memo !== void 0) return memo ?? void 0;
+    const memo2 = setMemo.get(key);
+    if (memo2 !== void 0) return memo2 ?? void 0;
     if (seen.has(key)) return void 0;
     seen.add(key);
     const own = new Map(methods.get(key) ?? []);
@@ -14561,14 +14561,14 @@ function splitCompoundPaths(docs) {
   for (const d of docs) {
     for (const t of d.fields.name.tf.keys()) if (t.length >= PIECE_MIN && /^[a-z]+$/.test(t)) vocab.add(t);
   }
-  const memo = /* @__PURE__ */ new Map();
+  const memo2 = /* @__PURE__ */ new Map();
   for (const d of docs) {
     if (d.isTest || d.isFixture) continue;
     const path = d.fields.path;
     for (const t of [...path.tf.keys()]) {
       if (t.length < COMPOUND_MIN || t.length > COMPOUND_MAX || !/^[a-z]+$/.test(t)) continue;
-      let pieces = memo.get(t);
-      if (!memo.has(t)) memo.set(t, pieces = wordBreak(t, vocab));
+      let pieces = memo2.get(t);
+      if (!memo2.has(t)) memo2.set(t, pieces = wordBreak(t, vocab));
       if (!pieces) continue;
       const tf = path.tf.get(t);
       for (const p of pieces) {
@@ -15730,11 +15730,11 @@ function createBindScope(scan2, pairs, ctxIn) {
     return out2;
   };
   let ctx = ctxIn;
-  let memo = aliasMemo.get(scan2);
+  let memo2 = aliasMemo.get(scan2);
   const aliasFiles = () => {
     ctx ??= resolveContextFor(scan2);
-    if (memo?.ctx !== ctx) aliasMemo.set(scan2, memo = { ctx, files: /* @__PURE__ */ new Map() });
-    return memo.files;
+    if (memo2?.ctx !== ctx) aliasMemo.set(scan2, memo2 = { ctx, files: /* @__PURE__ */ new Map() });
+    return memo2.files;
   };
   const defaultOf = (rel2) => {
     const t = fileOf(rel2);
@@ -21330,9 +21330,9 @@ function dispatchLiveness(scan2, relations, live) {
     for (const r of f.relations ?? []) declared.set(r.from, (declared.get(r.from) ?? 0) + 1);
     for (const [from, n] of declared) if (n > (resolvedCount.get(`${from}${SEP4}${f.rel}`) ?? 0)) external.add(`${from}${SEP4}${f.rel}`);
   }
-  const memo = /* @__PURE__ */ new Map();
+  const memo2 = /* @__PURE__ */ new Map();
   const check = (s, seen) => {
-    const known = memo.get(s);
+    const known = memo2.get(s);
     if (known !== void 0) return known;
     const sups = overridden.get(s);
     let result;
@@ -21341,7 +21341,7 @@ function dispatchLiveness(scan2, relations, live) {
       seen.add(s);
       result = sups.some((u) => live(u) || !seen.has(u) && check(u, seen));
     }
-    memo.set(s, result);
+    memo2.set(s, result);
     return result;
   };
   return (s) => !!s.parent && check(s, /* @__PURE__ */ new Set());
@@ -22285,9 +22285,9 @@ var init_patharg = __esm({
 });
 function oversizedNaming(scan2, name2) {
   if (!scan2.oversized?.length || !/^[A-Za-z_$][\w$]*$/.test(name2)) return [];
-  let memo = wordMemo.get(scan2);
-  if (!memo) wordMemo.set(scan2, memo = /* @__PURE__ */ new Map());
-  const known = memo.get(name2);
+  let memo2 = wordMemo.get(scan2);
+  if (!memo2) wordMemo.set(scan2, memo2 = /* @__PURE__ */ new Map());
+  const known = memo2.get(name2);
   if (known) return known;
   const word = new RegExp(`(?<![\\w$])${name2.replace(/\$/g, "\\$")}(?![\\w$])`);
   const out2 = [];
@@ -22301,7 +22301,7 @@ function oversizedNaming(scan2, name2) {
     }
     if (word.test(text)) out2.push({ file: o.rel, size: o.size });
   }
-  memo.set(name2, out2);
+  memo2.set(name2, out2);
   return out2;
 }
 function coverageFor(scan2, name2, opts) {
@@ -28111,15 +28111,18 @@ init_text();
 import { readFileSync as readFileSync23 } from "fs";
 var BUDGET_CHARS = 128 * 1024 * 1024;
 var cache = null;
+var memo = null;
 var budget = 0;
 function withReadCache(fn) {
   if (cache) return fn();
   cache = /* @__PURE__ */ new Map();
+  memo = /* @__PURE__ */ new Map();
   budget = BUDGET_CHARS;
   try {
     return fn();
   } finally {
     cache = null;
+    memo = null;
   }
 }
 function remember(abs, text) {
@@ -28134,6 +28137,13 @@ function remember(abs, text) {
 }
 function primeRead(abs, text) {
   if (cache && !cache.has(abs)) remember(abs, text);
+}
+function scopedMemo(key, compute) {
+  if (!memo) return compute();
+  if (memo.has(key)) return memo.get(key);
+  const value = compute();
+  memo.set(key, value);
+  return value;
 }
 function cachedRead(abs) {
   const hit = cache?.get(abs);
@@ -28358,14 +28368,9 @@ import { existsSync as existsSync15, readdirSync as readdirSync4 } from "fs";
 import { join as join35 } from "path";
 
 // src/detect/manifest.ts
-import { readFileSync as readFileSync25 } from "fs";
 function readJsonManifest(absPath, relLabel, warnings) {
-  let raw;
-  try {
-    raw = readFileSync25(absPath, "utf8");
-  } catch {
-    return null;
-  }
+  const raw = cachedRead(absPath);
+  if (raw === null) return null;
   try {
     return JSON.parse(raw);
   } catch (e) {
@@ -28375,11 +28380,7 @@ function readJsonManifest(absPath, relLabel, warnings) {
   }
 }
 function safeRead(path) {
-  try {
-    return readFileSync25(path, "utf8");
-  } catch {
-    return "";
-  }
+  return cachedRead(path) ?? "";
 }
 
 // src/detect/workspaces.ts
@@ -29129,9 +29130,12 @@ function adaptPackage(repo, pkg, warnings) {
   if (name2 === null) return null;
   return { name: name2 || path, path, kind: pkg.kind };
 }
+function discoverWorkspaces(repo) {
+  return scopedMemo(`workspaces:${repo}`, () => detectWorkspaces(repo));
+}
 function detectWorkspaces2(repo, warnings) {
   const found = /* @__PURE__ */ new Map();
-  for (const pkg of detectWorkspaces(repo).packages) {
+  for (const pkg of discoverWorkspaces(repo).packages) {
     const ws = adaptPackage(repo, pkg, warnings);
     if (ws) found.set(ws.path, ws);
   }
@@ -29139,7 +29143,7 @@ function detectWorkspaces2(repo, warnings) {
 }
 function buildWorkspaceGraph(repo, workspaces, _warnings) {
   if (workspaces.length === 0) return;
-  const engineByDir = new Map(detectWorkspaces(repo).packages.map((p) => [p.dir, p]));
+  const engineByDir = new Map(discoverWorkspaces(repo).packages.map((p) => [p.dir, p]));
   const localNames = new Set(workspaces.map((w) => w.name));
   const remap = /* @__PURE__ */ new Map();
   for (const ws of workspaces) {
@@ -29551,7 +29555,6 @@ function detectNodeVersion(repo, warnings) {
 }
 
 // src/detect/candidates.ts
-import { readFileSync as readFileSync26 } from "fs";
 import { join as join36 } from "path";
 var CONTENT_SCAN_EXTS = /* @__PURE__ */ new Set([
   ".ts",
@@ -29790,7 +29793,7 @@ var CONVENTIONAL_ENTRIES = [
 function detectEntryPoints(repo, files) {
   const entries = /* @__PURE__ */ new Set();
   try {
-    const pkg = JSON.parse(readFileSync26(join36(repo, "package.json"), "utf8"));
+    const pkg = JSON.parse(cachedRead(join36(repo, "package.json")) ?? "");
     for (const key of ["main", "module"]) {
       const v = pkg[key];
       if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));
@@ -29827,7 +29830,7 @@ function hasUI(inv) {
 
 // src/evidence.ts
 import { createHash as createHash5 } from "crypto";
-import { readdirSync as readdirSync5, readFileSync as readFileSync27, statSync as statSync15 } from "fs";
+import { readdirSync as readdirSync5, readFileSync as readFileSync25, statSync as statSync15 } from "fs";
 import { join as join37 } from "path";
 var REA_EVIDENCE_DIR = "evidence/rea";
 var REA_EVIDENCE_MAX_BYTES = 64 * 1024 * 1024;
@@ -29847,7 +29850,7 @@ function loadExternalEvidence(outDir) {
       else if (e.isFile() && e.name.endsWith(".json")) {
         try {
           if (statSync15(p).size > REA_EVIDENCE_MAX_BYTES) continue;
-          for (const m of readFileSync27(p, "utf8").matchAll(/"(ev_[0-9a-f]{64})"/g)) ids.add(`rea:${m[1]}`);
+          for (const m of readFileSync25(p, "utf8").matchAll(/"(ev_[0-9a-f]{64})"/g)) ids.add(`rea:${m[1]}`);
         } catch {
         }
       }
@@ -30454,15 +30457,15 @@ var expressAdapter = {
       if (list) list.push(edge);
       else incoming.set(u.target, [edge]);
     }
-    const memo = /* @__PURE__ */ new Map();
+    const memo2 = /* @__PURE__ */ new Map();
     const mountsOf = (node) => {
-      const hit = memo.get(node);
+      const hit = memo2.get(node);
       if (hit) return hit;
-      memo.set(node, []);
+      memo2.set(node, []);
       const all = /* @__PURE__ */ new Set();
       for (const e of incoming.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
       const out2 = all.size ? [...all] : [""];
-      memo.set(node, out2);
+      memo2.set(node, out2);
       return out2;
     };
     const routes = [];
@@ -30771,15 +30774,15 @@ var honoAdapter = {
         else incoming.set(target, [edge]);
       }
     }
-    const memo = /* @__PURE__ */ new Map();
+    const memo2 = /* @__PURE__ */ new Map();
     const mountsOf = (node) => {
-      const hit = memo.get(node);
+      const hit = memo2.get(node);
       if (hit) return hit;
-      memo.set(node, []);
+      memo2.set(node, []);
       const all = /* @__PURE__ */ new Set();
       for (const e of incoming.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
       const out2 = all.size ? [...all] : [""];
-      memo.set(node, out2);
+      memo2.set(node, out2);
       return out2;
     };
     const routes = [];
@@ -31605,7 +31608,6 @@ function detectRoutes(files, stack, repo) {
 }
 
 // src/adapters/i18n.ts
-import { readFileSync as readFileSync28 } from "fs";
 import { join as join38, basename as basename6, extname as extname5 } from "path";
 var LOCALE_RE = /^[a-z]{2,3}(?:(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*|(_[A-Z][a-z]{3})?(_(?:[A-Z]{2}|\d{3}))?)$/;
 var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
@@ -31639,7 +31641,8 @@ function localeOf(path) {
 }
 function keysIn(repo, f) {
   try {
-    const raw = readFileSync28(join38(repo, f.path), "utf8");
+    const raw = cachedRead(join38(repo, f.path));
+    if (raw === null) return 0;
     if (f.ext === ".json") return countJsonLeaves(JSON.parse(raw));
     return raw.split(/\r?\n/).filter((l) => /^[\s-]*[\w.-]+\s*:/.test(l) || /^msgid/.test(l)).length;
   } catch {
@@ -32214,7 +32217,7 @@ function analyzeRepo(opts) {
 // src/rea.ts
 import { spawn as spawn2 } from "child_process";
 import { createHash as createHash6 } from "crypto";
-import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync29, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
+import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync26, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
 import { delimiter, isAbsolute as isAbsolute12, join as join39, resolve as resolve14 } from "path";
 var DEFAULT_TIMEOUT_MS3 = 18e4;
 var DEFAULT_MAX_ARTIFACTS = 25;
@@ -32441,7 +32444,7 @@ async function runRea(repo, out2, artifacts, opts) {
       const overwrite = "overwrite" in (exporter.inputSchema?.properties ?? {}) ? { overwrite: true } : {};
       try {
         const res = await client.request("tools/call", { name: exporter.name, arguments: { [arg]: join39(out2, rel2), ...overwrite } }, timeoutMs);
-        if (!errorText(res) && EV_RE.test(readFileSync29(join39(out2, rel2), "utf8"))) return rel2;
+        if (!errorText(res) && EV_RE.test(readFileSync26(join39(out2, rel2), "utf8"))) return rel2;
       } catch {
       } finally {
         EV_RE.lastIndex = 0;
@@ -33421,7 +33424,7 @@ function rebuildDoc(inv, opts) {
 }
 
 // src/prd/fidelity.ts
-import { readFileSync as readFileSync30, statSync as statSync17 } from "fs";
+import { readFileSync as readFileSync27, statSync as statSync17 } from "fs";
 import { join as join40 } from "path";
 
 // src/prd/markdown.ts
@@ -33532,7 +33535,7 @@ function embedSection(feature, opts) {
 `, "> _Too large to embed \u2014 see the file in the source repo._", "");
         continue;
       }
-      body2 = readFileSync30(join40(opts.repo, rel2), "utf8");
+      body2 = readFileSync27(join40(opts.repo, rel2), "utf8");
     } catch {
       continue;
     }
@@ -33871,7 +33874,7 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { constants as constants2, copyFileSync, existsSync as existsSync16, mkdirSync as mkdirSync6, readdirSync as readdirSync6, readFileSync as readFileSync31, writeFileSync as writeFileSync8 } from "fs";
+import { constants as constants2, copyFileSync, existsSync as existsSync16, mkdirSync as mkdirSync6, readdirSync as readdirSync6, readFileSync as readFileSync28, writeFileSync as writeFileSync8 } from "fs";
 import { dirname as dirname9, join as join42 } from "path";
 function writeOutput(result, opts) {
   const made = /* @__PURE__ */ new Set();
@@ -33927,7 +33930,7 @@ var CALLOUT_BEARING_DOCS = [
 var LEDGERS = ["REVIEW.json", "VERIFY.json"];
 function readIfFile(path) {
   try {
-    return readFileSync31(path, "utf8");
+    return readFileSync28(path, "utf8");
   } catch {
     return void 0;
   }
@@ -33966,7 +33969,7 @@ Pick one:
 }
 
 // src/postprocess.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync32, existsSync as existsSync17 } from "fs";
+import { readdirSync as readdirSync7, readFileSync as readFileSync29, existsSync as existsSync17 } from "fs";
 import { join as join43, relative as relative11, sep as sep9 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
@@ -33979,7 +33982,7 @@ function readMarkdownTree(dir) {
         if (GROUND_TRUTH_DIRS.has(rel2)) continue;
         walk3(child);
       } else if (entry2.isFile() && entry2.name.endsWith(".md")) {
-        out2.push({ relPath: rel2, content: readFileSync32(child, "utf8") });
+        out2.push({ relPath: rel2, content: readFileSync29(child, "utf8") });
       }
     }
   };
@@ -33992,7 +33995,7 @@ function bundleExisting(opts) {
   if (!existsSync17(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
-  const inv = JSON.parse(readFileSync32(invPath, "utf8"));
+  const inv = JSON.parse(readFileSync29(invPath, "utf8"));
   const tree = readMarkdownTree(dir);
   const artifacts = [];
   if (opts.summary) artifacts.push({ relPath: "SUMMARY.md", content: summarize(inv, opts) });
@@ -34003,11 +34006,11 @@ function bundleExisting(opts) {
 }
 
 // src/scratch.ts
-import { readFileSync as readFileSync33 } from "fs";
+import { readFileSync as readFileSync30 } from "fs";
 function loadPlan(path) {
   let raw;
   try {
-    raw = readFileSync33(path, "utf8");
+    raw = readFileSync30(path, "utf8");
   } catch {
     throw new Error(`cannot read plan.json at ${path} \u2014 does the file exist?`);
   }
@@ -34361,16 +34364,16 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync36, readdirSync as readdirSync8, statSync as statSync18 } from "fs";
+import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync33, readdirSync as readdirSync8, statSync as statSync18 } from "fs";
 import { join as join46, posix as posix10, relative as relative12 } from "path";
 
 // src/unknowns.ts
-import { existsSync as existsSync19, readFileSync as readFileSync35, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync19, readFileSync as readFileSync32, writeFileSync as writeFileSync10 } from "fs";
 import { join as join45 } from "path";
 
 // src/verify.ts
 import { createHash as createHash7 } from "crypto";
-import { existsSync as existsSync18, readFileSync as readFileSync34, writeFileSync as writeFileSync9 } from "fs";
+import { existsSync as existsSync18, readFileSync as readFileSync31, writeFileSync as writeFileSync9 } from "fs";
 import { join as join44 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
@@ -34429,7 +34432,7 @@ function featureEvidence(f) {
 function buildWorklist(outDir, opts = {}) {
   let invRaw;
   try {
-    invRaw = readFileSync34(join44(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync31(join44(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -34444,7 +34447,7 @@ function buildWorklist(outDir, opts = {}) {
   for (const f of inv.features ?? []) {
     const prdPath = join44(outDir, "features", f.slug, "PRD.md");
     if (!existsSync18(prdPath)) continue;
-    const reqs = requirements(readFileSync34(prdPath, "utf8"));
+    const reqs = requirements(readFileSync31(prdPath, "utf8"));
     const ev = featureEvidence(f);
     const evTok = ev.map((e) => ({ e, hay: new Set(tokens(e.text)) }));
     for (const req of reqs) {
@@ -34477,7 +34480,7 @@ function buildWorklist(outDir, opts = {}) {
 }
 function capUsedFor(outDir) {
   try {
-    const todo = JSON.parse(readFileSync34(join44(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync31(join44(outDir, "VERIFY.todo.json"), "utf8"));
     const max = todo?.coverage?.max;
     if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
   } catch {
@@ -34528,7 +34531,7 @@ function renderWorklistMd(wl, total, kept) {
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync34(join44(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync31(join44(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -34576,7 +34579,7 @@ function resolveEvidence(ref2, inv, external = NO_EXTERNAL_EVIDENCE) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync34(join44(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync31(join44(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -34625,7 +34628,7 @@ function assertWorklistFresh(outDir, todo) {
   }
 }
 function applyVerdicts(outDir, verdictsPath) {
-  const raw = JSON.parse(readFileSync34(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync31(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { "pairs": [...] } or { "verdicts": [...] } with at least one row.`);
@@ -34753,7 +34756,7 @@ function foldSemantic(outDir, check, opts = {}) {
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync34(p, "utf8"));
+    sem = JSON.parse(readFileSync31(p, "utf8"));
   } catch (e) {
     skip(`--semantic: VERIFY.json is unreadable (${e.message})`);
     return;
@@ -34888,7 +34891,7 @@ function buildObligations(pairs, verdicts, inv, external) {
 }
 function readObligations(outDir) {
   try {
-    return JSON.parse(readFileSync34(join44(outDir, OBLIGATIONS_FILE), "utf8"));
+    return JSON.parse(readFileSync31(join44(outDir, OBLIGATIONS_FILE), "utf8"));
   } catch {
     return void 0;
   }
@@ -34947,7 +34950,7 @@ function seal(rec) {
 }
 function readInventory(outDir) {
   try {
-    return JSON.parse(readFileSync35(join45(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync32(join45(outDir, "inventory.json"), "utf8"));
   } catch {
     throw new Error(`no readable inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -34956,7 +34959,7 @@ function readUnknowns(outDir) {
   const path = join45(outDir, UNKNOWNS_FILE);
   if (!existsSync19(path)) return void 0;
   try {
-    const raw = JSON.parse(readFileSync35(path, "utf8"));
+    const raw = JSON.parse(readFileSync32(path, "utf8"));
     if (!Array.isArray(raw?.unknowns)) throw new Error("missing `unknowns` array");
     return raw;
   } catch (e) {
@@ -35141,7 +35144,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2) || lstatSync5(full).isSymbolicLink()) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync36(full, "utf8") });
+      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync33(full, "utf8") });
     }
   }
   return out2;
@@ -35194,7 +35197,7 @@ function checkOutput(outDir, opts = {}) {
   }
   let inv;
   try {
-    inv = JSON.parse(readFileSync36(invPath, "utf8"));
+    inv = JSON.parse(readFileSync33(invPath, "utf8"));
   } catch (e) {
     errors.push(`inventory.json is not valid JSON: ${e.message}`);
     return { errors, warnings };
@@ -35235,7 +35238,7 @@ function checkOutput(outDir, opts = {}) {
     const hashOf = (file) => {
       if (!cache3.has(file)) {
         try {
-          cache3.set(file, sha256Hex(readFileSync36(join46(repo, file))).slice(0, 16));
+          cache3.set(file, sha256Hex(readFileSync33(join46(repo, file))).slice(0, 16));
         } catch {
           cache3.set(file, null);
         }
@@ -35471,7 +35474,7 @@ function formatCheckReport(r, outDir) {
 
 // src/review.ts
 import { createHash as createHash8 } from "crypto";
-import { existsSync as existsSync21, readFileSync as readFileSync37, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync21, readFileSync as readFileSync34, writeFileSync as writeFileSync11 } from "fs";
 import { join as join47 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 var SEVERITIES3 = ["blocker", "major", "minor"];
@@ -35481,7 +35484,7 @@ function sha256(s) {
 }
 function readIfExists(path) {
   try {
-    return readFileSync37(path, "utf8");
+    return readFileSync34(path, "utf8");
   } catch {
     return "";
   }
@@ -35506,7 +35509,7 @@ function currentBaseline(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    features.push({ feature: f.slug, prdHash: sha256(readFileSync37(prdPath, "utf8")) });
+    features.push({ feature: f.slug, prdHash: sha256(readFileSync34(prdPath, "utf8")) });
   }
   return { archHash: archHash(outDir), features };
 }
@@ -35540,7 +35543,7 @@ function runReview(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    const prdHash = sha256(readFileSync37(prdPath, "utf8"));
+    const prdHash = sha256(readFileSync34(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -35566,7 +35569,7 @@ function runReview(outDir) {
 function readInventory2(outDir) {
   let raw;
   try {
-    raw = readFileSync37(join47(outDir, "inventory.json"), "utf8");
+    raw = readFileSync34(join47(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -35581,7 +35584,7 @@ function readPrior(outDir) {
   if (!existsSync21(reviewPath)) return null;
   let rev;
   try {
-    rev = JSON.parse(readFileSync37(reviewPath, "utf8"));
+    rev = JSON.parse(readFileSync34(reviewPath, "utf8"));
   } catch {
     return null;
   }
@@ -35592,7 +35595,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync37(join47(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync34(join47(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.archHash ?? todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -35717,7 +35720,7 @@ function reduceFindings(findings, ctx) {
   };
 }
 function applyFindings(outDir, findingsPath) {
-  const raw = JSON.parse(readFileSync37(findingsPath, "utf8"));
+  const raw = JSON.parse(readFileSync34(findingsPath, "utf8"));
   const findings = normalizeFindings(raw);
   let round;
   let changedSet = [];
@@ -35727,7 +35730,7 @@ function applyFindings(outDir, findingsPath) {
   let baseline;
   let todo;
   try {
-    todo = JSON.parse(readFileSync37(join47(outDir, "REVIEW.todo.json"), "utf8"));
+    todo = JSON.parse(readFileSync34(join47(outDir, "REVIEW.todo.json"), "utf8"));
   } catch {
   }
   if (todo) {
@@ -35760,7 +35763,7 @@ function applyFindings(outDir, findingsPath) {
   const reviewPath = join47(outDir, "REVIEW.json");
   if (existsSync21(reviewPath)) {
     try {
-      const prev = JSON.parse(readFileSync37(reviewPath, "utf8"));
+      const prev = JSON.parse(readFileSync34(reviewPath, "utf8"));
       priorFailures = prev.failures ?? [];
       priorStale = prev.staleRounds ?? 0;
       priorRound = prev.round ?? 0;
@@ -35802,7 +35805,7 @@ function foldReview(outDir, check, opts = {}) {
   }
   let rev;
   try {
-    rev = JSON.parse(readFileSync37(p, "utf8"));
+    rev = JSON.parse(readFileSync34(p, "utf8"));
   } catch (e) {
     skip(`--semantic: REVIEW.json is unreadable (${e.message})`);
     return;
@@ -35850,7 +35853,7 @@ function formatReviewReport(r) {
 }
 
 // src/brainstorm.ts
-import { readFileSync as readFileSync38 } from "fs";
+import { readFileSync as readFileSync35 } from "fs";
 import { join as join48 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
@@ -35922,7 +35925,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync38(join48(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync35(join48(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -35933,7 +35936,7 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync39, writeFileSync as writeFileSync12 } from "fs";
+import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync36, writeFileSync as writeFileSync12 } from "fs";
 import { join as join50, resolve as resolve15 } from "path";
 
 // src/orchestrate-templates.ts
@@ -36283,7 +36286,7 @@ function batchNotice(phase, items, batch, override) {
 }
 function readJson2(path) {
   try {
-    return JSON.parse(readFileSync39(path, "utf8"));
+    return JSON.parse(readFileSync36(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -36446,7 +36449,7 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 import { createInterface as createInterface2 } from "readline";
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync24, readFileSync as readFileSync40, realpathSync as realpathSync9, statSync as statSync19 } from "fs";
+import { existsSync as existsSync24, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync19 } from "fs";
 import { isAbsolute as isAbsolute13, join as join52, relative as relative13, resolve as resolve17, sep as sep10 } from "path";
 
 // src/tree-lock.ts
@@ -36688,10 +36691,10 @@ function inRepoInventory(real, repo, out2) {
   if (!within2(real, root) || real === root) return false;
   const rel2 = relative13(root, real).split(sep10).join("/");
   try {
-    const inv = JSON.parse(readFileSync40(join52(out2, "inventory.json"), "utf8"));
+    const inv = JSON.parse(readFileSync37(join52(out2, "inventory.json"), "utf8"));
     const listed2 = (inv.files ?? []).find((f) => f.path === rel2);
     if (typeof listed2?.hash !== "string" || statSync19(real).size > MAX_READ_BYTES) return false;
-    return sha256Hex(readFileSync40(real)).slice(0, 16) === listed2.hash;
+    return sha256Hex(readFileSync37(real)).slice(0, 16) === listed2.hash;
   } catch {
     return false;
   }
@@ -36726,7 +36729,7 @@ function handleView(args2, defaults) {
   } else {
     const out2 = requiredOut(args2, defaults);
     try {
-      inv = JSON.parse(readFileSync40(join52(out2, "inventory.json"), "utf8"));
+      inv = JSON.parse(readFileSync37(join52(out2, "inventory.json"), "utf8"));
     } catch (e) {
       throw new ToolError(`unreadable inventory.json in ${out2}: ${e.message}`, { kind: "run_first", hint: "Re-scaffold the tree." });
     }
@@ -36871,7 +36874,7 @@ function handleRead(args2, out2) {
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
   if (st.size > MAX_READ_BYTES)
     throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`, { kind: "narrow_request", hint: "Use your own file tool with a byte range." });
-  const lines = readFileSync40(real, "utf8").split("\n");
+  const lines = readFileSync37(real, "utf8").split("\n");
   const total = lines.length;
   const start2 = Math.max(1, Math.floor(num2(args2.start_line) ?? 1));
   if (start2 > total)
@@ -37354,7 +37357,7 @@ function str3(v) {
 var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
-import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync41, realpathSync as realpathSync10, statSync as statSync20 } from "fs";
+import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync20 } from "fs";
 import { basename as basename9, dirname as dirname11, join as join53, resolve as resolve18, sep as sep11 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var SKILL_NAME = "reconstruct";
@@ -37404,7 +37407,7 @@ function readResource(uri, moduleDir) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
   if (!statSync20(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
-  return { uri, mimeType: "text/markdown", text: readFileSync41(targetReal, "utf8") };
+  return { uri, mimeType: "text/markdown", text: readFileSync38(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
@@ -37422,7 +37425,7 @@ function describe(root, rel2, fallbackTitle) {
 function firstProse(file) {
   let text;
   try {
-    text = readFileSync41(file, "utf8");
+    text = readFileSync38(file, "utf8");
   } catch {
     return void 0;
   }
@@ -38386,7 +38389,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
   }
   if (opts.unknowns) {
     try {
-      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync42(resolve19(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
+      const ledger = opts.apply ? applyUnknownUpdates(opts.out, JSON.parse(readFileSync39(resolve19(opts.apply), "utf8"))) : ensureUnknowns(opts.out);
       process.stdout.write((opts.json ? JSON.stringify(ledger, null, 2) : formatUnknowns(ledger)) + "\n");
       const gate = { errors: [], warnings: [] };
       foldUnknowns(opts.out, gate);

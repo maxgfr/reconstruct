@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { cachedRead } from "../read-cache.js";
 
 // Shared manifest readers. JSON manifests get malformed-file warnings here; the
 // TOML/YAML/Gemfile readers stay regex-based and cannot cheaply distinguish a
@@ -11,12 +11,10 @@ import { readFileSync } from "node:fs";
  * the collector (when given) so detection degrades loudly, not silently.
  */
 export function readJsonManifest(absPath: string, relLabel: string, warnings?: string[]): Record<string, unknown> | null {
-  let raw: string;
-  try {
-    raw = readFileSync(absPath, "utf8");
-  } catch {
-    return null;
-  }
+  // Through the per-analysis read cache: package.json alone is read by the
+  // stack, dependency, script and entry-point detectors.
+  const raw = cachedRead(absPath);
+  if (raw === null) return null;
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch (e) {
@@ -28,9 +26,5 @@ export function readJsonManifest(absPath: string, relLabel: string, warnings?: s
 
 /** File content, or "" when missing/unreadable. */
 export function safeRead(path: string): string {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return "";
-  }
+  return cachedRead(path) ?? "";
 }

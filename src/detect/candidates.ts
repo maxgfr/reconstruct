@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { cachedRead } from "../read-cache.js";
 import { join } from "node:path";
 import type { FileInfo, Hints, StackInfo } from "../types.js";
@@ -291,7 +290,7 @@ const CONVENTIONAL_ENTRIES = [
 export function detectEntryPoints(repo: string, files: FileInfo[]): string[] {
   const entries = new Set<string>();
   try {
-    const pkg = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")) as Record<string, unknown>;
+    const pkg = JSON.parse(cachedRead(join(repo, "package.json")) ?? "") as Record<string, unknown>;
     for (const key of ["main", "module"]) {
       const v = pkg[key];
       if (typeof v === "string") entries.add(v.replace(/^\.\//, ""));

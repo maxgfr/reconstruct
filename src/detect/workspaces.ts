@@ -4,6 +4,7 @@ import { detectWorkspaces as engineDetectWorkspaces } from "../vendor/codeindex-
 import type { WorkspacePackage } from "../vendor/codeindex-engine.mjs";
 import { detectStack } from "./stack.js";
 import { readJsonManifest, safeRead } from "./manifest.js";
+import { scopedMemo } from "../read-cache.js";
 import { extractDependencies } from "../adapters/generic.js";
 import type { FileInfo, Hints, RouteInfo, StackInfo, Workspace, WorkspaceKind } from "../types.js";
 
@@ -154,9 +155,14 @@ function adaptPackage(repo: string, pkg: WorkspacePackage, warnings?: string[]):
  * .kts]` `include`. A trailing `/*` glob is expanded one directory level,
  * `/**` recursively. Returns [] for a single-package repo.
  */
+/** The engine's workspace discovery, run once per analysis (detection and the graph both start from it). */
+function discoverWorkspaces(repo: string): ReturnType<typeof engineDetectWorkspaces> {
+  return scopedMemo(`workspaces:${repo}`, () => engineDetectWorkspaces(repo));
+}
+
 export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[] {
   const found = new Map<string, Workspace>();
-  for (const pkg of engineDetectWorkspaces(repo).packages) {
+  for (const pkg of discoverWorkspaces(repo).packages) {
     const ws = adaptPackage(repo, pkg, warnings);
     if (ws) found.set(ws.path, ws);
   }
@@ -174,7 +180,7 @@ export function detectWorkspaces(repo: string, warnings?: string[]): Workspace[]
  */
 export function buildWorkspaceGraph(repo: string, workspaces: Workspace[], _warnings?: string[]): void {
   if (workspaces.length === 0) return;
-  const engineByDir = new Map(engineDetectWorkspaces(repo).packages.map((p) => [p.dir, p]));
+  const engineByDir = new Map(discoverWorkspaces(repo).packages.map((p) => [p.dir, p]));
   const localNames = new Set(workspaces.map((w) => w.name));
   // engine name → local name, joined on the shared directory. An ambiguous
   // engine name (two nameless siblings sharing a basename) maps to null and
