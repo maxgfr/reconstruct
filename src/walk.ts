@@ -154,11 +154,28 @@ function matchesScope(rules: readonly IgnoreRule[], rel: string): boolean {
  * a `reconstruction-scratch`, or any custom `--out`).
  */
 function isReconstructOutput(dir: string): boolean {
+  // The stamp sits near the top: read 4 KB, not the whole (often multi-MB) file.
+  return /"generatedWith"\s*:\s*"reconstruct@/.test(readHead(join(dir, "inventory.json"), INVENTORY_HEAD_BYTES));
+}
+const INVENTORY_HEAD_BYTES = 4096;
+
+/** The first `bytes` of a file as UTF-8 (a split trailing code point is harmless here), or "" when unreadable. */
+function readHead(abs: string, bytes: number): string {
+  let fd = -1;
   try {
-    const head = readFileSync(join(dir, "inventory.json"), "utf8").slice(0, 4096);
-    return /"generatedWith"\s*:\s*"reconstruct@/.test(head);
+    fd = openSync(abs, "r");
+    const buf = Buffer.allocUnsafe(bytes);
+    return buf.toString("utf8", 0, readSync(fd, buf, 0, bytes, 0));
   } catch {
-    return false;
+    return "";
+  } finally {
+    if (fd >= 0) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* already closed */
+      }
+    }
   }
 }
 

@@ -28258,11 +28258,24 @@ function matchesScope(rules, rel2) {
   return false;
 }
 function isReconstructOutput(dir) {
+  return /"generatedWith"\s*:\s*"reconstruct@/.test(readHead(join31(dir, "inventory.json"), INVENTORY_HEAD_BYTES));
+}
+var INVENTORY_HEAD_BYTES = 4096;
+function readHead(abs, bytes) {
+  let fd = -1;
   try {
-    const head = readFileSync24(join31(dir, "inventory.json"), "utf8").slice(0, 4096);
-    return /"generatedWith"\s*:\s*"reconstruct@/.test(head);
+    fd = openSync(abs, "r");
+    const buf = Buffer.allocUnsafe(bytes);
+    return buf.toString("utf8", 0, readSync(fd, buf, 0, bytes, 0));
   } catch {
-    return false;
+    return "";
+  } finally {
+    if (fd >= 0) {
+      try {
+        closeSync(fd);
+      } catch {
+      }
+    }
   }
 }
 var SNIFF_BYTES = 8192;
