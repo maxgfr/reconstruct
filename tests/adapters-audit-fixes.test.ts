@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { djangoAdapter } from "../src/adapters/django.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
 import type { FileCategory, FileInfo, RouteInfo } from "../src/types.js";
 
@@ -62,5 +63,25 @@ describe("trpc: the documented `export const router = t.router` factory", () => 
       "src/express-helpers.ts": "export function router(o) { return o; }\n",
     });
     expect(routes).toEqual([]);
+  });
+});
+
+describe("django: inline include([...]) lists", () => {
+  it("prefixes the path() entries of an inline include, nested ones included", () => {
+    const routes = routesOf(djangoAdapter, {
+      "mysite/urls.py": [
+        "from django.urls import include, path",
+        "from . import views",
+        "urlpatterns = [",
+        '    path("", views.home),',
+        '    path("api/", include([',
+        '        path("users/", views.users),',
+        '        path("v1/", include([path("items/", views.items)])),',
+        "    ])),",
+        '    path("about/", views.about),',
+        "]",
+      ].join("\n"),
+    });
+    expect(routes.map((r) => r.route).sort()).toEqual(["/", "/about", "/api/users", "/api/v1/items"]);
   });
 });

@@ -30810,6 +30810,16 @@ function includeTarget(path, arg, aliases, sources) {
   const sub = resolvePythonModule(path, [subModule(pkg, name2), ...rest].join("."), sources);
   return sub ?? (rest.length ? null : resolvePythonModule(path, pkg, sources));
 }
+function inlineIncludes(src) {
+  const out2 = [];
+  for (const m of src.matchAll(MOUNT_RE)) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    const call2 = parsePyCall(src, open);
+    if (!/^(?:\(\s*)?\[/.test((call2.args[0] ?? "").trim())) continue;
+    out2.push({ start: open, end: call2.end, prefix: m[1] !== "path" ? cleanRegex(m[2]) : m[2] });
+  }
+  return out2.sort((a, b) => a.start - b.start);
+}
 var djangoAdapter = {
   id: "django",
   frameworks: ["Django"],
@@ -30841,12 +30851,14 @@ var djangoAdapter = {
     for (const [path, src] of sources) {
       if (!urlFiles.has(path)) continue;
       const prefix = fullPrefix(path);
+      const inline = inlineIncludes(src);
       for (const m of src.matchAll(ENTRY_RE)) {
         const view = m[3];
         if (view === "include") continue;
         if (view.endsWith(".site.urls") || view === "admin") continue;
         const raw = m[1] !== "path" ? cleanRegex(m[2]) : m[2];
-        const route2 = joinRoute(prefix, raw);
+        const at = m.index ?? 0;
+        const route2 = joinRoute(prefix, ...inline.filter((r) => r.start < at && at < r.end).map((r) => r.prefix), raw);
         routes.push({ route: route2, file: path, line: lineAt(src, m.index ?? 0), kind: isApiContext(src, route2) ? "api" : "page" });
       }
       const routerVars = new Set([...src.matchAll(DRF_ROUTER_RE)].map((m) => m[1]));

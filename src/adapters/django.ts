@@ -52,6 +52,23 @@ function includeTarget(path: string, arg: string, aliases: Map<string, string>, 
 }
 
 /**
+ * The inline mounts `path("api/", include([ path(…), … ]))` of a URLconf, as
+ * source ranges with their prefix, outermost first. The `path()` entries inside
+ * a range are leaves of THIS file that inherit every enclosing prefix.
+ */
+function inlineIncludes(src: string): { start: number; end: number; prefix: string }[] {
+  const out: { start: number; end: number; prefix: string }[] = [];
+  for (const m of src.matchAll(MOUNT_RE)) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    const call = parsePyCall(src, open);
+    // A list literal, bare or as the first element of an `([…], "app")` tuple.
+    if (!/^(?:\(\s*)?\[/.test((call.args[0] ?? "").trim())) continue;
+    out.push({ start: open, end: call.end, prefix: m[1] !== "path" ? cleanRegex(m[2] as string) : (m[2] as string) });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/**
  * Django routing: `urls.py` modules list `path("x", view)` / `re_path` / legacy
  * `url()` entries. App URLs mount into the project with
  * `path("blog/", include("blog.urls"))` (or a `(module, app_name)` tuple, or an
@@ -99,6 +116,7 @@ export const djangoAdapter: RouteAdapter = {
     for (const [path, src] of sources) {
       if (!urlFiles.has(path)) continue;
       const prefix = fullPrefix(path);
+      const inline = inlineIncludes(src);
 
       // 2. Leaf routes (skip include mounts and the admin sub-app).
       for (const m of src.matchAll(ENTRY_RE)) {
@@ -106,7 +124,8 @@ export const djangoAdapter: RouteAdapter = {
         if (view === "include") continue; // a mount, handled above
         if (view.endsWith(".site.urls") || view === "admin") continue; // admin sub-app
         const raw = m[1] !== "path" ? cleanRegex(m[2] as string) : (m[2] as string);
-        const route = joinRoute(prefix, raw);
+        const at = m.index ?? 0;
+        const route = joinRoute(prefix, ...inline.filter((r) => r.start < at && at < r.end).map((r) => r.prefix), raw);
         routes.push({ route, file: path, line: lineAt(src, m.index ?? 0), kind: isApiContext(src, route) ? "api" : "page" });
       }
 
