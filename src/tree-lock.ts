@@ -37,15 +37,23 @@ export function withTreeLock<T>(path: string, fn: () => Promise<T>): Promise<T> 
 
 function noop(): void {}
 
-function canonical(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    // Not created yet (a first scaffold): the parent may still be a symlink.
+/**
+ * The lock key: the realpath of the nearest EXISTING ancestor, plus the rest of
+ * the path. Resolving only the path or its parent gave `/tmp/new/out` before a
+ * first scaffold created it and `/private/tmp/new/out` after (macOS), so a
+ * scaffold and a call made once the tree existed held two different locks.
+ */
+export function canonical(path: string): string {
+  const missing: string[] = [];
+  let at = resolve(path);
+  for (;;) {
     try {
-      return join(realpathSync(dirname(path)), basename(path));
+      return join(realpathSync(at), ...missing.reverse());
     } catch {
-      return resolve(path);
+      const parent = dirname(at);
+      if (parent === at) return resolve(path);
+      missing.push(basename(at));
+      at = parent;
     }
   }
 }

@@ -37024,13 +37024,16 @@ function withTreeLock(path, fn) {
 function noop() {
 }
 function canonical(path) {
-  try {
-    return realpathSync8(path);
-  } catch {
+  const missing = [];
+  let at = resolve16(path);
+  for (; ; ) {
     try {
-      return join52(realpathSync8(dirname10(path)), basename8(path));
+      return join52(realpathSync8(at), ...missing.reverse());
     } catch {
-      return resolve16(path);
+      const parent = dirname10(at);
+      if (parent === at) return resolve16(path);
+      missing.push(basename8(at));
+      at = parent;
     }
   }
 }
