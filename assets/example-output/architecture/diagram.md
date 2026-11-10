@@ -11,7 +11,7 @@ graph TD
   F6["Documentation"]
   DATA[("Data / i18n / schema")]
   F0 --> DATA
-  F1 --> DATA
   F2 --> DATA
   F3 --> DATA
+  F5 --> DATA
 ```

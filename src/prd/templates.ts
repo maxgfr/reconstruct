@@ -719,7 +719,10 @@ export function diagramDoc(inv: Inventory): string {
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
   // Index into the FULL feature list — the node ids above — then keep only the
   // code features (filtering first renumbered them onto the wrong nodes).
-  const edges = inv.i18n
+  // Every code feature reads the shared data layer the DATA node stands for
+  // (schema, i18n catalogs) — drawn whenever that node is, so a schema-only
+  // repo no longer shows a DATA node nothing points to.
+  const edges = dataNode
     ? inv.features
         .map((f, i) => (f.kind === "feature" ? `  F${i} --> DATA` : ""))
         .filter(Boolean)

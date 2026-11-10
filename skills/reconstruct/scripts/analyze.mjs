@@ -33661,7 +33661,7 @@ function mermaidLabel2(text) {
 function diagramDoc(inv) {
   const nodes = inv.features.map((f, i2) => `  F${i2}["${mermaidLabel2(f.name)}"]`).join("\n");
   const dataNode = inv.i18n || inv.schemas.length ? '  DATA[("Data / i18n / schema")]' : "";
-  const edges = inv.i18n ? inv.features.map((f, i2) => f.kind === "feature" ? `  F${i2} --> DATA` : "").filter(Boolean).join("\n") : "";
+  const edges = dataNode ? inv.features.map((f, i2) => f.kind === "feature" ? `  F${i2} --> DATA` : "").filter(Boolean).join("\n") : "";
   const workspaceGraph = inv.workspaces?.length ? [
     "",
     "## Workspace graph",

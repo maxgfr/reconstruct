@@ -42,6 +42,19 @@ describe("diagramDoc", () => {
     expect(doc).not.toContain("F1 --> DATA");
   });
 
+  it("links code features to the DATA node of a schema-only repo too", () => {
+    const inv = {
+      ...base,
+      i18n: null,
+      schemas: ["prisma/schema.prisma"],
+      features: [feature("core", "feature"), feature("setup", "project-setup")],
+    } as unknown as Inventory;
+    const doc = diagramDoc(inv);
+    expect(doc).toContain('DATA[("Data / i18n / schema")]');
+    expect(doc).toContain("F0 --> DATA");
+    expect(doc).not.toContain("F1 --> DATA");
+  });
+
   it("escapes a double quote in a feature name so the mermaid label stays valid", () => {
     const inv = { ...base, features: [{ ...feature("x", "feature"), name: 'say "hi"' }] } as Inventory;
     expect(diagramDoc(inv)).toContain('F0["say #quot;hi#quot;"]');
