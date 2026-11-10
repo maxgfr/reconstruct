@@ -30245,6 +30245,7 @@ var fastapiAdapter = {
 var CONTROLLER_RE = /@Controller\(\s*([^)]*)\)/g;
 var METHOD_RE = /@(Get|Post|Put|Delete|Patch|Options|Head|All)\(\s*([^)]*)\)/g;
 var GLOBAL_PREFIX_RE = /setGlobalPrefix\(\s*["'`]([^"'`]*)["'`]/g;
+var CLASS_RE = /\bclass\s+[A-Za-z_$][\w$]*\s*(?:<[^>{]*>\s*)?(?:extends\b|implements\b|\{)/g;
 function closeOf(src, open) {
   let depth = 0;
   for (let i2 = open; i2 < src.length; i2++) {
@@ -30346,13 +30347,20 @@ var nestjsAdapter = {
       }));
       if (!controllers.length) continue;
       const global = prefixes.find((p) => isUnder(path, p.root));
+      const classes = [...src.matchAll(CLASS_RE)].map((m) => m.index ?? 0);
       for (const m of src.matchAll(METHOD_RE)) {
         const idx = m.index ?? 0;
         let bases = [""];
+        let controllerAt = -1;
         for (const c2 of controllers) {
-          if (c2.index < idx) bases = c2.bases;
-          else break;
+          if (c2.index < idx) {
+            bases = c2.bases;
+            controllerAt = c2.index;
+          } else break;
         }
+        const owner = classes.filter((c2) => c2 < idx).pop();
+        const controllerClass = classes.find((c2) => c2 > controllerAt);
+        if (controllerAt !== -1 && owner !== void 0 && controllerClass !== void 0 && owner > controllerClass) continue;
         const method = methodOf(m[1]);
         const line2 = lineAt(src, idx);
         for (const base of bases) {

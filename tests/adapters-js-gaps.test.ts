@@ -4,6 +4,7 @@ import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expressAdapter } from "../src/adapters/express.js";
 import { fastifyAdapter } from "../src/adapters/fastify.js";
+import { nestjsAdapter } from "../src/adapters/nestjs.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
 import type { FileInfo, RouteInfo } from "../src/types.js";
 
@@ -131,5 +132,23 @@ describe("trpc: procedures declared as consts, default-imported child routers", 
       "server/root.ts": 'import users from "./user";\nexport const appRouter = createTRPCRouter({ user: users });\n',
     });
     expect(sig(routes)).toEqual(["QUERY user.list"]);
+  });
+});
+
+describe("nestjs: method decorators outside a controller class", () => {
+  it("does not attribute an @Get() in a later non-controller class to the controller above it", () => {
+    const routes = routesOf(nestjsAdapter, {
+      "src/cats.controller.ts":
+        '@Controller("cats")\nexport class CatsController {\n  @Get()\n  list() {}\n}\n\nexport class Helper {\n  @Get("leak")\n  leak() {}\n}\n',
+    });
+    expect(sig(routes)).toEqual(["GET /cats"]);
+  });
+
+  it("still binds each controller's methods when several controllers share a file", () => {
+    const routes = routesOf(nestjsAdapter, {
+      "src/pets.controller.ts":
+        '@Controller("cats")\nexport class CatsController {\n  @Get(":id")\n  one() {}\n}\n\n@Injectable()\nexport class Svc {}\n\n@Controller("dogs")\nexport class DogsController {\n  @Post()\n  create() {}\n}\n',
+    });
+    expect(sig(routes)).toEqual(["GET /cats/:id", "POST /dogs"]);
   });
 });

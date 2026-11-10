@@ -7,6 +7,9 @@ import { cmp, joinRoute, lineAt, methodOf, readSources } from "./util.js";
 const CONTROLLER_RE = /@Controller\(\s*([^)]*)\)/g;
 const METHOD_RE = /@(Get|Post|Put|Delete|Patch|Options|Head|All)\(\s*([^)]*)\)/g;
 const GLOBAL_PREFIX_RE = /setGlobalPrefix\(\s*["'`]([^"'`]*)["'`]/g;
+// A class declaration (`export abstract class X<T> extends Y implements Z {`):
+// the class a method decorator belongs to is the last one declared above it.
+const CLASS_RE = /\bclass\s+[A-Za-z_$][\w$]*\s*(?:<[^>{]*>\s*)?(?:extends\b|implements\b|\{)/g;
 
 /** One `setGlobalPrefix(prefix, { exclude })` call and the app root it governs. */
 interface GlobalPrefix {
@@ -157,15 +160,26 @@ export const nestjsAdapter: RouteAdapter = {
       }));
       if (!controllers.length) continue;
       const global = prefixes.find((p) => isUnder(path, p.root));
+      const classes = [...src.matchAll(CLASS_RE)].map((m) => m.index ?? 0);
 
       for (const m of src.matchAll(METHOD_RE)) {
         const idx = m.index ?? 0;
         // Bind to the nearest @Controller declared above this method decorator.
         let bases = [""];
+        let controllerAt = -1;
         for (const c of controllers) {
-          if (c.index < idx) bases = c.bases;
-          else break;
+          if (c.index < idx) {
+            bases = c.bases;
+            controllerAt = c.index;
+          } else break;
         }
+        // ...unless the class this method sits in (the last one declared above
+        // it) is declared after that @Controller's own class: the method then
+        // belongs to a later non-controller class (a helper or service further
+        // down the file), which Nest never routes.
+        const owner = classes.filter((c) => c < idx).pop();
+        const controllerClass = classes.find((c) => c > controllerAt);
+        if (controllerAt !== -1 && owner !== undefined && controllerClass !== undefined && owner > controllerClass) continue;
         const method = methodOf(m[1] as string);
         const line = lineAt(src, idx);
         for (const base of bases) {
