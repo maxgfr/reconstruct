@@ -24,15 +24,37 @@ const kindOf = (block: string): "page" | "api" => (/render_template\s*\(/.test(b
  * multi-line signature included).
  */
 function blockAt(src: string, start: number): string {
-  const lines = src.slice(start).split("\n");
-  const indent = (lines[0] as string).match(/^[ \t]*/)?.[0].length ?? 0;
-  let end = 1;
-  for (; end < lines.length; end++) {
-    const l = lines[end] as string;
-    if (l.trim() && !/^[ \t]*[)\]]/.test(l) && (l.match(/^[ \t]*/)?.[0].length ?? 0) <= indent) break;
+  // Walk line by line from `start` and stop at the first dedent — never split
+  // the rest of the file (that made every route O(file size): quadratic).
+  const lineEnd = (from: number): number => {
+    const nl = src.indexOf("\n", from);
+    return nl === -1 ? src.length : nl;
+  };
+  const indentOf = (from: number, to: number): number => {
+    let i = from;
+    while (i < to && (src[i] === " " || src[i] === "\t")) i++;
+    return i - from;
+  };
+  let end = lineEnd(start);
+  const indent = indentOf(start, end);
+  while (end < src.length) {
+    const from = end + 1;
+    const to = lineEnd(from);
+    const l = src.slice(from, to);
+    if (l.trim() && !/^[ \t]*[)\]]/.test(l) && indentOf(from, to) <= indent) break;
+    end = to;
   }
-  return lines.slice(0, end).join("\n");
+  return src.slice(start, end);
 }
+
+/** The first match of the global+multiline `re` at or after `from`, or -1. */
+function searchFrom(src: string, re: RegExp, from: number): number {
+  re.lastIndex = from;
+  const m = re.exec(src);
+  return m ? m.index : -1;
+}
+const DEF_RE = /^[ \t]*(?:async[ \t]+)?def[ \t]/gm;
+const NEXT_ROUTE_RE = /\n@\w+\.(route|get|post|put|delete|patch)/g;
 
 /**
  * A `page` if the view decorated at `from` renders a template, else `api`. The
@@ -40,8 +62,8 @@ function blockAt(src: string, start: number): string {
  * one function gets the same kind.
  */
 function decoratedKind(src: string, from: number): "page" | "api" {
-  const def = src.slice(from).search(/^[ \t]*(?:async[ \t]+)?def[ \t]/m);
-  return def === -1 ? "api" : kindOf(blockAt(src, from + def));
+  const def = searchFrom(src, DEF_RE, from);
+  return def === -1 ? "api" : kindOf(blockAt(src, def));
 }
 
 /** Kind of an `add_url_rule` view: its `def` / `as_view` class body when defined locally. */
@@ -52,8 +74,8 @@ function viewFuncKind(src: string, from: number, viewFunc: string | undefined): 
   const at = head ? src.search(head) : -1;
   if (at !== -1) return kindOf(blockAt(src, at));
   // Fallback: the code following the registration, up to the next route decorator.
-  const next = src.slice(from + 1).search(/\n@\w+\.(route|get|post|put|delete|patch)/);
-  return kindOf(next === -1 ? src.slice(from) : src.slice(from, from + 1 + next));
+  const next = searchFrom(src, NEXT_ROUTE_RE, from + 1);
+  return kindOf(next === -1 ? src.slice(from) : src.slice(from, next));
 }
 
 /**

@@ -30029,18 +30029,36 @@ var openParen = (m) => (m.index ?? 0) + m[0].length - 1;
 var urlPrefixOf = (call2) => pyString(call2.kwargs.get("url_prefix")) ?? "";
 var kindOf2 = (block) => /render_template\s*\(/.test(block) ? "page" : "api";
 function blockAt(src, start2) {
-  const lines = src.slice(start2).split("\n");
-  const indent = lines[0].match(/^[ \t]*/)?.[0].length ?? 0;
-  let end = 1;
-  for (; end < lines.length; end++) {
-    const l = lines[end];
-    if (l.trim() && !/^[ \t]*[)\]]/.test(l) && (l.match(/^[ \t]*/)?.[0].length ?? 0) <= indent) break;
+  const lineEnd = (from) => {
+    const nl = src.indexOf("\n", from);
+    return nl === -1 ? src.length : nl;
+  };
+  const indentOf2 = (from, to) => {
+    let i2 = from;
+    while (i2 < to && (src[i2] === " " || src[i2] === "	")) i2++;
+    return i2 - from;
+  };
+  let end = lineEnd(start2);
+  const indent = indentOf2(start2, end);
+  while (end < src.length) {
+    const from = end + 1;
+    const to = lineEnd(from);
+    const l = src.slice(from, to);
+    if (l.trim() && !/^[ \t]*[)\]]/.test(l) && indentOf2(from, to) <= indent) break;
+    end = to;
   }
-  return lines.slice(0, end).join("\n");
+  return src.slice(start2, end);
 }
+function searchFrom(src, re, from) {
+  re.lastIndex = from;
+  const m = re.exec(src);
+  return m ? m.index : -1;
+}
+var DEF_RE = /^[ \t]*(?:async[ \t]+)?def[ \t]/gm;
+var NEXT_ROUTE_RE = /\n@\w+\.(route|get|post|put|delete|patch)/g;
 function decoratedKind(src, from) {
-  const def = src.slice(from).search(/^[ \t]*(?:async[ \t]+)?def[ \t]/m);
-  return def === -1 ? "api" : kindOf2(blockAt(src, from + def));
+  const def = searchFrom(src, DEF_RE, from);
+  return def === -1 ? "api" : kindOf2(blockAt(src, def));
 }
 function viewFuncKind(src, from, viewFunc) {
   const cls = viewFunc?.match(/^(\w+)\.as_view\s*\(/)?.[1];
@@ -30048,8 +30066,8 @@ function viewFuncKind(src, from, viewFunc) {
   const head = cls ? new RegExp(`^[ \\t]*class[ \\t]+${cls}\\b`, "m") : fn ? new RegExp(`^[ \\t]*(?:async[ \\t]+)?def[ \\t]+${fn}\\s*\\(`, "m") : null;
   const at = head ? src.search(head) : -1;
   if (at !== -1) return kindOf2(blockAt(src, at));
-  const next = src.slice(from + 1).search(/\n@\w+\.(route|get|post|put|delete|patch)/);
-  return kindOf2(next === -1 ? src.slice(from) : src.slice(from, from + 1 + next));
+  const next = searchFrom(src, NEXT_ROUTE_RE, from + 1);
+  return kindOf2(next === -1 ? src.slice(from) : src.slice(from, next));
 }
 var flaskAdapter = {
   id: "flask",
