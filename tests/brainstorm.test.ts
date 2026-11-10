@@ -113,3 +113,15 @@ describe("runBrainstorm", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("brainstorm on a minimal inventory", () => {
+  it("does not crash when inventory.json has no features array", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { runBrainstorm } = await import("../src/brainstorm.js");
+    const dir = mkdtempSync(join(tmpdir(), "rc-brainstorm-min-"));
+    writeFileSync(join(dir, "inventory.json"), "{}");
+    expect(() => runBrainstorm(dir)).not.toThrow();
+  });
+});

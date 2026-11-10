@@ -18,11 +18,11 @@ function recoveredSurface(inv: Inventory): string[] {
   const opCount = inv.interfaces?.length ?? inv.routes?.length ?? 0;
   const entCount = inv.dataModel?.length ?? 0;
   const enumCount = inv.enums?.length ?? 0;
-  out.push(`- **Scale:** ${inv.features.length} feature(s) · ${opCount} operation(s) · ${entCount} entit(y/ies) · ${enumCount} enum(s)`);
+  out.push(`- **Scale:** ${(inv.features ?? []).length} feature(s) · ${opCount} operation(s) · ${entCount} entit(y/ies) · ${enumCount} enum(s)`);
   if (inv.i18n?.locales?.length) out.push(`- **Locales:** ${inv.i18n.locales.join(", ")}`);
   out.push("");
   out.push("**Features:**");
-  for (const f of inv.features) out.push(`- **${f.name}**${f.description ? ` — ${f.description}` : ""} (\`features/${f.slug}/PRD.md\`)`);
+  for (const f of inv.features ?? []) out.push(`- **${f.name}**${f.description ? ` — ${f.description}` : ""} (\`features/${f.slug}/PRD.md\`)`);
   out.push("");
   const entities = (inv.dataModel ?? []).map((e) => e.entity);
   if (entities.length) out.push(`**Entities:** ${entities.join(", ")}`);
