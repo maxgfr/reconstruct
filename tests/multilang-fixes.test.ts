@@ -203,13 +203,36 @@ func main(){ r := chi.NewRouter()
     const r = inv({
       "go.mod": "module x\n",
       "main.go": `package main
+import "net/http"
 func main(){ mux := http.NewServeMux()
   mux.HandleFunc("GET /health", h)
 }`,
     });
-    // net/http has no framework label, so routes aren't resolved — but the file
-    // must be surfaced as a route candidate so the agent can recover it.
+    // net/http is a library label, not a framework: it still activates the Go
+    // adapter, and the file stays a route candidate.
+    expect(r.stack.frameworks).toEqual([]);
+    expect(r.stack.libraries).toContain("net/http");
+    expect(hasM(r.routes, "GET", "/health")).toBe(true);
     expect(r.hints.routeCandidates).toContain("main.go");
+  });
+
+  it("resolves plain http.HandleFunc routes in a net/http-only repo", () => {
+    const r = inv({
+      "go.mod": "module x\n\ngo 1.22\n",
+      "main.go": `package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	http.HandleFunc("/x", h)
+	fmt.Println(http.ListenAndServe(":8080", nil))
+}
+`,
+    }).routes;
+    expect(r.some((x) => x.route === "/x")).toBe(true);
   });
 });
 

@@ -29448,6 +29448,8 @@ function requirementsDir(repo) {
   }
 }
 var NON_PROJECT_DIR = /^(tests?|__tests__|fixtures?|examples?|samples?|testdata|node_modules)$/i;
+var isOwnFile = (f) => !f.path.split("/").slice(0, -1).some((seg) => NON_PROJECT_DIR.test(seg));
+var GO_NET_HTTP_IMPORT_RE = /^[ \t]*(?:import[ \t]+)?(?:[\w.]+[ \t]+)?"net\/http"[ \t]*(?:\/\/.*)?$/m;
 function detectLibraries(deps) {
   const names = Object.keys(deps);
   const found = /* @__PURE__ */ new Set();
@@ -29506,9 +29508,16 @@ function detectStack(repo, files, warnings, labelBase = "") {
   if (existsSync15(join35(repo, "Cargo.toml"))) packageManagers.add("cargo");
   if (existsSync15(join35(repo, "go.mod"))) {
     packageManagers.add("go modules");
-    const gomod = safeRead(join35(repo, "go.mod"));
+    const gomod = safeRead(join35(repo, "go.mod")).split(/\r?\n/).filter((l) => !/\/\/\s*indirect\b/.test(l)).map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+    let goFramework = false;
     for (const [pattern, label] of GO_FRAMEWORKS) {
-      if (pattern.test(gomod)) frameworks.add(label);
+      if (pattern.test(gomod)) {
+        frameworks.add(label);
+        goFramework = true;
+      }
+    }
+    if (!goFramework && files.some((f) => f.ext === ".go" && !f.path.endsWith("_test.go") && isOwnFile(f) && GO_NET_HTTP_IMPORT_RE.test(safeRead(join35(repo, f.path))))) {
+      libraries.push("net/http");
     }
   }
   if (existsSync15(join35(repo, "Gemfile"))) {
@@ -29532,9 +29541,7 @@ function detectStack(repo, files, warnings, labelBase = "") {
       if (/spring-boot/.test(safeRead(join35(repo, gradle)))) frameworks.add("Spring Boot");
     }
   }
-  const ownFiles = files.filter(
-    (f) => !f.path.split("/").slice(0, -1).some((seg) => NON_PROJECT_DIR.test(seg))
-  );
+  const ownFiles = files.filter(isOwnFile);
   const csprojs = ownFiles.filter((f) => f.path.endsWith(".csproj"));
   if (csprojs.length) {
     packageManagers.add("nuget");
@@ -31281,6 +31288,8 @@ var dirOf9 = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/"))
 var goAdapter = {
   id: "go",
   frameworks: ["Gin", "Echo", "chi", "Fiber", "Gorilla"],
+  // Standard-library-only services carry no framework label (see detectStack).
+  libraries: ["net/http"],
   detectRoutes(files, repo) {
     const routes = [];
     const sources = readSources(files, repo, [".go"]);

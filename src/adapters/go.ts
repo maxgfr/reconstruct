@@ -202,6 +202,8 @@ const dirOf = (path: string): string => (path.includes("/") ? path.slice(0, path
 export const goAdapter: RouteAdapter = {
   id: "go",
   frameworks: ["Gin", "Echo", "chi", "Fiber", "Gorilla"],
+  // Standard-library-only services carry no framework label (see detectStack).
+  libraries: ["net/http"],
   detectRoutes(files: FileInfo[], repo: string): RouteInfo[] {
     const routes: RouteInfo[] = [];
     const sources = readSources(files, repo, [".go"]);

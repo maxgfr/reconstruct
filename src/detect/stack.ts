@@ -207,6 +207,15 @@ function requirementsDir(repo: string): string[] {
 // Directory segments whose contents are not the project's own code (tests,
 // fixtures, samples, vendored deps): ignored for framework-level detection.
 const NON_PROJECT_DIR = /^(tests?|__tests__|fixtures?|examples?|samples?|testdata|node_modules)$/i;
+const isOwnFile = (f: FileInfo): boolean =>
+  !f.path
+    .split("/")
+    .slice(0, -1)
+    .some((seg) => NON_PROJECT_DIR.test(seg));
+
+// `import "net/http"` or a `"net/http"` line inside an `import ( … )` block
+// (optionally aliased: `nethttp "net/http"`).
+const GO_NET_HTTP_IMPORT_RE = /^[ \t]*(?:import[ \t]+)?(?:[\w.]+[ \t]+)?"net\/http"[ \t]*(?:\/\/.*)?$/m;
 
 /** Detect notable libraries from a merged dependency map (runtime + dev). */
 export function detectLibraries(deps: Record<string, string>): string[] {
@@ -284,9 +293,30 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   if (existsSync(join(repo, "Cargo.toml"))) packageManagers.add("cargo");
   if (existsSync(join(repo, "go.mod"))) {
     packageManagers.add("go modules");
-    const gomod = safeRead(join(repo, "go.mod"));
+    // An `// indirect` requirement is a dependency of a dependency, not
+    // something the module imports: it says nothing about the project's own
+    // framework. Other comments are dropped too, so a commented-out require
+    // does not count either.
+    const gomod = safeRead(join(repo, "go.mod"))
+      .split(/\r?\n/)
+      .filter((l) => !/\/\/\s*indirect\b/.test(l))
+      .map((l) => l.replace(/\/\/.*$/, ""))
+      .join("\n");
+    let goFramework = false;
     for (const [pattern, label] of GO_FRAMEWORKS) {
-      if (pattern.test(gomod)) frameworks.add(label);
+      if (pattern.test(gomod)) {
+        frameworks.add(label);
+        goFramework = true;
+      }
+    }
+    // A Go service built on the standard library alone has no framework to
+    // detect: label it `net/http` (a library, like tRPC) so the Go route
+    // adapter still runs. Only the project's own non-test sources count.
+    if (
+      !goFramework &&
+      files.some((f) => f.ext === ".go" && !f.path.endsWith("_test.go") && isOwnFile(f) && GO_NET_HTTP_IMPORT_RE.test(safeRead(join(repo, f.path))))
+    ) {
+      libraries.push("net/http");
     }
   }
   if (existsSync(join(repo, "Gemfile"))) {
@@ -320,13 +350,7 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   // vendored packages are skipped — a Node repo whose tests carry a .csproj
   // fixture is not an ASP.NET Core app. Every remaining project is examined:
   // the web one is often not the first (`src/Core` before `src/Web`).
-  const ownFiles = files.filter(
-    (f) =>
-      !f.path
-        .split("/")
-        .slice(0, -1)
-        .some((seg) => NON_PROJECT_DIR.test(seg)),
-  );
+  const ownFiles = files.filter(isOwnFile);
   const csprojs = ownFiles.filter((f) => f.path.endsWith(".csproj"));
   if (csprojs.length) {
     packageManagers.add("nuget");

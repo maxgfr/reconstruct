@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { goAdapter } from "../src/adapters/go.js";
+import { detectStack } from "../src/detect/stack.js";
 import type { FileCategory, FileInfo, RouteInfo } from "../src/types.js";
 
 // Regression tests for Go / Rails / Python route, dependency and stack gaps.
@@ -189,5 +190,50 @@ func registerUsers(rg *gin.RouterGroup) {
 `,
     });
     expect(sig(routes)).toEqual(["GET /api/a", "GET /b"]);
+  });
+});
+
+describe("stack: Go net/http activation and indirect deps", () => {
+  const stackOf = (files: Record<string, string>) => {
+    const { repo, infos } = repoOf(files);
+    return detectStack(repo, infos);
+  };
+
+  it("labels a framework-less Go repo importing net/http", () => {
+    const s = stackOf({ "go.mod": "module x\n", "main.go": 'package main\n\nimport "net/http"\n\nfunc main() { http.HandleFunc("/x", h) }\n' });
+    expect(s.frameworks).toEqual([]);
+    expect(s.libraries).toContain("net/http");
+  });
+
+  it("does not label a Go repo that never imports net/http, or only in tests", () => {
+    const s = stackOf({
+      "go.mod": "module x\n",
+      "main.go": 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("net/http") }\n',
+      "main_test.go": 'package main\n\nimport "net/http"\n',
+      "testdata/srv.go": 'package srv\n\nimport "net/http"\n',
+    });
+    expect(s.libraries).not.toContain("net/http");
+  });
+
+  it("does not add the net/http label when a Go web framework is detected", () => {
+    const s = stackOf({
+      "go.mod": "module x\n\nrequire github.com/gin-gonic/gin v1.9.1\n",
+      "main.go": 'package main\n\nimport (\n\t"net/http"\n\t"github.com/gin-gonic/gin"\n)\n',
+    });
+    expect(s.frameworks).toEqual(["Gin"]);
+    expect(s.libraries).not.toContain("net/http");
+  });
+
+  it("ignores a framework that is only an // indirect requirement", () => {
+    const s = stackOf({
+      "go.mod": "module x\n\nrequire (\n\tgithub.com/go-chi/chi/v5 v5.0.0\n)\n\nrequire (\n\tgithub.com/gin-gonic/gin v1.9.1 // indirect\n)\n",
+      "main.go": "package main\n",
+    });
+    expect(s.frameworks).toEqual(["chi"]);
+  });
+
+  it("ignores an indirect single-line require too", () => {
+    const s = stackOf({ "go.mod": "module x\n\nrequire github.com/labstack/echo/v4 v4.11.0 // indirect\n", "main.go": "package main\n" });
+    expect(s.frameworks).toEqual([]);
   });
 });
