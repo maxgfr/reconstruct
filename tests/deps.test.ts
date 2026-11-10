@@ -94,3 +94,24 @@ describe("extractDependencies — go.mod require forms", () => {
     expect(gomod?.runtime).toEqual({ "github.com/gin-gonic/gin": "v1.9.1", "github.com/a/one": "v1.0.0", "github.com/b/two": "v2.1.0" });
   });
 });
+
+describe("extractDependencies — requirements.txt line forms", () => {
+  it("keeps packages with extras and strips inline comments and environment markers", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "requirements.txt",
+        [
+          "# pinned",
+          "fastapi==0.110 # pinned for py3.8",
+          "uvicorn[standard]>=0.20",
+          "requests",
+          'pywin32>=306; sys_platform == "win32"',
+          "-r dev.txt",
+          "-e .",
+        ].join("\n"),
+      ),
+    );
+    const pip = extractDependencies(dir, files).find((d) => d.manager === "pip");
+    expect(pip?.runtime).toEqual({ fastapi: "==0.110", uvicorn: ">=0.20", requests: "", pywin32: ">=306" });
+  });
+});

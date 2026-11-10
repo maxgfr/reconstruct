@@ -39,9 +39,15 @@ export function extractDependencies(repo: string, files: FileInfo[], warnings?: 
     const raw = read(repo, "requirements.txt") ?? "";
     const runtime: Record<string, string> = {};
     for (const line of raw.split(/\r?\n/)) {
-      const t = line.trim();
-      if (!t || t.startsWith("#")) continue;
-      const m = t.match(/^([A-Za-z0-9_.-]+)\s*([<>=!~]+.*)?$/);
+      // pip: a comment starts at a `#` preceded by whitespace; `; marker` is an
+      // environment marker, not part of the version.
+      const t =
+        line
+          .replace(/(^|\s)#.*$/, "")
+          .split(";")[0]
+          ?.trim() ?? "";
+      if (!t) continue;
+      const m = t.match(/^([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*([<>=!~]+.*)?$/);
       if (m) runtime[m[1] as string] = (m[2] ?? "").trim();
     }
     result.push({ manager: "pip", manifest: "requirements.txt", runtime, dev: {} });

@@ -28886,9 +28886,9 @@ function extractDependencies(repo, files, warnings, labelBase = "") {
     const raw = read(repo, "requirements.txt") ?? "";
     const runtime = {};
     for (const line2 of raw.split(/\r?\n/)) {
-      const t = line2.trim();
-      if (!t || t.startsWith("#")) continue;
-      const m = t.match(/^([A-Za-z0-9_.-]+)\s*([<>=!~]+.*)?$/);
+      const t = line2.replace(/(^|\s)#.*$/, "").split(";")[0]?.trim() ?? "";
+      if (!t) continue;
+      const m = t.match(/^([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*([<>=!~]+.*)?$/);
       if (m) runtime[m[1]] = (m[2] ?? "").trim();
     }
     result.push({ manager: "pip", manifest: "requirements.txt", runtime, dev: {} });
