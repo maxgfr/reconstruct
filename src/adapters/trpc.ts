@@ -230,21 +230,22 @@ export const trpcAdapter: RouteAdapter = {
 
     // Parse every router declaration into a RouterDef keyed by `file::varName`.
     const routers = new Map<string, RouterDef>();
-    // Per file: `importedName -> targetFile` for router identifiers from imports.
-    const importsByFile = new Map<string, Map<string, string>>();
+    // Per file: `localName -> { target file, exported name }` for router
+    // identifiers from imports (`import { userRouter as u }` binds `u` to the
+    // target's `userRouter`; CommonJS renames with `userRouter: u`).
+    const importsByFile = new Map<string, Map<string, { target: string; exported: string }>>();
     for (const [path, src] of sources) {
-      const imports = new Map<string, string>();
+      const imports = new Map<string, { target: string; exported: string }>();
       for (const re of [IMPORT_RE, REQUIRE_RE]) {
         for (const m of src.matchAll(re)) {
           const target = resolveModule(path, m[2] as string, sources);
           if (!target) continue;
           for (const name of (m[1] as string).split(",")) {
-            const id = name
+            const [exported, local] = name
               .trim()
-              .split(/\s+as\s+/)
-              .pop()
-              ?.trim();
-            if (id) imports.set(id, target);
+              .split(re === IMPORT_RE ? /\s+as\s+/ : /\s*:\s*/)
+              .map((x) => x.trim());
+            if (exported) imports.set(local || exported, { target, exported });
           }
         }
       }
@@ -261,8 +262,8 @@ export const trpcAdapter: RouteAdapter = {
     // Resolve a child reference `ref` used in `file` to a router id.
     const resolveRef = (file: string, ref: string): string | null => {
       if (routers.has(`${file}::${ref}`)) return `${file}::${ref}`; // same-file var
-      const target = importsByFile.get(file)?.get(ref);
-      if (target && routers.has(`${target}::${ref}`)) return `${target}::${ref}`;
+      const imported = importsByFile.get(file)?.get(ref);
+      if (imported && routers.has(`${imported.target}::${imported.exported}`)) return `${imported.target}::${imported.exported}`;
       return null;
     };
 

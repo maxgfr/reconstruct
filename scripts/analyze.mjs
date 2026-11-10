@@ -31350,8 +31350,8 @@ var trpcAdapter = {
           const target = resolveModule(path, m[2], sources);
           if (!target) continue;
           for (const name2 of m[1].split(",")) {
-            const id = name2.trim().split(/\s+as\s+/).pop()?.trim();
-            if (id) imports.set(id, target);
+            const [exported, local] = name2.trim().split(re === IMPORT_RE4 ? /\s+as\s+/ : /\s*:\s*/).map((x) => x.trim());
+            if (exported) imports.set(local || exported, { target, exported });
           }
         }
       }
@@ -31365,8 +31365,8 @@ var trpcAdapter = {
     }
     const resolveRef = (file, ref2) => {
       if (routers.has(`${file}::${ref2}`)) return `${file}::${ref2}`;
-      const target = importsByFile.get(file)?.get(ref2);
-      if (target && routers.has(`${target}::${ref2}`)) return `${target}::${ref2}`;
+      const imported = importsByFile.get(file)?.get(ref2);
+      if (imported && routers.has(`${imported.target}::${imported.exported}`)) return `${imported.target}::${imported.exported}`;
       return null;
     };
     const referenced = /* @__PURE__ */ new Set();
