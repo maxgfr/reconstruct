@@ -30,15 +30,24 @@ const SINGULAR_ACTIONS: Record<string, ActionDef[]> = {
 };
 
 const ROOT_RE = /^root\b/;
-const VERB_RE = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
+// `get "/x"`, `get :x` and the parenthesised `get("/x", to: …)`. Not a method
+// called on a receiver (`req.get("/x")`) or a symbol/ivar named `get`.
+const VERB_RE = /(?<![\w.:@$])(get|post|put|patch|delete)(?:\s+|\s*\(\s*)(?::(\w+)|["']([^"']+)["'])/g;
+// `match "/x", to: "a#b", via: [:get, :post]` (also `match(...)`, `via: :all`,
+// `:via => …`). Without `via:` modern Rails refuses the route, so it is skipped.
+const MATCH_RE = /(?<![\w.:@$])match(?:\s+|\s*\(\s*)["']([^"']+)["']/g;
+const VIA_RE = /(?:\bvia:|:via\s*=>)\s*(\[[^\]]*\]|%[iwIW][[(][^\])]*[\])]|:\w+|["']\w+["'])/;
 // `resources :photos` and the multi-resource `resources :photos, :books, only: …`.
 // (A hash-rocket key `:only => …` is an option, never a resource name.)
 const RESOURCES_RE = /\b(resources|resource)\s+((?::\w+\b(?!\s*=>)\s*,\s*)*:\w+\b(?!\s*=>))([^\n]*)/g;
 // A verb's `on: :member` / `on: :collection` (also `:on => :member`).
 const ON_RE = /(?:\bon:|:on\s*=>)\s*:(member|collection)\b/;
 const NAMESPACE_RE = /^namespace\s+:?(\w+)/;
-// scope "/api" | scope path: "/api" | scope :admin (symbol → no url) | scope module: … (no url)
-const SCOPE_STR_RE = /^scope\s+["']([^"']+)["']/;
+// scope "/api" | scope path: "/api" | scope :admin (positional symbol → path
+// "admin", as Rails' `scope(*args)` joins positional args into the path) |
+// scope module: … / as: … (keyword options only → no url).
+const SCOPE_STR_RE = /^scope\s*\(?\s*["']([^"']+)["']/;
+const SCOPE_SYM_RE = /^scope\s*\(?\s*:(\w+)\b(?!\s*=>)/;
 const SCOPE_PATH_RE = /^scope\b[^#\n]*\bpath:\s*["']([^"']+)["']/;
 // `mount Blog::Engine => "/blog"`, `mount ActionCable.server => "/cable"`,
 // `mount Blog::Engine, at: "/blog"` and the parenthesised `mount(Sidekiq::Web, at: "/sidekiq")`.
@@ -57,9 +66,28 @@ const LITERAL_RE = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|%[iwIWqQ]?\[[^\]]*\]|%[i
 const MEMBER_RE = /^member\b/;
 const COLLECTION_RE = /^collection\b/;
 
+// A subset of ActiveSupport's inflections, enough for the `:<singular>_id`
+// param of nested resources: irregulars, uncountables, then suffix rules in
+// ActiveSupport's precedence (first match wins).
+const IRREGULAR_SINGULAR: Record<string, string> = { people: "person", men: "man", women: "woman", children: "child" };
+const UNCOUNTABLE = new Set(["equipment", "information", "rice", "money", "species", "series", "fish", "sheep", "jeans", "police", "news"]);
+const SINGULAR_RULES: Array<[RegExp, string]> = [
+  [/(quiz)zes$/, "$1"],
+  [/(matr)ices$/, "$1ix"],
+  [/(vert|ind)ices$/, "$1ex"],
+  [/(alias|status)(es)?$/, "$1"],
+  [/(bus)(es)?$/, "$1"],
+  [/(x|ch|ss|sh)es$/, "$1"],
+  [/([^aeiouy]|qu)ies$/, "$1y"],
+  [/ss$/, "ss"],
+  [/s$/, ""],
+];
+
 function singularize(n: string): string {
-  if (n.endsWith("ies")) return n.slice(0, -3) + "y";
-  if (n.endsWith("s")) return n.slice(0, -1);
+  if (UNCOUNTABLE.has(n)) return n;
+  const irregular = IRREGULAR_SINGULAR[n];
+  if (irregular) return irregular;
+  for (const [re, to] of SINGULAR_RULES) if (re.test(n)) return n.replace(re, to);
   return n;
 }
 
@@ -168,7 +196,7 @@ export const railsAdapter: RouteAdapter = {
       const routingFrame = (line: string): Frame => {
         const res = line.match(/^(resources|resource)\s+:(\w+)/);
         const ns = line.match(NAMESPACE_RE);
-        const scopePath = line.match(SCOPE_PATH_RE) ?? line.match(SCOPE_STR_RE);
+        const scopePath = line.match(SCOPE_PATH_RE) ?? line.match(SCOPE_STR_RE) ?? line.match(SCOPE_SYM_RE);
         const parentRes = [...frames].reverse().find((f) => f.type === "resources" || f.type === "singular") as { name: string } | undefined;
         if (MEMBER_RE.test(line)) return { type: "member", name: parentRes?.name ?? "" };
         if (COLLECTION_RE.test(line)) return { type: "collection", name: parentRes?.name ?? "" };
@@ -194,6 +222,15 @@ export const railsAdapter: RouteAdapter = {
           const p = (m[2] as string) ?? (m[3] as string);
           const on = line.slice((m.index ?? 0) + m[0].length).match(ON_RE)?.[1] as "member" | "collection" | undefined;
           emit(joinRoute(...verbPrefix(on), p), (m[1] as string).toUpperCase());
+        }
+        for (const m of line.matchAll(MATCH_RE)) {
+          const rest = line.slice((m.index ?? 0) + m[0].length);
+          const via = rest.match(VIA_RE)?.[1];
+          if (!via) continue;
+          const on = rest.match(ON_RE)?.[1] as "member" | "collection" | undefined;
+          const route = joinRoute(...verbPrefix(on), m[1] as string);
+          const verbs = [...via.replace(/^%[iwIW]/, "").matchAll(/\w+/g)].map((v) => (v[0] === "all" ? "*" : v[0].toUpperCase()));
+          for (const verb of new Set(verbs)) emit(route, verb);
         }
         for (const m of line.matchAll(RESOURCES_RE)) {
           const singular = (m[1] as string) === "resource";

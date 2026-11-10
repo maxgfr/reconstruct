@@ -31029,11 +31029,14 @@ var SINGULAR_ACTIONS = {
   edit: [{ method: "GET", segs: ["edit"] }]
 };
 var ROOT_RE = /^root\b/;
-var VERB_RE4 = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
+var VERB_RE4 = /(?<![\w.:@$])(get|post|put|patch|delete)(?:\s+|\s*\(\s*)(?::(\w+)|["']([^"']+)["'])/g;
+var MATCH_RE = /(?<![\w.:@$])match(?:\s+|\s*\(\s*)["']([^"']+)["']/g;
+var VIA_RE = /(?:\bvia:|:via\s*=>)\s*(\[[^\]]*\]|%[iwIW][[(][^\])]*[\])]|:\w+|["']\w+["'])/;
 var RESOURCES_RE = /\b(resources|resource)\s+((?::\w+\b(?!\s*=>)\s*,\s*)*:\w+\b(?!\s*=>))([^\n]*)/g;
 var ON_RE = /(?:\bon:|:on\s*=>)\s*:(member|collection)\b/;
 var NAMESPACE_RE = /^namespace\s+:?(\w+)/;
-var SCOPE_STR_RE = /^scope\s+["']([^"']+)["']/;
+var SCOPE_STR_RE = /^scope\s*\(?\s*["']([^"']+)["']/;
+var SCOPE_SYM_RE = /^scope\s*\(?\s*:(\w+)\b(?!\s*=>)/;
 var SCOPE_PATH_RE = /^scope\b[^#\n]*\bpath:\s*["']([^"']+)["']/;
 var MOUNT_RE2 = /\bmount\s*\(?\s*[\w:.]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
 var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
@@ -31043,9 +31046,24 @@ var BLOCK_TOKEN_RE = /(?<![\w.:@$])(do|end)(?![\w?!:])/g;
 var LITERAL_RE4 = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|%[iwIWqQ]?\[[^\]]*\]|%[iwIWqQ]?\([^)]*\)/g;
 var MEMBER_RE = /^member\b/;
 var COLLECTION_RE = /^collection\b/;
+var IRREGULAR_SINGULAR = { people: "person", men: "man", women: "woman", children: "child" };
+var UNCOUNTABLE = /* @__PURE__ */ new Set(["equipment", "information", "rice", "money", "species", "series", "fish", "sheep", "jeans", "police", "news"]);
+var SINGULAR_RULES = [
+  [/(quiz)zes$/, "$1"],
+  [/(matr)ices$/, "$1ix"],
+  [/(vert|ind)ices$/, "$1ex"],
+  [/(alias|status)(es)?$/, "$1"],
+  [/(bus)(es)?$/, "$1"],
+  [/(x|ch|ss|sh)es$/, "$1"],
+  [/([^aeiouy]|qu)ies$/, "$1y"],
+  [/ss$/, "ss"],
+  [/s$/, ""]
+];
 function singularize(n) {
-  if (n.endsWith("ies")) return n.slice(0, -3) + "y";
-  if (n.endsWith("s")) return n.slice(0, -1);
+  if (UNCOUNTABLE.has(n)) return n;
+  const irregular = IRREGULAR_SINGULAR[n];
+  if (irregular) return irregular;
+  for (const [re, to] of SINGULAR_RULES) if (re.test(n)) return n.replace(re, to);
   return n;
 }
 function selectedActions(args2, key) {
@@ -31109,7 +31127,7 @@ var railsAdapter = {
       const routingFrame = (line2) => {
         const res = line2.match(/^(resources|resource)\s+:(\w+)/);
         const ns = line2.match(NAMESPACE_RE);
-        const scopePath = line2.match(SCOPE_PATH_RE) ?? line2.match(SCOPE_STR_RE);
+        const scopePath = line2.match(SCOPE_PATH_RE) ?? line2.match(SCOPE_STR_RE) ?? line2.match(SCOPE_SYM_RE);
         const parentRes = [...frames].reverse().find((f) => f.type === "resources" || f.type === "singular");
         if (MEMBER_RE.test(line2)) return { type: "member", name: parentRes?.name ?? "" };
         if (COLLECTION_RE.test(line2)) return { type: "collection", name: parentRes?.name ?? "" };
@@ -31128,6 +31146,15 @@ var railsAdapter = {
           const p = m[2] ?? m[3];
           const on = line2.slice((m.index ?? 0) + m[0].length).match(ON_RE)?.[1];
           emit2(joinRoute(...verbPrefix(on), p), m[1].toUpperCase());
+        }
+        for (const m of line2.matchAll(MATCH_RE)) {
+          const rest = line2.slice((m.index ?? 0) + m[0].length);
+          const via = rest.match(VIA_RE)?.[1];
+          if (!via) continue;
+          const on = rest.match(ON_RE)?.[1];
+          const route2 = joinRoute(...verbPrefix(on), m[1]);
+          const verbs = [...via.replace(/^%[iwIW]/, "").matchAll(/\w+/g)].map((v) => v[0] === "all" ? "*" : v[0].toUpperCase());
+          for (const verb of new Set(verbs)) emit2(route2, verb);
         }
         for (const m of line2.matchAll(RESOURCES_RE)) {
           const singular = m[1] === "resource";

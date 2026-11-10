@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { goAdapter } from "../src/adapters/go.js";
+import { railsAdapter } from "../src/adapters/rails.js";
 import { detectStack } from "../src/detect/stack.js";
 import type { FileCategory, FileInfo, RouteInfo } from "../src/types.js";
 
@@ -235,5 +236,54 @@ describe("stack: Go net/http activation and indirect deps", () => {
   it("ignores an indirect single-line require too", () => {
     const s = stackOf({ "go.mod": "module x\n\nrequire github.com/labstack/echo/v4 v4.11.0 // indirect\n", "main.go": "package main\n" });
     expect(s.frameworks).toEqual([]);
+  });
+});
+
+describe("rails: scope symbols, parenthesised verbs, match via:, singularize", () => {
+  const rails = (body: string): string[] => sig(routesOf(railsAdapter, { "config/routes.rb": `Rails.application.routes.draw do\n${body}\nend\n` }));
+
+  it("scope :admin sets the path from the symbol", () => {
+    expect(rails('  scope :admin do\n    get "stats", to: "admin#stats"\n  end')).toEqual(["GET /admin/stats"]);
+  });
+
+  it("scope :v1, module: ... still uses the symbol as path", () => {
+    expect(rails('  scope :v1, module: "api" do\n    get "ping", to: "p#p"\n  end')).toEqual(["GET /v1/ping"]);
+  });
+
+  it("scope module: / as: add no path segment", () => {
+    expect(rails('  scope module: "admin" do\n    get "a", to: "x#a"\n  end\n  scope as: "staff" do\n    get "b", to: "x#b"\n  end')).toEqual([
+      "GET /a",
+      "GET /b",
+    ]);
+  });
+
+  it("detects verbs written with parentheses", () => {
+    expect(rails('  get("/y", to: "a#b")\n  post(:z, to: "a#c")')).toEqual(["GET /y", "POST /z"]);
+  });
+
+  it("expands match ... via: into one route per method", () => {
+    expect(rails('  match "/z", to: "a#b", via: [:get, :post]\n  match("/w", to: "a#c", via: :patch)\n  match "/all", to: "a#d", via: :all')).toEqual([
+      "* /all",
+      "GET /z",
+      "PATCH /w",
+      "POST /z",
+    ]);
+  });
+
+  it("ignores a match without via: and a method call on a receiver", () => {
+    expect(rails('  match "/legacy", to: "a#b"\n  constraints(lambda { |req| req.get("/x") }) do\n    get "ok", to: "a#b"\n  end')).toEqual(["GET /ok"]);
+  });
+
+  it("singularizes -sses, -uses, -xes and irregular plurals for nested params", () => {
+    const nest = (parent: string, child: string) => `  resources :${parent}, only: [] do\n    resources :${child}, only: :index\n  end`;
+    expect(
+      rails([nest("addresses", "notes"), nest("statuses", "likes"), nest("boxes", "items"), nest("categories", "posts"), nest("people", "pets")].join("\n")),
+    ).toEqual([
+      "GET /addresses/:address_id/notes",
+      "GET /boxes/:box_id/items",
+      "GET /categories/:category_id/posts",
+      "GET /people/:person_id/pets",
+      "GET /statuses/:status_id/likes",
+    ]);
   });
 });
