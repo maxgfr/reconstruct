@@ -245,7 +245,9 @@ describe("runRea: stale evidence, cancellation and budgets", () => {
   });
 
   it("cancels a timed-out call on rea's side and still closes the session it opened", async () => {
-    await runRea(repo, out, ["lib/native.so"], { mode: "auto", env: env("hang"), timeoutMs: 200 });
+    // A timeout long enough for the fake server to start under load; the run
+    // budget stops it after the first session instead of hanging every probe.
+    await runRea(repo, out, ["lib/native.so"], { mode: "auto", env: env("hang"), timeoutMs: 1000, budgetMs: 2500 });
     expect(calls()).toContain("notifications/cancelled");
     const opened = calls().findIndex((c) => c.startsWith("tools/call open_binary"));
     expect(opened).toBeGreaterThan(-1);
