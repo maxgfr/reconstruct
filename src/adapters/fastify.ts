@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { JS_SRC_EXTS as SRC_EXTS, joinRoute, lineAt, readSources, resolveModule } from "./util.js";
+import { JS_SRC_EXTS as SRC_EXTS, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // Optional TS annotation between a declared name and its `=`: `: FastifyInstance`.
 const TYPE = String.raw`(?::\s*[\w$.]+(?:<[^>]*>)?\s*)?`;
@@ -21,10 +21,6 @@ const ROUTE_RE = /\b(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`
 const ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
 const URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
 const METHOD_RE = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
-
-function methodOf(verb: string): string {
-  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
 
 /**
  * The instance parameter of the plugin this file exports — the receiver its

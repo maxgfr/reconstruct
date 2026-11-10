@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, readSources, resolveModule } from "./util.js";
+import { JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // Optional TS annotation between a declared name and its `=`: `: Express`,
 // `: express.Router`, `: Application<Locals>`.
@@ -27,10 +27,6 @@ const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
 const LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
 const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 const INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
-
-function methodOf(verb: string): string {
-  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
 
 function localVars(src: string, re: RegExp): Set<string> {
   return new Set([...src.matchAll(re)].map((m) => m[1] as string));

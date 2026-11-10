@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { joinRoute, lineAt, moduleName, type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver, readSources } from "./util.js";
+import { joinRoute, lineAt, matchOpenParen, moduleName, type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver, readSources } from "./util.js";
 
 const METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
 // Only the head is matched; the arguments are parsed bracket-balanced.
@@ -10,7 +10,6 @@ const ROUTER_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?APIRouter\s*
 // Receiver kept: nested `api.include_router(v2, prefix=…)` composes the parent.
 const INCLUDE_RE = /\b(\w+)\.include_router\s*\(/g;
 
-const openParen = (m: RegExpMatchArray): number => (m.index ?? 0) + m[0].length - 1;
 const prefixOf = (call: PyCall): string => pyString(call.kwargs.get("prefix")) ?? "";
 const lastSeg = (mod: string): string => mod.split(".").pop() ?? mod;
 
@@ -33,7 +32,7 @@ export const fastapiAdapter: RouteAdapter = {
     const ownPrefix = new Map<string, string>();
     for (const [path, src] of sources) {
       for (const m of src.matchAll(ROUTER_DEF_RE)) {
-        ownPrefix.set(`${path}::${m[1]}`, prefixOf(parsePyCall(src, openParen(m))));
+        ownPrefix.set(`${path}::${m[1]}`, prefixOf(parsePyCall(src, matchOpenParen(m))));
       }
     }
     const routerKeys = [...ownPrefix.keys()];
@@ -55,7 +54,7 @@ export const fastapiAdapter: RouteAdapter = {
       const resolve = pythonRefResolver(path, src, sources);
       resolvers.set(path, resolve);
       for (const m of src.matchAll(INCLUDE_RE)) {
-        const call = parsePyCall(src, openParen(m));
+        const call = parsePyCall(src, matchOpenParen(m));
         const expr = (call.args[0] ?? call.kwargs.get("router") ?? "").trim();
         if (!/^[\w.]+$/.test(expr)) continue;
         const resolved = resolve(expr);
@@ -85,7 +84,7 @@ export const fastapiAdapter: RouteAdapter = {
     for (const [path, src] of sources) {
       const resolve = resolvers.get(path) as (expr: string) => string | null;
       for (const m of src.matchAll(DECORATOR_RE)) {
-        const call = parsePyCall(src, openParen(m));
+        const call = parsePyCall(src, matchOpenParen(m));
         const subPath = pyString(call.args[0] ?? call.kwargs.get("path"));
         if (subPath === null) continue;
         const decorator = m[2] as string;

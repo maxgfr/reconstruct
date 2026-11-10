@@ -484,6 +484,16 @@ export function resolvePythonModule(fromFile: string, module: string, sources: M
 // resolving every decorator and include does not rebuild it each time.
 const pythonModuleIndexes = new WeakMap<Map<string, string>, { byModule: Map<string, string>; bySuffix: Map<string, string | null> }>();
 
+/** The offset of the `(` that ends a regex match like `@app.route(` — where a call's arguments start. */
+export function matchOpenParen(m: RegExpMatchArray): number {
+  return (m.index ?? 0) + m[0].length - 1;
+}
+
+/** An HTTP verb as written in source (`get`, `Post`, `all`) → the route method (`GET`, `POST`, `*`). */
+export function methodOf(verb: string): string {
+  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
+}
+
 /**
  * Map `alias -> "module::name"` for every `from module import name [as alias]`,
  * including the parenthesised form `from module import (\n  a,\n  b as c,\n)`

@@ -28748,6 +28748,12 @@ function resolvePythonModule(fromFile, module2, sources) {
   return index.bySuffix.get(abs) ?? null;
 }
 var pythonModuleIndexes = /* @__PURE__ */ new WeakMap();
+function matchOpenParen(m) {
+  return (m.index ?? 0) + m[0].length - 1;
+}
+function methodOf(verb) {
+  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
+}
 function pythonImportAliases(src) {
   const out2 = /* @__PURE__ */ new Map();
   for (const m of src.matchAll(/^[ \t]*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
@@ -30041,7 +30047,6 @@ var DECORATOR_RE = new RegExp(`@(\\w+)\\.(${HTTP_DECORATORS})\\s*\\(`, "g");
 var BLUEPRINT_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?Blueprint\s*\(/g;
 var REGISTER_RE = /\b(\w+)\.register_blueprint\s*\(/g;
 var ADD_URL_RE = /\b(\w+)\.add_url_rule\s*\(/g;
-var openParen = (m) => (m.index ?? 0) + m[0].length - 1;
 var urlPrefixOf = (call2) => pyString(call2.kwargs.get("url_prefix")) ?? "";
 var kindOf2 = (block) => /render_template\s*\(/.test(block) ? "page" : "api";
 function blockAt(src, start2) {
@@ -30093,7 +30098,7 @@ var flaskAdapter = {
     const ownPrefix = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       for (const m of src.matchAll(BLUEPRINT_DEF_RE)) {
-        ownPrefix.set(`${path}::${m[1]}`, urlPrefixOf(parsePyCall(src, openParen(m))));
+        ownPrefix.set(`${path}::${m[1]}`, urlPrefixOf(parsePyCall(src, matchOpenParen(m))));
       }
     }
     const regOf = /* @__PURE__ */ new Map();
@@ -30102,7 +30107,7 @@ var flaskAdapter = {
       const resolve20 = pythonRefResolver(path, src, sources);
       resolvers.set(path, resolve20);
       for (const m of src.matchAll(REGISTER_RE)) {
-        const call2 = parsePyCall(src, openParen(m));
+        const call2 = parsePyCall(src, matchOpenParen(m));
         const expr = (call2.args[0] ?? call2.kwargs.get("blueprint") ?? "").trim();
         if (!/^[\w.]+$/.test(expr)) continue;
         const childKey = resolve20(expr);
@@ -30130,7 +30135,7 @@ var flaskAdapter = {
         return key && ownPrefix.has(key) ? effectivePrefix(key) : "";
       };
       for (const m of src.matchAll(DECORATOR_RE)) {
-        const call2 = parsePyCall(src, openParen(m));
+        const call2 = parsePyCall(src, matchOpenParen(m));
         const rule2 = pyString(call2.args[0] ?? call2.kwargs.get("rule"));
         if (rule2 === null) continue;
         const decorator = m[2];
@@ -30142,7 +30147,7 @@ var flaskAdapter = {
         for (const method of verbs) routes.push({ route: route2, file: path, line: line2, kind, method });
       }
       for (const m of src.matchAll(ADD_URL_RE)) {
-        const call2 = parsePyCall(src, openParen(m));
+        const call2 = parsePyCall(src, matchOpenParen(m));
         const rule2 = pyString(call2.args[0] ?? call2.kwargs.get("rule"));
         if (rule2 === null) continue;
         const route2 = joinRoute(prefixForObj(m[1]), rule2);
@@ -30163,7 +30168,6 @@ var METHODS = "get|post|put|delete|patch|options|head|api_route|websocket";
 var DECORATOR_RE2 = new RegExp(`@(\\w+)\\.(${METHODS})\\s*\\(`, "g");
 var ROUTER_DEF_RE = /\b(\w+)\s*(?::\s*[\w.]+\s*)?=\s*(?:[\w.]+\.)?APIRouter\s*\(/g;
 var INCLUDE_RE = /\b(\w+)\.include_router\s*\(/g;
-var openParen2 = (m) => (m.index ?? 0) + m[0].length - 1;
 var prefixOf = (call2) => pyString(call2.kwargs.get("prefix")) ?? "";
 var lastSeg = (mod) => mod.split(".").pop() ?? mod;
 var fastapiAdapter = {
@@ -30174,7 +30178,7 @@ var fastapiAdapter = {
     const ownPrefix = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       for (const m of src.matchAll(ROUTER_DEF_RE)) {
-        ownPrefix.set(`${path}::${m[1]}`, prefixOf(parsePyCall(src, openParen2(m))));
+        ownPrefix.set(`${path}::${m[1]}`, prefixOf(parsePyCall(src, matchOpenParen(m))));
       }
     }
     const routerKeys = [...ownPrefix.keys()];
@@ -30191,7 +30195,7 @@ var fastapiAdapter = {
       const resolve20 = pythonRefResolver(path, src, sources);
       resolvers.set(path, resolve20);
       for (const m of src.matchAll(INCLUDE_RE)) {
-        const call2 = parsePyCall(src, openParen2(m));
+        const call2 = parsePyCall(src, matchOpenParen(m));
         const expr = (call2.args[0] ?? call2.kwargs.get("router") ?? "").trim();
         if (!/^[\w.]+$/.test(expr)) continue;
         const resolved = resolve20(expr);
@@ -30217,7 +30221,7 @@ var fastapiAdapter = {
     for (const [path, src] of sources) {
       const resolve20 = resolvers.get(path);
       for (const m of src.matchAll(DECORATOR_RE2)) {
-        const call2 = parsePyCall(src, openParen2(m));
+        const call2 = parsePyCall(src, matchOpenParen(m));
         const subPath = pyString(call2.args[0] ?? call2.kwargs.get("path"));
         if (subPath === null) continue;
         const decorator = m[2];
@@ -30314,7 +30318,6 @@ function pathsFromArg(arg) {
   if (obj) return [obj[1]];
   return [""];
 }
-var methodOf = (verb) => verb === "All" ? "*" : verb.toUpperCase();
 var nestjsAdapter = {
   id: "nestjs",
   frameworks: ["NestJS"],
@@ -30389,9 +30392,6 @@ var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
 var LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
 var IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 var INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
-function methodOf2(verb) {
-  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
 function localVars(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
 }
@@ -30475,7 +30475,7 @@ var expressAdapter = {
       const seen = /* @__PURE__ */ new Set();
       const emit2 = (obj, routePath, verb, index) => {
         const line2 = lineAt(src, index);
-        const method = verb ? methodOf2(verb) : void 0;
+        const method = verb ? methodOf(verb) : void 0;
         for (const mount of mountsOf(nodeOf(path, obj))) {
           const route2 = joinRoute(mount, routePath);
           const key = `${method} ${route2} ${line2}`;
@@ -30521,9 +30521,6 @@ var ROUTE_RE2 = /\b(\w+)\.(get|head|post|put|delete|options|patch|all)\(\s*["'`]
 var ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
 var URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
 var METHOD_RE2 = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
-function methodOf3(verb) {
-  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
 function pluginParam(src) {
   const names = /* @__PURE__ */ new Set(["fp", "fastifyPlugin"]);
   for (const m of src.matchAll(FP_IMPORT_RE)) names.add(m[1] ?? m[2]);
@@ -30608,7 +30605,7 @@ var fastifyAdapter = {
           file: path,
           line: lineAt(src, m.index ?? 0),
           kind: "api",
-          method: isWs ? "WS" : methodOf3(m[2])
+          method: isWs ? "WS" : methodOf(m[2])
         });
       }
       for (const m of src.matchAll(ROUTE_OBJ_RE)) {
@@ -30626,7 +30623,7 @@ var fastifyAdapter = {
         const methodM = slice.match(METHOD_RE2);
         const verbs = methodM?.[1] ? [methodM[1]] : (methodM?.[2] ?? "").split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
         if (verbs.length) {
-          for (const v of verbs) routes.push({ route: route2, file: path, line: line2, kind: "api", method: methodOf3(v) });
+          for (const v of verbs) routes.push({ route: route2, file: path, line: line2, kind: "api", method: methodOf(v) });
         } else {
           routes.push({ route: route2, file: path, line: line2, kind: "api" });
         }
@@ -30651,9 +30648,6 @@ var EXPORT_PROP_RE = /(?:module\.)?exports\.(\w+)\s*=\s*(\w+)/g;
 var VERB_RE2 = /^(?:get|post|put|delete|patch|options|all)$/;
 var LITERAL_RE2 = /^(["'`])([^"'`]*)\1$/;
 var IDENT_RE2 = /^[A-Za-z_$][\w$]*$/;
-function methodOf4(verb) {
-  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
-}
 var literal2 = (arg) => arg?.match(LITERAL_RE2)?.[2];
 function moduleSpecs2(src) {
   const out2 = /* @__PURE__ */ new Map();
@@ -30806,7 +30800,7 @@ var honoAdapter = {
         for (const mount of mountsOf(`${path}::${rootOf(vars, recv)}`)) {
           const route2 = joinRoute(mount, base, routePath);
           for (const v of verbs) {
-            const method = methodOf4(v);
+            const method = methodOf(v);
             const key = `${method} ${route2} ${line2}`;
             if (seen.has(key)) continue;
             seen.add(key);
@@ -31095,7 +31089,7 @@ var CTOR_ROUTER_RE = /\b(\w+)\s*:?=\s*&?(?:\w+\.(?:NewRouter|NewMux|NewServeMux)
 var DERIVED_ROUTER_RE = /\b(\w+)\s*:?=\s*\w+\.(?:Group|Route|With)\(/g;
 var MULTI_ASSIGN_BEFORE_RE = /\w+\s*,\s*\w+\s*:?=\s*$/;
 var ROUTER_FUNC_RE = new RegExp(`\\bfunc\\s+(?:\\([^)]*\\)\\s*)?(\\w+)\\s*\\([^)]*\\)\\s*\\(?\\s*\\*?${ROUTER_TYPE}`, "g");
-function methodOf5(verb) {
+function methodOf2(verb) {
   const up = verb.toUpperCase();
   return up === "ANY" || up === "ALL" ? "*" : up;
 }
@@ -31195,7 +31189,7 @@ var goAdapter = {
           route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
           ...at(m.index ?? 0),
           kind: "api",
-          method: methodOf5(m[2])
+          method: methodOf2(m[2])
         });
       }
       for (const m of src.matchAll(HANDLE_VERB_RE)) {
@@ -31205,7 +31199,7 @@ var goAdapter = {
           route: joinRoute(prefixAt(m[1], m.index ?? 0), routePath),
           ...at(m.index ?? 0),
           kind: "api",
-          method: methodOf5(m[2])
+          method: methodOf2(m[2])
         });
       }
       for (const m of src.matchAll(HANDLEFUNC_RE)) {

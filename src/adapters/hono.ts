@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { type ChainedCall, JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, readSources, resolveModule } from "./util.js";
+import { type ChainedCall, JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // `new Hono()` / `new Hono<{ Bindings: Env }>()` — generics tolerated.
 const NEW_RE = /new\s+Hono\s*(?:<[^()]*?>)?\s*\(/g;
@@ -25,10 +25,6 @@ const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 interface HonoVar {
   parent: string | null;
   own: string;
-}
-
-function methodOf(verb: string): string {
-  return verb.toLowerCase() === "all" ? "*" : verb.toUpperCase();
 }
 
 const literal = (arg: string | undefined): string | undefined => arg?.match(LITERAL_RE)?.[2];

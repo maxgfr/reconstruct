@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { cmp, joinRoute, lineAt, readSources } from "./util.js";
+import { cmp, joinRoute, lineAt, methodOf, readSources } from "./util.js";
 
 // Capture the WHOLE first-arg region so single strings, `['a','b']` arrays, and
 // `{ path: 'x' }` object forms can all be parsed for the path(s).
@@ -113,8 +113,6 @@ function pathsFromArg(arg: string): string[] {
   if (obj) return [obj[1] as string];
   return [""];
 }
-
-const methodOf = (verb: string): string => (verb === "All" ? "*" : verb.toUpperCase());
 
 /**
  * NestJS routing: a method's path is `setGlobalPrefix + @Controller(base) +

@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { joinRoute, lineAt, type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver, readSources } from "./util.js";
+import { joinRoute, lineAt, matchOpenParen, type PyCall, parsePyCall, pyMethods, pyString, pythonRefResolver, readSources } from "./util.js";
 
 const HTTP_DECORATORS = "route|get|post|put|delete|patch|options|head";
 // Only the heads are matched; the arguments are parsed bracket-balanced so a
@@ -14,7 +14,6 @@ const REGISTER_RE = /\b(\w+)\.register_blueprint\s*\(/g;
 // Functional / class-based registration: `app.add_url_rule("/x", view_func=…, methods=[…])`.
 const ADD_URL_RE = /\b(\w+)\.add_url_rule\s*\(/g;
 
-const openParen = (m: RegExpMatchArray): number => (m.index ?? 0) + m[0].length - 1;
 const urlPrefixOf = (call: PyCall): string => pyString(call.kwargs.get("url_prefix")) ?? "";
 const kindOf = (block: string): "page" | "api" => (/render_template\s*\(/.test(block) ? "page" : "api");
 
@@ -97,7 +96,7 @@ export const flaskAdapter: RouteAdapter = {
     const ownPrefix = new Map<string, string>();
     for (const [path, src] of sources) {
       for (const m of src.matchAll(BLUEPRINT_DEF_RE)) {
-        ownPrefix.set(`${path}::${m[1]}`, urlPrefixOf(parsePyCall(src, openParen(m))));
+        ownPrefix.set(`${path}::${m[1]}`, urlPrefixOf(parsePyCall(src, matchOpenParen(m))));
       }
     }
 
@@ -108,7 +107,7 @@ export const flaskAdapter: RouteAdapter = {
       const resolve = pythonRefResolver(path, src, sources);
       resolvers.set(path, resolve);
       for (const m of src.matchAll(REGISTER_RE)) {
-        const call = parsePyCall(src, openParen(m));
+        const call = parsePyCall(src, matchOpenParen(m));
         const expr = (call.args[0] ?? call.kwargs.get("blueprint") ?? "").trim();
         if (!/^[\w.]+$/.test(expr)) continue;
         const childKey = resolve(expr);
@@ -142,7 +141,7 @@ export const flaskAdapter: RouteAdapter = {
       };
 
       for (const m of src.matchAll(DECORATOR_RE)) {
-        const call = parsePyCall(src, openParen(m));
+        const call = parsePyCall(src, matchOpenParen(m));
         const rule = pyString(call.args[0] ?? call.kwargs.get("rule"));
         if (rule === null) continue;
         const decorator = m[2] as string;
@@ -155,7 +154,7 @@ export const flaskAdapter: RouteAdapter = {
       }
 
       for (const m of src.matchAll(ADD_URL_RE)) {
-        const call = parsePyCall(src, openParen(m));
+        const call = parsePyCall(src, matchOpenParen(m));
         const rule = pyString(call.args[0] ?? call.kwargs.get("rule"));
         if (rule === null) continue;
         const route = joinRoute(prefixForObj(m[1] as string), rule);
