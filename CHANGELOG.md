@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.29.10](https://github.com/maxgfr/reconstruct/compare/v2.29.9...v2.29.10) (2026-11-10)
+
+
+### Bug Fixes
+
+* **analyze:** only treat a SAM/CloudFormation template.yaml as serverless infra ([483ce27](https://github.com/maxgfr/reconstruct/commit/483ce27cbac1c96583b0a3e39dbfb06f2fc8168d))
+* **brainstorm:** seed from an inventory without a features array ([c982470](https://github.com/maxgfr/reconstruct/commit/c982470103ede3e4604f973532ce9af054f4f3fe))
+* **bundle:** keep worklists and orchestration out of standalone bundles ([16bac7d](https://github.com/maxgfr/reconstruct/commit/16bac7d2aa7b3af2814ff1c3cefbec3a5f5d85f6))
+* **bundle:** never read a closing code fence as setext heading text ([5699096](https://github.com/maxgfr/reconstruct/commit/569909633a19d79f43548e8bb45eb158590d8aaf))
+* **check:** close three false passes and a crash in the structural gate ([1b9649a](https://github.com/maxgfr/reconstruct/commit/1b9649afe30d977879e1203d43eb71eaff669c51))
+* **cli:** reject modifier flags used without the mode they modify ([e823bef](https://github.com/maxgfr/reconstruct/commit/e823bef2758a2374c6e823b8a92fad8488637b31))
+* **cli:** say that the excluded count leaves out pruned directories ([e3a17a7](https://github.com/maxgfr/reconstruct/commit/e3a17a73cd72aea21f88eadc5ea8e3fe760d9d80))
+* **deps:** nest Gemfile blocks and read pyproject, Pipfile, split requirements ([bbb7c17](https://github.com/maxgfr/reconstruct/commit/bbb7c17c5c6b80d919ee2f3c170bffe0bd69568a))
+* **dotnet:** compose chained MapGroup calls and read $@ / @$ verbatim strings ([d4b1108](https://github.com/maxgfr/reconstruct/commit/d4b11080a9d916c019214be4ff5603c3e9fdea3f))
+* **express:** mount routers under array paths and match spaced verb calls ([fec970b](https://github.com/maxgfr/reconstruct/commit/fec970bfdbe4bce2eb88067fab7c806c178262a9))
+* **fastify:** resolve named-export plugins, nested register options and multi-line chains ([4cff5be](https://github.com/maxgfr/reconstruct/commit/4cff5be3614cbf9e1358d2f9a447f3e38b77d883))
+* **features:** give every resolved route a feature PRD ([ecbfc98](https://github.com/maxgfr/reconstruct/commit/ecbfc98b7fb867b9b3378c85b67060e9b8cbd3d9))
+* **go:** resolve gorilla subrouters, Handle routes and gin group hand-offs ([7c4a8d0](https://github.com/maxgfr/reconstruct/commit/7c4a8d043bf4747359ba39d074829d5e6a8ebd0f))
+* **mcp:** count each batch element against the stdio in-flight cap ([936fcc8](https://github.com/maxgfr/reconstruct/commit/936fcc86745a215c21c5099fc3679f7b8d086765))
+* **mcp:** key the tree lock on the nearest existing ancestor's realpath ([2997359](https://github.com/maxgfr/reconstruct/commit/29973599ef919887423e511d0b8319bb94d35f76))
+* **mcp:** only treat an engine-stamped directory as a reconstruction tree ([af0a2fa](https://github.com/maxgfr/reconstruct/commit/af0a2facaea0ffbd23a7858bc12568d5c9d83b43))
+* **nestjs:** do not bind methods of a later non-controller class to the controller ([5fee518](https://github.com/maxgfr/reconstruct/commit/5fee518c20b10505c1e696881905d7f21aa38e74))
+* **nextjs:** only collapse index files, not directories named index ([d060dbd](https://github.com/maxgfr/reconstruct/commit/d060dbd51482d8e10201b344d694f6b9b79fe854))
+* **output:** prune a run's own stale output and guard edited generated docs ([76c6e09](https://github.com/maxgfr/reconstruct/commit/76c6e099df43acbd7cf4fae266a080eb56619513))
+* **prd:** link features to the diagram's DATA node whenever it is drawn ([ebb12a3](https://github.com/maxgfr/reconstruct/commit/ebb12a3e70bab02fdaec833bd6f701ff0fc81856))
+* **python:** mount routers under every prefix, default api_route to GET ([02d9c90](https://github.com/maxgfr/reconstruct/commit/02d9c907024face27021088d603df8d29658ac9d))
+* **rails:** scope symbols, parenthesised verbs, match via: and singularize ([90d5974](https://github.com/maxgfr/reconstruct/commit/90d59748733642470782b4b4150f2c15ec13ce8a))
+* **rea:** prune stale evidence and harden the rea client ([91de824](https://github.com/maxgfr/reconstruct/commit/91de824bcfe8b2797489ce385d6bcd557bf50d47))
+* **scratch:** read 'not nullable' as a required column ([d6a13e6](https://github.com/maxgfr/reconstruct/commit/d6a13e6c9462b25bc7e75ac1df22446d843b7f7d))
+* **stack:** run the Go adapter on net/http-only repos and ignore indirect deps ([d560bc0](https://github.com/maxgfr/reconstruct/commit/d560bc0153fad5a51f6c90aad9edac9f669cceae))
+* **stack:** stop integration gems and pip extras from implying a framework ([dbeaad7](https://github.com/maxgfr/reconstruct/commit/dbeaad7d286996b6f83b29f4e8c5e75d7595335b))
+* **trpc:** resolve procedure consts and default-imported child routers ([b6fdd54](https://github.com/maxgfr/reconstruct/commit/b6fdd54b8e2f1fb8d69f44c0b394d59e15549189))
+* **util:** do not open a regex literal at a JSX closing tag or after postfix ++/-- ([2900a44](https://github.com/maxgfr/reconstruct/commit/2900a4441160d2e7320beb8c16cbbc5260f5c4ee))
+* **verify:** fail --semantic on verdicts the PRDs no longer derive ([a56877b](https://github.com/maxgfr/reconstruct/commit/a56877b63fee48d3c3117dd701534b9af44688c3))
+* **walk:** stop treating unreadable files as binary; bound the env-var scan ([1357c11](https://github.com/maxgfr/reconstruct/commit/1357c11e90e19759d0a4a9ccf6b2d07c7fb5184e))
+
+
+### Performance Improvements
+
+* **verify:** derive the requirement pairs once in --verify --apply ([96c718d](https://github.com/maxgfr/reconstruct/commit/96c718dc90a90022b0563ffdf3cfee8da92a6d14))
+
 ## [2.29.9](https://github.com/maxgfr/reconstruct/compare/v2.29.8...v2.29.9) (2026-11-10)
 
 
