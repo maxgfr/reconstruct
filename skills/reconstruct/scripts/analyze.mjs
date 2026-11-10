@@ -30386,10 +30386,11 @@ var REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](
 var IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
 var USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 var VERBS = "get|post|put|delete|patch|options|head|all|ws";
-var ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
+var ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
 var VERB_RE = new RegExp(`^(?:${VERBS})$`);
-var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
+var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
 var LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
+var LITERAL_ARRAY_RE = /^\[\s*(["'`])[^"'`]*\1\s*(?:,\s*(["'`])[^"'`]*\2\s*)*,?\s*\]$/;
 var IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 var INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
 function localVars(src, re) {
@@ -30430,9 +30431,11 @@ var expressAdapter = {
       for (const m of src.matchAll(USE_RE)) {
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
         if (!call2) continue;
-        const literal3 = call2.args[0]?.match(LITERAL_RE);
-        const prefix = literal3 ? literal3[2] : "";
-        for (const arg of literal3 ? call2.args.slice(1) : call2.args) {
+        const first = call2.args[0] ?? "";
+        const literal3 = first.match(LITERAL_RE);
+        const list = !literal3 && LITERAL_ARRAY_RE.test(first);
+        const prefixes = literal3 ? [literal3[2]] : list ? [...first.matchAll(/(["'`])([^"'`]*)\1/g)].map((p) => p[2]) : [""];
+        for (const arg of literal3 || list ? call2.args.slice(1) : call2.args) {
           const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
           const imported = inline ? { spec: inline } : IDENT_RE.test(arg) ? moduleOf.get(arg) : void 0;
           let target = null;
@@ -30440,7 +30443,7 @@ var expressAdapter = {
             target = resolveModule(path, imported.spec, sources);
             if (target && imported.exported && instancesByFile.get(target)?.has(imported.exported)) target = `${target}::${imported.exported}`;
           } else if (instances.has(arg)) target = `${path}::${arg}`;
-          if (target) uses.push({ file: path, receiver: m[1], prefix, target });
+          if (target) for (const prefix of prefixes) uses.push({ file: path, receiver: m[1], prefix, target });
         }
       }
     }
@@ -30489,7 +30492,7 @@ var expressAdapter = {
         if (!instances.has(obj)) continue;
         const verbAt = (m.index ?? 0) + obj.length + m[2].length;
         if (isRoutePath(m[4])) emit2(obj, m[4], m[3], verbAt);
-        const call2 = callArgs(src, verbAt + m[3].length);
+        const call2 = callArgs(src, src.indexOf("(", verbAt + m[3].length));
         if (!call2) continue;
         for (const c2 of chainCalls(src, call2.end)) {
           const p = c2.args[0]?.match(LITERAL_RE)?.[2];

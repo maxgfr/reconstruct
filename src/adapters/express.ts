@@ -19,12 +19,15 @@ const IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*
 const USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 // `ws` is express-ws's verb — it declares a WebSocket route (method "WS").
 const VERBS = "get|post|put|delete|patch|options|head|all|ws";
-const ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
+// `app.get ("/x")` — whitespace before the `(` is legal and seen in the wild.
+const ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
 const VERB_RE = new RegExp(`^(?:${VERBS})$`);
 // `router.route("/x").get(h).post(h)` — match the path; the chained verbs are
 // read by walking the calls that follow (across lines, balanced parens).
-const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
+const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
 const LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
+// `use(["/a", "/b"], r)`: an array of string literals mounts at every path.
+const LITERAL_ARRAY_RE = /^\[\s*(["'`])[^"'`]*\1\s*(?:,\s*(["'`])[^"'`]*\2\s*)*,?\s*\]$/;
 const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 const INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
 
@@ -89,11 +92,13 @@ export const expressAdapter: RouteAdapter = {
       for (const m of src.matchAll(USE_RE)) {
         const call = callArgs(src, (m.index ?? 0) + (m[0] as string).length - 1);
         if (!call) continue;
-        const literal = call.args[0]?.match(LITERAL_RE);
-        const prefix = literal ? (literal[2] as string) : "";
+        const first = call.args[0] ?? "";
+        const literal = first.match(LITERAL_RE);
+        const list = !literal && LITERAL_ARRAY_RE.test(first);
+        const prefixes = literal ? [literal[2] as string] : list ? [...first.matchAll(/(["'`])([^"'`]*)\1/g)].map((p) => p[2] as string) : [""];
         // Every argument after the path may be the router — middleware
         // (`use("/api", auth, r)`) simply resolves to no mountable node.
-        for (const arg of literal ? call.args.slice(1) : call.args) {
+        for (const arg of literal || list ? call.args.slice(1) : call.args) {
           const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
           const imported = inline ? { spec: inline } : IDENT_RE.test(arg) ? moduleOf.get(arg) : undefined;
           let target: string | null = null;
@@ -103,7 +108,7 @@ export const expressAdapter: RouteAdapter = {
             // when the module declares it under the exported name.
             if (target && imported.exported && instancesByFile.get(target)?.has(imported.exported)) target = `${target}::${imported.exported}`;
           } else if (instances.has(arg)) target = `${path}::${arg}`;
-          if (target) uses.push({ file: path, receiver: m[1] as string, prefix, target });
+          if (target) for (const prefix of prefixes) uses.push({ file: path, receiver: m[1] as string, prefix, target });
         }
       }
     }
@@ -158,7 +163,8 @@ export const expressAdapter: RouteAdapter = {
         if (!instances.has(obj)) continue;
         const verbAt = (m.index ?? 0) + obj.length + (m[2] as string).length;
         if (isRoutePath(m[4] as string)) emit(obj, m[4] as string, m[3] as string, verbAt);
-        const call = callArgs(src, verbAt + (m[3] as string).length);
+        // The `(` after the verb (whitespace may separate them).
+        const call = callArgs(src, src.indexOf("(", verbAt + (m[3] as string).length));
         if (!call) continue;
         for (const c of chainCalls(src, call.end)) {
           const p = c.args[0]?.match(LITERAL_RE)?.[2];
