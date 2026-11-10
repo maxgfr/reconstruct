@@ -412,12 +412,12 @@ function declaresEntities(doc: string): boolean {
 /** An INTERFACES.md declares operations via headings, a filled table, or path bullets. */
 function declaresOperations(doc: string): boolean {
   const real = stripMetaTable(doc);
-  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(real);
+  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^[ \t]*[-*]\s+\S+[./]\S*/m.test(real);
 }
 
 /** A DESIGN-SYSTEM.md captures a contract via `###` subsections, a filled table row, or token bullets. */
 function declaresDesignSystem(doc: string): boolean {
-  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S/m.test(doc);
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^[ \t]*[-*]\s+\S/m.test(doc);
 }
 
 /** The body of a `## <heading>` section: lines until the next level-2 heading. */

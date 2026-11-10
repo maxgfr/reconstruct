@@ -28736,7 +28736,7 @@ function resolvePythonModule(fromFile, module2, sources) {
 var pythonModuleIndexes = /* @__PURE__ */ new WeakMap();
 function pythonImportAliases(src) {
   const out2 = /* @__PURE__ */ new Map();
-  for (const m of src.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
+  for (const m of src.matchAll(/^[ \t]*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
     const module2 = m[1];
     for (const part of (m[2] ?? m[3]).split(",")) {
       const asMatch = part.trim().match(/^(\w+)(?:\s+as\s+(\w+))?$/);
@@ -29061,7 +29061,7 @@ function readCargoName(dir) {
   const toml = safeRead(join34(dir, "Cargo.toml"));
   if (!toml) return null;
   const pkg = tomlSectionBody2(toml, "package");
-  const m = pkg?.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+  const m = pkg?.match(/^[ \t]*name\s*=\s*["']([^"']+)["']/m);
   return m ? m[1] : "";
 }
 function readGoModule(dir) {
@@ -29073,7 +29073,7 @@ function readGoModule(dir) {
 function readUvName(dir) {
   const toml = safeRead(join34(dir, "pyproject.toml"));
   if (!toml) return null;
-  const nameIn = (body2) => body2?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+  const nameIn = (body2) => body2?.match(/^[ \t]*name\s*=\s*["']([^"']+)["']/m)?.[1];
   return nameIn(tomlSectionBody2(toml, "project")) ?? nameIn(tomlSectionBody2(toml, "tool.poetry")) ?? "";
 }
 function hasGradleManifest(dir) {
@@ -29473,7 +29473,7 @@ function detectStack(repo, files, warnings, labelBase = "") {
   if (existsSync15(join35(repo, "pubspec.yaml"))) {
     packageManagers.add("pub");
     const pubspec = safeRead(join35(repo, "pubspec.yaml"));
-    if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
+    if (/^[ \t]*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
       frameworks.add("Flutter");
     }
   }
@@ -35333,10 +35333,10 @@ function declaresEntities(doc) {
 }
 function declaresOperations(doc) {
   const real = stripMetaTable(doc);
-  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^\s*[-*]\s+\S+[./]\S*/m.test(real);
+  return /^###\s+\S/m.test(real) || tableDataRowCount(real) >= 2 || /^[ \t]*[-*]\s+\S+[./]\S*/m.test(real);
 }
 function declaresDesignSystem(doc) {
-  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^\s*[-*]\s+\S/m.test(doc);
+  return /^###\s+\S/m.test(doc) || tableDataRowCount(doc) >= 2 || /^[ \t]*[-*]\s+\S/m.test(doc);
 }
 function sectionBody(doc, heading) {
   const lines = doc.split(/\r?\n/);

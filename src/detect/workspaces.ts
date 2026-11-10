@@ -64,7 +64,7 @@ function readCargoName(dir: string): string | null {
   const toml = safeRead(join(dir, "Cargo.toml"));
   if (!toml) return null;
   const pkg = tomlSectionBody(toml, "package");
-  const m = pkg?.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+  const m = pkg?.match(/^[ \t]*name\s*=\s*["']([^"']+)["']/m);
   return m ? (m[1] as string) : "";
 }
 
@@ -80,7 +80,7 @@ function readGoModule(dir: string): string | null {
 function readUvName(dir: string): string | null {
   const toml = safeRead(join(dir, "pyproject.toml"));
   if (!toml) return null;
-  const nameIn = (body: string | null) => body?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+  const nameIn = (body: string | null) => body?.match(/^[ \t]*name\s*=\s*["']([^"']+)["']/m)?.[1];
   return nameIn(tomlSectionBody(toml, "project")) ?? nameIn(tomlSectionBody(toml, "tool.poetry")) ?? "";
 }
 

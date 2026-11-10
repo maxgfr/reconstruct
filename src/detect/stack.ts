@@ -277,7 +277,7 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   if (existsSync(join(repo, "pubspec.yaml"))) {
     packageManagers.add("pub");
     const pubspec = safeRead(join(repo, "pubspec.yaml"));
-    if (/^\s*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
+    if (/^[ \t]*flutter\s*:/m.test(pubspec) || /sdk:\s*flutter/.test(pubspec)) {
       frameworks.add("Flutter");
     }
   }

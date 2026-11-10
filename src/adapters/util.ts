@@ -491,7 +491,7 @@ const pythonModuleIndexes = new WeakMap<Map<string, string>, { byModule: Map<str
  */
 export function pythonImportAliases(src: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const m of src.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
+  for (const m of src.matchAll(/^[ \t]*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(.+)$)/gm)) {
     const module = m[1] as string;
     for (const part of (m[2] ?? (m[3] as string)).split(",")) {
       const asMatch = part.trim().match(/^(\w+)(?:\s+as\s+(\w+))?$/);
