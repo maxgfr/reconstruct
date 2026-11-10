@@ -4,7 +4,7 @@ import { analyze, opaqueArtifacts } from "../analyze.js";
 import { runBrainstorm } from "../brainstorm.js";
 import { checkFindings, checkOutput } from "../check.js";
 import { isReconstructOutput } from "../walk.js";
-import { detectEnrichment, formatCopyFailures, formatEnrichmentRefusal, writeOutput } from "../output.js";
+import { detectEnrichment, formatCopyFailures, formatEnrichmentRefusal, formatPruneReport, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
 import { assertReaAvailable, REA_INSTALL_COMMAND, type ReaReport, runRea } from "../rea.js";
@@ -328,7 +328,8 @@ async function handleScaffold(args: Record<string, unknown>, repo: string, out: 
   } catch (e) {
     throw new ToolError((e as Error).message, { hint: reaHint });
   }
-  const copyWarning = formatCopyFailures(writeOutput(render(inv, opts), opts));
+  const written = writeOutput(render(inv, opts), opts);
+  const copyWarning = [formatCopyFailures(written.copyFailures), formatPruneReport(written)].filter(Boolean).join("; ") || undefined;
   let rea: ReaReport;
   try {
     rea = await runRea(repo, out, opaque, { mode: reaMode });

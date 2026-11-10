@@ -7,7 +7,7 @@ import { compareBehavior } from "./behavior.js";
 import { analyze, opaqueArtifacts } from "./analyze.js";
 import { assertReaAvailable, formatReaReport, installRea, type ReaMode, runRea } from "./rea.js";
 import { render } from "./prd/render.js";
-import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal, formatCopyFailures } from "./output.js";
+import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal, formatCopyFailures, formatPruneReport } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
 import { checkFindings, checkOutput, formatCheckReport } from "./check.js";
@@ -870,7 +870,7 @@ async function main(): Promise<void> {
 
     guardEnrichedOutput(effOpts);
     const result = render(inv, effOpts);
-    writeOutput(result, effOpts);
+    const pruneLine = formatPruneReport(writeOutput(result, effOpts));
     // CONTEXT.md + ADRs: write only if absent so agent-authored versions win.
     const docs = writeArtifactsIfAbsent(renderScratchDocs(plan), effOpts.out);
     const adrCount = docs.filter((p) => p.startsWith("docs/adr/")).length;
@@ -883,6 +883,7 @@ async function main(): Promise<void> {
       ...(consistency.warnings.length
         ? [`  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`, ...consistency.warnings.map((w) => `    ⚠ ${w}`)]
         : []),
+      ...(pruneLine ? [`  stale:    ${pruneLine}`] : []),
       ...(effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : []),
       ...(effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : []),
       ...(effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : []),
@@ -935,9 +936,12 @@ async function main(): Promise<void> {
     fail((e as Error).message);
   }
   let copyWarning: string | undefined;
+  let pruneLine: string | undefined;
   try {
     const result = render(inv, opts);
-    copyWarning = formatCopyFailures(writeOutput(result, opts));
+    const written = writeOutput(result, opts);
+    copyWarning = formatCopyFailures(written.copyFailures);
+    pruneLine = formatPruneReport(written);
   } catch (e) {
     fail((e as Error).message);
   }
@@ -970,6 +974,7 @@ async function main(): Promise<void> {
       ? [`  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    ⚠ ${w}`)]
       : []),
     ...(copyWarning ? [`  mirror:   ⚠ ${copyWarning}`] : []),
+    ...(pruneLine ? [`  stale:    ${pruneLine}`] : []),
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     ...(reaLine ? [reaLine] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,

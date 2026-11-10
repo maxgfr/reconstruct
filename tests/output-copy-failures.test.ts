@@ -20,7 +20,7 @@ describe("writeOutput: mirror copy failures are reported, not swallowed", () => 
     // The destination of b.txt is already a directory: copyFileSync → EISDIR.
     mkdirSync(join(out, "source", "b.txt"), { recursive: true });
     const opts = { out } as Options;
-    const failures = writeOutput(
+    const { copyFailures: failures } = writeOutput(
       {
         artifacts: [],
         copies: [

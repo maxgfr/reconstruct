@@ -264,7 +264,9 @@ whose `🧠` callouts are all resolved, or a `REVIEW.json`/`VERIFY.json` ledger 
 ```
 
 To continue an existing tree use `--check`/`--review`/`--verify`; to re-scaffold, point `--out`
-at a new directory; `--force` overwrites and loses the enrichment.
+at a new directory; `--force` overwrites and loses the enrichment. A re-run removes only its own
+stale output (files it generated last time, no longer generates, and nobody edited), tracked in
+`.reconstruct-generated.json`.
 
 ## Use it as an MCP server
 

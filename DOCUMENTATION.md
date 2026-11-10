@@ -240,6 +240,7 @@ reconstruction/
 ├── UNKNOWNS.json              # (--unknowns) residual-unknowns ledger, revisioned + hash-chained
 ├── OBLIGATIONS.json           # (--verify --apply) requirement obligations: closed / open / failed + closure digest
 ├── evidence/rea/              # (--rea, when rea is installed) INDEX.json + one rea inspection per compiled artifact + rea's exported bundles
+├── .reconstruct-generated.json # what the engine wrote (content hashes), so re-runs prune only their own stale output
 └── inventory.json             # machine-readable manifest of the whole analysis, incl. evidence[]
 ```
 
@@ -280,6 +281,12 @@ callouts are all resolved, or a `REVIEW.json`/`VERIFY.json` ledger — and the C
 naming the safe alternatives. `--force` overrides it and loses the enrichment. The list of
 callout-bearing documents is pinned to a really-generated tree by `tests/rerun-guard.test.ts`, so
 a template that stops emitting callouts fails a test instead of silently misfiring the guard.
+Every write also records what the engine generated in `.reconstruct-generated.json` (a content
+hash per document, size + mtime per mirrored file). That record makes any generated document
+edited since — a callout-free one like `REBUILD.md`, or a half-enriched PRD — a witness too, and
+lets a re-run delete its own **stale** output (the PRD and `source/` mirror of a feature that no
+longer exists, rea evidence for an artifact that is gone) while keeping, and reporting, any such
+file that was edited. Files the engine did not write are never touched.
 
 ---
 

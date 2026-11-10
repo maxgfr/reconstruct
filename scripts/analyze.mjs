@@ -5,7 +5,7 @@ import { spawnSync as spawnSync3 } from "child_process";
 import { resolve as resolve19, join as join54 } from "path";
 import { createInterface as createInterface3 } from "readline";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
-import { existsSync as existsSync26, readFileSync as readFileSync39, statSync as statSync21, realpathSync as realpathSync11 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync39, statSync as statSync23, realpathSync as realpathSync11 } from "fs";
 
 // src/behavior.ts
 import { spawnSync } from "child_process";
@@ -27907,14 +27907,14 @@ ${HELP}`);
       process.stderr.write(`codeindex: ${index.records.length} embedding records \u2192 ${flags2.out}/embeddings.bin (model ${model.modelId})
 `);
     } else if (sub === "pull") {
-      const { url, sha256: sha2562 } = resolveEmbedPullUrl();
+      const { url, sha256: sha2563 } = resolveEmbedPullUrl();
       const destDir = process.env.CODEINDEX_EMBED_DIR ?? join30(flags2.repo, ".codeindex", "models");
       mkdirSync4(destDir, { recursive: true });
       process.stderr.write(`codeindex: fetching model from ${url} \u2192 ${join30(destDir, "model.json")}
 `);
       let body2;
       try {
-        body2 = await fetchEmbedModel(url, sha2562);
+        body2 = await fetchEmbedModel(url, sha2563);
       } catch (e) {
         process.stderr.write(`codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
 `);
@@ -33868,9 +33868,22 @@ function render(inv, opts) {
 }
 
 // src/output.ts
-import { constants as constants2, copyFileSync, existsSync as existsSync16, mkdirSync as mkdirSync6, readdirSync as readdirSync6, readFileSync as readFileSync28, writeFileSync as writeFileSync8 } from "fs";
-import { dirname as dirname9, join as join42 } from "path";
+import { createHash as createHash7 } from "crypto";
+import { constants as constants2, copyFileSync, existsSync as existsSync16, mkdirSync as mkdirSync6, readdirSync as readdirSync6, readFileSync as readFileSync28, rmdirSync, rmSync as rmSync8, statSync as statSync18, writeFileSync as writeFileSync8 } from "fs";
+import { dirname as dirname9, isAbsolute as isAbsolute13, join as join42, relative as relative11, sep as sep9 } from "path";
+var GENERATED_MANIFEST = ".reconstruct-generated.json";
+function readGeneratedManifest(outDir) {
+  try {
+    const m = JSON.parse(readFileSync28(join42(outDir, GENERATED_MANIFEST), "utf8"));
+    return m && m.version === 1 && typeof m.artifacts === "object" && typeof m.copies === "object" ? m : void 0;
+  } catch {
+    return void 0;
+  }
+}
+var sha256 = (text) => createHash7("sha256").update(text).digest("hex");
 function writeOutput(result, opts) {
+  const previous = readGeneratedManifest(opts.out);
+  const manifest = { version: 1, artifacts: {}, copies: {} };
   const made = /* @__PURE__ */ new Set();
   const ensureDir = (dir) => {
     if (made.has(dir)) return;
@@ -33881,19 +33894,85 @@ function writeOutput(result, opts) {
     const dest = join42(opts.out, a.relPath);
     ensureDir(dirname9(dest));
     writeFileSync8(dest, a.content, "utf8");
+    manifest.artifacts[toPosix(a.relPath)] = sha256(a.content);
   }
-  const failures = [];
+  const copyFailures = [];
   for (const c2 of result.copies) {
     if (!existsSync16(c2.from)) continue;
     ensureDir(dirname9(c2.to));
     try {
       copyFileSync(c2.from, c2.to, constants2.COPYFILE_FICLONE);
+      const st = statSync18(c2.to);
+      manifest.copies[toPosix(relative11(opts.out, c2.to))] = { size: st.size, mtimeMs: st.mtimeMs };
     } catch (e) {
       const code = e.code ?? "EUNKNOWN";
-      if (code !== "ENOENT") failures.push({ path: c2.to, code });
+      if (code !== "ENOENT") copyFailures.push({ path: c2.to, code });
     }
   }
-  return failures;
+  const pruned = [];
+  const keptEdited = [];
+  if (opts.standalone) {
+    if (previous) {
+      manifest.artifacts = { ...previous.artifacts, ...manifest.artifacts };
+      manifest.copies = { ...previous.copies, ...manifest.copies };
+    }
+  } else if (previous) {
+    const unchanged2 = (rel2) => {
+      const abs = join42(opts.out, rel2);
+      try {
+        const st = statSync18(abs);
+        if (!st.isFile()) return void 0;
+        const art = previous.artifacts[rel2];
+        if (art !== void 0) return sha256(readFileSync28(abs)) === art;
+        const copy = previous.copies[rel2];
+        return copy !== void 0 && st.size === copy.size && st.mtimeMs === copy.mtimeMs;
+      } catch {
+        return void 0;
+      }
+    };
+    const stale = [
+      ...Object.keys(previous.artifacts).filter((rel2) => !(rel2 in manifest.artifacts)),
+      ...Object.keys(previous.copies).filter((rel2) => !(rel2 in manifest.copies) && !(rel2 in manifest.artifacts))
+    ];
+    for (const rel2 of stale.sort()) {
+      if (!isInside(rel2)) continue;
+      const same = unchanged2(rel2);
+      if (same === void 0) continue;
+      if (!same) {
+        keptEdited.push(rel2);
+        continue;
+      }
+      rmSync8(join42(opts.out, rel2), { force: true });
+      pruned.push(rel2);
+      removeEmptyParents(opts.out, dirname9(rel2));
+    }
+  }
+  writeFileSync8(join42(opts.out, GENERATED_MANIFEST), JSON.stringify(manifest) + "\n");
+  return { copyFailures, pruned, keptEdited };
+}
+function toPosix(rel2) {
+  return rel2.split(sep9).join("/");
+}
+function isInside(rel2) {
+  return rel2 !== "" && !isAbsolute13(rel2) && !rel2.split("/").includes("..");
+}
+function removeEmptyParents(outDir, relDir) {
+  for (let d = relDir; d && d !== "." && d !== "/"; d = dirname9(d)) {
+    try {
+      rmdirSync(join42(outDir, d));
+    } catch {
+      return;
+    }
+  }
+}
+function formatPruneReport(report) {
+  const parts2 = [];
+  if (report.pruned.length) parts2.push(`removed ${report.pruned.length} stale file(s) a previous run generated`);
+  if (report.keptEdited.length) {
+    const shown = report.keptEdited.slice(0, 5).join(", ");
+    parts2.push(`kept ${report.keptEdited.length} stale but edited file(s): ${shown}${report.keptEdited.length > 5 ? ", \u2026" : ""}`);
+  }
+  return parts2.length ? parts2.join("; ") : void 0;
 }
 function formatCopyFailures(failures) {
   if (!failures.length) return void 0;
@@ -33946,6 +34025,20 @@ function detectEnrichment(outDir) {
   } catch {
   }
   for (const slug2 of slugs) resolved(join42("features", slug2, "PRD.md"));
+  const manifest = readGeneratedManifest(outDir);
+  if (manifest) {
+    const named = new Set(witnesses.map((w) => w.split(" \u2014 ")[0]));
+    for (const [rel2, hash] of Object.entries(manifest.artifacts).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+      if (named.has(rel2) || !isInside(rel2)) continue;
+      let body2;
+      try {
+        body2 = readFileSync28(join42(outDir, rel2));
+      } catch {
+        continue;
+      }
+      if (sha256(body2) !== hash) witnesses.push(`${rel2} \u2014 edited since the engine generated it`);
+    }
+  }
   return witnesses;
 }
 function formatEnrichmentRefusal(outDir, witnesses) {
@@ -33964,14 +34057,14 @@ Pick one:
 
 // src/postprocess.ts
 import { readdirSync as readdirSync7, readFileSync as readFileSync29, existsSync as existsSync17 } from "fs";
-import { join as join43, relative as relative11, sep as sep9 } from "path";
+import { join as join43, relative as relative12, sep as sep10 } from "path";
 var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
 function readMarkdownTree(dir) {
   const out2 = [];
   const walk3 = (abs) => {
     for (const entry2 of readdirSync7(abs, { withFileTypes: true })) {
       const child = join43(abs, entry2.name);
-      const rel2 = relative11(dir, child).split(sep9).join("/");
+      const rel2 = relative12(dir, child).split(sep10).join("/");
       if (entry2.isDirectory()) {
         if (GROUND_TRUTH_DIRS.has(rel2)) continue;
         walk3(child);
@@ -34358,15 +34451,15 @@ ${body2}
 }
 
 // src/check.ts
-import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync33, readdirSync as readdirSync8, statSync as statSync18 } from "fs";
-import { join as join46, posix as posix10, relative as relative12 } from "path";
+import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync33, readdirSync as readdirSync8, statSync as statSync19 } from "fs";
+import { join as join46, posix as posix10, relative as relative13 } from "path";
 
 // src/unknowns.ts
 import { existsSync as existsSync19, readFileSync as readFileSync32, writeFileSync as writeFileSync10 } from "fs";
 import { join as join45 } from "path";
 
 // src/verify.ts
-import { createHash as createHash7 } from "crypto";
+import { createHash as createHash8 } from "crypto";
 import { existsSync as existsSync18, readFileSync as readFileSync31, writeFileSync as writeFileSync9 } from "fs";
 import { join as join44 } from "path";
 var VERIFY_MAX = 60;
@@ -34407,7 +34500,7 @@ function requirements(prd) {
   return out2;
 }
 function claimFingerprint(p) {
-  return createHash7("sha256").update(`${p.feature}
+  return createHash8("sha256").update(`${p.feature}
 ${p.evidenceRef}
 ${p.digest}
 ${p.fullClaim}`).digest("hex").slice(0, 16);
@@ -35132,7 +35225,7 @@ function collectMarkdown(dir, base = dir) {
     const full = join46(dir, name2);
     let st;
     try {
-      st = statSync18(full);
+      st = statSync19(full);
     } catch {
       continue;
     }
@@ -35140,7 +35233,7 @@ function collectMarkdown(dir, base = dir) {
       if (SKIP_DIRS.has(name2) || lstatSync5(full).isSymbolicLink()) continue;
       out2.push(...collectMarkdown(full, base));
     } else if (name2.endsWith(".md")) {
-      out2.push({ rel: relative12(base, full).split("\\").join("/"), content: readFileSync33(full, "utf8") });
+      out2.push({ rel: relative13(base, full).split("\\").join("/"), content: readFileSync33(full, "utf8") });
     }
   }
   return out2;
@@ -35169,13 +35262,13 @@ function fileNames(dir, base = dir) {
     const full = join46(dir, name2);
     let st;
     try {
-      st = statSync18(full);
+      st = statSync19(full);
     } catch {
       continue;
     }
     if (st.isDirectory()) {
       if (!lstatSync5(full).isSymbolicLink()) out2.push(...fileNames(full, base));
-    } else out2.push(relative12(base, full).split("\\").join("/"));
+    } else out2.push(relative13(base, full).split("\\").join("/"));
   }
   return out2;
 }
@@ -35469,14 +35562,14 @@ function formatCheckReport(r, outDir) {
 }
 
 // src/review.ts
-import { createHash as createHash8 } from "crypto";
+import { createHash as createHash9 } from "crypto";
 import { existsSync as existsSync21, readFileSync as readFileSync34, writeFileSync as writeFileSync11 } from "fs";
 import { join as join47 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 var SEVERITIES3 = ["blocker", "major", "minor"];
 var CATEGORIES = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
-function sha256(s) {
-  return createHash8("sha256").update(s).digest("hex");
+function sha2562(s) {
+  return createHash9("sha256").update(s).digest("hex");
 }
 function readIfExists(path) {
   try {
@@ -35486,12 +35579,12 @@ function readIfExists(path) {
   }
 }
 function archHash(outDir) {
-  return sha256(ARCH_DOCS.map((rel2) => `# ${rel2}
+  return sha2562(ARCH_DOCS.map((rel2) => `# ${rel2}
 ` + readIfExists(join47(outDir, rel2))).join("\n"));
 }
 function baselineHash(b) {
   const feats = b.features.map((f) => `${f.feature}:${f.prdHash}`).sort().join("\n");
-  return sha256(`${b.archHash}
+  return sha2562(`${b.archHash}
 ${feats}`);
 }
 function currentBaseline(outDir) {
@@ -35505,7 +35598,7 @@ function currentBaseline(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    features.push({ feature: f.slug, prdHash: sha256(readFileSync34(prdPath, "utf8")) });
+    features.push({ feature: f.slug, prdHash: sha2562(readFileSync34(prdPath, "utf8")) });
   }
   return { archHash: archHash(outDir), features };
 }
@@ -35526,7 +35619,7 @@ function normalizeProblem(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 function findingId(f) {
-  return `${f.feature}:${f.category}:${sha256(normalizeProblem(f.problem)).slice(0, 8)}`;
+  return `${f.feature}:${f.category}:${sha2562(normalizeProblem(f.problem)).slice(0, 8)}`;
 }
 function runReview(outDir) {
   const inv = readInventory2(outDir);
@@ -35539,7 +35632,7 @@ function runReview(outDir) {
   for (const f of inv.features ?? []) {
     const prdPath = join47(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
-    const prdHash = sha256(readFileSync34(prdPath, "utf8"));
+    const prdHash = sha2562(readFileSync34(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
     const changed = priorHash !== void 0 && priorHash !== prdHash;
     const isNew = prior !== null && priorHash === void 0;
@@ -36445,8 +36538,8 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 import { createInterface as createInterface2 } from "readline";
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync24, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync19 } from "fs";
-import { isAbsolute as isAbsolute13, join as join52, relative as relative13, resolve as resolve17, sep as sep10 } from "path";
+import { existsSync as existsSync24, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync20 } from "fs";
+import { isAbsolute as isAbsolute14, join as join52, relative as relative14, resolve as resolve17, sep as sep11 } from "path";
 
 // src/tree-lock.ts
 import { realpathSync as realpathSync8 } from "fs";
@@ -36581,13 +36674,13 @@ function requiredRepo(args2) {
   if (!repo) throw new ToolError("`repo` is required: an absolute path to the repository to analyze.");
   const abs = resolve17(repo);
   if (!existsSync24(abs)) throw new ToolError(`repo not found: ${abs}`);
-  if (!statSync19(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
+  if (!statSync20(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
   return abs;
 }
 function requiredOut(args2, defaults) {
   const out2 = str2(args2.out) ?? defaults.defaultOut;
   if (!out2) throw new ToolError("`out` is required: the reconstruction tree to operate on.");
-  if (!isAbsolute13(out2)) throw new ToolError("`out` must be an absolute path.");
+  if (!isAbsolute14(out2)) throw new ToolError("`out` must be an absolute path.");
   const abs = resolve17(out2);
   if (!existsSync24(join52(abs, "inventory.json"))) {
     throw new ToolError(`no reconstruction tree at ${abs} \u2014 scaffold one first with reconstruct_scaffold (it writes there).`, {
@@ -36685,17 +36778,17 @@ function realOr(p) {
   }
 }
 function within2(real, root) {
-  return real === root || real.startsWith(root.endsWith(sep10) ? root : root + sep10);
+  return real === root || real.startsWith(root.endsWith(sep11) ? root : root + sep11);
 }
 function inRepoInventory(real, repo, out2) {
   if (!repo) return false;
   const root = realOr(resolve17(repo));
   if (!within2(real, root) || real === root) return false;
-  const rel2 = relative13(root, real).split(sep10).join("/");
+  const rel2 = relative14(root, real).split(sep11).join("/");
   try {
     const inv = JSON.parse(readFileSync37(join52(out2, "inventory.json"), "utf8"));
     const listed2 = (inv.files ?? []).find((f) => f.path === rel2);
-    if (typeof listed2?.hash !== "string" || statSync19(real).size > MAX_READ_BYTES) return false;
+    if (typeof listed2?.hash !== "string" || statSync20(real).size > MAX_READ_BYTES) return false;
     return sha256Hex(readFileSync37(real)).slice(0, 16) === listed2.hash;
   } catch {
     return false;
@@ -36757,7 +36850,8 @@ async function handleScaffold(args2, repo, out2) {
   } catch (e) {
     throw new ToolError(e.message, { hint: reaHint });
   }
-  const copyWarning = formatCopyFailures(writeOutput(render(inv, opts), opts));
+  const written = writeOutput(render(inv, opts), opts);
+  const copyWarning = [formatCopyFailures(written.copyFailures), formatPruneReport(written)].filter(Boolean).join("; ") || void 0;
   let rea;
   try {
     rea = await runRea(repo, out2, opaque, { mode: reaMode });
@@ -36857,7 +36951,7 @@ function handleRead(args2, out2) {
   const raw = str2(args2.path);
   if (!raw) throw new ToolError("`path` is required \u2014 relative to the tree, or an absolute path inside the tree or the repo.");
   const repo = str2(args2.repo);
-  const target = isAbsolute13(raw) ? raw : join52(out2, raw);
+  const target = isAbsolute14(raw) ? raw : join52(out2, raw);
   let real;
   try {
     real = realpathSync9(target);
@@ -36872,7 +36966,7 @@ function handleRead(args2, out2) {
       } : {}
     );
   }
-  const st = statSync19(real);
+  const st = statSync20(real);
   if (!st.isFile()) throw new ToolError(`not a file: ${raw}`);
   if (st.size > MAX_READ_BYTES)
     throw new ToolError(`file is too large to read (${st.size} bytes): ${raw}`, { kind: "narrow_request", hint: "Use your own file tool with a byte range." });
@@ -36887,7 +36981,7 @@ function handleRead(args2, out2) {
   const requestedEnd = Math.floor(num2(args2.end_line) ?? total);
   const end = Math.min(total, Math.max(start2, requestedEnd), start2 + MAX_READ_LINES - 1);
   return {
-    path: isAbsolute13(raw) ? real : raw,
+    path: isAbsolute14(raw) ? real : raw,
     start_line: start2,
     end_line: end,
     total_lines: total,
@@ -37359,8 +37453,8 @@ function str3(v) {
 var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
-import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync20 } from "fs";
-import { basename as basename9, dirname as dirname11, join as join53, resolve as resolve18, sep as sep11 } from "path";
+import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync21 } from "fs";
+import { basename as basename9, dirname as dirname11, join as join53, resolve as resolve18, sep as sep12 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var SKILL_NAME = "reconstruct";
 var URI_SCHEME = "skill://";
@@ -37405,18 +37499,18 @@ function readResource(uri, moduleDir) {
   } catch {
     throw new ResourceError(`no such resource: ${uri}`);
   }
-  if (targetReal !== rootReal && !targetReal.startsWith(rootReal + sep11)) {
+  if (targetReal !== rootReal && !targetReal.startsWith(rootReal + sep12)) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
-  if (!statSync20(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
+  if (!statSync21(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
   return { uri, mimeType: "text/markdown", text: readFileSync38(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
 function describe(root, rel2, fallbackTitle) {
   const decl = {
-    uri: `${URI_SCHEME}${rel2.split(sep11).join("/")}`,
-    name: rel2.split(sep11).join("/"),
+    uri: `${URI_SCHEME}${rel2.split(sep12).join("/")}`,
+    name: rel2.split(sep12).join("/"),
     title: fallbackTitle,
     mimeType: "text/markdown"
   };
@@ -38272,7 +38366,7 @@ function parseArgs(argv) {
   const plan = raw.plan ? resolve19(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve19(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && (!existsSync26(repo) || !statSync21(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && (!existsSync26(repo) || !statSync23(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf2("level", raw.level ?? "light", ["light", "complex"]);
@@ -38574,7 +38668,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     }
     guardEnrichedOutput(effOpts);
     const result = render(inv2, effOpts);
-    writeOutput(result, effOpts);
+    const pruneLine2 = formatPruneReport(writeOutput(result, effOpts));
     const docs = writeArtifactsIfAbsent(renderScratchDocs(plan), effOpts.out);
     const adrCount = docs.filter((p) => p.startsWith("docs/adr/")).length;
     const lines2 = [
@@ -38583,6 +38677,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
       `  surface:  ${inv2.features.length} feature(s) \xB7 ${inv2.interfaces?.length ?? 0} interface(s) \xB7 ${inv2.dataModel?.length ?? 0} entit(y/ies) \xB7 ${inv2.i18n ? inv2.i18n.locales.length : 0} locale(s)`,
       `  docs:     ${docs.includes("CONTEXT.md") ? "CONTEXT.md" : "CONTEXT.md (kept existing)"}${adrCount ? ` + ${adrCount} ADR(s)` : ""} (written if absent)`,
       ...consistency.warnings.length ? [`  warnings: ${consistency.warnings.length} consistency warning(s) to resolve while enriching:`, ...consistency.warnings.map((w) => `    \u26A0 ${w}`)] : [],
+      ...pruneLine2 ? [`  stale:    ${pruneLine2}`] : [],
       ...effOpts.tdd ? [`  tdd:      test-first build guidance embedded in the PRDs`] : [],
       ...effOpts.features ? [`  features: FEATURES.md (feature PRDs only)`] : [],
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
@@ -38629,9 +38724,12 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     fail(e.message);
   }
   let copyWarning;
+  let pruneLine;
   try {
     const result = render(inv, opts);
-    copyWarning = formatCopyFailures(writeOutput(result, opts));
+    const written = writeOutput(result, opts);
+    copyWarning = formatCopyFailures(written.copyFailures);
+    pruneLine = formatPruneReport(written);
   } catch (e) {
     fail(e.message);
   }
@@ -38652,6 +38750,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
     ...copyWarning ? [`  mirror:   \u26A0 ${copyWarning}`] : [],
+    ...pruneLine ? [`  stale:    ${pruneLine}`] : [],
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     ...reaLine ? [reaLine] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,
