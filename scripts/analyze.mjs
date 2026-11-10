@@ -34641,6 +34641,15 @@ function foldSemantic(outDir, check, opts = {}) {
     skip("--semantic: VERIFY.json carries no verdicts[] ledger \u2014 regenerate it with `--verify` then `--verify --apply <verdicts.json>`");
     return;
   }
+  const malformed = sem.verdicts.filter(
+    (v) => !v || typeof v !== "object" || typeof v.claimId !== "string" || typeof v.evidenceRef !== "string"
+  );
+  if (malformed.length) {
+    check.errors.push(
+      `--semantic: VERIFY.json carries ${malformed.length} malformed verdict entr${malformed.length === 1 ? "y" : "ies"} (each needs a string claimId and evidenceRef) \u2014 the ledger was edited by hand; regenerate it with \`--verify\` then \`--verify --apply <verdicts.json>\``
+    );
+    sem.verdicts = sem.verdicts.filter((v) => !malformed.includes(v));
+  }
   const fresh2 = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   if (fresh2.adjudicated === 0) {
     skip(

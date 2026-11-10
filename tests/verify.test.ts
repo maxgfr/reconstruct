@@ -683,3 +683,21 @@ describe("runVerify reads the same spine headings as --check", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("foldSemantic on a hand-edited, malformed ledger", () => {
+  for (const [label, verdicts] of [
+    ["a null entry", [null]],
+    ["a verdict with no evidenceRef", [{ claimId: "C1", verdict: "supported", fingerprint: "x" }]],
+    ["a numeric evidenceRef", [{ claimId: "C1", verdict: "supported", evidenceRef: 7, fingerprint: "x" }]],
+  ] as const) {
+    it(`reports ${label} as a gate error instead of crashing`, () => {
+      const dir = scratch();
+      tree(dir, PRD);
+      writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ok: true, verdicts }));
+      const check = checkOutput(dir);
+      expect(() => foldSemantic(dir, check)).not.toThrow();
+      expect(check.errors.join(" ")).toMatch(/malformed verdict/);
+      rmSync(dir, { recursive: true, force: true });
+    });
+  }
+});

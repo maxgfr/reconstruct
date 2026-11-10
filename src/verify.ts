@@ -588,6 +588,19 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
     skip("--semantic: VERIFY.json carries no verdicts[] ledger — regenerate it with `--verify` then `--verify --apply <verdicts.json>`");
     return;
   }
+  // Trustless on the ledger means trustless on its SHAPE too: a hand-edited
+  // entry without a string claimId/evidenceRef cannot be re-resolved, and used
+  // to crash the fold. It is a hard error (not a skippable coverage gap), and
+  // only the well-formed rows are reduced.
+  const malformed = sem.verdicts.filter(
+    (v) => !v || typeof v !== "object" || typeof (v as Verdict).claimId !== "string" || typeof (v as Verdict).evidenceRef !== "string",
+  );
+  if (malformed.length) {
+    check.errors.push(
+      `--semantic: VERIFY.json carries ${malformed.length} malformed verdict entr${malformed.length === 1 ? "y" : "ies"} (each needs a string claimId and evidenceRef) — the ledger was edited by hand; regenerate it with \`--verify\` then \`--verify --apply <verdicts.json>\``,
+    );
+    sem.verdicts = sem.verdicts.filter((v) => !malformed.includes(v));
+  }
   const fresh = reduceVerdicts(sem.verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   // A green semantic exit must mean the gate ENGAGED: an empty verdicts[] (the
   // old fail-open fold wrote one for fragments it could not read) or a ledger
