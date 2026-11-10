@@ -277,7 +277,14 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   const pyManifests = [...PY_MANIFESTS.filter((f) => existsSync(join(repo, f))), ...requirementsDir(repo)];
   if (pyManifests.length) {
     packageManagers.add("pip");
-    const py = pyManifests.map((f) => safeRead(join(repo, f))).join("\n");
+    // Comments are dropped, and so are extras attached to a package name: the
+    // `[flask]` of `sentry-sdk[flask]` names an integration, not a dependency
+    // on Flask. (TOML headers and `= [` arrays are not attached to a name.)
+    const py = pyManifests
+      .map((f) => safeRead(join(repo, f)))
+      .join("\n")
+      .replace(/(^|\s)#.*$/gm, "$1")
+      .replace(/([A-Za-z0-9_.-])\[[^\]\n]*\]/g, "$1");
     if (/\bdjango\b/i.test(py)) frameworks.add("Django");
     if (/\bflask\b/i.test(py)) frameworks.add("Flask");
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
@@ -321,8 +328,11 @@ export function detectStack(repo: string, files: FileInfo[], warnings?: string[]
   }
   if (existsSync(join(repo, "Gemfile"))) {
     packageManagers.add("bundler");
-    if (/\brails\b/i.test(safeRead(join(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
-    if (/\bsinatra\b/i.test(safeRead(join(repo, "Gemfile")))) frameworks.add("Sinatra");
+    const gemfile = safeRead(join(repo, "Gemfile")).replace(/(^|\s)#.*$/gm, "$1");
+    // Only a `gem "rails"` / `gem "railties"` declaration: `rspec-rails` or
+    // `sentry-rails` are integrations that say nothing about the app itself.
+    if (/^[ \t]*gem[ \t(]+["'](?:rails|railties)["']/m.test(gemfile)) frameworks.add("Ruby on Rails");
+    if (/\bsinatra\b/i.test(gemfile)) frameworks.add("Sinatra");
   }
   if (existsSync(join(repo, "composer.json"))) {
     packageManagers.add("composer");

@@ -29580,7 +29580,7 @@ function detectStack(repo, files, warnings, labelBase = "") {
   const pyManifests = [...PY_MANIFESTS.filter((f) => existsSync15(join35(repo, f))), ...requirementsDir(repo)];
   if (pyManifests.length) {
     packageManagers.add("pip");
-    const py = pyManifests.map((f) => safeRead(join35(repo, f))).join("\n");
+    const py = pyManifests.map((f) => safeRead(join35(repo, f))).join("\n").replace(/(^|\s)#.*$/gm, "$1").replace(/([A-Za-z0-9_.-])\[[^\]\n]*\]/g, "$1");
     if (/\bdjango\b/i.test(py)) frameworks.add("Django");
     if (/\bflask\b/i.test(py)) frameworks.add("Flask");
     if (/\bfastapi\b/i.test(py)) frameworks.add("FastAPI");
@@ -29609,8 +29609,9 @@ function detectStack(repo, files, warnings, labelBase = "") {
   }
   if (existsSync15(join35(repo, "Gemfile"))) {
     packageManagers.add("bundler");
-    if (/\brails\b/i.test(safeRead(join35(repo, "Gemfile")))) frameworks.add("Ruby on Rails");
-    if (/\bsinatra\b/i.test(safeRead(join35(repo, "Gemfile")))) frameworks.add("Sinatra");
+    const gemfile = safeRead(join35(repo, "Gemfile")).replace(/(^|\s)#.*$/gm, "$1");
+    if (/^[ \t]*gem[ \t(]+["'](?:rails|railties)["']/m.test(gemfile)) frameworks.add("Ruby on Rails");
+    if (/\bsinatra\b/i.test(gemfile)) frameworks.add("Sinatra");
   }
   if (existsSync15(join35(repo, "composer.json"))) {
     packageManagers.add("composer");

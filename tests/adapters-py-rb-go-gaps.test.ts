@@ -352,3 +352,37 @@ describe("pythonImportAliases: backslash continuation", () => {
     expect(sig(routes)).toEqual(["GET /api/users/me"]);
   });
 });
+
+describe("stack: Ruby / Python framework false positives", () => {
+  const frameworksOf = (files: Record<string, string>): string[] => {
+    const { repo, infos } = repoOf(files);
+    return detectStack(repo, infos).frameworks;
+  };
+
+  it("rspec-rails / sentry-rails alone do not imply Rails", () => {
+    expect(frameworksOf({ Gemfile: 'source "https://rubygems.org"\ngem "sinatra"\ngroup :test do\n  gem "rspec-rails"\nend\ngem "sentry-rails"\n' })).toEqual([
+      "Sinatra",
+    ]);
+  });
+
+  it("a commented-out rails gem does not imply Rails", () => {
+    expect(frameworksOf({ Gemfile: '# gem "rails"\ngem "hanami"\n' })).toEqual([]);
+  });
+
+  it("gem 'rails', gem(\"rails\") and railties do imply Rails", () => {
+    expect(frameworksOf({ Gemfile: "gem 'rails', '~> 7.1'\n" })).toEqual(["Ruby on Rails"]);
+    expect(frameworksOf({ Gemfile: 'gem("rails")\n' })).toEqual(["Ruby on Rails"]);
+    expect(frameworksOf({ Gemfile: 'gem "railties", "~> 7.1"\ngem "actionpack"\n' })).toEqual(["Ruby on Rails"]);
+  });
+
+  it("sentry-sdk[flask] does not imply Flask, nor extras imply Django/FastAPI", () => {
+    expect(frameworksOf({ "requirements.txt": "starlette\nsentry-sdk[flask]>=1.0\nsentry-sdk[django,fastapi]\n" })).toEqual([]);
+    expect(frameworksOf({ "pyproject.toml": '[project]\ndependencies = ["sentry-sdk[flask]", "litestar"]\n' })).toEqual([]);
+  });
+
+  it("still detects Flask / FastAPI / Django declared as dependencies", () => {
+    expect(frameworksOf({ "requirements.txt": "flask==3.0\n" })).toEqual(["Flask"]);
+    expect(frameworksOf({ "requirements.txt": "fastapi[all]>=0.110\nsentry-sdk[flask]\n" })).toEqual(["FastAPI"]);
+    expect(frameworksOf({ "pyproject.toml": '[tool.poetry.dependencies]\npython = "^3.11"\nDjango = "^5.0"\n' })).toEqual(["Django"]);
+  });
+});
