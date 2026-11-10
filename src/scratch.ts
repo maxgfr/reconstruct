@@ -51,7 +51,51 @@ export function loadPlan(path: string): ScratchPlan {
   if (!Array.isArray(plan.features) || plan.features.length === 0) {
     throw new Error(`plan.json must list at least one "features" entry`);
   }
+  const problems = planShapeProblems(plan);
+  if (problems.length) {
+    throw new Error(`plan.json has ${problems.length} malformed entr${problems.length === 1 ? "y" : "ies"}:\n  - ${problems.join("\n  - ")}`);
+  }
   return plan as ScratchPlan;
+}
+
+/**
+ * The fields the renderers dereference unconditionally. Without this check a
+ * plan missing one (an interface with no `method`, `"i18n": {}`) reached the
+ * templates and died there with a bare TypeError instead of a fixable message.
+ */
+function planShapeProblems(plan: Partial<ScratchPlan>): string[] {
+  const problems: string[] = [];
+  const isStr = (v: unknown): v is string => typeof v === "string";
+  const each = (key: string, list: unknown, required: string[], nested?: (item: Record<string, unknown>, at: string) => void): void => {
+    if (list === undefined || list === null) return;
+    if (!Array.isArray(list)) {
+      problems.push(`"${key}" must be an array`);
+      return;
+    }
+    list.forEach((item, i) => {
+      const at = `${key}[${i}]`;
+      if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        problems.push(`${at} must be an object`);
+        return;
+      }
+      const rec = item as Record<string, unknown>;
+      for (const field of required) if (!isStr(rec[field])) problems.push(`${at}.${field} must be a string`);
+      nested?.(rec, at);
+    });
+  };
+  each("features", plan.features, ["name"]);
+  each("interfaces", plan.interfaces, ["method", "path"]);
+  each("dataModel", plan.dataModel, ["entity"], (e, at) => each(`${at}.fields`, e.fields, ["name", "type"]));
+  each("policies", plan.policies, ["name", "rule"]);
+  each("enums", plan.enums, [], (e, at) => {
+    if (!Array.isArray(e.members) || !e.members.every(isStr)) problems.push(`${at}.members must be an array of strings`);
+  });
+  each("decisions", plan.decisions, ["title"]);
+  if (plan.i18n !== undefined && plan.i18n !== null) {
+    const locales = (plan.i18n as { locales?: unknown }).locales;
+    if (!Array.isArray(locales) || !locales.every(isStr)) problems.push(`i18n.locales must be an array of strings (or omit i18n / set it to null)`);
+  }
+  return problems;
 }
 
 /** Build tier from a feature kind when the plan doesn't pin one explicitly. */

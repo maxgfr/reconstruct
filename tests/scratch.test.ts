@@ -403,3 +403,36 @@ describe("example plan fixture (convergence test case)", () => {
     expect(inv.features.every((f) => /^\d{2}-/.test(f.slug))).toBe(true);
   });
 });
+
+describe("loadPlan: entry shapes are validated up front", () => {
+  const EXAMPLE = fileURLToPath(new URL("./fixtures/scratch-plan/example.plan.json", import.meta.url));
+  const withPlan = (mutate: (p: any) => void): string => {
+    const p = JSON.parse(readFileSync(EXAMPLE, "utf8"));
+    mutate(p);
+    const f = join(mkdtempSync(join(tmpdir(), "plan-shape-")), "plan.json");
+    writeFileSync(f, JSON.stringify(p));
+    return f;
+  };
+  const cases: [string, (p: any) => void, RegExp][] = [
+    ["an interface without method", (p) => delete p.interfaces[0].method, /interfaces\[0\]\.method/],
+    ["an interface without path", (p) => delete p.interfaces[0].path, /interfaces\[0\]\.path/],
+    ["a null interface", (p) => (p.interfaces[0] = null), /interfaces\[0\] must be an object/],
+    ["an entity without a name", (p) => delete p.dataModel[0].entity, /dataModel\[0\]\.entity/],
+    ["a field without a type", (p) => delete p.dataModel[0].fields[0].type, /dataModel\[0\]\.fields\[0\]\.type/],
+    ["a policy without a rule", (p) => delete p.policies[0].rule, /policies\[0\]\.rule/],
+    ["an enum without members", (p) => delete p.enums[0].members, /enums\[0\]\.members/],
+    ["a feature without a name", (p) => delete p.features[0].name, /features\[0\]\.name/],
+    ["an i18n block without locales", (p) => (p.i18n = {}), /i18n\.locales/],
+    ["a decision without a title", (p) => (p.decisions = [{ context: "c" }]), /decisions\[0\]\.title/],
+  ];
+  for (const [label, mutate, pattern] of cases) {
+    it(`rejects ${label} with a precise message instead of a TypeError at render time`, () => {
+      expect(() => loadPlan(withPlan(mutate))).toThrow(pattern);
+    });
+  }
+
+  it("still accepts the example plan and an explicit null i18n", () => {
+    expect(() => loadPlan(withPlan(() => {}))).not.toThrow();
+    expect(() => loadPlan(withPlan((p) => (p.i18n = null)))).not.toThrow();
+  });
+});
