@@ -35737,7 +35737,7 @@ function checkOutput(outDir, opts = {}) {
   }
   const docs = collectMarkdown(outDir);
   const byRel = new Map(docs.map((d) => [d.rel, d]));
-  const findDoc = (rel2) => byRel.get(rel2) ?? docs.find((d) => d.rel.endsWith("/" + rel2));
+  const findDoc = (rel2) => byRel.get(rel2);
   for (const req of REQUIRED_DOCS) {
     if (!findDoc(req)) errors.push(`missing required document: ${req}`);
   }
@@ -35745,8 +35745,9 @@ function checkOutput(outDir, opts = {}) {
   const dataModelDoc2 = findDoc("architecture/DATA-MODEL.md")?.content ?? "";
   const interfacesDoc2 = findDoc("architecture/INTERFACES.md")?.content ?? "";
   const referencedEntities = /* @__PURE__ */ new Set();
-  for (const e of inv.dataModel ?? []) referencedEntities.add(e.entity);
-  for (const f of inv.features ?? []) for (const e of f.entities ?? []) referencedEntities.add(e);
+  const names = (xs) => xs.filter((x) => typeof x === "string" && x !== "");
+  for (const e of names((inv.dataModel ?? []).map((x) => x?.entity))) referencedEntities.add(e);
+  for (const f of inv.features ?? []) for (const e of names(f?.entities ?? [])) referencedEntities.add(e);
   if (dataModelDoc2) {
     for (const e of referencedEntities) {
       if (!documents(dataModelDoc2, e)) {
@@ -35755,8 +35756,8 @@ function checkOutput(outDir, opts = {}) {
     }
   }
   const referencedOps = /* @__PURE__ */ new Set();
-  for (const i2 of inv.interfaces ?? []) referencedOps.add(i2.path);
-  for (const f of inv.features ?? []) for (const i2 of f.interfaces ?? []) referencedOps.add(i2);
+  for (const i2 of names((inv.interfaces ?? []).map((x) => x?.path))) referencedOps.add(i2);
+  for (const f of inv.features ?? []) for (const i2 of names(f?.interfaces ?? [])) referencedOps.add(i2);
   if (interfacesDoc2) {
     for (const op of referencedOps) {
       if (!documents(interfacesDoc2, op)) {
@@ -35810,10 +35811,10 @@ function checkOutput(outDir, opts = {}) {
   }
   if (inv.i18n && inv.i18n.locales?.length) {
     const transDir = join46(outDir, "data", "translations");
-    const names = existsSync20(transDir) ? fileNames(transDir) : [];
+    const names2 = existsSync20(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
     for (const loc of inv.i18n.locales) {
-      const inFiles = names.some((n) => n.split("/").some((seg) => localeTag(seg.replace(/\.[^.]+$/, ""), loc)));
+      const inFiles = names2.some((n) => n.split("/").some((seg) => localeTag(seg.replace(/\.[^.]+$/, ""), loc)));
       const inCatalog = mentionsLocale(catalog, loc);
       if (!inFiles && !inCatalog) {
         warnings.push(`locale \`${loc}\` has no messages file under data/translations/ and is not covered in the message catalog`);
@@ -35873,7 +35874,7 @@ function brokenLinks(outDir, docs) {
   return out2;
 }
 function stripQuotes(s) {
-  return s.replace(/"[^"\n]*"/g, "").replace(/[“”][^“”\n]*[“”]/g, "").replace(/[‘’][^‘’\n]*[‘’]/g, "");
+  return s.replace(/(?<!\d)"[^"\n]*"/g, "").replace(/[“”][^“”\n]*[“”]/g, "").replace(/[‘’][^‘’\n]*[‘’]/g, "");
 }
 function stripMetaTable(doc) {
   const lines = doc.split(/\r?\n/);
@@ -36398,11 +36399,11 @@ function recoveredSurface(inv) {
   const opCount = inv.interfaces?.length ?? inv.routes?.length ?? 0;
   const entCount = inv.dataModel?.length ?? 0;
   const enumCount = inv.enums?.length ?? 0;
-  out2.push(`- **Scale:** ${inv.features.length} feature(s) \xB7 ${opCount} operation(s) \xB7 ${entCount} entit(y/ies) \xB7 ${enumCount} enum(s)`);
+  out2.push(`- **Scale:** ${(inv.features ?? []).length} feature(s) \xB7 ${opCount} operation(s) \xB7 ${entCount} entit(y/ies) \xB7 ${enumCount} enum(s)`);
   if (inv.i18n?.locales?.length) out2.push(`- **Locales:** ${inv.i18n.locales.join(", ")}`);
   out2.push("");
   out2.push("**Features:**");
-  for (const f of inv.features) out2.push(`- **${f.name}**${f.description ? ` \u2014 ${f.description}` : ""} (\`features/${f.slug}/PRD.md\`)`);
+  for (const f of inv.features ?? []) out2.push(`- **${f.name}**${f.description ? ` \u2014 ${f.description}` : ""} (\`features/${f.slug}/PRD.md\`)`);
   out2.push("");
   const entities = (inv.dataModel ?? []).map((e) => e.entity);
   if (entities.length) out2.push(`**Entities:** ${entities.join(", ")}`);

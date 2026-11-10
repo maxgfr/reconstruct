@@ -138,7 +138,9 @@ export function checkOutput(outDir: string, opts: { repo?: string } = {}): Check
 
   const docs = collectMarkdown(outDir);
   const byRel = new Map(docs.map((d) => [d.rel, d]));
-  const findDoc = (rel: string): Doc | undefined => byRel.get(rel) ?? docs.find((d) => d.rel.endsWith("/" + rel));
+  // Exact tree paths only: a suffix match let `features/x/REBUILD.md` (or a
+  // nested sub-tree's architecture/) satisfy the root's required documents.
+  const findDoc = (rel: string): Doc | undefined => byRel.get(rel);
 
   // 1. Required structure.
   for (const req of REQUIRED_DOCS) {
@@ -157,8 +159,10 @@ export function checkOutput(outDir: string, opts: { repo?: string } = {}): Check
   const interfacesDoc = findDoc("architecture/INTERFACES.md")?.content ?? "";
 
   const referencedEntities = new Set<string>();
-  for (const e of inv.dataModel ?? []) referencedEntities.add(e.entity);
-  for (const f of inv.features ?? []) for (const e of f.entities ?? []) referencedEntities.add(e);
+  // A hand-edited inventory may carry anything: only string names are references.
+  const names = (xs: unknown[]): string[] => xs.filter((x): x is string => typeof x === "string" && x !== "");
+  for (const e of names((inv.dataModel ?? []).map((x) => x?.entity))) referencedEntities.add(e);
+  for (const f of inv.features ?? []) for (const e of names(f?.entities ?? [])) referencedEntities.add(e);
   if (dataModelDoc) {
     for (const e of referencedEntities) {
       if (!documents(dataModelDoc, e)) {
@@ -168,8 +172,8 @@ export function checkOutput(outDir: string, opts: { repo?: string } = {}): Check
   }
 
   const referencedOps = new Set<string>();
-  for (const i of inv.interfaces ?? []) referencedOps.add(i.path);
-  for (const f of inv.features ?? []) for (const i of f.interfaces ?? []) referencedOps.add(i);
+  for (const i of names((inv.interfaces ?? []).map((x) => x?.path))) referencedOps.add(i);
+  for (const f of inv.features ?? []) for (const i of names(f?.interfaces ?? [])) referencedOps.add(i);
   if (interfacesDoc) {
     for (const op of referencedOps) {
       if (!documents(interfacesDoc, op)) {
@@ -352,10 +356,14 @@ function brokenLinks(outDir: string, docs: Doc[]): string[] {
  * apostrophes and stripping them could mask a real placeholder.
  */
 function stripQuotes(s: string): string {
-  return s
-    .replace(/"[^"\n]*"/g, "")
-    .replace(/[“”][^“”\n]*[“”]/g, "")
-    .replace(/[‘’][^‘’\n]*[‘’]/g, "");
+  return (
+    s
+      // A `"` right after a digit is an inch/seconds mark (`5" wide`), not an
+      // opening quote: pairing it with a later quote would hide what lies between.
+      .replace(/(?<!\d)"[^"\n]*"/g, "")
+      .replace(/[“”][^“”\n]*[“”]/g, "")
+      .replace(/[‘’][^‘’\n]*[‘’]/g, "")
+  );
 }
 
 /**

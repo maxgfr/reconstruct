@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { checkOutput } from "../src/check.js";
@@ -344,5 +344,31 @@ describe("checkOutput — feature PRD spine headings", () => {
       "# Auth\n## Functional requirements\n\nDone.\n\n## Acceptance criteriaX\n\nGiven.\n\n## Definition of done\n\n- [ ] done\n",
     );
     expect(checkOutput(dir).errors.join("\n")).toMatch(/missing required section "## Acceptance criteria"/);
+  });
+});
+
+describe("checkOutput — hardening", () => {
+  it("does not let a nested REBUILD.md stand in for the root one", () => {
+    const dir = cleanTree();
+    rmSync(join(dir, "REBUILD.md"));
+    write(dir, "features/01-auth/REBUILD.md", "# not the root build order\n");
+    expect(checkOutput(dir).errors).toContain("missing required document: REBUILD.md");
+  });
+
+  it("does not let an inch mark pair with a later quote and hide a callout", () => {
+    const dir = cleanTree();
+    write(dir, "features/01-auth/PRD.md", `# Auth\n${SPINE}\nThe card is 5" wide — 🧠 confirm the size with "design".\n`);
+    expect(checkOutput(dir).errors.join("\n")).toMatch(/01-auth\/PRD\.md: 1 unresolved/);
+  });
+
+  it("ignores a quoted 🧠 example in prose", () => {
+    const dir = cleanTree();
+    write(dir, "features/01-auth/PRD.md", `# Auth\n${SPINE}\nDelete every "> 🧠" line once resolved.\n`);
+    expect(checkOutput(dir).errors).toEqual([]);
+  });
+
+  it("reports instead of crashing on a hand-edited inventory with nameless entries", () => {
+    const dir = cleanTree({ dataModel: [{ fields: [] }, null], interfaces: [{ method: "GET" }] });
+    expect(() => checkOutput(dir)).not.toThrow();
   });
 });
