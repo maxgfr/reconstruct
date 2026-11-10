@@ -1,5 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
+import { DEFAULT_EXPORT, moduleBindings } from "./js-modules.js";
 import { JS_SRC_EXTS as SRC_EXTS, lineAt, readSources, regexLiteralAllowedAt, resolveModule } from "./util.js";
 
 // A router declaration: `export const userRouter = createTRPCRouter({ … })` or
@@ -9,10 +10,6 @@ const ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(\w+(?:\.r
 // The factory alias the tRPC docs recommend: `export const router = t.router;`
 // (a property read, not a call). Routers are then built as `router({ … })`.
 const FACTORY_ALIAS_RE = /(?:const|let|var)\s+(\w+)\s*=\s*\w+\.router\s*(?=[;,)\n]|$)/gm;
-const REQUIRE_RE = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-const IMPORT_RE = /import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["'`](\.[^"'`]*)["'`]/g;
-// `import userRouter from "./user"` (optionally followed by `, { … }`).
-const DEFAULT_IMPORT_RE = /import\s+(\w+)\s*(?:,\s*\{[^}]*\}\s*)?from\s*["'`](\.[^"'`]*)["'`]/g;
 // `export default userRouter;` — the default export names a declared router.
 const DEFAULT_EXPORT_VAR_RE = /export\s+default\s+(\w+)\s*;?\s*$/m;
 // `export default createTRPCRouter({ … })` — an anonymous default router.
@@ -283,22 +280,9 @@ export const trpcAdapter: RouteAdapter = {
     const procedures = new Map<string, { file: string; line: number; method: string }>();
     for (const [path, src] of sources) {
       const imports = new Map<string, { target: string; exported: string }>();
-      for (const re of [IMPORT_RE, REQUIRE_RE]) {
-        for (const m of src.matchAll(re)) {
-          const target = resolveModule(path, m[2] as string, sources);
-          if (!target) continue;
-          for (const name of (m[1] as string).split(",")) {
-            const [exported, local] = name
-              .trim()
-              .split(re === IMPORT_RE ? /\s+as\s+/ : /\s*:\s*/)
-              .map((x) => x.trim());
-            if (exported) imports.set(local || exported, { target, exported });
-          }
-        }
-      }
-      for (const m of src.matchAll(DEFAULT_IMPORT_RE)) {
-        const target = resolveModule(path, m[2] as string, sources);
-        if (target) imports.set(m[1] as string, { target, exported: "default" });
+      for (const [local, { spec, exported }] of moduleBindings(src)) {
+        const target = resolveModule(path, spec, sources);
+        if (target) imports.set(local, { target, exported });
       }
       importsByFile.set(path, imports);
       const defaultVar = DEFAULT_EXPORT_VAR_RE.exec(src)?.[1];
@@ -344,7 +328,7 @@ export const trpcAdapter: RouteAdapter = {
       const ids = [`${file}::${ref}`];
       const imported = importsByFile.get(file)?.get(ref);
       if (imported) {
-        const name = imported.exported === "default" ? (defaultVarByFile.get(imported.target) ?? "default") : imported.exported;
+        const name = imported.exported === DEFAULT_EXPORT ? (defaultVarByFile.get(imported.target) ?? "default") : imported.exported;
         ids.push(`${imported.target}::${name}`);
       }
       return ids;

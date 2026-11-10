@@ -1,5 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
+import { DEFAULT_EXPORT, type MountGraph, addMount, argumentBinding, moduleBindings, mountPrefixes, stringValue } from "./js-modules.js";
 import { JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // Optional TS annotation between a declared name and its `=`: `: Express`,
@@ -12,10 +13,6 @@ const ROUTER_RE = new RegExp(
   String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE}=\s*(?:new\s+)?(?:express\.|require\(\s*["'\`]express["'\`]\s*\)\.)?Router\s*\(`,
   "g",
 );
-const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-const REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-// `import a from "./x"`, `import { b, c as d } from "./x"`, or both.
-const IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
 const USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 // `ws` is express-ws's verb — it declares a WebSocket route (method "WS").
 const VERBS = "get|post|put|delete|patch|options|head|all|ws";
@@ -25,11 +22,8 @@ const VERB_RE = new RegExp(`^(?:${VERBS})$`);
 // `router.route("/x").get(h).post(h)` — match the path; the chained verbs are
 // read by walking the calls that follow (across lines, balanced parens).
 const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
-const LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
 // `use(["/a", "/b"], r)`: an array of string literals mounts at every path.
 const LITERAL_ARRAY_RE = /^\[\s*(["'`])[^"'`]*\1\s*(?:,\s*(["'`])[^"'`]*\2\s*)*,?\s*\]$/;
-const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
-const INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
 
 function localVars(src: string, re: RegExp): Set<string> {
   return new Set([...src.matchAll(re)].map((m) => m[1] as string));
@@ -41,28 +35,6 @@ function localVars(src: string, re: RegExp): Set<string> {
  */
 function isRoutePath(p: string): boolean {
   return p.startsWith("/") || p === "*";
-}
-
-/**
- * Relative module spec per local name, from `require`/`import` (default and
- * named). A named binding also keeps the name it was exported under, so a
- * mount can target that one router rather than every router in the module.
- */
-function moduleSpecs(src: string): Map<string, { spec: string; exported?: string }> {
-  const out = new Map<string, { spec: string; exported?: string }>();
-  const bind = (list: string, spec: string) => {
-    for (const part of list.split(",")) {
-      const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
-      if (IDENT_RE.test(local) && IDENT_RE.test(exported)) out.set(local, { spec, exported });
-    }
-  };
-  for (const m of src.matchAll(REQUIRE_RE)) out.set(m[1] as string, { spec: m[2] as string });
-  for (const m of src.matchAll(REQUIRE_NAMED_RE)) bind(m[1] as string, m[2] as string);
-  for (const m of src.matchAll(IMPORT_RE)) {
-    if (m[1]) out.set(m[1], { spec: m[3] as string });
-    if (m[2]) bind(m[2], m[3] as string);
-  }
-  return out;
 }
 
 /**
@@ -88,25 +60,25 @@ export const expressAdapter: RouteAdapter = {
     }
     for (const [path, src] of sources) {
       const instances = instancesByFile.get(path) ?? new Set<string>();
-      const moduleOf = moduleSpecs(src);
+      const bindings = moduleBindings(src);
       for (const m of src.matchAll(USE_RE)) {
         const call = callArgs(src, (m.index ?? 0) + (m[0] as string).length - 1);
         if (!call) continue;
         const first = call.args[0] ?? "";
-        const literal = first.match(LITERAL_RE);
-        const list = !literal && LITERAL_ARRAY_RE.test(first);
-        const prefixes = literal ? [literal[2] as string] : list ? [...first.matchAll(/(["'`])([^"'`]*)\1/g)].map((p) => p[2] as string) : [""];
+        const literal = stringValue(first);
+        const list = literal === undefined && LITERAL_ARRAY_RE.test(first);
+        const prefixes = literal !== undefined ? [literal] : list ? [...first.matchAll(/(["'`])([^"'`]*)\1/g)].map((p) => p[2] as string) : [""];
         // Every argument after the path may be the router — middleware
         // (`use("/api", auth, r)`) simply resolves to no mountable node.
-        for (const arg of literal || list ? call.args.slice(1) : call.args) {
-          const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
-          const imported = inline ? { spec: inline } : IDENT_RE.test(arg) ? moduleOf.get(arg) : undefined;
+        for (const arg of literal !== undefined || list ? call.args.slice(1) : call.args) {
+          const imported = argumentBinding(arg, bindings);
           let target: string | null = null;
           if (imported) {
             target = resolveModule(path, imported.spec, sources);
             // `const { usersRouter } = require("./routes")`: that router only,
             // when the module declares it under the exported name.
-            if (target && imported.exported && instancesByFile.get(target)?.has(imported.exported)) target = `${target}::${imported.exported}`;
+            if (target && imported.exported !== DEFAULT_EXPORT && instancesByFile.get(target)?.has(imported.exported))
+              target = `${target}::${imported.exported}`;
           } else if (instances.has(arg)) target = `${path}::${arg}`;
           if (target) for (const prefix of prefixes) uses.push({ file: path, receiver: m[1] as string, prefix, target });
         }
@@ -119,26 +91,9 @@ export const expressAdapter: RouteAdapter = {
       const local = `${file}::${v}`;
       return localTargets.has(local) ? local : file;
     };
-    const incoming = new Map<string, Array<{ from: string; prefix: string }>>();
-    for (const u of uses) {
-      const edge = { from: nodeOf(u.file, u.receiver), prefix: u.prefix };
-      const list = incoming.get(u.target);
-      if (list) list.push(edge);
-      else incoming.set(u.target, [edge]);
-    }
-    // Every mount prefix of a node, composed through its mounters. A cycle
-    // contributes nothing; a node with no resolvable mount is the root ("").
-    const memo = new Map<string, string[]>();
-    const mountsOf = (node: string): string[] => {
-      const hit = memo.get(node);
-      if (hit) return hit;
-      memo.set(node, []);
-      const all = new Set<string>();
-      for (const e of incoming.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
-      const out = all.size ? [...all] : [""];
-      memo.set(node, out);
-      return out;
-    };
+    const mounts: MountGraph = new Map();
+    for (const u of uses) addMount(mounts, u.target, { from: nodeOf(u.file, u.receiver), prefix: u.prefix });
+    const mountsOf = mountPrefixes(mounts);
 
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
@@ -167,7 +122,7 @@ export const expressAdapter: RouteAdapter = {
         const call = callArgs(src, src.indexOf("(", verbAt + (m[3] as string).length));
         if (!call) continue;
         for (const c of chainCalls(src, call.end)) {
-          const p = c.args[0]?.match(LITERAL_RE)?.[2];
+          const p = stringValue(c.args[0]);
           if (VERB_RE.test(c.name) && p !== undefined && isRoutePath(p)) emit(obj, p, c.name, c.index);
         }
       }

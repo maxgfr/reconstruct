@@ -6045,9 +6045,9 @@ function parseAnyPredicate(steps, index, operator, textPredicates) {
     });
   } else {
     const captureName = steps[1].name;
-    const stringValue = steps[2].value;
-    const matches = /* @__PURE__ */ __name((n) => n.text === stringValue, "matches");
-    const doesNotMatch = /* @__PURE__ */ __name((n) => n.text !== stringValue, "doesNotMatch");
+    const stringValue2 = steps[2].value;
+    const matches = /* @__PURE__ */ __name((n) => n.text === stringValue2, "matches");
+    const doesNotMatch = /* @__PURE__ */ __name((n) => n.text !== stringValue2, "doesNotMatch");
     textPredicates[index].push((captures) => {
       const nodes = [];
       for (const c2 of captures) {
@@ -8728,7 +8728,7 @@ function underMainGuard(node) {
 function pythonAll(root) {
   const names = /* @__PURE__ */ new Set();
   let declared = false;
-  const literal22 = (n) => {
+  const literal2 = (n) => {
     if (n?.type !== "string" || n.namedChildren.some((c2) => c2.type === "interpolation")) return void 0;
     const parts2 = n.namedChildren.filter((c2) => c2.type === "string_content");
     return parts2.length <= 1 ? parts2[0]?.text ?? "" : void 0;
@@ -8737,7 +8737,7 @@ function pythonAll(root) {
     if (n?.type !== "list" && n?.type !== "tuple") return void 0;
     const out2 = [];
     for (const c2 of n.namedChildren) {
-      const v = literal22(c2);
+      const v = literal2(c2);
       if (v === void 0) return void 0;
       out2.push(v);
     }
@@ -8757,7 +8757,7 @@ function pythonAll(root) {
     const arg = e.childForFieldName("arguments")?.namedChildren;
     const method = fn.childForFieldName("attribute")?.text;
     if (method === "extend" && arg?.length === 1) return literals(arg[0]);
-    const one = method === "append" && arg?.length === 1 ? literal22(arg[0]) : void 0;
+    const one = method === "append" && arg?.length === 1 ? literal2(arg[0]) : void 0;
     return one === void 0 ? void 0 : [one];
   };
   const visit = (container) => {
@@ -19547,12 +19547,12 @@ function plural(n, one, many) {
 function explainFused(lex2, results, lexByFile) {
   const semanticOnly = results.filter((r) => !lexByFile.has(r.file)).length;
   const bridged = results.filter((r) => r.bridgedOnly).length;
-  const literal22 = results.length - semanticOnly - bridged;
+  const literal2 = results.length - semanticOnly - bridged;
   const missing = lex2.wholeIdentifier?.df === 0 ? lex2.wholeIdentifier.term : void 0;
   const { note: _lexNote, ...facts } = lex2;
   const explain = {
     ...facts,
-    verdict: !results.length ? "none" : missing !== void 0 || literal22 === 0 ? "weak" : "match",
+    verdict: !results.length ? "none" : missing !== void 0 || literal2 === 0 ? "weak" : "match",
     bridgedOnlyResults: bridged,
     resultCount: results.length,
     semanticOnlyResults: semanticOnly
@@ -19563,9 +19563,9 @@ function explainFused(lex2, results, lexByFile) {
   }
   if (explain.verdict === "match") return explain;
   const parts2 = [];
-  if (literal22) {
+  if (literal2) {
     const on = lex2.terms.filter((t) => t.df > 0 && t.term !== missing).map((t) => t.term);
-    parts2.push(`${plural(literal22, "lexical match", "lexical matches")}${missing && on.length ? ` on its parts (${on.join(", ")})` : ""}`);
+    parts2.push(`${plural(literal2, "lexical match", "lexical matches")}${missing && on.length ? ` on its parts (${on.join(", ")})` : ""}`);
   }
   if (bridged) {
     const spelled = lex2.terms.filter((t) => t.bridge).map((t) => `"${t.term}" \u2192 ${t.bridge.to.join(", ")}`).join("; ");
@@ -25497,8 +25497,8 @@ function fromRust(p) {
   return out2;
 }
 function hasUpperLiteral(p) {
-  const literal22 = p.replace(/\\[pP]\{[^}]*\}|\\[pP][A-Za-z]|\\./g, "");
-  return literal22 !== literal22.toLowerCase();
+  const literal2 = p.replace(/\\[pP]\{[^}]*\}|\\[pP][A-Za-z]|\\./g, "");
+  return literal2 !== literal2.toLowerCase();
 }
 function hasBackReference(js) {
   return /(?:^|[^\\])(?:\\\\)*\\[1-9]/.test(js);
@@ -30882,6 +30882,58 @@ var nestjsAdapter = {
   }
 };
 
+// src/adapters/js-modules.ts
+var IDENT_RE = /^[A-Za-z_$][\w$]*$/;
+var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
+var IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
+var INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
+var DEFAULT_EXPORT = "default";
+function moduleBindings(src) {
+  const out2 = /* @__PURE__ */ new Map();
+  const named = (list, spec) => {
+    for (const part of list.split(",")) {
+      const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
+      if (IDENT_RE.test(local) && IDENT_RE.test(exported)) out2.set(local, { spec, exported });
+    }
+  };
+  for (const m of src.matchAll(REQUIRE_RE)) out2.set(m[1], { spec: m[2], exported: DEFAULT_EXPORT });
+  for (const m of src.matchAll(REQUIRE_NAMED_RE)) named(m[1], m[2]);
+  for (const m of src.matchAll(IMPORT_RE)) {
+    if (m[1]) out2.set(m[1], { spec: m[3], exported: DEFAULT_EXPORT });
+    if (m[2]) named(m[2], m[3]);
+  }
+  return out2;
+}
+function argumentBinding(arg, bindings) {
+  const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
+  if (inline) return { spec: inline, exported: DEFAULT_EXPORT };
+  return IDENT_RE.test(arg) ? bindings.get(arg) : void 0;
+}
+var LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
+function stringValue(expr) {
+  return expr?.match(LITERAL_RE)?.[2];
+}
+function addMount(graph, target, edge) {
+  const list = graph.get(target);
+  if (list) list.push(edge);
+  else graph.set(target, [edge]);
+}
+function mountPrefixes(graph) {
+  const memo2 = /* @__PURE__ */ new Map();
+  const mountsOf = (node) => {
+    const hit = memo2.get(node);
+    if (hit) return hit;
+    memo2.set(node, []);
+    const all = /* @__PURE__ */ new Set();
+    for (const e of graph.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
+    const out2 = all.size ? [...all] : [""];
+    memo2.set(node, out2);
+    return out2;
+  };
+  return mountsOf;
+}
+
 // src/adapters/express.ts
 var TYPE2 = String.raw`(?::\s*[\w$.]+(?:<[^>]*>)?\s*)?`;
 var APP_RE = new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE2}=\s*(?:express|require\(\s*["'\`]express["'\`]\s*\))\s*\(\s*\)`, "g");
@@ -30889,39 +30941,17 @@ var ROUTER_RE = new RegExp(
   String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE2}=\s*(?:new\s+)?(?:express\.|require\(\s*["'\`]express["'\`]\s*\)\.)?Router\s*\(`,
   "g"
 );
-var REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
 var USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 var VERBS = "get|post|put|delete|patch|options|head|all|ws";
 var ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
 var VERB_RE = new RegExp(`^(?:${VERBS})$`);
 var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/g;
-var LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
 var LITERAL_ARRAY_RE = /^\[\s*(["'`])[^"'`]*\1\s*(?:,\s*(["'`])[^"'`]*\2\s*)*,?\s*\]$/;
-var IDENT_RE = /^[A-Za-z_$][\w$]*$/;
-var INLINE_REQUIRE_RE = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
 function localVars(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
 }
 function isRoutePath(p) {
   return p.startsWith("/") || p === "*";
-}
-function moduleSpecs(src) {
-  const out2 = /* @__PURE__ */ new Map();
-  const bind = (list, spec) => {
-    for (const part of list.split(",")) {
-      const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
-      if (IDENT_RE.test(local) && IDENT_RE.test(exported)) out2.set(local, { spec, exported });
-    }
-  };
-  for (const m of src.matchAll(REQUIRE_RE)) out2.set(m[1], { spec: m[2] });
-  for (const m of src.matchAll(REQUIRE_NAMED_RE)) bind(m[1], m[2]);
-  for (const m of src.matchAll(IMPORT_RE)) {
-    if (m[1]) out2.set(m[1], { spec: m[3] });
-    if (m[2]) bind(m[2], m[3]);
-  }
-  return out2;
 }
 var expressAdapter = {
   id: "express",
@@ -30935,21 +30965,21 @@ var expressAdapter = {
     }
     for (const [path, src] of sources) {
       const instances = instancesByFile.get(path) ?? /* @__PURE__ */ new Set();
-      const moduleOf = moduleSpecs(src);
+      const bindings = moduleBindings(src);
       for (const m of src.matchAll(USE_RE)) {
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
         if (!call2) continue;
         const first = call2.args[0] ?? "";
-        const literal3 = first.match(LITERAL_RE);
-        const list = !literal3 && LITERAL_ARRAY_RE.test(first);
-        const prefixes = literal3 ? [literal3[2]] : list ? [...first.matchAll(/(["'`])([^"'`]*)\1/g)].map((p) => p[2]) : [""];
-        for (const arg of literal3 || list ? call2.args.slice(1) : call2.args) {
-          const inline = arg.match(INLINE_REQUIRE_RE)?.[1];
-          const imported = inline ? { spec: inline } : IDENT_RE.test(arg) ? moduleOf.get(arg) : void 0;
+        const literal2 = stringValue(first);
+        const list = literal2 === void 0 && LITERAL_ARRAY_RE.test(first);
+        const prefixes = literal2 !== void 0 ? [literal2] : list ? [...first.matchAll(/(["'`])([^"'`]*)\1/g)].map((p) => p[2]) : [""];
+        for (const arg of literal2 !== void 0 || list ? call2.args.slice(1) : call2.args) {
+          const imported = argumentBinding(arg, bindings);
           let target = null;
           if (imported) {
             target = resolveModule(path, imported.spec, sources);
-            if (target && imported.exported && instancesByFile.get(target)?.has(imported.exported)) target = `${target}::${imported.exported}`;
+            if (target && imported.exported !== DEFAULT_EXPORT && instancesByFile.get(target)?.has(imported.exported))
+              target = `${target}::${imported.exported}`;
           } else if (instances.has(arg)) target = `${path}::${arg}`;
           if (target) for (const prefix of prefixes) uses.push({ file: path, receiver: m[1], prefix, target });
         }
@@ -30961,24 +30991,9 @@ var expressAdapter = {
       const local = `${file}::${v}`;
       return localTargets.has(local) ? local : file;
     };
-    const incoming = /* @__PURE__ */ new Map();
-    for (const u of uses) {
-      const edge = { from: nodeOf(u.file, u.receiver), prefix: u.prefix };
-      const list = incoming.get(u.target);
-      if (list) list.push(edge);
-      else incoming.set(u.target, [edge]);
-    }
-    const memo2 = /* @__PURE__ */ new Map();
-    const mountsOf = (node) => {
-      const hit = memo2.get(node);
-      if (hit) return hit;
-      memo2.set(node, []);
-      const all = /* @__PURE__ */ new Set();
-      for (const e of incoming.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
-      const out2 = all.size ? [...all] : [""];
-      memo2.set(node, out2);
-      return out2;
-    };
+    const mounts = /* @__PURE__ */ new Map();
+    for (const u of uses) addMount(mounts, u.target, { from: nodeOf(u.file, u.receiver), prefix: u.prefix });
+    const mountsOf = mountPrefixes(mounts);
     const routes = [];
     for (const [path, src] of sources) {
       const instances = instancesByFile.get(path) ?? /* @__PURE__ */ new Set();
@@ -31003,7 +31018,7 @@ var expressAdapter = {
         const call2 = callArgs(src, src.indexOf("(", verbAt + m[3].length));
         if (!call2) continue;
         for (const c2 of chainCalls(src, call2.end)) {
-          const p = c2.args[0]?.match(LITERAL_RE)?.[2];
+          const p = stringValue(c2.args[0]);
           if (VERB_RE.test(c2.name) && p !== void 0 && isRoutePath(p)) emit2(obj, p, c2.name, c2.index);
         }
       }
@@ -31024,18 +31039,11 @@ var expressAdapter = {
 var TYPE3 = String.raw`(?::\s*[\w$.]+(?:<[^>]*>)?\s*)?`;
 var APP_RE2 = new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE3}=\s*(?:require\(\s*["'\`]fastify["'\`]\s*\)|[Ff]astify)\s*\(`, "g");
 var FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*require\()\s*["'`]fastify-plugin["'`]/g;
-var REQUIRE_RE2 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var IMPORT_RE2 = /import\s+(\w+)\s*(?:,\s*\{[^}]*\}\s*)?from\s+["'`](\.[^"'`]*)["'`]/g;
-var IMPORT_NAMED_RE = /import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["'`](\.[^"'`]*)["'`]/g;
-var REQUIRE_NAMED_RE2 = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
 var REGISTER_RE2 = /\b(\w+)\s*\.\s*register\s*\(/g;
-var INLINE_REQUIRE_RE2 = /^require\(\s*["'`](\.[^"'`]*)["'`]\s*\)$/;
-var IDENT_RE2 = /^[A-Za-z_$][\w$]*$/;
 var PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
 var VERBS2 = "get|head|post|put|delete|options|patch|all";
 var ROUTE_RE2 = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS2})\s*\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
 var VERB_RE2 = new RegExp(`^(?:${VERBS2})$`);
-var LITERAL_RE2 = /^(["'`])([^"'`]*)\1$/;
 var WS_OPTS_RE = /^\{[^}]*\bwebsocket\s*:\s*true/;
 var isWsOpts = (opts) => opts !== void 0 && WS_OPTS_RE.test(opts);
 var ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
@@ -31067,25 +31075,6 @@ function declaredPluginParam(src, name2) {
   if (expr) return { param: expr[2] ?? expr[3], wrapped: expr[1] !== void 0 };
   return null;
 }
-function moduleSpecs2(src) {
-  const out2 = /* @__PURE__ */ new Map();
-  for (const m of src.matchAll(REQUIRE_RE2)) out2.set(m[1], { spec: m[2] });
-  for (const m of src.matchAll(IMPORT_RE2)) out2.set(m[1], { spec: m[2] });
-  for (const re of [IMPORT_NAMED_RE, REQUIRE_NAMED_RE2]) {
-    for (const m of src.matchAll(re)) {
-      for (const part of m[1].split(",")) {
-        const [exported = "", local = exported] = part.trim().split(/\s+as\s+|\s*:\s*/);
-        if (IDENT_RE2.test(local) && IDENT_RE2.test(exported)) out2.set(local, { spec: m[2], exported });
-      }
-    }
-  }
-  return out2;
-}
-function registeredPlugin(arg, moduleOf) {
-  const inline = arg.match(INLINE_REQUIRE_RE2)?.[1];
-  if (inline) return { spec: inline };
-  return IDENT_RE2.test(arg) ? moduleOf.get(arg) : void 0;
-}
 function localVars2(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
 }
@@ -31104,7 +31093,7 @@ var fastifyAdapter = {
       const plugin = pluginParam(src);
       if (plugin) pluginParamByFile.set(path, plugin.param);
       if (plugin?.wrapped) unencapsulated.add(path);
-      modulesByFile.set(path, moduleSpecs2(src));
+      modulesByFile.set(path, moduleBindings(src));
       const registers = [];
       for (const m of src.matchAll(REGISTER_RE2)) {
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
@@ -31114,8 +31103,8 @@ var fastifyAdapter = {
     }
     for (const [path, registers] of registersByFile) {
       for (const { args: args2 } of registers) {
-        const imported = registeredPlugin(args2[0], modulesByFile.get(path));
-        if (!imported?.exported) continue;
+        const imported = argumentBinding(args2[0], modulesByFile.get(path));
+        if (!imported || imported.exported === DEFAULT_EXPORT) continue;
         const target = resolveModule(path, imported.spec, sources);
         if (!target || pluginParamByFile.has(target)) continue;
         const decl = declaredPluginParam(sources.get(target), imported.exported);
@@ -31129,10 +31118,10 @@ var fastifyAdapter = {
       const receivers = new Set(appVarsByFile.get(path));
       const param = pluginParamByFile.get(path);
       if (param) receivers.add(param);
-      const moduleOf = modulesByFile.get(path);
+      const bindings = modulesByFile.get(path);
       for (const { receiver, args: args2 } of registersByFile.get(path) ?? []) {
         if (!receivers.has(receiver)) continue;
-        const spec = registeredPlugin(args2[0], moduleOf)?.spec;
+        const spec = argumentBinding(args2[0], bindings)?.spec;
         if (!spec) continue;
         const target = resolveModule(path, spec, sources);
         if (!target) continue;
@@ -31176,7 +31165,7 @@ var fastifyAdapter = {
         });
         if (!call2) continue;
         for (const c2 of chainCalls(src, call2.end)) {
-          const p = c2.args[0]?.match(LITERAL_RE2)?.[2];
+          const p = stringValue(c2.args[0]);
           if (!VERB_RE2.test(c2.name) || p === void 0) continue;
           routes.push({
             route: joinRoute(prefix, p),
@@ -31217,33 +31206,11 @@ var NEW_RE = /new\s+Hono\s*(?:<[^()]*?>)?\s*\(/g;
 var HEAD_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)(?=\s*\.\s*[A-Za-z_$][\w$]*\s*\()/g;
 var ASSIGN_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?::\s*[\w$.]+(?:<[^;=]*>)?\s*)?=\s*$/;
 var DEFAULT_BEFORE_RE = /(?:\bexport\s+default|\bmodule\.exports\s*=)\s*$/;
-var REQUIRE_RE3 = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var REQUIRE_NAMED_RE3 = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var IMPORT_RE3 = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
 var EXPORT_DEFAULT_RE = /(?:export\s+default|module\.exports\s*=)\s+(\w+)\s*;?/;
 var EXPORT_DECL_RE = /export\s+(?:const|let|var)\s+(\w+)/g;
 var EXPORT_LIST_RE2 = /export\s*\{([^}]*)\}/g;
 var EXPORT_PROP_RE = /(?:module\.)?exports\.(\w+)\s*=\s*(\w+)/g;
 var VERB_RE3 = /^(?:get|post|put|delete|patch|options|all)$/;
-var LITERAL_RE3 = /^(["'`])([^"'`]*)\1$/;
-var IDENT_RE3 = /^[A-Za-z_$][\w$]*$/;
-var literal2 = (arg) => arg?.match(LITERAL_RE3)?.[2];
-function moduleSpecs3(src) {
-  const out2 = /* @__PURE__ */ new Map();
-  const named = (list, spec) => {
-    for (const part of list.split(",")) {
-      const [name2, alias] = part.trim().split(/\s+as\s+|\s*:\s*/).map((s) => s.trim());
-      if (name2 && IDENT_RE3.test(alias ?? name2)) out2.set(alias ?? name2, { spec, name: name2 });
-    }
-  };
-  for (const m of src.matchAll(REQUIRE_RE3)) out2.set(m[1], { spec: m[2], name: "default" });
-  for (const m of src.matchAll(REQUIRE_NAMED_RE3)) named(m[1], m[2]);
-  for (const m of src.matchAll(IMPORT_RE3)) {
-    if (m[1]) out2.set(m[1], { spec: m[3], name: "default" });
-    if (m[2]) named(m[2], m[3]);
-  }
-  return out2;
-}
 var honoAdapter = {
   id: "hono",
   frameworks: ["Hono"],
@@ -31277,7 +31244,7 @@ var honoAdapter = {
         for (const call2 of chain) {
           if (call2.name !== "basePath") calls.push({ recv, fresh: h.name === null, rel: rel2, call: call2 });
           else {
-            const p = literal2(call2.args[0]);
+            const p = stringValue(call2.args[0]);
             if (p !== void 0) rel2 = joinRoute(rel2, p);
           }
         }
@@ -31319,45 +31286,29 @@ var honoAdapter = {
       if (!hv) return "";
       return hv.parent && depth < 32 ? joinRoute(baseOf(vars, hv.parent, depth + 1), hv.own) : hv.own;
     };
-    const incoming = /* @__PURE__ */ new Map();
+    const mounts = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const vars = varsByFile.get(path) ?? /* @__PURE__ */ new Map();
-      const moduleOf = moduleSpecs3(src);
+      const bindings = moduleBindings(src);
       for (const { recv, fresh: fresh2, rel: rel2, call: call2 } of callsByFile.get(path) ?? []) {
-        const p = literal2(call2.args[0]);
+        const p = stringValue(call2.args[0]);
         const mounted = call2.args[1];
-        if (call2.name !== "route" || p === void 0 || !mounted || !IDENT_RE3.test(mounted)) continue;
+        if (call2.name !== "route" || p === void 0 || !mounted || !IDENT_RE.test(mounted)) continue;
         let target = null;
-        const imported = moduleOf.get(mounted);
+        const imported = bindings.get(mounted);
         if (vars.has(mounted)) {
           target = `${path}::${rootOf(vars, mounted)}`;
         } else if (imported) {
           const file = resolveModule(path, imported.spec, sources);
-          const v = file ? exportsByFile.get(file)?.get(imported.name) : void 0;
+          const v = file ? exportsByFile.get(file)?.get(imported.exported) : void 0;
           const targetVars = file ? varsByFile.get(file) : void 0;
           if (file && v && targetVars?.has(v)) target = `${file}::${rootOf(targetVars, v)}`;
         }
         if (!target) continue;
-        const edge = {
-          from: `${path}::${rootOf(vars, recv)}`,
-          prefix: joinRoute(fresh2 ? "" : baseOf(vars, recv), rel2, p)
-        };
-        const list = incoming.get(target);
-        if (list) list.push(edge);
-        else incoming.set(target, [edge]);
+        addMount(mounts, target, { from: `${path}::${rootOf(vars, recv)}`, prefix: joinRoute(fresh2 ? "" : baseOf(vars, recv), rel2, p) });
       }
     }
-    const memo2 = /* @__PURE__ */ new Map();
-    const mountsOf = (node) => {
-      const hit = memo2.get(node);
-      if (hit) return hit;
-      memo2.set(node, []);
-      const all = /* @__PURE__ */ new Set();
-      for (const e of incoming.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
-      const out2 = all.size ? [...all] : [""];
-      memo2.set(node, out2);
-      return out2;
-    };
+    const mountsOf = mountPrefixes(mounts);
     const routes = [];
     for (const [path, src] of sources) {
       const vars = varsByFile.get(path) ?? /* @__PURE__ */ new Map();
@@ -31367,11 +31318,11 @@ var honoAdapter = {
         let routePath;
         if (VERB_RE3.test(call2.name)) {
           verbs = [call2.name];
-          routePath = literal2(call2.args[0]);
+          routePath = stringValue(call2.args[0]);
         } else if (call2.name === "on") {
           const m = call2.args[0] ?? "";
           verbs = (m.startsWith("[") ? m.slice(1, -1) : m).split(",").map((s) => s.trim().match(/^["'`](\w+)["'`]$/)?.[1] ?? "").filter(Boolean);
-          routePath = literal2(call2.args[1]);
+          routePath = stringValue(call2.args[1]);
         } else continue;
         if (routePath === void 0) continue;
         const base = joinRoute(fresh2 ? "" : baseOf(vars, recv), rel2);
@@ -31407,8 +31358,8 @@ function isApiSource(src) {
 function includeTarget(path, arg, aliases, sources) {
   let expr = arg.trim();
   if (/^[([]/.test(expr)) expr = splitPyArgs(expr.slice(1, -1))[0] ?? "";
-  const literal3 = pyString(expr);
-  if (literal3 !== null) return resolvePythonModule(path, literal3, sources);
+  const literal2 = pyString(expr);
+  if (literal2 !== null) return resolvePythonModule(path, literal2, sources);
   if (!/^[\w.]+$/.test(expr)) return null;
   const [head, ...rest] = expr.split(".");
   const alias = aliases.get(head);
@@ -31533,7 +31484,7 @@ var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
 var STATEMENT_OPENER_RE = /^(?:if|unless|case|begin|def|class|module|while|until|for)\b/;
 var LOOP_RE = /^(?:while|until|for)\b/;
 var BLOCK_TOKEN_RE = /(?<![\w.:@$])(do|end)(?![\w?!:])/g;
-var LITERAL_RE4 = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|%[iwIWqQ]?\[[^\]]*\]|%[iwIWqQ]?\([^)]*\)/g;
+var LITERAL_RE2 = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|%[iwIWqQ]?\[[^\]]*\]|%[iwIWqQ]?\([^)]*\)/g;
 var MEMBER_RE = /^member\b/;
 var COLLECTION_RE = /^collection\b/;
 var IRREGULAR_SINGULAR = { people: "person", men: "man", women: "woman", children: "child" };
@@ -31661,7 +31612,7 @@ var railsAdapter = {
         }
         const mount = line2.match(MOUNT_RE2);
         if (mount) emit2(joinRoute(...nestPrefix(frames.length), mount[1]), void 0, "api");
-        const code = line2.replace(LITERAL_RE4, '""');
+        const code = line2.replace(LITERAL_RE2, '""');
         const tokens2 = [...code.matchAll(BLOCK_TOKEN_RE)].map((m) => m[1]);
         if (LOOP_RE.test(code)) {
           const loopDo = tokens2.indexOf("do");
@@ -31953,9 +31904,6 @@ var goAdapter = {
 // src/adapters/trpc.ts
 var ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(\w+(?:\.router)?)\s*\(/g;
 var FACTORY_ALIAS_RE = /(?:const|let|var)\s+(\w+)\s*=\s*\w+\.router\s*(?=[;,)\n]|$)/gm;
-var REQUIRE_RE4 = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var IMPORT_RE4 = /import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["'`](\.[^"'`]*)["'`]/g;
-var DEFAULT_IMPORT_RE = /import\s+(\w+)\s*(?:,\s*\{[^}]*\}\s*)?from\s*["'`](\.[^"'`]*)["'`]/g;
 var DEFAULT_EXPORT_VAR_RE = /export\s+default\s+(\w+)\s*;?\s*$/m;
 var DEFAULT_EXPORT_CALL_RE = /export\s+default\s+(\w+(?:\.router)?)\s*\(/g;
 var PROC_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?=[\w$]+\s*\.)/g;
@@ -32135,19 +32083,9 @@ var trpcAdapter = {
     const procedures = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const imports = /* @__PURE__ */ new Map();
-      for (const re of [IMPORT_RE4, REQUIRE_RE4]) {
-        for (const m of src.matchAll(re)) {
-          const target = resolveModule(path, m[2], sources);
-          if (!target) continue;
-          for (const name2 of m[1].split(",")) {
-            const [exported, local] = name2.trim().split(re === IMPORT_RE4 ? /\s+as\s+/ : /\s*:\s*/).map((x) => x.trim());
-            if (exported) imports.set(local || exported, { target, exported });
-          }
-        }
-      }
-      for (const m of src.matchAll(DEFAULT_IMPORT_RE)) {
-        const target = resolveModule(path, m[2], sources);
-        if (target) imports.set(m[1], { target, exported: "default" });
+      for (const [local, { spec, exported }] of moduleBindings(src)) {
+        const target = resolveModule(path, spec, sources);
+        if (target) imports.set(local, { target, exported });
       }
       importsByFile.set(path, imports);
       const defaultVar = DEFAULT_EXPORT_VAR_RE.exec(src)?.[1];
@@ -32185,7 +32123,7 @@ var trpcAdapter = {
       const ids = [`${file}::${ref2}`];
       const imported = importsByFile.get(file)?.get(ref2);
       if (imported) {
-        const name2 = imported.exported === "default" ? defaultVarByFile.get(imported.target) ?? "default" : imported.exported;
+        const name2 = imported.exported === DEFAULT_EXPORT ? defaultVarByFile.get(imported.target) ?? "default" : imported.exported;
         ids.push(`${imported.target}::${name2}`);
       }
       return ids;

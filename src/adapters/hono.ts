@@ -1,5 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
+import { IDENT_RE, type MountGraph, addMount, moduleBindings, mountPrefixes, stringValue } from "./js-modules.js";
 import { type ChainedCall, JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // `new Hono()` / `new Hono<{ Bindings: Env }>()` — generics tolerated.
@@ -9,45 +10,16 @@ const HEAD_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)(?=\s*\.\s*[A-Za-z_$][\w$]*\s*\()/
 // The text right before a chain that assigns it: `const app: Hono<E> =` / `app =`.
 const ASSIGN_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?::\s*[\w$.]+(?:<[^;=]*>)?\s*)?=\s*$/;
 const DEFAULT_BEFORE_RE = /(?:\bexport\s+default|\bmodule\.exports\s*=)\s*$/;
-const REQUIRE_RE = /(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-const REQUIRE_NAMED_RE = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-// `import a from "./x"`, `import { b, c as d } from "./x"`, or both.
-const IMPORT_RE = /import\s+(?:type\s+)?(\w+)?\s*,?\s*(?:\{([^}]*)\})?\s*from\s*["'`](\.[^"'`]*)["'`]/g;
 const EXPORT_DEFAULT_RE = /(?:export\s+default|module\.exports\s*=)\s+(\w+)\s*;?/;
 const EXPORT_DECL_RE = /export\s+(?:const|let|var)\s+(\w+)/g;
 const EXPORT_LIST_RE = /export\s*\{([^}]*)\}/g;
 const EXPORT_PROP_RE = /(?:module\.)?exports\.(\w+)\s*=\s*(\w+)/g;
 const VERB_RE = /^(?:get|post|put|delete|patch|options|all)$/;
-const LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
-const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 
 /** A Hono instance var: `basePath()` copies share their parent's routes. */
 interface HonoVar {
   parent: string | null;
   own: string;
-}
-
-const literal = (arg: string | undefined): string | undefined => arg?.match(LITERAL_RE)?.[2];
-
-/** Relative module + imported export name per local name (`"default"` for default imports). */
-function moduleSpecs(src: string): Map<string, { spec: string; name: string }> {
-  const out = new Map<string, { spec: string; name: string }>();
-  const named = (list: string, spec: string) => {
-    for (const part of list.split(",")) {
-      const [name, alias] = part
-        .trim()
-        .split(/\s+as\s+|\s*:\s*/)
-        .map((s) => s.trim());
-      if (name && IDENT_RE.test(alias ?? name)) out.set(alias ?? name, { spec, name });
-    }
-  };
-  for (const m of src.matchAll(REQUIRE_RE)) out.set(m[1] as string, { spec: m[2] as string, name: "default" });
-  for (const m of src.matchAll(REQUIRE_NAMED_RE)) named(m[1] as string, m[2] as string);
-  for (const m of src.matchAll(IMPORT_RE)) {
-    if (m[1]) out.set(m[1], { spec: m[3] as string, name: "default" });
-    if (m[2]) named(m[2], m[3] as string);
-  }
-  return out;
 }
 
 /**
@@ -97,7 +69,7 @@ export const honoAdapter: RouteAdapter = {
         for (const call of chain) {
           if (call.name !== "basePath") calls.push({ recv, fresh: h.name === null, rel, call });
           else {
-            const p = literal(call.args[0]);
+            const p = stringValue(call.args[0]);
             if (p !== undefined) rel = joinRoute(rel, p);
           }
         }
@@ -146,47 +118,29 @@ export const honoAdapter: RouteAdapter = {
 
     // Mount graph over "file::rootVar" nodes: `app.route("/p", sub)` is an edge
     // app → sub carrying the prefix (incl. the receiver's basePath).
-    const incoming = new Map<string, Array<{ from: string; prefix: string }>>();
+    const mounts: MountGraph = new Map();
     for (const [path, src] of sources) {
       const vars = varsByFile.get(path) ?? new Map<string, HonoVar>();
-      const moduleOf = moduleSpecs(src);
+      const bindings = moduleBindings(src);
       for (const { recv, fresh, rel, call } of callsByFile.get(path) ?? []) {
-        const p = literal(call.args[0]);
+        const p = stringValue(call.args[0]);
         const mounted = call.args[1];
         if (call.name !== "route" || p === undefined || !mounted || !IDENT_RE.test(mounted)) continue;
         let target: string | null = null;
-        const imported = moduleOf.get(mounted);
+        const imported = bindings.get(mounted);
         if (vars.has(mounted)) {
           target = `${path}::${rootOf(vars, mounted)}`;
         } else if (imported) {
           const file = resolveModule(path, imported.spec, sources);
-          const v = file ? exportsByFile.get(file)?.get(imported.name) : undefined;
+          const v = file ? exportsByFile.get(file)?.get(imported.exported) : undefined;
           const targetVars = file ? varsByFile.get(file) : undefined;
           if (file && v && targetVars?.has(v)) target = `${file}::${rootOf(targetVars, v)}`;
         }
         if (!target) continue;
-        const edge = {
-          from: `${path}::${rootOf(vars, recv)}`,
-          prefix: joinRoute(fresh ? "" : baseOf(vars, recv), rel, p),
-        };
-        const list = incoming.get(target);
-        if (list) list.push(edge);
-        else incoming.set(target, [edge]);
+        addMount(mounts, target, { from: `${path}::${rootOf(vars, recv)}`, prefix: joinRoute(fresh ? "" : baseOf(vars, recv), rel, p) });
       }
     }
-    // Every mount prefix of a node, composed through its mounters. A cycle
-    // contributes nothing; an unmounted instance is the root ("").
-    const memo = new Map<string, string[]>();
-    const mountsOf = (node: string): string[] => {
-      const hit = memo.get(node);
-      if (hit) return hit;
-      memo.set(node, []);
-      const all = new Set<string>();
-      for (const e of incoming.get(node) ?? []) for (const p of mountsOf(e.from)) all.add(joinRoute(p, e.prefix));
-      const out = all.size ? [...all] : [""];
-      memo.set(node, out);
-      return out;
-    };
+    const mountsOf = mountPrefixes(mounts);
 
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
@@ -197,7 +151,7 @@ export const honoAdapter: RouteAdapter = {
         let routePath: string | undefined;
         if (VERB_RE.test(call.name)) {
           verbs = [call.name];
-          routePath = literal(call.args[0]);
+          routePath = stringValue(call.args[0]);
         } else if (call.name === "on") {
           // `app.on("PURGE" | ["GET", ...], "/path", handler)`.
           const m = call.args[0] ?? "";
@@ -205,7 +159,7 @@ export const honoAdapter: RouteAdapter = {
             .split(",")
             .map((s) => s.trim().match(/^["'`](\w+)["'`]$/)?.[1] ?? "")
             .filter(Boolean);
-          routePath = literal(call.args[1]);
+          routePath = stringValue(call.args[1]);
         } else continue;
         if (routePath === undefined) continue;
         const base = joinRoute(fresh ? "" : baseOf(vars, recv), rel);
