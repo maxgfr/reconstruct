@@ -32872,7 +32872,7 @@ function interfacesDoc(inv, opts) {
   const routesTable = inv.routes.length ? [
     "| Method | Kind | Route | Handler file |",
     "| --- | --- | --- | --- |",
-    ...inv.routes.map((r) => `| ${r.method ?? "\u2014"} | ${r.kind} | \`${r.route}\` | \`${r.file}${r.line ? `:${r.line}` : ""}\` |`)
+    ...inv.routes.map((r) => `| ${r.method ?? "\u2014"} | ${r.kind} | \`${cell(r.route)}\` | \`${cell(r.file)}${r.line ? `:${r.line}` : ""}\` |`)
   ].join("\n") : "_None resolved deterministically \u2014 read the candidate files below to map the surface._";
   const routeCandidates = /* @__PURE__ */ new Set([...inv.hints.routeCandidates]);
   for (const r of inv.routes) routeCandidates.delete(r.file);
@@ -33183,7 +33183,7 @@ function featurePrd(inv, feature, opts, sourceMarkdown) {
   if (feature.routes.length) {
     out2.push("## Routes", "", "| Method | Route | Kind | File |", "| --- | --- | --- | --- |");
     for (const r of feature.routes) {
-      out2.push(`| ${r.method ?? "\u2014"} | \`${r.route}\` | ${r.kind} | \`${r.file}${r.line ? `:${r.line}` : ""}\` |`);
+      out2.push(`| ${r.method ?? "\u2014"} | \`${cell(r.route)}\` | ${r.kind} | \`${cell(r.file)}${r.line ? `:${r.line}` : ""}\` |`);
     }
     out2.push("");
   }
