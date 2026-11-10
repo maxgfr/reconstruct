@@ -32249,6 +32249,23 @@ function assertReaAvailable(mode, artifacts, env = process.env) {
     throw new Error("--rea on: the rea executable was not found (set REA_BIN, or install it: `npx rea-agents setup`, Node 22+)");
   }
 }
+var LineSplitter = class {
+  partial = [];
+  /** The complete lines `chunk` finishes, trimmed, blank ones dropped. */
+  push(chunk) {
+    const lines = [];
+    let start2 = 0;
+    for (let nl = chunk.indexOf("\n"); nl !== -1; nl = chunk.indexOf("\n", start2)) {
+      this.partial.push(chunk.slice(start2, nl));
+      const line2 = this.partial.join("").trim();
+      this.partial = [];
+      if (line2) lines.push(line2);
+      start2 = nl + 1;
+    }
+    if (start2 < chunk.length) this.partial.push(chunk.slice(start2));
+    return lines;
+  }
+};
 var StdioClient = class {
   constructor(child) {
     this.child = child;
@@ -32273,19 +32290,12 @@ var StdioClient = class {
   }
   child;
   nextId = 1;
-  buffer = "";
+  lines = new LineSplitter();
   pending = /* @__PURE__ */ new Map();
   stderr = "";
   exited = null;
   onData(chunk) {
-    this.buffer += chunk;
-    let nl = this.buffer.indexOf("\n");
-    while (nl !== -1) {
-      const line2 = this.buffer.slice(0, nl).trim();
-      this.buffer = this.buffer.slice(nl + 1);
-      if (line2) this.onMessage(line2);
-      nl = this.buffer.indexOf("\n");
-    }
+    for (const line2 of this.lines.push(chunk)) this.onMessage(line2);
   }
   onMessage(line2) {
     let msg;

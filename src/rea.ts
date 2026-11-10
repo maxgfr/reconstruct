@@ -107,10 +107,36 @@ interface ToolDecl {
   inputSchema?: { properties?: Record<string, { type?: unknown }>; required?: string[] };
 }
 
+/**
+ * Splits a stream of text chunks into lines. Only the NEW chunk is searched for
+ * a newline and a partial line is kept as a list of pieces, so a single
+ * multi-megabyte JSON-RPC response arriving in 64 KB chunks is linear — the
+ * previous `buffer += chunk; buffer.indexOf("\n")` rescanned it from 0 on every
+ * chunk (quadratic).
+ */
+export class LineSplitter {
+  private partial: string[] = [];
+
+  /** The complete lines `chunk` finishes, trimmed, blank ones dropped. */
+  push(chunk: string): string[] {
+    const lines: string[] = [];
+    let start = 0;
+    for (let nl = chunk.indexOf("\n"); nl !== -1; nl = chunk.indexOf("\n", start)) {
+      this.partial.push(chunk.slice(start, nl));
+      const line = this.partial.join("").trim();
+      this.partial = [];
+      if (line) lines.push(line);
+      start = nl + 1;
+    }
+    if (start < chunk.length) this.partial.push(chunk.slice(start));
+    return lines;
+  }
+}
+
 /** A minimal MCP client over newline-delimited JSON-RPC on a child's stdio. */
 class StdioClient {
   private nextId = 1;
-  private buffer = "";
+  private readonly lines = new LineSplitter();
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private stderr = "";
   private exited: Error | null = null;
@@ -138,14 +164,7 @@ class StdioClient {
   }
 
   private onData(chunk: string): void {
-    this.buffer += chunk;
-    let nl = this.buffer.indexOf("\n");
-    while (nl !== -1) {
-      const line = this.buffer.slice(0, nl).trim();
-      this.buffer = this.buffer.slice(nl + 1);
-      if (line) this.onMessage(line);
-      nl = this.buffer.indexOf("\n");
-    }
+    for (const line of this.lines.push(chunk)) this.onMessage(line);
   }
 
   private onMessage(line: string): void {
