@@ -10,6 +10,7 @@ export default defineConfig({
     // (it's gitignored), but this keeps local runs robust regardless.
     // Fixtures may contain `*.test.ts` files (they exercise the walker's `test`
     // categorization); they are analyzer inputs, never tests of this repo.
-    exclude: [...configDefaults.exclude, "**/reconstruction/**", "**/reconstruction-*/**", "tests/fixtures/**"],
+    // Local worktrees (`.claude/worktrees/`) are whole checkouts of this repo.
+    exclude: [...configDefaults.exclude, "**/reconstruction/**", "**/reconstruction-*/**", "tests/fixtures/**", ".claude/**"],
   },
 });

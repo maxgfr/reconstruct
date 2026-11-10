@@ -14,4 +14,6 @@ assets/example-output/data/config/package.json
 # agent skill installs (produced by `npx skills add .`, never committed)
 .agents/skills/
 .claude/skills/
+# local worktrees (full checkouts of this repo), never part of it
+.claude/worktrees/
 skills-lock.json
