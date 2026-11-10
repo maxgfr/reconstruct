@@ -34027,19 +34027,22 @@ function demoteHeadings(md, by = 1) {
     if (i2 < lines.length) out2.push(lines[i2++]);
   }
   let fence = null;
+  let lastCode = -1;
   for (; i2 < lines.length; i2++) {
     const line2 = lines[i2];
     if (fence !== null) {
       if (closesFence(line2, fence)) fence = null;
       out2.push(line2);
+      lastCode = out2.length - 1;
       continue;
     }
     fence = fenceOpen(line2);
     if (fence !== null) {
       out2.push(line2);
+      lastCode = out2.length - 1;
       continue;
     }
-    if (/^\s{0,3}=+\s*$/.test(line2) && out2.length && isSetextContent(out2[out2.length - 1])) {
+    if (/^\s{0,3}=+\s*$/.test(line2) && out2.length && out2.length - 1 !== lastCode && isSetextContent(out2[out2.length - 1])) {
       const level = Math.min(6, 1 + by);
       out2[out2.length - 1] = `${"#".repeat(level)} ${out2[out2.length - 1].trim()}`;
       continue;
@@ -34744,8 +34747,8 @@ function isOwnerCallerFk(f) {
 }
 function isNullable(f) {
   const c2 = (f.constraints ?? "").toLowerCase();
+  if (/\bnot\s+(?:null|nullable)\b|\bnon-?nullable\b/.test(c2)) return false;
   if (/\bnullable\b/.test(c2)) return true;
-  if (/\bnot null\b/.test(c2)) return false;
   return false;
 }
 function hasDefault(f) {

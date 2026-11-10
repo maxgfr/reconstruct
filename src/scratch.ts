@@ -277,8 +277,9 @@ function isOwnerCallerFk(f: EntityField): boolean {
 
 function isNullable(f: EntityField): boolean {
   const c = (f.constraints ?? "").toLowerCase();
+  // "not nullable" / "non-nullable" are the required wording, not the optional one.
+  if (/\bnot\s+(?:null|nullable)\b|\bnon-?nullable\b/.test(c)) return false;
   if (/\bnullable\b/.test(c)) return true;
-  if (/\bnot null\b/.test(c)) return false;
   return false; // FK/identity columns are required unless explicitly nullable.
 }
 

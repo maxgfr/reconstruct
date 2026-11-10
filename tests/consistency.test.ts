@@ -210,3 +210,26 @@ describe("validatePlanConsistency — anonymous writes", () => {
     expect(warnings.join("\n")).toMatch(/senderUserId/);
   });
 });
+
+describe("validatePlanConsistency — nullability wording", () => {
+  const contact = (constraints: string) =>
+    validatePlanConsistency(
+      plan({
+        dataModel: [
+          { entity: "users", fields: [{ name: "id", type: "uuid", constraints: "PK" }] },
+          { entity: "posts", fields: [{ name: "authorId", type: "uuid", constraints }] },
+        ],
+        interfaces: [{ method: "tRPC", path: "posts.contact", kind: "tRPC mutation", auth: "public" }],
+        features: [{ name: "Contact", interfaces: ["posts.contact"], entities: ["posts"], writes: ["posts"] }],
+      }),
+    ).warnings.join("\n");
+
+  it("reads 'not nullable' / 'non-nullable' as required, not as nullable", () => {
+    expect(contact("FK -> users.id, not nullable")).toMatch(/posts\.contact/);
+    expect(contact("FK -> users.id, non-nullable")).toMatch(/posts\.contact/);
+  });
+
+  it("still reads 'nullable' as optional", () => {
+    expect(contact("FK -> users.id, nullable")).not.toMatch(/posts\.contact/);
+  });
+});
