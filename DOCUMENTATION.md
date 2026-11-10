@@ -130,7 +130,7 @@ field in `package.json`), so `npx reconstruct --help` works too.
 | `--apply <path>` | path | — | Apply an agent-filled file: pair with `--verify` (verdicts → `VERIFY.json` + `OBLIGATIONS.json`), `--review` (findings → `REVIEW.json`) or `--unknowns` (updates → `UNKNOWNS.json`). |
 | `--semantic` | flag | off | With `--check`, fold the semantic gates into the structural one: `VERIFY.json` (refuted/unsupported requirements) and `REVIEW.json` (unresolved blockers). Strictly additive — never relaxes `--check`. Trustless and fail-closed: it re-reduces the persisted verdicts/findings (never a stored `ok`), re-resolves every cited `evidenceRef` against the inventory, and errors when a ledger is missing or unreadable. |
 | `--allow-unverified` | flag | off | With `--check --semantic`, downgrade a missing/unreadable `VERIFY.json`/`REVIEW.json` ledger — and unadjudicated or `confidence: gap` verdicts — to a warning instead of failing closed. Use deliberately, and say so in the report. |
-| `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted. |
+| `--include <glob>` | gitignore-style glob | — | Only analyze files matching the glob. Repeatable; comma-separated lists accepted; `{a,b}` brace lists are expanded. |
 | `--exclude <glob>` | gitignore-style glob | — | Skip files matching the glob. Repeatable; comma-separated lists accepted. |
 | `--max-embed-bytes N` | integer > 0 | `16000` | Max bytes embedded per file when `fidelity=embed`. |
 | `--merge` | flag | off | Also write `RECONSTRUCTION.md` — the whole tree bundled into one markdown (single H1, table of contents, headings demoted one level). Without `--repo`, runs standalone on an existing `--out`. |

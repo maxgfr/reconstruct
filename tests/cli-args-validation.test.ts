@@ -59,3 +59,19 @@ describe("parseArgs: numeric flags are validated", () => {
     expectFail(["--repo", REPO, "--max-embed-bytes", "0.5"], /invalid --max-embed-bytes/);
   });
 });
+
+describe("parseArgs: --include / --exclude brace lists", () => {
+  it("expands a {a,b} brace list instead of splitting it on its comma", () => {
+    const o = parseArgs(["--repo", REPO, "--include", "src/**/*.{ts,tsx}"]);
+    expect(o.include).toEqual(["src/**/*.ts", "src/**/*.tsx"]);
+  });
+
+  it("still splits top-level comma lists and expands each entry", () => {
+    const o = parseArgs(["--repo", REPO, "--exclude", "docs/**, {a,b}/{x,y}.md"]);
+    expect(o.exclude).toEqual(["docs/**", "a/x.md", "a/y.md", "b/x.md", "b/y.md"]);
+  });
+
+  it("leaves an unbalanced brace literal", () => {
+    expect(parseArgs(["--repo", REPO, "--include", "weird{name"]).include).toEqual(["weird{name"]);
+  });
+});

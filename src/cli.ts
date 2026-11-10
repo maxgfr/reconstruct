@@ -194,11 +194,49 @@ function defaultFidelity(mode: Mode, level: Level): Fidelity {
   return level === "light" ? "embed" : "describe";
 }
 
+/** Split `value` on commas that sit outside any `{…}` group. */
+function splitTopLevel(value: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === "{") depth++;
+    else if (ch === "}" && depth > 0) depth--;
+    else if (ch === "," && depth === 0) {
+      parts.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(value.slice(start));
+  return parts;
+}
+
+/**
+ * Expand shell-style `{a,b}` brace lists (nested allowed). The gitignore-style
+ * matcher the walk uses has no brace syntax, so `*.{ts,tsx}` must become two
+ * patterns; an unbalanced `{` is left literal.
+ */
+function expandBraces(pattern: string): string[] {
+  const open = pattern.indexOf("{");
+  if (open === -1) return [pattern];
+  let depth = 0;
+  for (let i = open; i < pattern.length; i++) {
+    if (pattern[i] === "{") depth++;
+    else if (pattern[i] === "}" && --depth === 0) {
+      const head = pattern.slice(0, open);
+      const tails = expandBraces(pattern.slice(i + 1));
+      return splitTopLevel(pattern.slice(open + 1, i)).flatMap((alt) => expandBraces(head + alt).flatMap((h) => tails.map((t) => h + t)));
+    }
+  }
+  return [pattern];
+}
+
 function splitGlobs(value: string): string[] {
-  return value
-    .split(",")
+  return splitTopLevel(value)
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap(expandBraces);
 }
 
 // The flags that take a value (`--key <value>` or `--key=<value>`). Every other

@@ -37828,8 +37828,38 @@ function defaultFidelity(mode, level) {
   if (mode === "preserve") return level === "light" ? "mirror" : "embed";
   return level === "light" ? "embed" : "describe";
 }
+function splitTopLevel(value) {
+  const parts2 = [];
+  let depth = 0;
+  let start2 = 0;
+  for (let i2 = 0; i2 < value.length; i2++) {
+    const ch = value[i2];
+    if (ch === "{") depth++;
+    else if (ch === "}" && depth > 0) depth--;
+    else if (ch === "," && depth === 0) {
+      parts2.push(value.slice(start2, i2));
+      start2 = i2 + 1;
+    }
+  }
+  parts2.push(value.slice(start2));
+  return parts2;
+}
+function expandBraces(pattern) {
+  const open = pattern.indexOf("{");
+  if (open === -1) return [pattern];
+  let depth = 0;
+  for (let i2 = open; i2 < pattern.length; i2++) {
+    if (pattern[i2] === "{") depth++;
+    else if (pattern[i2] === "}" && --depth === 0) {
+      const head = pattern.slice(0, open);
+      const tails = expandBraces(pattern.slice(i2 + 1));
+      return splitTopLevel(pattern.slice(open + 1, i2)).flatMap((alt) => expandBraces(head + alt).flatMap((h) => tails.map((t) => h + t)));
+    }
+  }
+  return [pattern];
+}
 function splitGlobs(value) {
-  return value.split(",").map((s) => s.trim()).filter(Boolean);
+  return splitTopLevel(value).map((s) => s.trim()).filter(Boolean).flatMap(expandBraces);
 }
 var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "compare",
