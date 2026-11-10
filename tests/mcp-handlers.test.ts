@@ -155,6 +155,16 @@ describe("read", () => {
     expect(await errorText("reconstruct_read", { out: TREE, repo: other, path: join(other, "src/server.js") })).toMatch(/byte for byte/);
   });
 
+  it("does not treat an arbitrary directory holding an inventory.json as a tree", async () => {
+    // An app that ships its own data file named inventory.json must not make
+    // its whole directory (.env included) readable.
+    const app = join(REPO, "..", "app-with-inventory");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "inventory.json"), JSON.stringify({ items: [1, 2, 3] }));
+    writeFileSync(join(app, ".env"), "SECRET=1\n");
+    expect(await errorText("reconstruct_read", { out: app, path: ".env" })).toMatch(/not a reconstruction tree/);
+  });
+
   it("refuses a path outside the tree", async () => {
     // Containment is the whole point: this server can be reached over HTTP.
     expect(await errorText("reconstruct_read", { out: TREE, path: "/etc/passwd" })).toMatch(/outside the reconstruction tree/);

@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { analyze, opaqueArtifacts } from "../analyze.js";
 import { runBrainstorm } from "../brainstorm.js";
 import { checkFindings, checkOutput } from "../check.js";
+import { isReconstructOutput } from "../walk.js";
 import { detectEnrichment, formatCopyFailures, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
@@ -111,6 +112,14 @@ function requiredOut(args: Record<string, unknown>, defaults: HandlerDefaults): 
     throw new ToolError(`no reconstruction tree at ${abs} — scaffold one first with reconstruct_scaffold (it writes there).`, {
       kind: "run_first",
       hint: "Call reconstruct_scaffold for this repo (needs --allow-write), or pass the `out` of an existing tree.",
+    });
+  }
+  // Any app can ship a data file called inventory.json; only one stamped by the
+  // engine makes a directory a tree — and so its files readable over MCP.
+  if (!isReconstructOutput(abs)) {
+    throw new ToolError(`${abs} is not a reconstruction tree: its inventory.json carries no "generatedWith": "reconstruct@…" stamp.`, {
+      kind: "run_first",
+      hint: "Pass the `out` of a tree reconstruct generated, or scaffold one with reconstruct_scaffold (needs --allow-write).",
     });
   }
   return abs;

@@ -153,7 +153,7 @@ function matchesScope(rules: readonly IgnoreRule[], rel: string): boolean {
  * analyzer never ingests its own earlier PRDs (the default `<repo>/reconstruction`,
  * a `reconstruction-scratch`, or any custom `--out`).
  */
-function isReconstructOutput(dir: string): boolean {
+export function isReconstructOutput(dir: string): boolean {
   // The stamp sits near the top: read 4 KB, not the whole (often multi-MB) file.
   return /"generatedWith"\s*:\s*"reconstruct@/.test(readHead(join(dir, "inventory.json"), INVENTORY_HEAD_BYTES));
 }

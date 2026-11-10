@@ -36595,6 +36595,12 @@ function requiredOut(args2, defaults) {
       hint: "Call reconstruct_scaffold for this repo (needs --allow-write), or pass the `out` of an existing tree."
     });
   }
+  if (!isReconstructOutput(abs)) {
+    throw new ToolError(`${abs} is not a reconstruction tree: its inventory.json carries no "generatedWith": "reconstruct@\u2026" stamp.`, {
+      kind: "run_first",
+      hint: "Pass the `out` of a tree reconstruct generated, or scaffold one with reconstruct_scaffold (needs --allow-write)."
+    });
+  }
   return abs;
 }
 function baseOptions(repo, out2, args2 = {}) {
