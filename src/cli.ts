@@ -7,7 +7,7 @@ import { compareBehavior } from "./behavior.js";
 import { analyze, opaqueArtifacts } from "./analyze.js";
 import { assertReaAvailable, formatReaReport, installRea, type ReaMode, runRea } from "./rea.js";
 import { render } from "./prd/render.js";
-import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal } from "./output.js";
+import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal, formatCopyFailures } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
 import { loadPlan, planToInventory, renderScratchDocs, validatePlanConsistency } from "./scratch.js";
 import { checkFindings, checkOutput, formatCheckReport } from "./check.js";
@@ -914,9 +914,10 @@ async function main(): Promise<void> {
   } catch (e) {
     fail((e as Error).message);
   }
+  let copyWarning: string | undefined;
   try {
     const result = render(inv, opts);
-    writeOutput(result, opts);
+    copyWarning = formatCopyFailures(writeOutput(result, opts));
   } catch (e) {
     fail((e as Error).message);
   }
@@ -948,6 +949,7 @@ async function main(): Promise<void> {
     ...(inv.warnings?.length
       ? [`  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    ⚠ ${w}`)]
       : []),
+    ...(copyWarning ? [`  mirror:   ⚠ ${copyWarning}`] : []),
     ...(inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : []),
     ...(reaLine ? [reaLine] : []),
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,

@@ -33782,14 +33782,24 @@ function writeOutput(result, opts) {
     ensureDir(dirname9(dest));
     writeFileSync8(dest, a.content, "utf8");
   }
+  const failures = [];
   for (const c2 of result.copies) {
     if (!existsSync16(c2.from)) continue;
     ensureDir(dirname9(c2.to));
     try {
       copyFileSync(c2.from, c2.to, constants2.COPYFILE_FICLONE);
-    } catch {
+    } catch (e) {
+      const code = e.code ?? "EUNKNOWN";
+      if (code !== "ENOENT") failures.push({ path: c2.to, code });
     }
   }
+  return failures;
+}
+function formatCopyFailures(failures) {
+  if (!failures.length) return void 0;
+  const shown = failures.slice(0, 5).map((f) => `${f.path} (${f.code})`);
+  const more = failures.length > shown.length ? ` \u2026 and ${failures.length - shown.length} more` : "";
+  return `${failures.length} ground-truth file(s) could not be copied \u2014 the mirror is incomplete: ${shown.join(", ")}${more}`;
 }
 function writeArtifactsIfAbsent(artifacts, outDir) {
   const written = [];
@@ -36579,7 +36589,7 @@ async function handleScaffold(args2, repo, out2) {
   } catch (e) {
     throw new ToolError(e.message, { hint: reaHint });
   }
-  writeOutput(render(inv, opts), opts);
+  const copyWarning = formatCopyFailures(writeOutput(render(inv, opts), opts));
   let rea;
   try {
     rea = await runRea(repo, out2, opaque, { mode: reaMode });
@@ -36591,6 +36601,7 @@ async function handleScaffold(args2, repo, out2) {
     out: out2,
     path: join52(out2, "SUMMARY.md"),
     features: inv.features?.length ?? 0,
+    ...copyWarning ? { warning: copyWarning } : {},
     ...opaque.length ? {
       rea: {
         status: rea.status,
@@ -38427,9 +38438,10 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
   } catch (e) {
     fail(e.message);
   }
+  let copyWarning;
   try {
     const result = render(inv, opts);
-    writeOutput(result, opts);
+    copyWarning = formatCopyFailures(writeOutput(result, opts));
   } catch (e) {
     fail(e.message);
   }
@@ -38449,6 +38461,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     ...inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce((n, w) => n + (w.dependsOn?.length ?? 0), 0)} dependency edge(s)`] : [],
     `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}`,
     ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
+    ...copyWarning ? [`  mirror:   \u26A0 ${copyWarning}`] : [],
     ...inv.unknowns.length ? [`  unknowns: ${inv.unknowns.length} item(s) for the agent to resolve (see inventory.json)`] : [],
     ...reaLine ? [reaLine] : [],
     `  mode/level/fidelity/granularity: ${opts.mode}/${opts.level}/${opts.fidelity}/${opts.granularity}`,

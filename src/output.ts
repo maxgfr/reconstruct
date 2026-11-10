@@ -2,8 +2,19 @@ import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { dirname, join } from "node:path";
 import type { Artifact, Options, RenderResult } from "./types.js";
 
-/** Flush a RenderResult to disk: write artifacts, then copy ground-truth files. */
-export function writeOutput(result: RenderResult, opts: Options): void {
+/** A mirror copy that could not be written (the destination path and the errno code). */
+export interface CopyFailure {
+  path: string;
+  code: string;
+}
+
+/**
+ * Flush a RenderResult to disk: write artifacts, then copy ground-truth files.
+ * Returns the copies that failed — a source that vanished mid-run is skipped
+ * silently, anything else (ENOSPC, EACCES, EISDIR…) is reported so an
+ * incomplete mirror never passes for a complete one.
+ */
+export function writeOutput(result: RenderResult, opts: Options): CopyFailure[] {
   // One mkdir per directory, not one per file: a mirror copy of a large repo
   // is tens of thousands of files in a few hundred directories.
   const made = new Set<string>();
@@ -17,6 +28,7 @@ export function writeOutput(result: RenderResult, opts: Options): void {
     ensureDir(dirname(dest));
     writeFileSync(dest, a.content, "utf8");
   }
+  const failures: CopyFailure[] = [];
   for (const c of result.copies) {
     if (!existsSync(c.from)) continue;
     ensureDir(dirname(c.to));
@@ -24,10 +36,21 @@ export function writeOutput(result: RenderResult, opts: Options): void {
       // A copy-on-write clone where the filesystem offers one (APFS, btrfs,
       // XFS): no data is copied. Elsewhere Node falls back to a plain copy.
       copyFileSync(c.from, c.to, constants.COPYFILE_FICLONE);
-    } catch {
-      // Skip files that disappear or are unreadable mid-run.
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "EUNKNOWN";
+      // A file deleted between the walk and the copy is not a failure.
+      if (code !== "ENOENT") failures.push({ path: c.to, code });
     }
   }
+  return failures;
+}
+
+/** The CLI/MCP warning line for failed mirror copies, or undefined when all landed. */
+export function formatCopyFailures(failures: readonly CopyFailure[]): string | undefined {
+  if (!failures.length) return undefined;
+  const shown = failures.slice(0, 5).map((f) => `${f.path} (${f.code})`);
+  const more = failures.length > shown.length ? ` … and ${failures.length - shown.length} more` : "";
+  return `${failures.length} ground-truth file(s) could not be copied — the mirror is incomplete: ${shown.join(", ")}${more}`;
 }
 
 /**

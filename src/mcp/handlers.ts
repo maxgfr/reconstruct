@@ -3,7 +3,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { analyze, opaqueArtifacts } from "../analyze.js";
 import { runBrainstorm } from "../brainstorm.js";
 import { checkFindings, checkOutput } from "../check.js";
-import { detectEnrichment, formatEnrichmentRefusal, writeOutput } from "../output.js";
+import { detectEnrichment, formatCopyFailures, formatEnrichmentRefusal, writeOutput } from "../output.js";
 import { bundleExisting } from "../postprocess.js";
 import { render } from "../prd/render.js";
 import { assertReaAvailable, REA_INSTALL_COMMAND, type ReaReport, runRea } from "../rea.js";
@@ -319,7 +319,7 @@ async function handleScaffold(args: Record<string, unknown>, repo: string, out: 
   } catch (e) {
     throw new ToolError((e as Error).message, { hint: reaHint });
   }
-  writeOutput(render(inv, opts), opts);
+  const copyWarning = formatCopyFailures(writeOutput(render(inv, opts), opts));
   let rea: ReaReport;
   try {
     rea = await runRea(repo, out, opaque, { mode: reaMode });
@@ -331,6 +331,7 @@ async function handleScaffold(args: Record<string, unknown>, repo: string, out: 
     out,
     path: join(out, "SUMMARY.md"),
     features: inv.features?.length ?? 0,
+    ...(copyWarning ? { warning: copyWarning } : {}),
     ...(opaque.length
       ? {
           rea: {
