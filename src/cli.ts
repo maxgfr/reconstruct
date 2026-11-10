@@ -5,7 +5,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { compareBehavior } from "./behavior.js";
 import { analyze, opaqueArtifacts } from "./analyze.js";
-import { assertReaAvailable, formatReaReport, installRea, type ReaMode, runRea } from "./rea.js";
+import { assertReaAvailable, formatReaReport, installRea, type ReaMode, runRea, spawnTarget } from "./rea.js";
 import { render } from "./prd/render.js";
 import { writeOutput, writeArtifactsIfAbsent, detectEnrichment, formatEnrichmentRefusal, formatCopyFailures, formatPruneReport } from "./output.js";
 import { bundleExisting } from "./postprocess.js";
@@ -715,7 +715,10 @@ async function main(): Promise<void> {
               answer(/^y(es)?$/i.test(reply.trim()));
             });
           }),
-        run: (command, args) => spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32" && command.endsWith(".cmd") }).status ?? 1,
+        run: (command, args) => {
+          const target = spawnTarget(command);
+          return spawnSync(target.command, args, { stdio: "inherit", shell: target.shell }).status ?? 1;
+        },
         log: (line) => process.stderr.write(`${line}\n`),
       },
     );

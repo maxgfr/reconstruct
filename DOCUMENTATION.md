@@ -426,6 +426,13 @@ the ignored `vendor/`, `dist/`, `build/`, `out/` and `target/` directories) and 
    goes to `evidence/rea/INDEX.json`: per artifact, the probes that succeeded, their evidence ids,
    bundles, and `notes` for the probes that did not apply.
 
+Each call has a 3-minute timeout (a timed-out call is cancelled on rea's side, and a session it
+opened is still closed), and the whole run a 20-minute budget past which the remaining artifacts
+are recorded as `skipped`. Files a previous run's `INDEX.json` named and this run did not rewrite
+(an artifact that now fails, or is gone) are deleted, so their ids stop resolving; without rea,
+only the evidence of artifacts removed from the repo is dropped. Bundles you export into
+`evidence/rea/` yourself are never touched.
+
 Several probes need tools rea does not install: WABT for `inspect_wasm_artifact`, pwntools for
 `inspect_binary_layout` (Linux x64), Ghidra and Java for the native overview. A missing one shows
 up as a note or a failure in `INDEX.json`, with rea's remediation (e.g. "Supply WABT 1.0.42 via

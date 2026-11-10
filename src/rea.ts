@@ -40,11 +40,18 @@ export interface ReaRunOptions {
   timeoutMs?: number;
   /** At most this many artifacts per run; the rest are recorded as skipped. */
   maxArtifacts?: number;
+  /**
+   * Wall-clock budget for the whole run. Per-call timeouts alone allowed about
+   * 27 minutes per executable and hours per repo; past the budget the remaining
+   * artifacts are recorded as skipped.
+   */
+  budgetMs?: number;
   env?: NodeJS.ProcessEnv;
 }
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_MAX_ARTIFACTS = 25;
+const DEFAULT_BUDGET_MS = 20 * 60_000;
 const PROTOCOL_VERSION = "2025-06-18";
 
 // Static inspection only: every tool here parses the file and none launches
@@ -133,6 +140,18 @@ export class LineSplitter {
   }
 }
 
+/**
+ * How to spawn `command` portably. A Windows `.cmd`/`.bat` shim (what npm
+ * installs globally) only runs through the shell, and with `shell: true` Node
+ * joins the command line unquoted — so a path with a space
+ * (`C:\Users\John Doe\AppData\Roaming\npm\rea.cmd`) broke, and a `&` in it
+ * would have run as a second command. The shim path is quoted for cmd.exe.
+ */
+export function spawnTarget(command: string, platform: NodeJS.Platform = process.platform): { command: string; shell: boolean } {
+  if (platform !== "win32" || !/\.(cmd|bat)$/i.test(command)) return { command, shell: false };
+  return { command: `"${command.replace(/"/g, "")}"`, shell: true };
+}
+
 /** A minimal MCP client over newline-delimited JSON-RPC on a child's stdio. */
 class StdioClient {
   private nextId = 1;
@@ -197,6 +216,9 @@ class StdioClient {
     return new Promise((resolvePromise, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        // Tell rea to stop: dropping the request client-side only left it
+        // working, so every later call queued behind the abandoned one.
+        this.notify("notifications/cancelled", { requestId: id, reason: "timeout" });
         reject(new Error(`${method} timed out after ${Math.round(timeoutMs / 1000)}s`));
       }, timeoutMs);
       this.pending.set(id, { resolve: resolvePromise, reject, timer });
@@ -213,6 +235,11 @@ class StdioClient {
     this.pending.clear();
     this.child.stdin?.end();
     this.child.kill();
+    // A child that ignores SIGTERM, or a grandchild (a Ghidra JVM) holding
+    // the pipes, must not keep the CLI from exiting once the run is over.
+    this.child.stdout?.destroy();
+    this.child.stderr?.destroy();
+    this.child.unref();
   }
 }
 
@@ -315,22 +342,35 @@ function errorText(result: unknown): string | undefined {
  */
 export async function runRea(repo: string, out: string, artifacts: string[], opts: ReaRunOptions): Promise<ReaReport> {
   const env = opts.env ?? process.env;
-  if (opts.mode === "off" || artifacts.length === 0) return { status: "unavailable", artifacts: [] };
+  const dir = join(out, REA_EVIDENCE_DIR);
+  const previous = readPreviousIndex(dir);
+  if (opts.mode === "off" || artifacts.length === 0) {
+    forgetRemovedArtifacts(dir, previous, artifacts);
+    return { status: "unavailable", artifacts: [] };
+  }
   assertReaAvailable(opts.mode, artifacts, env);
   const bin = locateRea(env);
-  if (!bin) return { status: "unavailable", artifacts: [] };
+  if (!bin) {
+    forgetRemovedArtifacts(dir, previous, artifacts);
+    return { status: "unavailable", artifacts: [] };
+  }
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const max = opts.maxArtifacts ?? DEFAULT_MAX_ARTIFACTS;
-  const dir = join(out, REA_EVIDENCE_DIR);
+  const deadline = Date.now() + (opts.budgetMs ?? DEFAULT_BUDGET_MS);
   mkdirSync(dir, { recursive: true });
   const report: ReaReport = { status: "ran", bin, artifacts: [] };
 
-  const child = spawn(bin, ["mcp"], { cwd: repo, env, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" && bin.endsWith(".cmd") });
-  const client = new StdioClient(child);
+  let client: StdioClient | undefined;
   try {
-    await client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "reconstruct", version: "1" } }, timeoutMs);
-    client.notify("notifications/initialized");
-    const listed = (await client.request("tools/list", {}, timeoutMs)) as { tools?: ToolDecl[] };
+    // Inside the try: a synchronous spawn failure (EINVAL on a Windows shim)
+    // is a failed run, never a failed reconstruction.
+    const target = spawnTarget(bin);
+    const child = spawn(target.command, ["mcp"], { cwd: repo, env, stdio: ["pipe", "pipe", "pipe"], shell: target.shell });
+    const rpc = new StdioClient(child);
+    client = rpc;
+    await rpc.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "reconstruct", version: "1" } }, timeoutMs);
+    rpc.notify("notifications/initialized");
+    const listed = (await rpc.request("tools/list", {}, timeoutMs)) as { tools?: ToolDecl[] };
     const tools = new Map((listed.tools ?? []).filter((t) => STATIC_TOOLS.has(t.name)).map((t) => [t.name, t]));
 
     // rea's own portable bundle of what it retained so far. Kept only when it
@@ -342,7 +382,7 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
       const rel = `${REA_EVIDENCE_DIR}/${name}`;
       const overwrite = "overwrite" in (exporter.inputSchema?.properties ?? {}) ? { overwrite: true } : {};
       try {
-        const res = await client.request("tools/call", { name: exporter.name, arguments: { [arg]: join(out, rel), ...overwrite } }, timeoutMs);
+        const res = await rpc.request("tools/call", { name: exporter.name, arguments: { [arg]: join(out, rel), ...overwrite } }, timeoutMs);
         if (!errorText(res) && EV_RE.test(readFileSync(join(out, rel), "utf8"))) return rel;
       } catch {
         // No bundle: the per-artifact results already carry the evidence ids.
@@ -359,6 +399,10 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
         report.artifacts.push({ path: rel, status: "skipped", evidenceIds: [], error: `over the ${max}-artifact cap of one run` });
         continue;
       }
+      if (Date.now() >= deadline) {
+        report.artifacts.push({ path: rel, status: "skipped", evidenceIds: [], error: "over the run's time budget" });
+        continue;
+      }
       const abs = join(repo, rel);
       const results: Record<string, unknown> = {};
       const succeeded: string[] = [];
@@ -370,8 +414,15 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
         const args = callArgs(tools.get(first) as ToolDecl, abs);
         if (!args) continue;
         const label = chain.length > 1 ? (chain[1] as string) : first;
+        if (Date.now() >= deadline) {
+          problems.push(`${label}: skipped — over the run's time budget`);
+          continue;
+        }
+        // A session chain closes whatever happened — also when open_binary
+        // itself timed out, since rea may still complete it on its side.
+        const close = rest.length ? (rest[rest.length - 1] as string) : undefined;
         try {
-          const head = await client.request("tools/call", { name: first, arguments: args }, timeoutMs);
+          const head = await rpc.request("tools/call", { name: first, arguments: args }, timeoutMs);
           const opened = errorText(head);
           if (opened) throw new Error(opened);
           if (rest.length === 0) {
@@ -380,26 +431,23 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
             continue;
           }
           // A session chain: read the opened target, then always close it.
-          const [read, close] = rest as [string, string];
-          let readError: string | undefined;
-          try {
-            const readArgs = "detail" in (tools.get(read)?.inputSchema?.properties ?? {}) ? { detail: "summary" } : {};
-            const res = await client.request("tools/call", { name: read, arguments: readArgs }, timeoutMs);
-            readError = errorText(res);
-            results[label] = { open_binary: head, [read]: res };
-            // close_binary clears rea's retained records: export them first.
-            if (!readError) {
-              const saved = await exportBundle(`${slugs.get(rel)}.${read}.bundle.json`);
-              if (saved) bundles.push(saved);
-            }
-          } finally {
-            await client.request("tools/call", { name: close, arguments: {} }, timeoutMs).catch(() => undefined);
-          }
+          const read = rest[0] as string;
+          const readArgs = "detail" in (tools.get(read)?.inputSchema?.properties ?? {}) ? { detail: "summary" } : {};
+          const res = await rpc.request("tools/call", { name: read, arguments: readArgs }, timeoutMs);
+          const readError = errorText(res);
           if (readError) throw new Error(readError);
+          // Only a successful read is evidence: a failed one's payload must not
+          // make its ids citable.
+          results[label] = { open_binary: head, [read]: res };
+          // close_binary clears rea's retained records: export them first.
+          const saved = await exportBundle(`${slugs.get(rel)}.${read}.bundle.json`);
+          if (saved) bundles.push(saved);
           succeeded.push(label);
         } catch (e) {
           if (/rea exited|could not start/.test((e as Error).message)) throw e;
           problems.push(`${label}: ${(e as Error).message}`);
+        } finally {
+          if (close) await rpc.request("tools/call", { name: close, arguments: {} }, timeoutMs).catch(() => undefined);
         }
       }
       if (succeeded.length === 0) {
@@ -436,10 +484,58 @@ export async function runRea(repo: string, out: string, artifacts: string[], opt
     report.status = "failed";
     report.error = (e as Error).message;
   } finally {
-    client.close();
+    client?.close();
   }
+  pruneStaleEvidence(dir, previous, report);
   writeFileSync(join(dir, "INDEX.json"), `${JSON.stringify(report, null, 2)}\n`);
   return report;
+}
+
+/** The engine-written files an INDEX.json names (per-artifact results, bundles, the session bundle). */
+function indexedFiles(index: ReaReport): string[] {
+  return [...index.artifacts.flatMap((a) => [...(a.file ? [a.file] : []), ...(a.bundles ?? [])]), ...(index.bundle ? [index.bundle] : [])].filter(
+    (rel) => rel.startsWith(`${REA_EVIDENCE_DIR}/`) && !rel.slice(REA_EVIDENCE_DIR.length + 1).includes("/"),
+  );
+}
+
+function readPreviousIndex(dir: string): ReaReport | undefined {
+  try {
+    const index = JSON.parse(readFileSync(join(dir, "INDEX.json"), "utf8")) as ReaReport;
+    return Array.isArray(index?.artifacts) ? index : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * After a run: delete what the PREVIOUS run's INDEX named and this run did not
+ * rewrite (an artifact that now fails, was skipped, or is gone), so its
+ * evidence ids stop resolving. Files the agent exported itself are not in any
+ * INDEX and are never touched.
+ */
+function pruneStaleEvidence(dir: string, previous: ReaReport | undefined, current: ReaReport): void {
+  if (!previous) return;
+  const keep = new Set(indexedFiles(current));
+  for (const rel of indexedFiles(previous)) {
+    if (!keep.has(rel)) rmSync(join(dir, rel.slice(REA_EVIDENCE_DIR.length + 1)), { force: true });
+  }
+}
+
+/**
+ * When rea does not run (off, not installed, no artifacts): the previous
+ * evidence of artifacts still in the repo stays — rea may simply be absent
+ * here — but the evidence of artifacts that are GONE no longer describes
+ * anything, so it and their INDEX entries are removed.
+ */
+function forgetRemovedArtifacts(dir: string, previous: ReaReport | undefined, artifacts: string[]): void {
+  if (!previous) return;
+  const present = new Set(artifacts);
+  const gone = previous.artifacts.filter((a) => !present.has(a.path));
+  if (!gone.length) return;
+  const kept: ReaReport = { ...previous, artifacts: previous.artifacts.filter((a) => present.has(a.path)) };
+  if (!kept.artifacts.some((a) => a.status === "inspected")) delete kept.bundle;
+  pruneStaleEvidence(dir, previous, kept);
+  writeFileSync(join(dir, "INDEX.json"), `${JSON.stringify(kept, null, 2)}\n`);
 }
 
 /** One line for the CLI summary. */

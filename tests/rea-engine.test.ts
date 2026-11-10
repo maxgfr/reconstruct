@@ -1,10 +1,10 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadExternalEvidence, REA_EVIDENCE_DIR } from "../src/evidence.js";
 import { callTool } from "../src/mcp/handlers.js";
-import { formatReaReport, locateRea, type ReaReport, runRea } from "../src/rea.js";
+import { formatReaReport, locateRea, type ReaReport, runRea, spawnTarget } from "../src/rea.js";
 
 // rea underneath: the engine drives the rea MCP server over stdio. A fake
 // server stands in for it — same protocol, and the conventions observed on the
@@ -210,6 +210,64 @@ describe("runRea", () => {
   it("reports in one line", () => {
     expect(formatReaReport({ status: "unavailable", artifacts: [] }, 3)).toMatch(/not installed — 3 compiled artifact/);
     expect(formatReaReport({ status: "unavailable", artifacts: [] }, 0)).toBeUndefined();
+  });
+});
+
+describe("runRea: stale evidence, cancellation and budgets", () => {
+  const evidenceFiles = () => readdirSync(join(out, REA_EVIDENCE_DIR)).sort();
+
+  it("deletes the previous run's evidence for an artifact this run no longer inspects, never the agent's own exports", async () => {
+    await runRea(repo, out, ARTIFACTS, { mode: "auto", env: env() });
+    expect(evidenceFiles()).toContain("lib_engine.wasm.json");
+    writeFileSync(join(out, REA_EVIDENCE_DIR, "agent-export.json"), JSON.stringify({ records: [] }));
+    await runRea(repo, out, ["lib/native.so"], { mode: "auto", env: env() });
+    expect(evidenceFiles()).not.toContain("lib_engine.wasm.json");
+    expect(evidenceFiles()).toContain("lib_native.so.json");
+    expect(evidenceFiles()).toContain("agent-export.json");
+  });
+
+  it("without rea, keeps the evidence of artifacts still present and forgets the removed ones", async () => {
+    await runRea(repo, out, ARTIFACTS, { mode: "auto", env: env() });
+    const ids = (await runRea(repo, out, ARTIFACTS, { mode: "auto", env: env() })).artifacts.find((a) => a.path === "lib/engine.wasm")!.evidenceIds;
+    await runRea(repo, out, ["lib/native.so"], { mode: "off", env: env() });
+    expect(evidenceFiles()).not.toContain("lib_engine.wasm.json");
+    expect(evidenceFiles()).toContain("lib_native.so.json");
+    const index = JSON.parse(readFileSync(join(out, REA_EVIDENCE_DIR, "INDEX.json"), "utf8")) as ReaReport;
+    expect(index.artifacts.map((a) => a.path)).toEqual(["lib/native.so"]);
+    const external = loadExternalEvidence(out);
+    for (const id of ids) expect(external.has(`rea:${id}`)).toBe(false);
+  });
+
+  it("keeps a failed session read's payload out of the evidence", async () => {
+    await runRea(repo, out, ["lib/native.so"], { mode: "auto", env: env() });
+    const body = JSON.parse(readFileSync(join(out, REA_EVIDENCE_DIR, "lib_native.so.json"), "utf8"));
+    expect(Object.keys(body.results)).not.toContain("binary_overview");
+  });
+
+  it("cancels a timed-out call on rea's side and still closes the session it opened", async () => {
+    await runRea(repo, out, ["lib/native.so"], { mode: "auto", env: env("hang"), timeoutMs: 200 });
+    expect(calls()).toContain("notifications/cancelled");
+    const opened = calls().findIndex((c) => c.startsWith("tools/call open_binary"));
+    expect(opened).toBeGreaterThan(-1);
+    expect(
+      calls()
+        .slice(opened)
+        .some((c) => c.startsWith("tools/call close_binary")),
+    ).toBe(true);
+  });
+
+  it("stops at the run's time budget and records the rest as skipped", async () => {
+    const report = await runRea(repo, out, ARTIFACTS, { mode: "auto", env: env(), budgetMs: 0 });
+    expect(report.artifacts.every((a) => a.status === "skipped" && /time budget/.test(a.error ?? ""))).toBe(true);
+  });
+});
+
+describe("spawnTarget", () => {
+  it("quotes a Windows .cmd/.bat shim for the shell, whatever its case", () => {
+    expect(spawnTarget("C:\\Users\\John Doe\\npm\\rea.cmd", "win32")).toEqual({ command: '"C:\\Users\\John Doe\\npm\\rea.cmd"', shell: true });
+    expect(spawnTarget("C:\\tools\\REA.BAT", "win32").shell).toBe(true);
+    expect(spawnTarget("C:\\tools\\rea.exe", "win32")).toEqual({ command: "C:\\tools\\rea.exe", shell: false });
+    expect(spawnTarget("/usr/local/bin/rea", "linux")).toEqual({ command: "/usr/local/bin/rea", shell: false });
   });
 });
 

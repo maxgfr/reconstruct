@@ -32215,6 +32215,7 @@ import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFil
 import { delimiter, isAbsolute as isAbsolute12, join as join39, resolve as resolve14 } from "path";
 var DEFAULT_TIMEOUT_MS3 = 18e4;
 var DEFAULT_MAX_ARTIFACTS = 25;
+var DEFAULT_BUDGET_MS = 20 * 6e4;
 var PROTOCOL_VERSION = "2025-06-18";
 var STATIC_TOOLS = /* @__PURE__ */ new Set([
   "analyze_javascript_application",
@@ -32276,6 +32277,10 @@ var LineSplitter = class {
     return lines;
   }
 };
+function spawnTarget(command, platform = process.platform) {
+  if (platform !== "win32" || !/\.(cmd|bat)$/i.test(command)) return { command, shell: false };
+  return { command: `"${command.replace(/"/g, "")}"`, shell: true };
+}
 var StdioClient = class {
   constructor(child) {
     this.child = child;
@@ -32335,6 +32340,7 @@ var StdioClient = class {
     return new Promise((resolvePromise, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        this.notify("notifications/cancelled", { requestId: id, reason: "timeout" });
         reject(new Error(`${method} timed out after ${Math.round(timeoutMs / 1e3)}s`));
       }, timeoutMs);
       this.pending.set(id, { resolve: resolvePromise, reject, timer });
@@ -32349,6 +32355,9 @@ var StdioClient = class {
     this.pending.clear();
     this.child.stdin?.end();
     this.child.kill();
+    this.child.stdout?.destroy();
+    this.child.stderr?.destroy();
+    this.child.unref();
   }
 };
 function pathArg(tool) {
@@ -32414,21 +32423,32 @@ function errorText(result) {
 }
 async function runRea(repo, out2, artifacts, opts) {
   const env = opts.env ?? process.env;
-  if (opts.mode === "off" || artifacts.length === 0) return { status: "unavailable", artifacts: [] };
+  const dir = join39(out2, REA_EVIDENCE_DIR);
+  const previous = readPreviousIndex(dir);
+  if (opts.mode === "off" || artifacts.length === 0) {
+    forgetRemovedArtifacts(dir, previous, artifacts);
+    return { status: "unavailable", artifacts: [] };
+  }
   assertReaAvailable(opts.mode, artifacts, env);
   const bin = locateRea(env);
-  if (!bin) return { status: "unavailable", artifacts: [] };
+  if (!bin) {
+    forgetRemovedArtifacts(dir, previous, artifacts);
+    return { status: "unavailable", artifacts: [] };
+  }
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS3;
   const max = opts.maxArtifacts ?? DEFAULT_MAX_ARTIFACTS;
-  const dir = join39(out2, REA_EVIDENCE_DIR);
+  const deadline = Date.now() + (opts.budgetMs ?? DEFAULT_BUDGET_MS);
   mkdirSync5(dir, { recursive: true });
   const report = { status: "ran", bin, artifacts: [] };
-  const child = spawn2(bin, ["mcp"], { cwd: repo, env, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" && bin.endsWith(".cmd") });
-  const client = new StdioClient(child);
+  let client;
   try {
-    await client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "reconstruct", version: "1" } }, timeoutMs);
-    client.notify("notifications/initialized");
-    const listed2 = await client.request("tools/list", {}, timeoutMs);
+    const target = spawnTarget(bin);
+    const child = spawn2(target.command, ["mcp"], { cwd: repo, env, stdio: ["pipe", "pipe", "pipe"], shell: target.shell });
+    const rpc = new StdioClient(child);
+    client = rpc;
+    await rpc.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "reconstruct", version: "1" } }, timeoutMs);
+    rpc.notify("notifications/initialized");
+    const listed2 = await rpc.request("tools/list", {}, timeoutMs);
     const tools = new Map((listed2.tools ?? []).filter((t) => STATIC_TOOLS.has(t.name)).map((t) => [t.name, t]));
     const exportBundle = async (name2) => {
       const exporter = tools.get("export_evidence_bundle");
@@ -32437,7 +32457,7 @@ async function runRea(repo, out2, artifacts, opts) {
       const rel2 = `${REA_EVIDENCE_DIR}/${name2}`;
       const overwrite = "overwrite" in (exporter.inputSchema?.properties ?? {}) ? { overwrite: true } : {};
       try {
-        const res = await client.request("tools/call", { name: exporter.name, arguments: { [arg]: join39(out2, rel2), ...overwrite } }, timeoutMs);
+        const res = await rpc.request("tools/call", { name: exporter.name, arguments: { [arg]: join39(out2, rel2), ...overwrite } }, timeoutMs);
         if (!errorText(res) && EV_RE.test(readFileSync26(join39(out2, rel2), "utf8"))) return rel2;
       } catch {
       } finally {
@@ -32452,6 +32472,10 @@ async function runRea(repo, out2, artifacts, opts) {
         report.artifacts.push({ path: rel2, status: "skipped", evidenceIds: [], error: `over the ${max}-artifact cap of one run` });
         continue;
       }
+      if (Date.now() >= deadline) {
+        report.artifacts.push({ path: rel2, status: "skipped", evidenceIds: [], error: "over the run's time budget" });
+        continue;
+      }
       const abs = join39(repo, rel2);
       const results = {};
       const succeeded = [];
@@ -32463,8 +32487,13 @@ async function runRea(repo, out2, artifacts, opts) {
         const args2 = callArgs2(tools.get(first), abs);
         if (!args2) continue;
         const label = chain.length > 1 ? chain[1] : first;
+        if (Date.now() >= deadline) {
+          problems.push(`${label}: skipped \u2014 over the run's time budget`);
+          continue;
+        }
+        const close = rest.length ? rest[rest.length - 1] : void 0;
         try {
-          const head = await client.request("tools/call", { name: first, arguments: args2 }, timeoutMs);
+          const head = await rpc.request("tools/call", { name: first, arguments: args2 }, timeoutMs);
           const opened = errorText(head);
           if (opened) throw new Error(opened);
           if (rest.length === 0) {
@@ -32472,25 +32501,20 @@ async function runRea(repo, out2, artifacts, opts) {
             succeeded.push(first);
             continue;
           }
-          const [read2, close] = rest;
-          let readError;
-          try {
-            const readArgs = "detail" in (tools.get(read2)?.inputSchema?.properties ?? {}) ? { detail: "summary" } : {};
-            const res = await client.request("tools/call", { name: read2, arguments: readArgs }, timeoutMs);
-            readError = errorText(res);
-            results[label] = { open_binary: head, [read2]: res };
-            if (!readError) {
-              const saved = await exportBundle(`${slugs.get(rel2)}.${read2}.bundle.json`);
-              if (saved) bundles.push(saved);
-            }
-          } finally {
-            await client.request("tools/call", { name: close, arguments: {} }, timeoutMs).catch(() => void 0);
-          }
+          const read2 = rest[0];
+          const readArgs = "detail" in (tools.get(read2)?.inputSchema?.properties ?? {}) ? { detail: "summary" } : {};
+          const res = await rpc.request("tools/call", { name: read2, arguments: readArgs }, timeoutMs);
+          const readError = errorText(res);
           if (readError) throw new Error(readError);
+          results[label] = { open_binary: head, [read2]: res };
+          const saved = await exportBundle(`${slugs.get(rel2)}.${read2}.bundle.json`);
+          if (saved) bundles.push(saved);
           succeeded.push(label);
         } catch (e) {
           if (/rea exited|could not start/.test(e.message)) throw e;
           problems.push(`${label}: ${e.message}`);
+        } finally {
+          if (close) await rpc.request("tools/call", { name: close, arguments: {} }, timeoutMs).catch(() => void 0);
         }
       }
       if (succeeded.length === 0) {
@@ -32526,11 +32550,43 @@ async function runRea(repo, out2, artifacts, opts) {
     report.status = "failed";
     report.error = e.message;
   } finally {
-    client.close();
+    client?.close();
   }
+  pruneStaleEvidence(dir, previous, report);
   writeFileSync7(join39(dir, "INDEX.json"), `${JSON.stringify(report, null, 2)}
 `);
   return report;
+}
+function indexedFiles(index) {
+  return [...index.artifacts.flatMap((a) => [...a.file ? [a.file] : [], ...a.bundles ?? []]), ...index.bundle ? [index.bundle] : []].filter(
+    (rel2) => rel2.startsWith(`${REA_EVIDENCE_DIR}/`) && !rel2.slice(REA_EVIDENCE_DIR.length + 1).includes("/")
+  );
+}
+function readPreviousIndex(dir) {
+  try {
+    const index = JSON.parse(readFileSync26(join39(dir, "INDEX.json"), "utf8"));
+    return Array.isArray(index?.artifacts) ? index : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function pruneStaleEvidence(dir, previous, current) {
+  if (!previous) return;
+  const keep = new Set(indexedFiles(current));
+  for (const rel2 of indexedFiles(previous)) {
+    if (!keep.has(rel2)) rmSync7(join39(dir, rel2.slice(REA_EVIDENCE_DIR.length + 1)), { force: true });
+  }
+}
+function forgetRemovedArtifacts(dir, previous, artifacts) {
+  if (!previous) return;
+  const present = new Set(artifacts);
+  const gone = previous.artifacts.filter((a) => !present.has(a.path));
+  if (!gone.length) return;
+  const kept = { ...previous, artifacts: previous.artifacts.filter((a) => present.has(a.path)) };
+  if (!kept.artifacts.some((a) => a.status === "inspected")) delete kept.bundle;
+  pruneStaleEvidence(dir, previous, kept);
+  writeFileSync7(join39(dir, "INDEX.json"), `${JSON.stringify(kept, null, 2)}
+`);
 }
 function formatReaReport(r, total, mode = "auto") {
   if (r.status === "unavailable") {
@@ -38532,7 +38588,10 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
             answer(/^y(es)?$/i.test(reply.trim()));
           });
         }),
-        run: (command, args2) => spawnSync3(command, args2, { stdio: "inherit", shell: process.platform === "win32" && command.endsWith(".cmd") }).status ?? 1,
+        run: (command, args2) => {
+          const target = spawnTarget(command);
+          return spawnSync3(target.command, args2, { stdio: "inherit", shell: target.shell }).status ?? 1;
+        },
         log: (line2) => process.stderr.write(`${line2}
 `)
       }
