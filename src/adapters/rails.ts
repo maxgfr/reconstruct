@@ -31,12 +31,18 @@ const SINGULAR_ACTIONS: Record<string, ActionDef[]> = {
 
 const ROOT_RE = /^root\b/;
 const VERB_RE = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
-const RESOURCES_RE = /\b(resources|resource)\s+:(\w+)([^\n]*)/g;
+// `resources :photos` and the multi-resource `resources :photos, :books, only: …`.
+// (A hash-rocket key `:only => …` is an option, never a resource name.)
+const RESOURCES_RE = /\b(resources|resource)\s+((?::\w+\b(?!\s*=>)\s*,\s*)*:\w+\b(?!\s*=>))([^\n]*)/g;
+// A verb's `on: :member` / `on: :collection` (also `:on => :member`).
+const ON_RE = /(?:\bon:|:on\s*=>)\s*:(member|collection)\b/;
 const NAMESPACE_RE = /^namespace\s+:?(\w+)/;
 // scope "/api" | scope path: "/api" | scope :admin (symbol → no url) | scope module: … (no url)
 const SCOPE_STR_RE = /^scope\s+["']([^"']+)["']/;
 const SCOPE_PATH_RE = /^scope\b[^#\n]*\bpath:\s*["']([^"']+)["']/;
-const MOUNT_RE = /\bmount\s+[\w:]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
+// `mount Blog::Engine => "/blog"`, `mount ActionCable.server => "/cable"`,
+// `mount Blog::Engine, at: "/blog"` and the parenthesised `mount(Sidekiq::Web, at: "/sidekiq")`.
+const MOUNT_RE = /\bmount\s*\(?\s*[\w:.]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
 const OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
 // Keywords that open an `end`-closed block when they START a statement (the
 // modifier form `get "/x" if dev?` opens nothing).
@@ -127,13 +133,19 @@ export const railsAdapter: RouteAdapter = {
         return out;
       };
 
-      // The prefix a verb declared at the current point sits under.
-      const verbPrefix = (): string[] => {
+      // The prefix a verb declared at the current point sits under. `on` is the
+      // verb's own `on: :member|:collection`, equivalent to a one-line block.
+      const verbPrefix = (on?: "member" | "collection"): string[] => {
         // Non-routing blocks (`if`, `do`…) are transparent: a verb in an `if`
         // inside `member do` is still a member route.
         let topIdx = frames.length - 1;
         while (topIdx >= 0 && (frames[topIdx] as Frame).type === "block") topIdx--;
-        const top = frames[topIdx];
+        const enclosing = frames[topIdx];
+        if (on && enclosing && (enclosing.type === "resources" || enclosing.type === "singular")) {
+          const base = nestPrefix(topIdx);
+          return on === "member" && enclosing.type === "resources" ? [...base, enclosing.name, ":id"] : [...base, enclosing.name];
+        }
+        const top = enclosing;
         if (top && (top.type === "member" || top.type === "collection")) {
           // Build from the ancestors ABOVE the parent resources frame, then add
           // the resource base (member: `name/:id`, collection: `name`) — so the
@@ -180,17 +192,19 @@ export const railsAdapter: RouteAdapter = {
         if (ROOT_RE.test(line)) emit(joinRoute(...verbPrefix()), "GET");
         for (const m of line.matchAll(VERB_RE)) {
           const p = (m[2] as string) ?? (m[3] as string);
-          emit(joinRoute(...verbPrefix(), p), (m[1] as string).toUpperCase());
+          const on = line.slice((m.index ?? 0) + m[0].length).match(ON_RE)?.[1] as "member" | "collection" | undefined;
+          emit(joinRoute(...verbPrefix(on), p), (m[1] as string).toUpperCase());
         }
         for (const m of line.matchAll(RESOURCES_RE)) {
           const singular = (m[1] as string) === "resource";
-          const name = m[2] as string;
           const args = (m[3] as string) ?? "";
-          const base = joinRoute(...nestPrefix(frames.length), name);
           const table = singular ? SINGULAR_ACTIONS : PLURAL_ACTIONS;
-          for (const action of actionsFor(args, singular)) {
-            for (const def of table[action] as ActionDef[]) {
-              emit(joinRoute(base, ...def.segs), def.method);
+          for (const sym of (m[2] as string).matchAll(/:(\w+)/g)) {
+            const base = joinRoute(...nestPrefix(frames.length), sym[1] as string);
+            for (const action of actionsFor(args, singular)) {
+              for (const def of table[action] as ActionDef[]) {
+                emit(joinRoute(base, ...def.segs), def.method);
+              }
             }
           }
         }

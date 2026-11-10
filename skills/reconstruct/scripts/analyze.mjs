@@ -30912,11 +30912,12 @@ var SINGULAR_ACTIONS = {
 };
 var ROOT_RE = /^root\b/;
 var VERB_RE3 = /\b(get|post|put|patch|delete)\s+(?::(\w+)|["']([^"']+)["'])/g;
-var RESOURCES_RE = /\b(resources|resource)\s+:(\w+)([^\n]*)/g;
+var RESOURCES_RE = /\b(resources|resource)\s+((?::\w+\b(?!\s*=>)\s*,\s*)*:\w+\b(?!\s*=>))([^\n]*)/g;
+var ON_RE = /(?:\bon:|:on\s*=>)\s*:(member|collection)\b/;
 var NAMESPACE_RE = /^namespace\s+:?(\w+)/;
 var SCOPE_STR_RE = /^scope\s+["']([^"']+)["']/;
 var SCOPE_PATH_RE = /^scope\b[^#\n]*\bpath:\s*["']([^"']+)["']/;
-var MOUNT_RE2 = /\bmount\s+[\w:]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
+var MOUNT_RE2 = /\bmount\s*\(?\s*[\w:.]+\s*(?:=>|,\s*at:)\s*["']([^"']+)["']/;
 var OPENS_BLOCK_RE = /\bdo\b(\s*\|[^|]*\|)?\s*$/;
 var STATEMENT_OPENER_RE = /^(?:if|unless|case|begin|def|class|module|while|until|for)\b/;
 var LOOP_RE = /^(?:while|until|for)\b/;
@@ -30964,10 +30965,15 @@ var railsAdapter = {
         }
         return out2;
       };
-      const verbPrefix = () => {
+      const verbPrefix = (on) => {
         let topIdx = frames.length - 1;
         while (topIdx >= 0 && frames[topIdx].type === "block") topIdx--;
-        const top = frames[topIdx];
+        const enclosing = frames[topIdx];
+        if (on && enclosing && (enclosing.type === "resources" || enclosing.type === "singular")) {
+          const base = nestPrefix(topIdx);
+          return on === "member" && enclosing.type === "resources" ? [...base, enclosing.name, ":id"] : [...base, enclosing.name];
+        }
+        const top = enclosing;
         if (top && (top.type === "member" || top.type === "collection")) {
           let parentIdx = topIdx;
           for (let i2 = topIdx - 1; i2 >= 0; i2--) {
@@ -31002,17 +31008,19 @@ var railsAdapter = {
         if (ROOT_RE.test(line2)) emit2(joinRoute(...verbPrefix()), "GET");
         for (const m of line2.matchAll(VERB_RE3)) {
           const p = m[2] ?? m[3];
-          emit2(joinRoute(...verbPrefix(), p), m[1].toUpperCase());
+          const on = line2.slice((m.index ?? 0) + m[0].length).match(ON_RE)?.[1];
+          emit2(joinRoute(...verbPrefix(on), p), m[1].toUpperCase());
         }
         for (const m of line2.matchAll(RESOURCES_RE)) {
           const singular = m[1] === "resource";
-          const name2 = m[2];
           const args2 = m[3] ?? "";
-          const base = joinRoute(...nestPrefix(frames.length), name2);
           const table = singular ? SINGULAR_ACTIONS : PLURAL_ACTIONS;
-          for (const action of actionsFor(args2, singular)) {
-            for (const def of table[action]) {
-              emit2(joinRoute(base, ...def.segs), def.method);
+          for (const sym of m[2].matchAll(/:(\w+)/g)) {
+            const base = joinRoute(...nestPrefix(frames.length), sym[1]);
+            for (const action of actionsFor(args2, singular)) {
+              for (const def of table[action]) {
+                emit2(joinRoute(base, ...def.segs), def.method);
+              }
             }
           }
         }

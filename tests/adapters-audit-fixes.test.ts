@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { djangoAdapter } from "../src/adapters/django.js";
+import { railsAdapter } from "../src/adapters/rails.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
 import type { FileCategory, FileInfo, RouteInfo } from "../src/types.js";
 
@@ -83,5 +84,25 @@ describe("django: inline include([...]) lists", () => {
       ].join("\n"),
     });
     expect(routes.map((r) => r.route).sort()).toEqual(["/", "/about", "/api/users", "/api/v1/items"]);
+  });
+});
+
+describe("rails: routes.rb forms the adapter missed", () => {
+  const rails = (body: string) => routesOf(railsAdapter, { "config/routes.rb": `Rails.application.routes.draw do\n${body}\nend\n` });
+
+  it("expands every resource of a multi-resource line", () => {
+    expect(sig(rails("  resources :photos, :books, only: [:index]"))).toEqual(["GET /books", "GET /photos"]);
+  });
+
+  it("honours on: :member / on: :collection on a verb inside resources", () => {
+    const routes = rails(
+      ["  resources :photos, only: [] do", "    get :preview, on: :member", "    get :search, on: :collection", "    get :stats", "  end"].join("\n"),
+    );
+    expect(sig(routes)).toEqual(["GET /photos/:id/preview", "GET /photos/:photo_id/stats", "GET /photos/search"]);
+  });
+
+  it("detects mount with a dotted app and the parenthesised at: form", () => {
+    const routes = rails(['  mount ActionCable.server => "/cable"', '  mount(Sidekiq::Web, at: "/sidekiq")', '  mount Blog::Engine, at: "/blog"'].join("\n"));
+    expect(routes.map((r) => r.route).sort()).toEqual(["/blog", "/cable", "/sidekiq"]);
   });
 });
