@@ -38056,21 +38056,22 @@ function parseArgs(argv) {
   if (analyzesRepo && realOrResolved(out2) === realOrResolved(repo)) {
     fail(`--out must not be the repository root (${repo}) \u2014 pick a subdirectory such as ${join54(repo, "reconstruction")}`);
   }
-  const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16e3;
-  const transport = raw.transport ?? "stdio";
-  const port = raw.port ? Number(raw.port) : 7343;
-  const bind = raw.bind;
-  const allowOrigin = raw["allow-origin"];
-  const maxResponseBytes = raw["max-response-bytes"] ? Number(raw["max-response-bytes"]) : void 0;
-  if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
-    fail(`invalid --max-embed-bytes`);
-  }
   const positive2 = (key) => {
     if (raw[key] === void 0) return void 0;
     const n = Number(raw[key]);
     if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) fail(`invalid --${key}: expected a positive integer`);
     return n;
   };
+  const maxEmbedBytes = positive2("max-embed-bytes") ?? 16e3;
+  const transport = raw.transport ?? "stdio";
+  let port = 7343;
+  if (raw.port !== void 0) {
+    port = Number(raw.port);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`invalid --port "${raw.port}": expected an integer in 0\u201365535`);
+  }
+  const bind = raw.bind;
+  const allowOrigin = raw["allow-origin"];
+  const maxResponseBytes = positive2("max-response-bytes");
   const maxVerify = positive2("max-verify");
   const batchSize = positive2("batch-size");
   return {

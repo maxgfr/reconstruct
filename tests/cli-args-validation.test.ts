@@ -40,3 +40,22 @@ describe("parseArgs: an empty --flag= value is a missing value", () => {
     expectFail(["--verify", "--out", "/tmp/x", "--apply="], /missing value for --apply/);
   });
 });
+
+describe("parseArgs: numeric flags are validated", () => {
+  it("rejects a non-numeric or out-of-range --port", () => {
+    expectFail(["--mcp", "--transport", "http", "--port", "abc"], /invalid --port/);
+    expectFail(["--mcp", "--transport", "http", "--port", "70000"], /invalid --port/);
+    expectFail(["--mcp", "--transport", "http", "--port", "80.5"], /invalid --port/);
+  });
+
+  it("keeps --port 0 (an ephemeral port) and the default", () => {
+    expect(parseArgs(["--mcp", "--transport", "http", "--port", "0"]).mcpServer?.port).toBe(0);
+    expect(parseArgs(["--mcp"]).mcpServer?.port).toBe(7343);
+  });
+
+  it("rejects a non-integer --max-response-bytes / --max-embed-bytes", () => {
+    expectFail(["--mcp", "--max-response-bytes", "abc"], /invalid --max-response-bytes/);
+    expectFail(["--mcp", "--max-response-bytes", "1.5"], /invalid --max-response-bytes/);
+    expectFail(["--repo", REPO, "--max-embed-bytes", "0.5"], /invalid --max-embed-bytes/);
+  });
+});

@@ -481,22 +481,24 @@ export function parseArgs(argv: string[]): Options {
   if (analyzesRepo && realOrResolved(out) === realOrResolved(repo)) {
     fail(`--out must not be the repository root (${repo}) — pick a subdirectory such as ${join(repo, "reconstruction")}`);
   }
-  const maxEmbedBytes = raw["max-embed-bytes"] ? Number(raw["max-embed-bytes"]) : 16000;
-  // `--mcp` server knobs, read the same way as every other valued flag.
-  const transport = raw.transport ?? "stdio";
-  const port = raw.port ? Number(raw.port) : 7343;
-  const bind = raw.bind;
-  const allowOrigin = raw["allow-origin"];
-  const maxResponseBytes = raw["max-response-bytes"] ? Number(raw["max-response-bytes"]) : undefined;
-  if (!Number.isFinite(maxEmbedBytes) || maxEmbedBytes <= 0) {
-    fail(`invalid --max-embed-bytes`);
-  }
   const positive = (key: string): number | undefined => {
     if (raw[key] === undefined) return undefined;
     const n = Number(raw[key]);
     if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) fail(`invalid --${key}: expected a positive integer`);
     return n;
   };
+  const maxEmbedBytes = positive("max-embed-bytes") ?? 16000;
+  // `--mcp` server knobs, read the same way as every other valued flag.
+  const transport = raw.transport ?? "stdio";
+  let port = 7343;
+  if (raw.port !== undefined) {
+    port = Number(raw.port);
+    // 0 asks the OS for an ephemeral port; anything else must be a real TCP port.
+    if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`invalid --port "${raw.port}": expected an integer in 0–65535`);
+  }
+  const bind = raw.bind;
+  const allowOrigin = raw["allow-origin"];
+  const maxResponseBytes = positive("max-response-bytes");
   const maxVerify = positive("max-verify");
   const batchSize = positive("batch-size");
 
