@@ -116,6 +116,8 @@ const SYNTAX_BY_EXT: Record<string, CommentSyntax> = {
 const REGEX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
 // Ruby: after these a `/` opens a regex (`path: /x/`, `=~ /x/`, `(/x/`).
 const RUBY_REGEX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "{", "!", "&", "|", "~"]);
+// Exactly `++` or `--` (not a third sign) right before the `/`, spaces allowed.
+const POSTFIX_BEFORE = /(?:^|[^+])\+\+\s*$|(?:^|[^-])--\s*$/;
 const REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 
 /**
@@ -123,6 +125,12 @@ const REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|ne
  * is the previous significant code char (`a` for an operand, `""` at start).
  */
 export function regexLiteralAllowedAt(src: string, i: number, last: string): boolean {
+  // `</a>`: a JSX closing tag. A regex written flush against a `<` operator
+  // (`a</re/`) is not code anyone writes, so `</` never opens one.
+  if (src[i - 1] === "<") return false;
+  // `i++ / 2`: a postfix `++`/`--` ends an operand (a prefix one cannot
+  // apply to a regex). `a+++/re/` stays a regex: its last `+` is binary.
+  if ((last === "+" || last === "-") && POSTFIX_BEFORE.test(src.slice(Math.max(0, i - 12), i))) return false;
   return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd());
 }
 

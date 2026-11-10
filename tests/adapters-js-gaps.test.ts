@@ -7,6 +7,7 @@ import { expressAdapter } from "../src/adapters/express.js";
 import { fastifyAdapter } from "../src/adapters/fastify.js";
 import { nestjsAdapter } from "../src/adapters/nestjs.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
+import { stripComments } from "../src/adapters/util.js";
 import type { FileInfo, RouteInfo } from "../src/types.js";
 
 // Regression tests for route-extraction gaps in the JS-family and ASP.NET adapters.
@@ -183,5 +184,28 @@ describe("dotnet: chained MapGroup, $@ strings, verbatim strings ending in a bac
       "Program.cs": 'var dir = @$"C:\\dir\\"; // app.MapGet("/commented", h);\napp.MapGet("/real", h);\n',
     });
     expect(sig(routes)).toEqual(["GET /real"]);
+  });
+});
+
+describe("stripComments: a `/` that cannot open a regex literal", () => {
+  it("the `/` of a JSX closing tag does not start a regex, so a trailing comment is stripped", () => {
+    for (const ext of [".tsx", ".jsx", ".js"]) {
+      expect(stripComments("return <a></a>; // comment\n", ext)).toBe("return <a></a>;           \n");
+      expect(stripComments("const x = <p>{n}</p>; // a 'quote\n", ext)).toBe("const x = <p>{n}</p>;            \n");
+    }
+  });
+
+  it("a `/` after a postfix ++ / -- divides, so a trailing comment is stripped", () => {
+    expect(stripComments("i++ / 2; // c\n", ".ts")).toBe("i++ / 2;     \n");
+    expect(stripComments("x = j-- / k; // c\n", ".js")).toBe("x = j-- / k;     \n");
+  });
+
+  it("still reads regex literals after a spaced `<` or a unary `+`", () => {
+    const lt = "const ok = n < /a\\/\\/b/.source.length;\n";
+    expect(stripComments(lt, ".ts")).toBe(lt);
+    const plus = "const n = i + +/\\/\\//.test(s);\n";
+    expect(stripComments(plus, ".ts")).toBe(plus);
+    const triple = "const n = a+++/\\/\\//.source.length;\n";
+    expect(stripComments(triple, ".ts")).toBe(triple);
   });
 });

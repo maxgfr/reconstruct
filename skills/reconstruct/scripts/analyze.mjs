@@ -28471,8 +28471,11 @@ var SYNTAX_BY_EXT = {
 };
 var REGEX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
 var RUBY_REGEX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "{", "!", "&", "|", "~"]);
+var POSTFIX_BEFORE = /(?:^|[^+])\+\+\s*$|(?:^|[^-])--\s*$/;
 var REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 function regexLiteralAllowedAt(src, i2, last) {
+  if (src[i2 - 1] === "<") return false;
+  if ((last === "+" || last === "-") && POSTFIX_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2))) return false;
   return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2).trimEnd());
 }
 function stripComments(src, ext) {
