@@ -5,7 +5,9 @@ import type { FileInfo, I18nInfo } from "../types.js";
 // BCP-47-ish: a 2–3-letter primary subtag (en, fil, yue), optional script/region
 // (zh-Hant, en-US) and variants (es-419). 3-letter codes matter so locales like
 // `fil`/`yue` aren't mistaken for namespace filenames.
-const LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
+// The POSIX/gettext/Java spelling uses `_` with a strictly-cased script/region
+// (`pt_BR`, `zh_Hant_TW`, `es_419`) — strict, so `my_app` is not a locale.
+const LOCALE_RE = /^[a-z]{2,3}(?:(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*|(_[A-Z][a-z]{3})?(_(?:[A-Z]{2}|\d{3}))?)$/;
 const I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
 
 function countJsonLeaves(value: unknown): number {

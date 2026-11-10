@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { djangoAdapter } from "../src/adapters/django.js";
+import { detectI18n } from "../src/adapters/i18n.js";
 import { railsAdapter } from "../src/adapters/rails.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
 import type { FileCategory, FileInfo, RouteInfo } from "../src/types.js";
@@ -104,5 +105,17 @@ describe("rails: routes.rb forms the adapter missed", () => {
   it("detects mount with a dotted app and the parenthesised at: form", () => {
     const routes = rails(['  mount ActionCable.server => "/cable"', '  mount(Sidekiq::Web, at: "/sidekiq")', '  mount Blog::Engine, at: "/blog"'].join("\n"));
     expect(routes.map((r) => r.route).sort()).toEqual(["/blog", "/cable", "/sidekiq"]);
+  });
+});
+
+describe("i18n: underscore locale tags (en_US, pt_BR)", () => {
+  it("takes the locale from an underscore-tagged directory, not the namespace file", () => {
+    const { repo, infos } = repoOf({ "locales/pt_BR/app.json": '{"a":1}', "locales/en_US/app.json": '{"a":1}' }, "i18n");
+    expect(detectI18n(repo, infos)?.locales).toEqual(["en_US", "pt_BR"]);
+  });
+
+  it("takes the locale from an underscore-tagged file name", () => {
+    const { repo, infos } = repoOf({ "config/locales/zh_Hant_TW.json": '{"a":1}', "config/locales/en.json": '{"a":1}' }, "i18n");
+    expect(detectI18n(repo, infos)?.locales).toEqual(["en", "zh_Hant_TW"]);
   });
 });

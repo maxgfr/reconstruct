@@ -31571,7 +31571,7 @@ function detectRoutes(files, stack, repo) {
 // src/adapters/i18n.ts
 import { readFileSync as readFileSync28 } from "fs";
 import { join as join38, basename as basename6, extname as extname5 } from "path";
-var LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*$/;
+var LOCALE_RE = /^[a-z]{2,3}(?:(-[A-Za-z]{2,4})?(-[A-Za-z0-9]{2,8})*|(_[A-Z][a-z]{3})?(_(?:[A-Z]{2}|\d{3}))?)$/;
 var I18N_DIR_RE = /^(locales?|i18n|lang|langs|translations|messages)$/i;
 function countJsonLeaves(value) {
   if (value === null || typeof value !== "object") return 1;
