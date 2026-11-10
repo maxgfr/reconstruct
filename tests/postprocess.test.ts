@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyze } from "../src/analyze.js";
@@ -138,6 +138,27 @@ describe("bundleExisting (standalone post-step)", () => {
     const merged = bundleExisting(makeOpts({ out: isolated, merge: true, standalone: true })).artifacts.find((a) => a.relPath === "RECONSTRUCTION.md");
     expect(merged?.content).not.toContain("GT_SOURCE_SENTINEL");
     expect(merged?.content).not.toContain("GT_DATA_SENTINEL");
+    rmSync(isolated, { recursive: true, force: true });
+  });
+
+  it("leaves out the workflow files (worklists, brainstorm, orchestration) but keeps spec docs", () => {
+    const isolated = mkdtempSync(join(tmpdir(), "recon-post-wf-"));
+    const genOpts = makeOpts({ out: isolated });
+    writeOutput(render(analyze(genOpts), genOpts), genOpts);
+    for (const [rel, body] of [
+      ["REVIEW.md", "# REVIEW_SENTINEL\n"],
+      ["VERIFY.md", "# VERIFY_SENTINEL\n"],
+      ["BRAINSTORM.md", "# BRAINSTORM_SENTINEL\n"],
+      ["orchestration/RUNBOOK.md", "# RUNBOOK_SENTINEL\n"],
+      ["orchestration/agents/drafter.md", "# DRAFTER_SENTINEL\n"],
+      ["CONTEXT.md", "# CONTEXT_SENTINEL\n"],
+    ] as const) {
+      mkdirSync(join(isolated, rel, ".."), { recursive: true });
+      writeFileSync(join(isolated, rel), body);
+    }
+    const merged = bundleExisting(makeOpts({ out: isolated, merge: true, standalone: true })).artifacts.find((a) => a.relPath === "RECONSTRUCTION.md");
+    for (const s of ["REVIEW", "VERIFY", "BRAINSTORM", "RUNBOOK", "DRAFTER"]) expect(merged?.content).not.toContain(`${s}_SENTINEL`);
+    expect(merged?.content).toContain("CONTEXT_SENTINEL");
     rmSync(isolated, { recursive: true, force: true });
   });
 

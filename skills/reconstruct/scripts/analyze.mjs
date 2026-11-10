@@ -34492,7 +34492,8 @@ Pick one:
 // src/postprocess.ts
 import { readdirSync as readdirSync7, readFileSync as readFileSync29, existsSync as existsSync17 } from "fs";
 import { join as join43, relative as relative12, sep as sep10 } from "path";
-var GROUND_TRUTH_DIRS = /* @__PURE__ */ new Set(["source", "data"]);
+var NON_SPEC_DIRS = /* @__PURE__ */ new Set(["source", "data", "orchestration"]);
+var NON_SPEC_FILES = /* @__PURE__ */ new Set(["REVIEW.md", "VERIFY.md", "BRAINSTORM.md"]);
 function readMarkdownTree(dir) {
   const out2 = [];
   const walk3 = (abs) => {
@@ -34500,9 +34501,9 @@ function readMarkdownTree(dir) {
       const child = join43(abs, entry2.name);
       const rel2 = relative12(dir, child).split(sep10).join("/");
       if (entry2.isDirectory()) {
-        if (GROUND_TRUTH_DIRS.has(rel2)) continue;
+        if (NON_SPEC_DIRS.has(rel2)) continue;
         walk3(child);
-      } else if (entry2.isFile() && entry2.name.endsWith(".md")) {
+      } else if (entry2.isFile() && entry2.name.endsWith(".md") && !NON_SPEC_FILES.has(rel2)) {
         out2.push({ relPath: rel2, content: readFileSync29(child, "utf8") });
       }
     }
