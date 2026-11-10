@@ -267,8 +267,9 @@ export function stripComments(src: string, ext: string): string {
       continue;
     }
     if (c === '"' || c === "'") {
-      if (syntax === "c" && c === '"' && src[i - 1] === "@") {
-        // C# verbatim string: "" is an escaped quote, no backslash escapes.
+      if (syntax === "c" && c === '"' && (src[i - 1] === "@" || (src[i - 1] === "$" && src[i - 2] === "@"))) {
+        // C# verbatim string (`@"…"`, interpolated `$@"…"` / `@$"…"`): "" is
+        // an escaped quote, no backslash escapes — `@$"C:\dir\"` ends at its `"`.
         let j = i + 1;
         while (j < n && !(src[j] === '"' && src[j + 1] !== '"')) j += src[j] === '"' ? 2 : 1;
         i = j + 1;

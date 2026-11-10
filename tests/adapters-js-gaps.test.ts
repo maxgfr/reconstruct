@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { dotnetAdapter } from "../src/adapters/dotnet.js";
 import { expressAdapter } from "../src/adapters/express.js";
 import { fastifyAdapter } from "../src/adapters/fastify.js";
 import { nestjsAdapter } from "../src/adapters/nestjs.js";
@@ -150,5 +151,37 @@ describe("nestjs: method decorators outside a controller class", () => {
         '@Controller("cats")\nexport class CatsController {\n  @Get(":id")\n  one() {}\n}\n\n@Injectable()\nexport class Svc {}\n\n@Controller("dogs")\nexport class DogsController {\n  @Post()\n  create() {}\n}\n',
     });
     expect(sig(routes)).toEqual(["GET /cats/:id", "POST /dogs"]);
+  });
+});
+
+describe("dotnet: chained MapGroup, $@ strings, verbatim strings ending in a backslash", () => {
+  it("composes a MapGroup chained straight into a Map verb", () => {
+    const routes = routesOf(dotnetAdapter, {
+      "Program.cs": [
+        'app.MapGroup("/api").MapGet("/x", h);',
+        'app.MapGroup("/api").WithTags("t").RequireAuthorization().MapPost("/y", h);',
+        'var v = app.MapGroup("/v");',
+        'v.MapGroup("/1")',
+        '  .MapMethods("/z", new[] { "PUT" }, h);',
+        "",
+      ].join("\n"),
+    });
+    expect(sig(routes)).toEqual(["GET /api/x", "POST /api/y", "PUT /v/1/z"]);
+  });
+
+  it("reads $@-prefixed (and @$-prefixed) string templates", () => {
+    const routes = routesOf(dotnetAdapter, {
+      "Program.cs": 'var g = app.MapGroup($@"/api");\ng.MapGet($@"/items/{id}", h);\napp.MapDelete(@$"/old", h);\n',
+      "Controllers/UsersController.cs":
+        '[ApiController]\n[Route($@"api/[controller]")]\npublic class UsersController : ControllerBase\n{\n    [HttpGet($@"{id}")]\n    public IActionResult One(int id) => Ok();\n}\n',
+    });
+    expect(sig(routes)).toEqual(["DELETE /old", "GET /api/items/{id}", "GET /api/users/{id}"]);
+  });
+
+  it('does not read the closing quote of @$"C:\\dir\\" as escaped', () => {
+    const routes = routesOf(dotnetAdapter, {
+      "Program.cs": 'var dir = @$"C:\\dir\\"; // app.MapGet("/commented", h);\napp.MapGet("/real", h);\n',
+    });
+    expect(sig(routes)).toEqual(["GET /real"]);
   });
 });

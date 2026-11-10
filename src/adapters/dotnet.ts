@@ -2,25 +2,38 @@ import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
 import { joinRoute, lineAt, readSources } from "./util.js";
 
+// A string literal's prefix: verbatim `@`, interpolated `$`, or both in
+// either order (`@$"…"` and `$@"…"` are the same literal).
+const STR_PREFIX = String.raw`(?:@\$|\$@|@|\$)?`;
+// Calls chained between a receiver and a Map verb, without nested parens:
+// `.MapGroup("/api")`, `.WithTags("t")`, `.RequireAuthorization()`.
+const CHAIN = String.raw`((?:\s*\.\s*\w+\s*\([^()]*\))*)`;
+// `MapGroup("/seg")` links of such a chain — their segments prefix the route.
+const CHAIN_GROUP_RE = new RegExp(String.raw`\bMapGroup\s*\(\s*${STR_PREFIX}"([^"]*)"\s*\)`, "g");
+
 // --- Minimal APIs -----------------------------------------------------------
-// `app.MapGet("/health", handler)` / `todos.MapPost("/", handler)`.
-const MAP_VERB_RE = /\b(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
+// `app.MapGet("/health", handler)` / `todos.MapPost("/", handler)` /
+// `app.MapGroup("/api").MapGet("/x", handler)`.
+const MAP_VERB_RE = new RegExp(String.raw`\b(\w+)${CHAIN}\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*${STR_PREFIX}"([^"]*)"`, "g");
 // `app.MapMethods("/x", new[] { "GET", "POST" }, handler)` — verbs as an argument.
-const MAP_METHODS_RE = /\b(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
-// Assignment group: `var todos = app.MapGroup("/api/todos");`. Resolved
-// transitively so a nested group composes its parent's prefix.
-const MAP_GROUP_RE = /(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)\s*\.\s*MapGroup\(\s*(?:@?\$?)"([^"]*)"/g;
+const MAP_METHODS_RE = new RegExp(String.raw`\b(\w+)${CHAIN}\s*\.\s*MapMethods\(\s*${STR_PREFIX}"([^"]*)"\s*,\s*([^)]*?)\s*,`, "g");
+// Assignment group: `var todos = app.MapGroup("/api/todos");` (or a chain of
+// them). Resolved transitively so a nested group composes its parent's prefix.
+const MAP_GROUP_RE = new RegExp(String.raw`(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)${CHAIN}`, "g");
 
 // --- Controllers ------------------------------------------------------------
 // `[Route("api/[controller]")]` (or `[ApiController, Route("…", Name = "x")]`) —
 // a class-level or method-level template, told apart by where it sits.
-const ROUTE_ATTR_RE = /[[,]\s*Route\(\s*(?:@?\$?)"([^"]*)"\s*[,)]/g;
+const ROUTE_ATTR_RE = new RegExp(String.raw`[[,]\s*Route\(\s*${STR_PREFIX}"([^"]*)"\s*[,)]`, "g");
 // `class UsersController : ControllerBase` — gives the `[controller]` token value
 // (generic and primary-constructor declarations included).
 const CLASS_DECL_RE = /\bclass\s+(\w+)\s*(?:<[^>{;]*>\s*)?(?::|$|\{|\(|where\b)/gm;
 // `[HttpGet]` / `[HttpGet("{id}")]` / `[HttpGet("{id}", Name = "x")]` — the
 // action-level verb + template.
-const ACTION_RE = /[[,]\s*Http(Get|Post|Put|Delete|Patch|Head|Options)\b(?:\(\s*(?:(?:@?\$?)"([^"]*)")?[^)\]]*\))?/g;
+const ACTION_RE = new RegExp(String.raw`[[,]\s*Http(Get|Post|Put|Delete|Patch|Head|Options)\b(?:\(\s*(?:${STR_PREFIX}"([^"]*)")?[^)\]]*\))?`, "g");
+
+/** The `MapGroup` segments of a call chain, in order. */
+const chainGroups = (chain: string | undefined): string[] => [...(chain ?? "").matchAll(CHAIN_GROUP_RE)].map((g) => g[1] as string);
 
 /**
  * Expand ASP.NET's route tokens. `[controller]` is the class name minus the
@@ -48,8 +61,8 @@ function classAt<T extends { index: number }>(decls: T[], idx: number): T | unde
  * `;` inside a template cannot be mistaken for code structure.
  */
 function blankStrings(src: string): string {
-  return src.replace(/@"(?:[^"]|"")*"|"(?:[^"\\\n]|\\.)*"/g, (s) => {
-    const open = s.startsWith("@") ? 2 : 1;
+  return src.replace(/(?:@\$?|\$@)"(?:[^"]|"")*"|"(?:[^"\\\n]|\\.)*"/g, (s) => {
+    const open = s.indexOf('"') + 1;
     return s.slice(0, open) + s.slice(open, -1).replace(/[^\n]/g, " ") + '"';
   });
 }
@@ -104,7 +117,8 @@ export const dotnetAdapter: RouteAdapter = {
       // 1. Minimal APIs — resolve MapGroup chains first so verbs can use them.
       const groups = new Map<string, { parent: string; seg: string }>();
       for (const m of src.matchAll(MAP_GROUP_RE)) {
-        groups.set(m[1] as string, { parent: m[2] as string, seg: m[3] as string });
+        const segs = chainGroups(m[3]);
+        if (segs.length) groups.set(m[1] as string, { parent: m[2] as string, seg: joinRoute(...segs) });
       }
       const groupPrefix = (v: string, seen = new Set<string>()): string => {
         const g = groups.get(v);
@@ -115,17 +129,18 @@ export const dotnetAdapter: RouteAdapter = {
 
       for (const m of src.matchAll(MAP_VERB_RE)) {
         routes.push({
-          route: joinRoute(groupPrefix(m[1] as string), m[3] as string),
+          route: joinRoute(groupPrefix(m[1] as string), ...chainGroups(m[2]), m[4] as string),
           file: path,
           line: lineAt(src, m.index ?? 0),
           kind: "api",
-          method: (m[2] as string).toUpperCase(),
+          method: (m[3] as string).toUpperCase(),
         });
       }
       for (const m of src.matchAll(MAP_METHODS_RE)) {
-        const verbs = [...(m[3] as string).matchAll(/"([A-Za-z]+)"/g)].map((v) => (v[1] as string).toUpperCase());
+        const verbs = [...(m[4] as string).matchAll(/"([A-Za-z]+)"/g)].map((v) => (v[1] as string).toUpperCase());
+        const route = joinRoute(groupPrefix(m[1] as string), ...chainGroups(m[2]), m[3] as string);
         for (const method of verbs.length ? verbs : ["*"]) {
-          routes.push({ route: joinRoute(groupPrefix(m[1] as string), m[2] as string), file: path, line: lineAt(src, m.index ?? 0), kind: "api", method });
+          routes.push({ route, file: path, line: lineAt(src, m.index ?? 0), kind: "api", method });
         }
       }
 

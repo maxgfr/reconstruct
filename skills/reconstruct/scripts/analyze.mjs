@@ -28589,7 +28589,7 @@ function stripComments(src, ext) {
       continue;
     }
     if (c2 === '"' || c2 === "'") {
-      if (syntax === "c" && c2 === '"' && src[i2 - 1] === "@") {
+      if (syntax === "c" && c2 === '"' && (src[i2 - 1] === "@" || src[i2 - 1] === "$" && src[i2 - 2] === "@")) {
         let j = i2 + 1;
         while (j < n && !(src[j] === '"' && src[j + 1] !== '"')) j += src[j] === '"' ? 2 : 1;
         i2 = j + 1;
@@ -31588,12 +31588,16 @@ var trpcAdapter = {
 };
 
 // src/adapters/dotnet.ts
-var MAP_VERB_RE = /\b(\w+)\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*(?:@?\$?)"([^"]*)"/g;
-var MAP_METHODS_RE = /\b(\w+)\s*\.\s*MapMethods\(\s*(?:@?\$?)"([^"]*)"\s*,\s*([^)]*?)\s*,/g;
-var MAP_GROUP_RE = /(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)\s*\.\s*MapGroup\(\s*(?:@?\$?)"([^"]*)"/g;
-var ROUTE_ATTR_RE = /[[,]\s*Route\(\s*(?:@?\$?)"([^"]*)"\s*[,)]/g;
+var STR_PREFIX = String.raw`(?:@\$|\$@|@|\$)?`;
+var CHAIN = String.raw`((?:\s*\.\s*\w+\s*\([^()]*\))*)`;
+var CHAIN_GROUP_RE = new RegExp(String.raw`\bMapGroup\s*\(\s*${STR_PREFIX}"([^"]*)"\s*\)`, "g");
+var MAP_VERB_RE = new RegExp(String.raw`\b(\w+)${CHAIN}\s*\.\s*Map(Get|Post|Put|Delete|Patch|Head|Options)\(\s*${STR_PREFIX}"([^"]*)"`, "g");
+var MAP_METHODS_RE = new RegExp(String.raw`\b(\w+)${CHAIN}\s*\.\s*MapMethods\(\s*${STR_PREFIX}"([^"]*)"\s*,\s*([^)]*?)\s*,`, "g");
+var MAP_GROUP_RE = new RegExp(String.raw`(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)${CHAIN}`, "g");
+var ROUTE_ATTR_RE = new RegExp(String.raw`[[,]\s*Route\(\s*${STR_PREFIX}"([^"]*)"\s*[,)]`, "g");
 var CLASS_DECL_RE = /\bclass\s+(\w+)\s*(?:<[^>{;]*>\s*)?(?::|$|\{|\(|where\b)/gm;
-var ACTION_RE = /[[,]\s*Http(Get|Post|Put|Delete|Patch|Head|Options)\b(?:\(\s*(?:(?:@?\$?)"([^"]*)")?[^)\]]*\))?/g;
+var ACTION_RE = new RegExp(String.raw`[[,]\s*Http(Get|Post|Put|Delete|Patch|Head|Options)\b(?:\(\s*(?:${STR_PREFIX}"([^"]*)")?[^)\]]*\))?`, "g");
+var chainGroups = (chain) => [...(chain ?? "").matchAll(CHAIN_GROUP_RE)].map((g) => g[1]);
 function expandTokens(template, className) {
   const controller = className.replace(/Controller$/, "").toLowerCase();
   return template.replace(/\[controller\]/gi, controller);
@@ -31607,8 +31611,8 @@ function classAt(decls, idx) {
   return found;
 }
 function blankStrings(src) {
-  return src.replace(/@"(?:[^"]|"")*"|"(?:[^"\\\n]|\\.)*"/g, (s) => {
-    const open = s.startsWith("@") ? 2 : 1;
+  return src.replace(/(?:@\$?|\$@)"(?:[^"]|"")*"|"(?:[^"\\\n]|\\.)*"/g, (s) => {
+    const open = s.indexOf('"') + 1;
     return s.slice(0, open) + s.slice(open, -1).replace(/[^\n]/g, " ") + '"';
   });
 }
@@ -31634,7 +31638,8 @@ var dotnetAdapter = {
     for (const [path, src] of readSources(files, repo, [".cs"])) {
       const groups = /* @__PURE__ */ new Map();
       for (const m of src.matchAll(MAP_GROUP_RE)) {
-        groups.set(m[1], { parent: m[2], seg: m[3] });
+        const segs = chainGroups(m[3]);
+        if (segs.length) groups.set(m[1], { parent: m[2], seg: joinRoute(...segs) });
       }
       const groupPrefix = (v, seen = /* @__PURE__ */ new Set()) => {
         const g = groups.get(v);
@@ -31644,17 +31649,18 @@ var dotnetAdapter = {
       };
       for (const m of src.matchAll(MAP_VERB_RE)) {
         routes.push({
-          route: joinRoute(groupPrefix(m[1]), m[3]),
+          route: joinRoute(groupPrefix(m[1]), ...chainGroups(m[2]), m[4]),
           file: path,
           line: lineAt(src, m.index ?? 0),
           kind: "api",
-          method: m[2].toUpperCase()
+          method: m[3].toUpperCase()
         });
       }
       for (const m of src.matchAll(MAP_METHODS_RE)) {
-        const verbs = [...m[3].matchAll(/"([A-Za-z]+)"/g)].map((v) => v[1].toUpperCase());
+        const verbs = [...m[4].matchAll(/"([A-Za-z]+)"/g)].map((v) => v[1].toUpperCase());
+        const route2 = joinRoute(groupPrefix(m[1]), ...chainGroups(m[2]), m[3]);
         for (const method of verbs.length ? verbs : ["*"]) {
-          routes.push({ route: joinRoute(groupPrefix(m[1]), m[2]), file: path, line: lineAt(src, m.index ?? 0), kind: "api", method });
+          routes.push({ route: route2, file: path, line: lineAt(src, m.index ?? 0), kind: "api", method });
         }
       }
       const code = blankStrings(src);
