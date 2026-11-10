@@ -38001,6 +38001,7 @@ function parseArgs(argv) {
       let value;
       if (eq !== -1) {
         value = arg.slice(eq + 1);
+        if (value === "") fail(`missing value for --${key}`);
       } else {
         const next = argv[i2 + 1];
         if (next === void 0 || next.startsWith("--")) {

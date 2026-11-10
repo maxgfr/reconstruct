@@ -30,3 +30,13 @@ describe("parseArgs: --out must not be the analysed repository", () => {
     expect(parseArgs(["--check", "--out", REPO]).check).toBe(true);
   });
 });
+
+describe("parseArgs: an empty --flag= value is a missing value", () => {
+  it("rejects --out= instead of silently writing into the cwd", () => {
+    expectFail(["--repo", REPO, "--out="], /missing value for --out/);
+  });
+
+  it("rejects --apply= instead of silently re-running the worklist", () => {
+    expectFail(["--verify", "--out", "/tmp/x", "--apply="], /missing value for --apply/);
+  });
+});

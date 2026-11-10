@@ -379,6 +379,9 @@ export function parseArgs(argv: string[]): Options {
       let value: string;
       if (eq !== -1) {
         value = arg.slice(eq + 1);
+        // `--out=` would otherwise fall through to the default (`resolve("")` is
+        // the cwd) and `--apply=` to "no findings file" — a silent wrong action.
+        if (value === "") fail(`missing value for --${key}`);
       } else {
         const next = argv[i + 1];
         if (next === undefined || next.startsWith("--")) {
