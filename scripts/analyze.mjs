@@ -31159,16 +31159,16 @@ var railsAdapter = {
 var VERB_TOKENS = "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|Get|Post|Put|Delete|Patch|Head|Options|Connect|Trace|Any|ANY|All";
 var VERB_RE5 = new RegExp(`(\\w+)\\.(${VERB_TOKENS})\\(\\s*["\`]([^"\`]*)["\`]`, "g");
 var HANDLE_VERB_RE = /\b(\w+)\.(?:Handle|Add)\(\s*["`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["`]\s*,\s*["`]([^"`]*)["`]/g;
-var HANDLEFUNC_RE = /\b(\w+)\.HandleFunc\(\s*["`]([^"`]*)["`][^;\n]*/g;
+var HANDLEFUNC_RE = /\b(\w+)\.(?:HandleFunc|Handle)\(\s*["`]([^"`]*)["`][^;\n]*/g;
 var METHODS_CHAIN_RE = /\.Methods\(\s*([^)]*)\)/;
-var GROUP_RE = /\b(\w+)\s*:=\s*(\w+)\.Group\(\s*["`]([^"`]*)["`]/g;
+var GROUP_RE = /\b(\w+)\s*:?=\s*(\w+)\.(?:Group\(\s*["`]([^"`]*)["`]|PathPrefix\(\s*["`]([^"`]*)["`]\s*\)\s*\.Subrouter\(\s*\))/g;
 var ROUTE_OPEN_RE = /\b(\w+)\.Route\(\s*["`]([^"`]*)["`]\s*,\s*func/g;
 var MOUNT_RE3 = /\b(\w+)\.Mount\(\s*["`]([^"`]*)["`]/g;
 var STD_VERBS = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/;
 var ROUTER_TYPE = "(?:chi\\.(?:Router|Mux)|gin\\.(?:Engine|RouterGroup|IRouter|IRoutes)|echo\\.(?:Echo|Group)|fiber\\.(?:App|Router)|mux\\.Router|http\\.ServeMux|httprouter\\.Router)\\b";
 var TYPED_ROUTER_RE = new RegExp(`\\b(\\w+)\\s+\\*?${ROUTER_TYPE}`, "g");
 var CTOR_ROUTER_RE = /\b(\w+)\s*:?=\s*&?(?:\w+\.(?:NewRouter|NewMux|NewServeMux)|gin\.(?:Default|New)|echo\.New|fiber\.New|httprouter\.New)\(/g;
-var DERIVED_ROUTER_RE = /\b(\w+)\s*:?=\s*\w+\.(?:Group|Route|With)\(/g;
+var DERIVED_ROUTER_RE = /\b(\w+)\s*:?=\s*\w+\.(?:Group|Route|With|PathPrefix)\(/g;
 var MULTI_ASSIGN_BEFORE_RE = /\w+\s*,\s*\w+\s*:?=\s*$/;
 var ROUTER_FUNC_RE = new RegExp(`\\bfunc\\s+(?:\\([^)]*\\)\\s*)?(\\w+)\\s*\\([^)]*\\)\\s*\\(?\\s*\\*?${ROUTER_TYPE}`, "g");
 function methodOf2(verb) {
@@ -31195,11 +31195,30 @@ function braceMatch(src) {
   }
   return pairs;
 }
+var FUNC_HEAD_RE = /func\s*(\([^)]*\)\s*)?(\w+)\s*(?:\[[^\]]*\]\s*)?\(/y;
 function funcScopes(src, pairs) {
   const scopes = [];
   for (const m of src.matchAll(/^func\b/gm)) {
+    const at = m.index ?? 0;
+    FUNC_HEAD_RE.lastIndex = at;
+    const head = FUNC_HEAD_RE.exec(src);
+    let name2 = null;
+    let nameAt = -1;
+    let params = "";
+    if (head) {
+      name2 = head[1] ? null : head[2];
+      const open = at + head[0].length - 1;
+      nameAt = at + head[0].lastIndexOf(head[2], open - at);
+      let parens = 0;
+      let close = open;
+      for (; close < src.length; close++) {
+        if (src[close] === "(") parens++;
+        else if (src[close] === ")" && --parens === 0) break;
+      }
+      params = src.slice(open + 1, close);
+    }
     let depth = 0;
-    for (let i2 = (m.index ?? 0) + 4; i2 < src.length; i2++) {
+    for (let i2 = at + 4; i2 < src.length; i2++) {
       const c2 = src[i2];
       if (c2 === "(") depth++;
       else if (c2 === ")") depth--;
@@ -31209,13 +31228,56 @@ function funcScopes(src, pairs) {
           continue;
         }
         const end = pairs.get(i2);
-        if (end !== void 0) scopes.push({ start: i2, end });
+        if (end !== void 0) scopes.push({ start: i2, end, name: name2, nameAt, params });
         break;
       }
     }
   }
   return scopes;
 }
+var ROUTER_PARAM_TYPE_RE = new RegExp(`^\\*?${ROUTER_TYPE}`);
+function routerParams(params) {
+  const out2 = /* @__PURE__ */ new Map();
+  const pending = [];
+  const names = [];
+  params.split(",").forEach((raw, pos) => {
+    const part = raw.trim();
+    const typed = part.match(/^(\w+)\s+(\S.*)$/);
+    if (!typed) {
+      names[pos] = part;
+      pending.push(pos);
+      return;
+    }
+    names[pos] = typed[1];
+    if (ROUTER_PARAM_TYPE_RE.test(typed[2])) for (const p of [...pending, pos]) out2.set(names[p], p);
+    pending.length = 0;
+  });
+  return out2;
+}
+function callArgs2(src, open) {
+  const args2 = [];
+  let depth = 0;
+  let from = open + 1;
+  for (let i2 = open; i2 < src.length; i2++) {
+    const c2 = src[i2];
+    if (c2 === '"' || c2 === "`") {
+      const close = src.indexOf(c2, i2 + 1);
+      i2 = close === -1 ? src.length : close;
+    } else if (c2 === "(" || c2 === "[" || c2 === "{") depth++;
+    else if (c2 === ")" || c2 === "]" || c2 === "}") {
+      if (--depth === 0) {
+        args2.push(src.slice(from, i2).trim());
+        break;
+      }
+    } else if (c2 === "," && depth === 1) {
+      args2.push(src.slice(from, i2).trim());
+      from = i2 + 1;
+    }
+  }
+  return args2;
+}
+var blankLiterals = (src) => src.replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`[^`]*`/g, (lit) => lit.replace(/[^\n]/g, " "));
+var dirOf9 = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 var goAdapter = {
   id: "go",
   frameworks: ["Gin", "Echo", "chi", "Fiber", "Gorilla"],
@@ -31229,6 +31291,7 @@ var goAdapter = {
       for (const m of src.matchAll(ROUTER_FUNC_RE)) routerFuncs.add(m[1]);
     }
     const routerFuncCall = routerFuncs.size ? new RegExp(`\\b(\\w+)\\s*:?=\\s*(?:\\w+\\.)?(?:${[...routerFuncs].join("|")})\\(`, "g") : null;
+    const ctxs = [];
     for (const [path, src] of sources) {
       const routers = new Set(sharedRouters);
       for (const re of [CTOR_ROUTER_RE, DERIVED_ROUTER_RE, ...routerFuncCall ? [routerFuncCall] : []]) {
@@ -31240,27 +31303,72 @@ var goAdapter = {
       const groups = /* @__PURE__ */ new Map();
       for (const m of src.matchAll(GROUP_RE)) {
         const scope = scopeAt(m.index ?? 0);
-        groups.set(`${scope}:${m[1]}`, { parent: m[2], seg: m[3], scope });
+        groups.set(`${scope}:${m[1]}`, { parent: m[2], seg: m[3] ?? m[4], scope });
       }
-      const groupPrefix = (v, scope, seen = /* @__PURE__ */ new Set()) => {
-        const key = groups.has(`${scope}:${v}`) ? `${scope}:${v}` : `-1:${v}`;
-        const g = groups.get(key);
-        if (!g || seen.has(key)) return "";
-        seen.add(key);
-        return joinRoute(groupPrefix(g.parent, g.scope, seen), g.seg);
-      };
       const opens = [...pairs.keys()].sort((a, b) => a - b);
       const ranges = [];
       for (const m of src.matchAll(ROUTE_OPEN_RE)) {
-        const at2 = m.index ?? 0;
-        const open = opens.find((o) => o > at2);
+        const at = m.index ?? 0;
+        const open = opens.find((o) => o > at);
         if (open === void 0) continue;
         ranges.push({ start: open, end: pairs.get(open), seg: m[2] });
       }
       const closurePrefix = (idx) => joinRoute(
         ...ranges.filter((r) => idx >= r.start && idx <= r.end).sort((a, b) => a.start - b.start).map((r) => r.seg)
       );
-      const prefixAt = (recv, idx) => joinRoute(closurePrefix(idx), groupPrefix(recv, scopeAt(idx)));
+      ctxs.push({ path, src, code: blankLiterals(src), routers, scopes, scopeAt, groups, closurePrefix });
+    }
+    const bindings = /* @__PURE__ */ new Map();
+    const byDir = /* @__PURE__ */ new Map();
+    for (const ctx of ctxs) byDir.set(dirOf9(ctx.path), [...byDir.get(dirOf9(ctx.path)) ?? [], ctx]);
+    for (const ctx of ctxs) {
+      for (const fn of ctx.scopes) {
+        if (!fn.name) continue;
+        const params = routerParams(fn.params);
+        if (!params.size) continue;
+        const name2 = fn.name;
+        if (/^[A-Z]/.test(name2)) {
+          const qualified2 = new RegExp(`\\.${name2}\\b`);
+          if (ctxs.some((c2) => qualified2.test(c2.code))) continue;
+        }
+        const useRe = new RegExp(`(?<![\\w.])${name2}\\b`, "g");
+        const uses = [];
+        for (const c2 of byDir.get(dirOf9(ctx.path)) ?? []) {
+          for (const m of c2.code.matchAll(useRe)) if (!(c2 === ctx && m.index === fn.nameAt)) uses.push({ ctx: c2, at: m.index ?? 0 });
+        }
+        if (uses.length !== 1) continue;
+        const use = uses[0];
+        const call2 = /\s*\(/y;
+        call2.lastIndex = use.at + name2.length;
+        if (!call2.exec(use.ctx.src)) continue;
+        const args2 = callArgs2(use.ctx.src, call2.lastIndex - 1);
+        for (const [param, pos] of params) {
+          const arg = args2[pos] ?? "";
+          const inline = arg.match(/^(\w+)\.Group\(\s*["`]([^"`]*)["`]\s*\)$/);
+          if (inline) bindings.set(`${ctx.path}:${fn.start}:${param}`, { ctx: use.ctx, arg: inline[1], at: use.at, seg: inline[2] });
+          else if (/^\w+$/.test(arg)) bindings.set(`${ctx.path}:${fn.start}:${param}`, { ctx: use.ctx, arg, at: use.at, seg: "" });
+        }
+      }
+    }
+    const groupPrefix = (ctx, v, scope, seen) => {
+      const local = ctx.groups.get(`${scope}:${v}`);
+      const bindKey = `${ctx.path}:${scope}:${v}`;
+      const bound = local ? void 0 : bindings.get(bindKey);
+      if (bound) {
+        if (seen.has(bindKey)) return "";
+        seen.add(bindKey);
+        return joinRoute(prefixOf2(bound.ctx, bound.arg, bound.at, seen), bound.seg);
+      }
+      const key = local ? `${ctx.path}:${scope}:${v}` : `${ctx.path}:-1:${v}`;
+      const g = local ?? ctx.groups.get(`-1:${v}`);
+      if (!g || seen.has(key)) return "";
+      seen.add(key);
+      return joinRoute(groupPrefix(ctx, g.parent, g.scope, seen), g.seg);
+    };
+    const prefixOf2 = (ctx, recv, idx, seen = /* @__PURE__ */ new Set()) => joinRoute(ctx.closurePrefix(idx), groupPrefix(ctx, recv, ctx.scopeAt(idx), seen));
+    for (const ctx of ctxs) {
+      const { path, src, routers } = ctx;
+      const prefixAt = (recv, idx) => prefixOf2(ctx, recv, idx);
       const at = (idx) => ({ file: path, line: lineAt(src, idx) });
       for (const m of src.matchAll(VERB_RE5)) {
         const routePath = m[3];
@@ -32504,7 +32612,7 @@ function pathArg(tool) {
   const named = (re) => props.find(([k]) => re.test(k) && required.has(k))?.[0] ?? props.find(([k]) => re.test(k))?.[0];
   return named(/^(path|target|file|artifact|input)(_path)?$/i) ?? named(/path|target|file/i);
 }
-function callArgs2(tool, target) {
+function callArgs3(tool, target) {
   const arg = pathArg(tool);
   if (!arg) return void 0;
   const props = tool.inputSchema?.properties ?? {};
@@ -32622,7 +32730,7 @@ async function runRea(repo, out2, artifacts, opts) {
       for (const chain of probesFor(rel2)) {
         if (!chain.every((n) => tools.has(n))) continue;
         const [first, ...rest] = chain;
-        const args2 = callArgs2(tools.get(first), abs);
+        const args2 = callArgs3(tools.get(first), abs);
         if (!args2) continue;
         const label = chain.length > 1 ? chain[1] : first;
         if (Date.now() >= deadline) {
