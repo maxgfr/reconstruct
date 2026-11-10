@@ -30812,8 +30812,8 @@ var DRF_MOUNT_RE = /\b(?:path|re_path|url)\(\s*r?["']([^"']*)["']\s*,\s*include\
 function cleanRegex(pattern) {
   return pattern.replace(/^\^/, "").replace(/\$$/, "").replace(/\(\?P<(\w+)>[^)]*\)/g, "<$1>");
 }
-function isApiContext(src, route2) {
-  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src) || /(^|\/)api(\/|$)/.test(route2);
+function isApiSource(src) {
+  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src);
 }
 function includeTarget(path, arg, aliases, sources) {
   let expr = arg.trim();
@@ -30870,6 +30870,7 @@ var djangoAdapter = {
       if (!urlFiles.has(path)) continue;
       const prefix = fullPrefix(path);
       const inline = inlineIncludes(src);
+      const apiSource = isApiSource(src);
       for (const m of src.matchAll(ENTRY_RE)) {
         const view = m[3];
         if (view === "include") continue;
@@ -30877,7 +30878,7 @@ var djangoAdapter = {
         const raw = m[1] !== "path" ? cleanRegex(m[2]) : m[2];
         const at = m.index ?? 0;
         const route2 = joinRoute(prefix, ...inline.filter((r) => r.start < at && at < r.end).map((r) => r.prefix), raw);
-        routes.push({ route: route2, file: path, line: lineAt(src, m.index ?? 0), kind: isApiContext(src, route2) ? "api" : "page" });
+        routes.push({ route: route2, file: path, line: lineAt(src, m.index ?? 0), kind: apiSource || /(^|\/)api(\/|$)/.test(route2) ? "api" : "page" });
       }
       const routerVars = new Set([...src.matchAll(DRF_ROUTER_RE)].map((m) => m[1]));
       if (!routerVars.size) continue;

@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { djangoAdapter } from "../src/adapters/django.js";
 import { flaskAdapter } from "../src/adapters/flask.js";
 import { pythonImportAliases } from "../src/adapters/util.js";
 import type { FileInfo } from "../src/types.js";
@@ -36,5 +37,18 @@ describe("linear-time adapter passes", () => {
     expect(elapsed(() => (routes = flaskAdapter.detectRoutes(files, repo)))).toBeLessThan(1500);
     expect(routes.length).toBe(8000);
     expect(routes.filter((r) => r.kind === "page").length).toBe(4000);
+  });
+
+  it("django: the REST-context test runs once per URLconf, not once per route", () => {
+    const repo = mkdtempSync(join(tmpdir(), "rc-django-perf-"));
+    const body = ["from django.urls import path", "from . import views", "urlpatterns = ["];
+    for (let i = 0; i < 20000; i++) body.push(`    path("r${i}/", views.v${i}),`);
+    body.push("]");
+    writeFileSync(join(repo, "urls.py"), body.join("\n"));
+    const files: FileInfo[] = [{ path: "urls.py", ext: ".py", size: 0, lines: body.length, category: "code", binary: false }];
+    let routes: ReturnType<typeof djangoAdapter.detectRoutes> = [];
+    expect(elapsed(() => (routes = djangoAdapter.detectRoutes(files, repo)))).toBeLessThan(1500);
+    expect(routes.length).toBe(20000);
+    expect(routes.every((r) => r.kind === "page")).toBe(true);
   });
 });

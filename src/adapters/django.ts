@@ -24,9 +24,9 @@ function cleanRegex(pattern: string): string {
     .replace(/\(\?P<(\w+)>[^)]*\)/g, "<$1>");
 }
 
-/** An app whose views are REST (DRF) → its routes are `api`, not server `page`s. */
-function isApiContext(src: string, route: string): boolean {
-  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src) || /(^|\/)api(\/|$)/.test(route);
+/** A URLconf whose views are REST (DRF) → its routes are `api`, not server `page`s. */
+function isApiSource(src: string): boolean {
+  return /rest_framework|ViewSet|APIView|JsonResponse|@api_view/.test(src);
 }
 
 /**
@@ -117,6 +117,8 @@ export const djangoAdapter: RouteAdapter = {
       if (!urlFiles.has(path)) continue;
       const prefix = fullPrefix(path);
       const inline = inlineIncludes(src);
+      // Once per file, not once per route (that rescan was quadratic).
+      const apiSource = isApiSource(src);
 
       // 2. Leaf routes (skip include mounts and the admin sub-app).
       for (const m of src.matchAll(ENTRY_RE)) {
@@ -126,7 +128,7 @@ export const djangoAdapter: RouteAdapter = {
         const raw = m[1] !== "path" ? cleanRegex(m[2] as string) : (m[2] as string);
         const at = m.index ?? 0;
         const route = joinRoute(prefix, ...inline.filter((r) => r.start < at && at < r.end).map((r) => r.prefix), raw);
-        routes.push({ route, file: path, line: lineAt(src, m.index ?? 0), kind: isApiContext(src, route) ? "api" : "page" });
+        routes.push({ route, file: path, line: lineAt(src, m.index ?? 0), kind: apiSource || /(^|\/)api(\/|$)/.test(route) ? "api" : "page" });
       }
 
       // 3. DRF routers: expand each registration to list + detail routes.
