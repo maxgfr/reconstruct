@@ -115,3 +115,158 @@ describe("extractDependencies — requirements.txt line forms", () => {
     expect(pip?.runtime).toEqual({ fastapi: "==0.110", uvicorn: ">=0.20", requests: "", pywin32: ">=306" });
   });
 });
+
+describe("extractDependencies — Gemfile nesting", () => {
+  it("a nested block's `end` inside a dev group does not end the group", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "Gemfile",
+        [
+          'gem "rails"',
+          "group :development, :test do",
+          "  platforms :mri, :windows do",
+          '    gem "debug"',
+          "  end",
+          '  gem "rspec-rails"',
+          "end",
+          'gem "puma"',
+        ].join("\n"),
+      ),
+    );
+    const bundler = extractDependencies(dir, files).find((d) => d.manager === "bundler");
+    expect(Object.keys(bundler?.runtime ?? {}).sort()).toEqual(["puma", "rails"]);
+    expect(Object.keys(bundler?.dev ?? {}).sort()).toEqual(["debug", "rspec-rails"]);
+  });
+
+  it("a non-dev block keeps its gems runtime; an `if` block inherits the group", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "Gemfile",
+        [
+          'source "https://gems.example.com" do',
+          '  gem "private-gem"',
+          "end",
+          "group :test do",
+          '  if ENV["CI"]',
+          '    gem "ci-reporter"',
+          "  end",
+          "end",
+          'gem "pg"',
+        ].join("\n"),
+      ),
+    );
+    const bundler = extractDependencies(dir, files).find((d) => d.manager === "bundler");
+    expect(Object.keys(bundler?.runtime ?? {}).sort()).toEqual(["pg", "private-gem"]);
+    expect(Object.keys(bundler?.dev ?? {})).toEqual(["ci-reporter"]);
+  });
+});
+
+describe("extractDependencies — Python manifests beyond requirements.txt", () => {
+  const pipFor = (dir: string, files: FileInfo[], manifest: string) =>
+    extractDependencies(dir, files).find((d) => d.manager === "pip" && d.manifest === manifest);
+
+  it("reads PEP 621 [project] dependencies, optional-dependencies and dependency-groups", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "pyproject.toml",
+        [
+          "[project]",
+          'name = "svc"',
+          'requires-python = ">=3.11"',
+          "dependencies = [",
+          '  "fastapi>=0.110",',
+          '  "uvicorn[standard] >=0.20",',
+          "  \"pywin32>=306; sys_platform == 'win32'\",",
+          '  "httpx",',
+          "]",
+          "",
+          "[project.optional-dependencies]",
+          'dev = ["pytest>=8", "ruff"]',
+          "",
+          "[dependency-groups]",
+          "test = [",
+          '  "coverage",',
+          '  { include-group = "dev" },',
+          "]",
+          "",
+          "[tool.ruff]",
+          "line-length = 100",
+        ].join("\n"),
+      ),
+    );
+    const pip = pipFor(dir, files, "pyproject.toml");
+    expect(pip?.runtime).toEqual({ fastapi: ">=0.110", uvicorn: ">=0.20", pywin32: ">=306", httpx: "" });
+    expect(pip?.dev).toEqual({ pytest: ">=8", ruff: "", coverage: "" });
+  });
+
+  it("reads Poetry dependencies and dev groups, skipping python", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "pyproject.toml",
+        [
+          "[tool.poetry]",
+          'name = "svc"',
+          "",
+          "[tool.poetry.dependencies]",
+          'python = "^3.11"',
+          'django = "^5.0"',
+          'celery = { version = "^5.3", extras = ["redis"] }',
+          'requests = "*"',
+          "",
+          "[tool.poetry.group.dev.dependencies]",
+          'pytest = "^8.0"',
+          "",
+          "[tool.poetry.dev-dependencies]",
+          'black = "^24"',
+        ].join("\n"),
+      ),
+    );
+    const pip = pipFor(dir, files, "pyproject.toml");
+    expect(pip?.runtime).toEqual({ django: "^5.0", celery: "^5.3", requests: "" });
+    expect(pip?.dev).toEqual({ pytest: "^8.0", black: "^24" });
+  });
+
+  it("emits nothing for a pyproject without dependencies", () => {
+    const { dir, files } = repo((w) => w("pyproject.toml", '[tool.black]\nline-length = 100\n\n[project]\nname = "x"\n'));
+    expect(pipFor(dir, files, "pyproject.toml")).toBeUndefined();
+  });
+
+  it("reads a Pipfile's [packages] and [dev-packages]", () => {
+    const { dir, files } = repo((w) =>
+      w(
+        "Pipfile",
+        [
+          "[[source]]",
+          'url = "https://pypi.org/simple"',
+          "",
+          "[packages]",
+          'flask = "==3.0.0"',
+          'gunicorn = "*"',
+          'sqlalchemy = {version = ">=2", extras = ["asyncio"]}',
+          "",
+          "[dev-packages]",
+          'pytest = "*"',
+          "",
+          "[requires]",
+          'python_version = "3.12"',
+        ].join("\n"),
+      ),
+    );
+    const pip = pipFor(dir, files, "Pipfile");
+    expect(pip?.runtime).toEqual({ flask: "==3.0.0", gunicorn: "", sqlalchemy: ">=2" });
+    expect(pip?.dev).toEqual({ pytest: "" });
+  });
+
+  it("reads requirements/*.txt and requirements-dev.txt, dev when the name says dev/test", () => {
+    const { dir, files } = repo((w) => {
+      w("requirements/base.txt", "django==5.0\n");
+      w("requirements/test.txt", "-r base.txt\npytest\n");
+      w("requirements-dev.txt", "ruff>=0.4\n");
+      w("docs/requirements.txt", "sphinx\n");
+    });
+    expect(pipFor(dir, files, "requirements/base.txt")).toEqual({ manager: "pip", manifest: "requirements/base.txt", runtime: { django: "==5.0" }, dev: {} });
+    expect(pipFor(dir, files, "requirements/test.txt")).toEqual({ manager: "pip", manifest: "requirements/test.txt", runtime: {}, dev: { pytest: "" } });
+    expect(pipFor(dir, files, "requirements-dev.txt")).toEqual({ manager: "pip", manifest: "requirements-dev.txt", runtime: {}, dev: { ruff: ">=0.4" } });
+    expect(pipFor(dir, files, "docs/requirements.txt")).toBeUndefined();
+  });
+});

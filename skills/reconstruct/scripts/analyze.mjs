@@ -28903,6 +28903,14 @@ function asStringMap(value) {
   }
   return out2;
 }
+var REQUIREMENTS_ROOT_RE = /^(?:[\w.-]+[-_])?requirements(?:[-_.][\w.-]+)?\.txt$/i;
+var REQUIREMENTS_DIR_RE = /^requirements\/[^/]+\.txt$/i;
+function parseRequirement(spec) {
+  const t = spec.split(";")[0]?.trim() ?? "";
+  if (!t) return null;
+  const m = t.match(/^([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*([<>=!~]+.*)?$/);
+  return m ? [m[1], (m[2] ?? "").trim()] : null;
+}
 function extractDependencies(repo, files, warnings, labelBase = "") {
   const result = [];
   const present = new Set(files.map((f) => f.path));
@@ -28917,16 +28925,44 @@ function extractDependencies(repo, files, warnings, labelBase = "") {
       });
     }
   }
-  if (present.has("requirements.txt")) {
-    const raw = read(repo, "requirements.txt") ?? "";
-    const runtime = {};
-    for (const line2 of raw.split(/\r?\n/)) {
-      const t = line2.replace(/(^|\s)#.*$/, "").split(";")[0]?.trim() ?? "";
-      if (!t) continue;
-      const m = t.match(/^([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*([<>=!~]+.*)?$/);
-      if (m) runtime[m[1]] = (m[2] ?? "").trim();
+  const requirementFiles = [...present].filter((p) => REQUIREMENTS_ROOT_RE.test(p) || REQUIREMENTS_DIR_RE.test(p)).sort((a, b) => a === "requirements.txt" ? -1 : b === "requirements.txt" ? 1 : cmp(a, b));
+  for (const manifest of requirementFiles) {
+    const deps = {};
+    for (const line2 of (read(repo, manifest) ?? "").split(/\r?\n/)) {
+      const req = parseRequirement(line2.replace(/(^|\s)#.*$/, ""));
+      if (req) deps[req[0]] = req[1];
     }
-    result.push({ manager: "pip", manifest: "requirements.txt", runtime, dev: {} });
+    const isDev = /dev|test/i.test(manifest.split("/").pop());
+    result.push({ manager: "pip", manifest, runtime: isDev ? {} : deps, dev: isDev ? deps : {} });
+  }
+  if (present.has("pyproject.toml")) {
+    const raw = read(repo, "pyproject.toml") ?? "";
+    const runtime = {};
+    const dev = {};
+    const addAll = (target, specs) => {
+      for (const spec of specs) {
+        const req = parseRequirement(spec);
+        if (req) target[req[0]] = req[1];
+      }
+    };
+    const project = tomlSectionBody2(raw, "project");
+    if (project !== null) addAll(runtime, tomlStringArray2(project, "dependencies"));
+    for (const table of ["project.optional-dependencies", "dependency-groups"]) {
+      const body2 = tomlSectionBody2(raw, table);
+      if (body2 === null) continue;
+      for (const key of body2.matchAll(/^[ \t]*([A-Za-z0-9_.-]+)\s*=\s*\[/gm)) addAll(dev, tomlStringArray2(body2, key[1]));
+    }
+    Object.assign(runtime, poetryDeps(raw, "tool.poetry.dependencies"));
+    Object.assign(dev, poetryDeps(raw, "tool.poetry.dev-dependencies"));
+    for (const g of raw.matchAll(/^\[tool\.poetry\.group\.([\w-]+)\.dependencies\][ \t]*$/gm)) {
+      Object.assign(dev, poetryDeps(raw, `tool.poetry.group.${g[1]}.dependencies`));
+    }
+    delete runtime.python;
+    if (Object.keys(runtime).length || Object.keys(dev).length) result.push({ manager: "pip", manifest: "pyproject.toml", runtime, dev });
+  }
+  if (present.has("Pipfile")) {
+    const raw = read(repo, "Pipfile") ?? "";
+    result.push({ manager: "pip", manifest: "Pipfile", runtime: poetryDeps(raw, "packages"), dev: poetryDeps(raw, "dev-packages") });
   }
   if (present.has("pubspec.yaml")) {
     const raw = read(repo, "pubspec.yaml") ?? "";
@@ -28972,20 +29008,22 @@ function extractDependencies(repo, files, warnings, labelBase = "") {
     const raw = read(repo, "Gemfile") ?? "";
     const runtime = {};
     const dev = {};
-    let inDev = false;
+    const blocks = [];
+    const inDev = () => blocks[blocks.length - 1] ?? false;
     for (const line2 of raw.split(/\r?\n/)) {
-      const t = line2.trim();
+      const t = line2.replace(/(^|\s)#.*$/, "").trim();
       const g = t.match(/^group\s+(.+?)\s+do\b/);
       if (g) {
-        inDev = /:(?:development|test)\b/.test(g[1]);
+        blocks.push(inDev() || /:(?:development|test)\b/.test(g[1]));
         continue;
       }
       if (/^end\b/.test(t)) {
-        inDev = false;
+        blocks.pop();
         continue;
       }
       const m = t.match(/^gem\s+["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?/);
-      if (m) (inDev ? dev : runtime)[m[1]] = (m[2] ?? "").trim();
+      if (m) (inDev() ? dev : runtime)[m[1]] = (m[2] ?? "").trim();
+      else if (/\bdo(?:\s*\|[^|]*\|)?$/.test(t) || /^(?:if|unless|case|begin)\b/.test(t)) blocks.push(inDev());
     }
     result.push({ manager: "bundler", manifest: "Gemfile", runtime, dev });
   }
@@ -29041,12 +29079,49 @@ function parseYamlDeps(yaml, section) {
   }
   return out2;
 }
+function tomlSectionBody2(toml, section) {
+  const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = toml.match(new RegExp(`^\\[${escaped}\\][ \\t]*(?:#.*)?$([\\s\\S]*?)(?=^[ \\t]*\\[|(?![\\s\\S]))`, "m"));
+  return m ? m[1] : null;
+}
+function tomlStringArray2(body2, key) {
+  const head = body2.match(new RegExp(`^[ \\t]*${key.replace(/[.-]/g, "\\$&")}\\s*=\\s*\\[`, "m"));
+  if (!head) return [];
+  const out2 = [];
+  let depth = 1;
+  for (let i2 = (head.index ?? 0) + head[0].length; i2 < body2.length && depth > 0; i2++) {
+    const c2 = body2[i2];
+    if (c2 === '"' || c2 === "'") {
+      const close = body2.indexOf(c2, i2 + 1);
+      if (close === -1) break;
+      if (depth === 1) out2.push(body2.slice(i2 + 1, close));
+      i2 = close;
+    } else if (c2 === "#") {
+      const nl = body2.indexOf("\n", i2);
+      i2 = nl === -1 ? body2.length : nl;
+    } else if (c2 === "[" || c2 === "{") depth++;
+    else if (c2 === "]" || c2 === "}") depth--;
+  }
+  return out2;
+}
+function poetryDeps(toml, section) {
+  const out2 = {};
+  const body2 = tomlSectionBody2(toml, section);
+  if (body2 === null) return out2;
+  for (const line2 of body2.split(/\r?\n/)) {
+    const kv = line2.trim().match(/^["']?([A-Za-z0-9_.-]+)["']?\s*=\s*(.+)$/);
+    if (!kv) continue;
+    const value = kv[2].trim();
+    const spec = value.startsWith("{") ? value.match(/\bversion\s*=\s*["']([^"']*)["']/)?.[1] ?? "" : value.match(/^["']([^"']*)["']/)?.[1] ?? "";
+    out2[kv[1]] = spec === "*" ? "" : spec;
+  }
+  return out2;
+}
 function parseTomlSection(toml, section) {
   const out2 = {};
-  const re = new RegExp(`\\[${section}\\]([\\s\\S]*?)(\\n\\[|$)`);
-  const m = toml.match(re);
-  if (!m) return out2;
-  for (const line2 of m[1].split(/\r?\n/)) {
+  const body2 = tomlSectionBody2(toml, section);
+  if (body2 === null) return out2;
+  for (const line2 of body2.split(/\r?\n/)) {
     const t = line2.trim();
     if (!t || t.startsWith("#")) continue;
     const kv = t.match(/^([A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
@@ -29095,7 +29170,7 @@ function collectByCategory(files, category) {
 function readCargoName(dir) {
   const toml = safeRead(join34(dir, "Cargo.toml"));
   if (!toml) return null;
-  const pkg = tomlSectionBody2(toml, "package");
+  const pkg = tomlSectionBody3(toml, "package");
   const m = pkg?.match(/^[ \t]*name\s*=\s*["']([^"']+)["']/m);
   return m ? m[1] : "";
 }
@@ -29109,12 +29184,12 @@ function readUvName(dir) {
   const toml = safeRead(join34(dir, "pyproject.toml"));
   if (!toml) return null;
   const nameIn = (body2) => body2?.match(/^[ \t]*name\s*=\s*["']([^"']+)["']/m)?.[1];
-  return nameIn(tomlSectionBody2(toml, "project")) ?? nameIn(tomlSectionBody2(toml, "tool.poetry")) ?? "";
+  return nameIn(tomlSectionBody3(toml, "project")) ?? nameIn(tomlSectionBody3(toml, "tool.poetry")) ?? "";
 }
 function hasGradleManifest(dir) {
   return existsSync14(join34(dir, "build.gradle")) || existsSync14(join34(dir, "build.gradle.kts"));
 }
-function tomlSectionBody2(toml, section) {
+function tomlSectionBody3(toml, section) {
   const re = new RegExp(`^\\[${section}\\]\\s*$([\\s\\S]*?)(?=^\\[|$(?![\\s\\S]))`, "m");
   const m = toml.match(re);
   return m ? m[1] : null;
