@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -150,5 +150,49 @@ describe("fail-closed apply (malformed rows)", () => {
   it("formats a hand-edited ledger with a malformed row instead of crashing", () => {
     const ledger = { version: 1, unknowns: [null, { id: "X1" }] } as unknown as UnknownsLedger;
     expect(formatUnknowns(ledger)).toMatch(/malformed/);
+  });
+});
+
+describe("serverless infra unknown", () => {
+  const unknownsFor = (files: Record<string, string>) => {
+    const base = mkdtempSync(join(tmpdir(), "rc-infra-"));
+    temps.push(base);
+    for (const [rel, body] of Object.entries(files)) {
+      const abs = join(base, rel);
+      mkdirSync(join(abs, ".."), { recursive: true });
+      writeFileSync(abs, body);
+    }
+    const o = {
+      repo: base,
+      out: join(base, "out"),
+      mode: "preserve",
+      level: "light",
+      fidelity: "describe",
+      granularity: "coarse",
+      include: [],
+      exclude: [],
+      json: true,
+      maxEmbedBytes: 16000,
+      merge: false,
+      summary: false,
+      features: false,
+      specs: false,
+      standalone: false,
+      scratch: false,
+      plan: "",
+      tdd: false,
+      check: false,
+    } as Options;
+    return analyze(o).unknowns.join("\n");
+  };
+
+  it("ignores a template.yaml that is not SAM/CloudFormation (a GitHub issue form)", () => {
+    expect(unknownsFor({ "package.json": "{}", ".github/ISSUE_TEMPLATE/template.yaml": "name: Bug\nbody: []\n" })).not.toMatch(/Serverless\/edge/);
+  });
+
+  it("still flags a SAM template.yaml", () => {
+    expect(unknownsFor({ "package.json": "{}", "template.yaml": "AWSTemplateFormatVersion: '2010-09-09'\nTransform: AWS::Serverless-2016-10-31\n" })).toMatch(
+      /Serverless\/edge.*template\.yaml/,
+    );
   });
 });

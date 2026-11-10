@@ -2,7 +2,7 @@
 
 // src/cli.ts
 import { spawnSync as spawnSync3 } from "child_process";
-import { resolve as resolve19, join as join54 } from "path";
+import { resolve as resolve19, join as join55 } from "path";
 import { createInterface as createInterface3 } from "readline";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
 import { existsSync as existsSync26, readFileSync as readFileSync39, statSync as statSync23, realpathSync as realpathSync11 } from "fs";
@@ -101,7 +101,7 @@ function compareBehavior(casesPath, opts) {
 }
 
 // src/analyze.ts
-import { basename as basename7 } from "path";
+import { basename as basename7, join as join39 } from "path";
 
 // src/walk.ts
 import { createHash as createHash4 } from "crypto";
@@ -32441,7 +32441,13 @@ var INFRA_SURFACE_CONFIGS = [
   "sst.config.ts",
   "netlify.toml"
 ];
-function computeUnknowns(stack, routes, hints, workspaces, files) {
+function isInfraSurfaceConfig(repo, path) {
+  const name2 = path.split("/").pop() ?? "";
+  if (!INFRA_SURFACE_CONFIGS.includes(name2)) return false;
+  if (name2 !== "template.yaml") return true;
+  return /AWSTemplateFormatVersion|AWS::Serverless/.test(cachedRead(join39(repo, path)) ?? "");
+}
+function computeUnknowns(repo, stack, routes, hints, workspaces, files) {
   const u = [];
   if (workspaces.length > 0) {
     u.push(
@@ -32470,7 +32476,7 @@ function computeUnknowns(stack, routes, hints, workspaces, files) {
       );
     }
   }
-  const infra = [...new Set(files.map((f) => f.path.split("/").pop() ?? "").filter((n) => INFRA_SURFACE_CONFIGS.includes(n)))].sort();
+  const infra = [...new Set(files.filter((f) => isInfraSurfaceConfig(repo, f.path)).map((f) => f.path.split("/").pop() ?? ""))].sort();
   if (infra.length > 0) {
     u.push(
       `Serverless/edge infrastructure config was found (${infra.join(", ")}) \u2014 the invocable surface is declared THERE, not only in code: HTTP routes/patterns, cron triggers, queue consumers, event sources and their bindings. Enumerate it from the config first, then open each handler for its event/response contract (see \`references/stack-guides/serverless-edge.md\`).`
@@ -32550,7 +32556,7 @@ function analyzeRepo(opts) {
   }
   const node = detectNodeVersion(opts.repo, warnings);
   const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
-  const unknowns = computeUnknowns(stack, routes, hints, workspaces, files);
+  const unknowns = computeUnknowns(opts.repo, stack, routes, hints, workspaces, files);
   const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   const stylingLibraries = detectStylingLibraries(stack.libraries);
@@ -32590,7 +32596,7 @@ function analyzeRepo(opts) {
 import { spawn as spawn2 } from "child_process";
 import { createHash as createHash6 } from "crypto";
 import { accessSync, constants, mkdirSync as mkdirSync5, readFileSync as readFileSync26, rmSync as rmSync7, statSync as statSync16, writeFileSync as writeFileSync7 } from "fs";
-import { delimiter, isAbsolute as isAbsolute12, join as join39, resolve as resolve14 } from "path";
+import { delimiter, isAbsolute as isAbsolute12, join as join40, resolve as resolve14 } from "path";
 var DEFAULT_TIMEOUT_MS3 = 18e4;
 var DEFAULT_MAX_ARTIFACTS = 25;
 var DEFAULT_BUDGET_MS = 20 * 6e4;
@@ -32629,7 +32635,7 @@ function locateRea(env = process.env) {
   const names = process.platform === "win32" ? ["rea.cmd", "rea.exe", "rea"] : ["rea"];
   for (const dir of (env.PATH ?? "").split(delimiter)) {
     if (!dir || !isAbsolute12(dir)) continue;
-    for (const n of names) if (executable(join39(dir, n))) return join39(dir, n);
+    for (const n of names) if (executable(join40(dir, n))) return join40(dir, n);
   }
   return null;
 }
@@ -32801,7 +32807,7 @@ function errorText(result) {
 }
 async function runRea(repo, out2, artifacts, opts) {
   const env = opts.env ?? process.env;
-  const dir = join39(out2, REA_EVIDENCE_DIR);
+  const dir = join40(out2, REA_EVIDENCE_DIR);
   const previous = readPreviousIndex(dir);
   if (opts.mode === "off" || artifacts.length === 0) {
     forgetRemovedArtifacts(dir, previous, artifacts);
@@ -32835,13 +32841,13 @@ async function runRea(repo, out2, artifacts, opts) {
       const rel2 = `${REA_EVIDENCE_DIR}/${name2}`;
       const overwrite = "overwrite" in (exporter.inputSchema?.properties ?? {}) ? { overwrite: true } : {};
       try {
-        const res = await rpc.request("tools/call", { name: exporter.name, arguments: { [arg]: join39(out2, rel2), ...overwrite } }, timeoutMs);
-        if (!errorText(res) && EV_RE.test(readFileSync26(join39(out2, rel2), "utf8"))) return rel2;
+        const res = await rpc.request("tools/call", { name: exporter.name, arguments: { [arg]: join40(out2, rel2), ...overwrite } }, timeoutMs);
+        if (!errorText(res) && EV_RE.test(readFileSync26(join40(out2, rel2), "utf8"))) return rel2;
       } catch {
       } finally {
         EV_RE.lastIndex = 0;
       }
-      rmSync7(join39(out2, rel2), { force: true });
+      rmSync7(join40(out2, rel2), { force: true });
       return void 0;
     };
     const slugs = artifactSlugs(artifacts);
@@ -32854,7 +32860,7 @@ async function runRea(repo, out2, artifacts, opts) {
         report.artifacts.push({ path: rel2, status: "skipped", evidenceIds: [], error: "over the run's time budget" });
         continue;
       }
-      const abs = join39(repo, rel2);
+      const abs = join40(repo, rel2);
       const results = {};
       const succeeded = [];
       const problems = [];
@@ -32906,7 +32912,7 @@ async function runRea(repo, out2, artifacts, opts) {
       }
       const file = `${slugs.get(rel2)}.json`;
       const body2 = JSON.stringify({ artifact: rel2, tools: succeeded, results }, null, 2);
-      writeFileSync7(join39(dir, file), `${body2}
+      writeFileSync7(join40(dir, file), `${body2}
 `);
       report.artifacts.push({
         path: rel2,
@@ -32931,7 +32937,7 @@ async function runRea(repo, out2, artifacts, opts) {
     client?.close();
   }
   pruneStaleEvidence(dir, previous, report);
-  writeFileSync7(join39(dir, "INDEX.json"), `${JSON.stringify(report, null, 2)}
+  writeFileSync7(join40(dir, "INDEX.json"), `${JSON.stringify(report, null, 2)}
 `);
   return report;
 }
@@ -32942,7 +32948,7 @@ function indexedFiles(index) {
 }
 function readPreviousIndex(dir) {
   try {
-    const index = JSON.parse(readFileSync26(join39(dir, "INDEX.json"), "utf8"));
+    const index = JSON.parse(readFileSync26(join40(dir, "INDEX.json"), "utf8"));
     return Array.isArray(index?.artifacts) ? index : void 0;
   } catch {
     return void 0;
@@ -32952,7 +32958,7 @@ function pruneStaleEvidence(dir, previous, current) {
   if (!previous) return;
   const keep = new Set(indexedFiles(current));
   for (const rel2 of indexedFiles(previous)) {
-    if (!keep.has(rel2)) rmSync7(join39(dir, rel2.slice(REA_EVIDENCE_DIR.length + 1)), { force: true });
+    if (!keep.has(rel2)) rmSync7(join40(dir, rel2.slice(REA_EVIDENCE_DIR.length + 1)), { force: true });
   }
 }
 function forgetRemovedArtifacts(dir, previous, artifacts) {
@@ -32963,7 +32969,7 @@ function forgetRemovedArtifacts(dir, previous, artifacts) {
   const kept = { ...previous, artifacts: previous.artifacts.filter((a) => present.has(a.path)) };
   if (!kept.artifacts.some((a) => a.status === "inspected")) delete kept.bundle;
   pruneStaleEvidence(dir, previous, kept);
-  writeFileSync7(join39(dir, "INDEX.json"), `${JSON.stringify(kept, null, 2)}
+  writeFileSync7(join40(dir, "INDEX.json"), `${JSON.stringify(kept, null, 2)}
 `);
 }
 function formatReaReport(r, total, mode = "auto") {
@@ -33036,7 +33042,7 @@ async function installRea(opts, deps) {
 }
 
 // src/prd/render.ts
-import { join as join41 } from "path";
+import { join as join42 } from "path";
 
 // src/prd/templates.ts
 function agentNote(body2) {
@@ -33853,7 +33859,7 @@ function rebuildDoc(inv, opts) {
 
 // src/prd/fidelity.ts
 import { readFileSync as readFileSync27, statSync as statSync17 } from "fs";
-import { join as join40 } from "path";
+import { join as join41 } from "path";
 
 // src/prd/markdown.ts
 import { posix as posix8 } from "path";
@@ -33958,12 +33964,12 @@ function embedSection(feature, opts) {
     const lang = FENCE_LANG[ext] ?? "";
     let body2;
     try {
-      if (statSync17(join40(opts.repo, rel2)).size > MAX_EMBED_SOURCE_BYTES) {
+      if (statSync17(join41(opts.repo, rel2)).size > MAX_EMBED_SOURCE_BYTES) {
         parts2.push(`#### \`${rel2}\`
 `, "> _Too large to embed \u2014 see the file in the source repo._", "");
         continue;
       }
-      body2 = readFileSync27(join40(opts.repo, rel2), "utf8");
+      body2 = readFileSync27(join41(opts.repo, rel2), "utf8");
     } catch {
       continue;
     }
@@ -33989,8 +33995,8 @@ function mirrorSection(feature, opts) {
   const lines = ["Ground-truth source has been copied verbatim alongside this PRD. Reference it while rebuilding:\n"];
   for (const rel2 of feature.files) {
     copies.push({
-      from: join40(opts.repo, rel2),
-      to: join40(opts.out, "source", feature.slug, rel2)
+      from: join41(opts.repo, rel2),
+      to: join41(opts.out, "source", feature.slug, rel2)
     });
     lines.push(`- [\`${rel2}\`](<../../source/${feature.slug}/${rel2}>)`);
   }
@@ -34285,7 +34291,7 @@ function render(inv, opts) {
   }
   const dataCopy = (paths, sub) => {
     for (const rel2 of paths) {
-      copies.push({ from: join41(opts.repo, rel2), to: join41(opts.out, "data", sub, rel2) });
+      copies.push({ from: join42(opts.repo, rel2), to: join42(opts.out, "data", sub, rel2) });
     }
   };
   if (inv.i18n) dataCopy(inv.i18n.files, "translations");
@@ -34307,11 +34313,11 @@ function render(inv, opts) {
 // src/output.ts
 import { createHash as createHash7 } from "crypto";
 import { constants as constants2, copyFileSync, existsSync as existsSync16, mkdirSync as mkdirSync6, readdirSync as readdirSync6, readFileSync as readFileSync28, rmdirSync, rmSync as rmSync8, statSync as statSync18, writeFileSync as writeFileSync8 } from "fs";
-import { dirname as dirname9, isAbsolute as isAbsolute13, join as join42, relative as relative11, sep as sep9 } from "path";
+import { dirname as dirname9, isAbsolute as isAbsolute13, join as join43, relative as relative11, sep as sep9 } from "path";
 var GENERATED_MANIFEST = ".reconstruct-generated.json";
 function readGeneratedManifest(outDir) {
   try {
-    const m = JSON.parse(readFileSync28(join42(outDir, GENERATED_MANIFEST), "utf8"));
+    const m = JSON.parse(readFileSync28(join43(outDir, GENERATED_MANIFEST), "utf8"));
     return m && m.version === 1 && typeof m.artifacts === "object" && typeof m.copies === "object" ? m : void 0;
   } catch {
     return void 0;
@@ -34328,7 +34334,7 @@ function writeOutput(result, opts) {
     made.add(dir);
   };
   for (const a of result.artifacts) {
-    const dest = join42(opts.out, a.relPath);
+    const dest = join43(opts.out, a.relPath);
     ensureDir(dirname9(dest));
     writeFileSync8(dest, a.content, "utf8");
     manifest.artifacts[toPosix(a.relPath)] = sha256(a.content);
@@ -34355,7 +34361,7 @@ function writeOutput(result, opts) {
     }
   } else if (previous) {
     const unchanged2 = (rel2) => {
-      const abs = join42(opts.out, rel2);
+      const abs = join43(opts.out, rel2);
       try {
         const st = statSync18(abs);
         if (!st.isFile()) return void 0;
@@ -34379,12 +34385,12 @@ function writeOutput(result, opts) {
         keptEdited.push(rel2);
         continue;
       }
-      rmSync8(join42(opts.out, rel2), { force: true });
+      rmSync8(join43(opts.out, rel2), { force: true });
       pruned.push(rel2);
       removeEmptyParents(opts.out, dirname9(rel2));
     }
   }
-  writeFileSync8(join42(opts.out, GENERATED_MANIFEST), JSON.stringify(manifest) + "\n");
+  writeFileSync8(join43(opts.out, GENERATED_MANIFEST), JSON.stringify(manifest) + "\n");
   return { copyFailures, pruned, keptEdited };
 }
 function toPosix(rel2) {
@@ -34396,7 +34402,7 @@ function isInside(rel2) {
 function removeEmptyParents(outDir, relDir) {
   for (let d = relDir; d && d !== "." && d !== "/"; d = dirname9(d)) {
     try {
-      rmdirSync(join42(outDir, d));
+      rmdirSync(join43(outDir, d));
     } catch {
       return;
     }
@@ -34420,7 +34426,7 @@ function formatCopyFailures(failures) {
 function writeArtifactsIfAbsent(artifacts, outDir) {
   const written = [];
   for (const a of artifacts) {
-    const dest = join42(outDir, a.relPath);
+    const dest = join43(outDir, a.relPath);
     if (existsSync16(dest)) continue;
     mkdirSync6(dirname9(dest), { recursive: true });
     writeFileSync8(dest, a.content, "utf8");
@@ -34449,19 +34455,19 @@ function detectEnrichment(outDir) {
   if (!existsSync16(outDir)) return [];
   const witnesses = [];
   for (const ledger of LEDGERS) {
-    if (existsSync16(join42(outDir, ledger))) witnesses.push(`${ledger} \u2014 a semantic-gate ledger from a previous round`);
+    if (existsSync16(join43(outDir, ledger))) witnesses.push(`${ledger} \u2014 a semantic-gate ledger from a previous round`);
   }
   const resolved = (rel2) => {
-    const body2 = readIfFile(join42(outDir, rel2));
+    const body2 = readIfFile(join43(outDir, rel2));
     if (body2 !== void 0 && body2.trim() && !body2.includes(CALLOUT)) witnesses.push(`${rel2} \u2014 every agent callout resolved`);
   };
   for (const rel2 of CALLOUT_BEARING_DOCS) resolved(rel2);
   let slugs = [];
   try {
-    slugs = readdirSync6(join42(outDir, "features"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+    slugs = readdirSync6(join43(outDir, "features"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
   } catch {
   }
-  for (const slug2 of slugs) resolved(join42("features", slug2, "PRD.md"));
+  for (const slug2 of slugs) resolved(join43("features", slug2, "PRD.md"));
   const manifest = readGeneratedManifest(outDir);
   if (manifest) {
     const named = new Set(witnesses.map((w) => w.split(" \u2014 ")[0]));
@@ -34469,7 +34475,7 @@ function detectEnrichment(outDir) {
       if (named.has(rel2) || !isInside(rel2)) continue;
       let body2;
       try {
-        body2 = readFileSync28(join42(outDir, rel2));
+        body2 = readFileSync28(join43(outDir, rel2));
       } catch {
         continue;
       }
@@ -34494,14 +34500,14 @@ Pick one:
 
 // src/postprocess.ts
 import { readdirSync as readdirSync7, readFileSync as readFileSync29, existsSync as existsSync17 } from "fs";
-import { join as join43, relative as relative12, sep as sep10 } from "path";
+import { join as join44, relative as relative12, sep as sep10 } from "path";
 var NON_SPEC_DIRS = /* @__PURE__ */ new Set(["source", "data", "orchestration"]);
 var NON_SPEC_FILES = /* @__PURE__ */ new Set(["REVIEW.md", "VERIFY.md", "BRAINSTORM.md"]);
 function readMarkdownTree(dir) {
   const out2 = [];
   const walk3 = (abs) => {
     for (const entry2 of readdirSync7(abs, { withFileTypes: true })) {
-      const child = join43(abs, entry2.name);
+      const child = join44(abs, entry2.name);
       const rel2 = relative12(dir, child).split(sep10).join("/");
       if (entry2.isDirectory()) {
         if (NON_SPEC_DIRS.has(rel2)) continue;
@@ -34516,7 +34522,7 @@ function readMarkdownTree(dir) {
 }
 function bundleExisting(opts) {
   const dir = opts.out;
-  const invPath = join43(dir, "inventory.json");
+  const invPath = join44(dir, "inventory.json");
   if (!existsSync17(invPath)) {
     throw new Error(`no inventory.json in ${dir} \u2014 run a full reconstruction there first (e.g. reconstruct --repo <repo> --out ${dir}).`);
   }
@@ -34890,16 +34896,16 @@ ${body2}
 
 // src/check.ts
 import { existsSync as existsSync20, lstatSync as lstatSync5, readFileSync as readFileSync33, readdirSync as readdirSync8, statSync as statSync19 } from "fs";
-import { join as join46, posix as posix10, relative as relative13 } from "path";
+import { join as join47, posix as posix10, relative as relative13 } from "path";
 
 // src/unknowns.ts
 import { existsSync as existsSync19, readFileSync as readFileSync32, writeFileSync as writeFileSync10 } from "fs";
-import { join as join45 } from "path";
+import { join as join46 } from "path";
 
 // src/verify.ts
 import { createHash as createHash8 } from "crypto";
 import { existsSync as existsSync18, readFileSync as readFileSync31, writeFileSync as writeFileSync9 } from "fs";
-import { join as join44 } from "path";
+import { join as join45 } from "path";
 var VERIFY_MAX = 60;
 var VALID = ["supported", "partial", "refuted", "unsupported"];
 var VALID_CONFIDENCE = ["confirmed", "inferred", "gap"];
@@ -34960,7 +34966,7 @@ function buildWorklist(outDir, opts = {}) {
 function derivePairs(outDir) {
   let invRaw;
   try {
-    invRaw = readFileSync31(join44(outDir, "inventory.json"), "utf8");
+    invRaw = readFileSync31(join45(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -34973,7 +34979,7 @@ function derivePairs(outDir) {
   const pairs = [];
   let n = 0;
   for (const f of inv.features ?? []) {
-    const prdPath = join44(outDir, "features", f.slug, "PRD.md");
+    const prdPath = join45(outDir, "features", f.slug, "PRD.md");
     if (!existsSync18(prdPath)) continue;
     const reqs = requirements(readFileSync31(prdPath, "utf8"));
     const ev = featureEvidence(f);
@@ -35011,7 +35017,7 @@ function capPairs(outDir, pairs, maxVerify) {
 }
 function capUsedFor(outDir) {
   try {
-    const todo = JSON.parse(readFileSync31(join44(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync31(join45(outDir, "VERIFY.todo.json"), "utf8"));
     const max = todo?.coverage?.max;
     if (typeof max === "number" && Number.isFinite(max) && max > 0) return Math.floor(max);
   } catch {
@@ -35034,8 +35040,8 @@ function runVerify(outDir, opts = {}) {
       authority: null
     }))
   };
-  writeFileSync9(join44(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync9(join44(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync9(join45(outDir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync9(join45(outDir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -35062,7 +35068,7 @@ function renderWorklistMd(wl, total, kept) {
 }
 function readInventoryIfPresent(outDir) {
   try {
-    return JSON.parse(readFileSync31(join44(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync31(join45(outDir, "inventory.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -35110,7 +35116,7 @@ function resolveEvidence(ref2, inv, external = NO_EXTERNAL_EVIDENCE) {
 }
 function readTodoPairs(outDir) {
   try {
-    const todo = JSON.parse(readFileSync31(join44(outDir, "VERIFY.todo.json"), "utf8"));
+    const todo = JSON.parse(readFileSync31(join45(outDir, "VERIFY.todo.json"), "utf8"));
     if (!Array.isArray(todo?.pairs)) return void 0;
     const byClaim = /* @__PURE__ */ new Map();
     for (const p of todo.pairs) if (p && typeof p.claimId === "string") byClaim.set(p.claimId, p);
@@ -35149,12 +35155,12 @@ function assertWorklistFresh(outDir, todo) {
   const preview = (xs) => `${xs.slice(0, 6).join("; ")}${xs.length > 6 ? "; \u2026" : ""}`;
   if (drift.length) {
     throw new Error(
-      `${join44(outDir, "VERIFY.todo.json")} is stale: ${drift.length} pair(s) no longer match the PRDs (${preview(drift)}) \u2014 the verdicts judge content that has since changed. Re-run \`--verify\` and re-adjudicate (fail-closed).`
+      `${join45(outDir, "VERIFY.todo.json")} is stale: ${drift.length} pair(s) no longer match the PRDs (${preview(drift)}) \u2014 the verdicts judge content that has since changed. Re-run \`--verify\` and re-adjudicate (fail-closed).`
     );
   }
   if (unbound.length) {
     throw new Error(
-      `${join44(outDir, "VERIFY.todo.json")} is stale: ${unbound.length} pair(s) carry no content fingerprint (${preview(unbound)}) \u2014 this worklist predates content binding, so the fold cannot prove the verdicts judge the CURRENT PRDs. Re-run \`--verify\` and re-adjudicate (fail-closed).`
+      `${join45(outDir, "VERIFY.todo.json")} is stale: ${unbound.length} pair(s) carry no content fingerprint (${preview(unbound)}) \u2014 this worklist predates content binding, so the fold cannot prove the verdicts judge the CURRENT PRDs. Re-run \`--verify\` and re-adjudicate (fail-closed).`
     );
   }
 }
@@ -35221,12 +35227,12 @@ function applyVerdicts(outDir, verdictsPath) {
   }
   if (verdicts.length === 0) {
     throw new Error(
-      `${verdictsPath}: every row cites a claimId unknown to ${join44(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) \u2014 stale fragment? Re-run --verify and re-adjudicate.`
+      `${verdictsPath}: every row cites a claimId unknown to ${join45(outDir, "VERIFY.todo.json")} (${unknown.join(", ")}) \u2014 stale fragment? Re-run --verify and re-adjudicate.`
     );
   }
   const result = reduceVerdicts(verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
   if (unknown.length) result.ignored = unknown;
-  writeFileSync9(join44(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  writeFileSync9(join45(outDir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   const ledger = writeObligations(outDir, verdicts);
   result.obligations = { ledgerId: ledger.ledgerId, closureDigest: ledger.closureDigest, closed: ledger.closed, open: ledger.open, failed: ledger.failed };
   return result;
@@ -35276,7 +35282,7 @@ function reduceVerdicts(verdicts, inv, external) {
   };
 }
 function foldSemantic(outDir, check, opts = {}) {
-  const p = join44(outDir, "VERIFY.json");
+  const p = join45(outDir, "VERIFY.json");
   const skip = (msg) => {
     if (opts.allowUnverified) check.warnings.push(`${msg}; semantic gate skipped (--allow-unverified)`);
     else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
@@ -35427,7 +35433,7 @@ function buildObligations(pairs, verdicts, inv, external) {
 }
 function readObligations(outDir) {
   try {
-    return JSON.parse(readFileSync31(join44(outDir, OBLIGATIONS_FILE), "utf8"));
+    return JSON.parse(readFileSync31(join45(outDir, OBLIGATIONS_FILE), "utf8"));
   } catch {
     return void 0;
   }
@@ -35440,7 +35446,7 @@ function writeObligations(outDir, verdicts) {
     pairs = [];
   }
   const ledger = buildObligations(pairs, verdicts, readInventoryIfPresent(outDir), loadExternalEvidence(outDir));
-  writeFileSync9(join44(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
+  writeFileSync9(join45(outDir, OBLIGATIONS_FILE), JSON.stringify(ledger, null, 2) + "\n");
   return ledger;
 }
 function formatVerifyReport(r) {
@@ -35486,13 +35492,13 @@ function seal(rec) {
 }
 function readInventory(outDir) {
   try {
-    return JSON.parse(readFileSync32(join45(outDir, "inventory.json"), "utf8"));
+    return JSON.parse(readFileSync32(join46(outDir, "inventory.json"), "utf8"));
   } catch {
     throw new Error(`no readable inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
 }
 function readUnknowns(outDir) {
-  const path = join45(outDir, UNKNOWNS_FILE);
+  const path = join46(outDir, UNKNOWNS_FILE);
   if (!existsSync19(path)) return void 0;
   try {
     const raw = JSON.parse(readFileSync32(path, "utf8"));
@@ -35523,7 +35529,7 @@ function ensureUnknowns(outDir) {
   const existing = readUnknowns(outDir);
   if (existing) return existing;
   const seeded = seedUnknowns(readInventory(outDir));
-  writeFileSync10(join45(outDir, UNKNOWNS_FILE), JSON.stringify(seeded, null, 2) + "\n");
+  writeFileSync10(join46(outDir, UNKNOWNS_FILE), JSON.stringify(seeded, null, 2) + "\n");
   return seeded;
 }
 function citationProblems(rec, inv, external) {
@@ -35602,7 +35608,7 @@ function applyUnknownUpdates(outDir, updates) {
   const num3 = (id) => /^U\d+$/.test(id) ? Number(id.slice(1)) : Number.POSITIVE_INFINITY;
   const unknowns = [...byId.values()].sort((a, b) => num3(a.id) - num3(b.id) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const out2 = { version: 1, unknowns };
-  writeFileSync10(join45(outDir, UNKNOWNS_FILE), JSON.stringify(out2, null, 2) + "\n");
+  writeFileSync10(join46(outDir, UNKNOWNS_FILE), JSON.stringify(out2, null, 2) + "\n");
   return out2;
 }
 function foldUnknowns(outDir, check) {
@@ -35669,7 +35675,7 @@ function collectMarkdown(dir, base = dir) {
     return out2;
   }
   for (const name2 of entries) {
-    const full = join46(dir, name2);
+    const full = join47(dir, name2);
     let st;
     try {
       st = statSync19(full);
@@ -35706,7 +35712,7 @@ function fileNames(dir, base = dir) {
     return out2;
   }
   for (const name2 of entries) {
-    const full = join46(dir, name2);
+    const full = join47(dir, name2);
     let st;
     try {
       st = statSync19(full);
@@ -35722,9 +35728,9 @@ function fileNames(dir, base = dir) {
 function checkOutput(outDir, opts = {}) {
   const errors = [];
   const warnings = [];
-  const invPath = join46(outDir, "inventory.json");
+  const invPath = join47(outDir, "inventory.json");
   if (!existsSync20(invPath)) {
-    if (existsSync20(join46(outDir, "BRAINSTORM.md"))) {
+    if (existsSync20(join47(outDir, "BRAINSTORM.md"))) {
       scanScaffolding(collectMarkdown(outDir), errors);
       return { errors, warnings };
     }
@@ -35775,7 +35781,7 @@ function checkOutput(outDir, opts = {}) {
     const hashOf = (file) => {
       if (!cache3.has(file)) {
         try {
-          cache3.set(file, sha256Hex(readFileSync33(join46(repo, file))).slice(0, 16));
+          cache3.set(file, sha256Hex(readFileSync33(join47(repo, file))).slice(0, 16));
         } catch {
           cache3.set(file, null);
         }
@@ -35813,7 +35819,7 @@ function checkOutput(outDir, opts = {}) {
     }
   }
   if (inv.i18n && inv.i18n.locales?.length) {
-    const transDir = join46(outDir, "data", "translations");
+    const transDir = join47(outDir, "data", "translations");
     const names2 = existsSync20(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
     for (const loc of inv.i18n.locales) {
@@ -35871,7 +35877,7 @@ function brokenLinks(outDir, docs) {
         decoded = decodeURI(target);
       } catch {
       }
-      if (!existsSync20(join46(outDir, posix10.normalize(posix10.join(dir, decoded))))) out2.push(`${d.rel}: broken link \u2192 ${target}`);
+      if (!existsSync20(join47(outDir, posix10.normalize(posix10.join(dir, decoded))))) out2.push(`${d.rel}: broken link \u2192 ${target}`);
     }
   }
   return out2;
@@ -36012,7 +36018,7 @@ function formatCheckReport(r, outDir) {
 // src/review.ts
 import { createHash as createHash9 } from "crypto";
 import { existsSync as existsSync21, readFileSync as readFileSync34, writeFileSync as writeFileSync11 } from "fs";
-import { join as join47 } from "path";
+import { join as join48 } from "path";
 var ARCH_DOCS = ["architecture/INTERFACES.md", "architecture/DATA-MODEL.md", "architecture/ARCHITECTURE.md", "architecture/DESIGN-SYSTEM.md"];
 var SEVERITIES3 = ["blocker", "major", "minor"];
 var CATEGORIES = ["stories", "requirements", "acceptance", "write-contract", "enum", "consistency", "faithfulness", "i18n", "rebuild-test"];
@@ -36028,7 +36034,7 @@ function readIfExists(path) {
 }
 function archHash(outDir) {
   return sha2562(ARCH_DOCS.map((rel2) => `# ${rel2}
-` + readIfExists(join47(outDir, rel2))).join("\n"));
+` + readIfExists(join48(outDir, rel2))).join("\n"));
 }
 function baselineHash(b) {
   const feats = b.features.map((f) => `${f.feature}:${f.prdHash}`).sort().join("\n");
@@ -36044,7 +36050,7 @@ function currentBaseline(outDir) {
   }
   const features = [];
   for (const f of inv.features ?? []) {
-    const prdPath = join47(outDir, "features", f.slug, "PRD.md");
+    const prdPath = join48(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
     features.push({ feature: f.slug, prdHash: sha2562(readFileSync34(prdPath, "utf8")) });
   }
@@ -36078,7 +36084,7 @@ function runReview(outDir) {
   const units = [];
   const changedSet = [];
   for (const f of inv.features ?? []) {
-    const prdPath = join47(outDir, "features", f.slug, "PRD.md");
+    const prdPath = join48(outDir, "features", f.slug, "PRD.md");
     if (!existsSync21(prdPath)) continue;
     const prdHash = sha2562(readFileSync34(prdPath, "utf8"));
     const priorHash = prior?.units.get(f.slug);
@@ -36099,14 +36105,14 @@ function runReview(outDir) {
     changedSet,
     units
   };
-  writeFileSync11(join47(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
-  writeFileSync11(join47(outDir, "REVIEW.md"), renderWorklistMd2(worklist));
+  writeFileSync11(join48(outDir, "REVIEW.todo.json"), JSON.stringify(worklist, null, 2));
+  writeFileSync11(join48(outDir, "REVIEW.md"), renderWorklistMd2(worklist));
   return worklist;
 }
 function readInventory2(outDir) {
   let raw;
   try {
-    raw = readFileSync34(join47(outDir, "inventory.json"), "utf8");
+    raw = readFileSync34(join48(outDir, "inventory.json"), "utf8");
   } catch {
     throw new Error(`no inventory.json in ${outDir} \u2014 not a reconstruction output (run the analyzer first)`);
   }
@@ -36117,7 +36123,7 @@ function readInventory2(outDir) {
   }
 }
 function readPrior(outDir) {
-  const reviewPath = join47(outDir, "REVIEW.json");
+  const reviewPath = join48(outDir, "REVIEW.json");
   if (!existsSync21(reviewPath)) return null;
   let rev;
   try {
@@ -36132,7 +36138,7 @@ function readPrior(outDir) {
     for (const u of rev.baseline.features) units.set(u.feature, u.prdHash);
   } else {
     try {
-      const todo = JSON.parse(readFileSync34(join47(outDir, "REVIEW.todo.json"), "utf8"));
+      const todo = JSON.parse(readFileSync34(join48(outDir, "REVIEW.todo.json"), "utf8"));
       for (const u of todo.units ?? []) units.set(u.feature, u.prdHash);
       priorArch = todo.archHash ?? todo.units?.[0]?.archHash ?? "";
     } catch {
@@ -36267,7 +36273,7 @@ function applyFindings(outDir, findingsPath) {
   let baseline;
   let todo;
   try {
-    todo = JSON.parse(readFileSync34(join47(outDir, "REVIEW.todo.json"), "utf8"));
+    todo = JSON.parse(readFileSync34(join48(outDir, "REVIEW.todo.json"), "utf8"));
   } catch {
   }
   if (todo) {
@@ -36284,20 +36290,20 @@ function applyFindings(outDir, findingsPath) {
     const drift = current ? baselineDrift(baseline, current) : null;
     if (drift) {
       throw new Error(
-        `${join47(outDir, "REVIEW.todo.json")} is stale: ${drift}. These findings judge content the tree has moved past, so applying them would commit a review baseline nobody reviewed. Re-run \`--review\` and re-review the flagged unit(s) (fail-closed).`
+        `${join48(outDir, "REVIEW.todo.json")} is stale: ${drift}. These findings judge content the tree has moved past, so applying them would commit a review baseline nobody reviewed. Re-run \`--review\` and re-review the flagged unit(s) (fail-closed).`
       );
     }
     const echoed = typeof raw?.contentHash === "string" ? raw.contentHash : void 0;
     if (echoed && todo.contentHash && echoed !== todo.contentHash) {
       throw new Error(
-        `${findingsPath} is stale: its contentHash names a different review round than ${join47(outDir, "REVIEW.todo.json")}. Re-review the current worklist and re-apply (fail-closed).`
+        `${findingsPath} is stale: its contentHash names a different review round than ${join48(outDir, "REVIEW.todo.json")}. Re-review the current worklist and re-apply (fail-closed).`
       );
     }
   }
   let priorFailures = [];
   let priorStale = 0;
   let priorRound = 0;
-  const reviewPath = join47(outDir, "REVIEW.json");
+  const reviewPath = join48(outDir, "REVIEW.json");
   if (existsSync21(reviewPath)) {
     try {
       const prev = JSON.parse(readFileSync34(reviewPath, "utf8"));
@@ -36331,7 +36337,7 @@ function recomputeReviewGate(rev) {
   return [...ids].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 function foldReview(outDir, check, opts = {}) {
-  const p = join47(outDir, "REVIEW.json");
+  const p = join48(outDir, "REVIEW.json");
   const skip = (msg) => {
     if (opts.allowUnverified) check.warnings.push(`${msg}; review gate skipped (--allow-unverified)`);
     else check.errors.push(`${msg} (or pass --allow-unverified to downgrade this to a warning)`);
@@ -36391,7 +36397,7 @@ function formatReviewReport(r) {
 
 // src/brainstorm.ts
 import { readFileSync as readFileSync35 } from "fs";
-import { join as join48 } from "path";
+import { join as join49 } from "path";
 function callout(text) {
   return `> \u{1F9E0} ${text}`;
 }
@@ -36462,7 +36468,7 @@ function renderBrainstorm(inv, name2) {
 function runBrainstorm(outDir) {
   let inv = null;
   try {
-    inv = JSON.parse(readFileSync35(join48(outDir, "inventory.json"), "utf8"));
+    inv = JSON.parse(readFileSync35(join49(outDir, "inventory.json"), "utf8"));
   } catch {
     inv = null;
   }
@@ -36474,10 +36480,10 @@ function runBrainstorm(outDir) {
 
 // src/orchestrate.ts
 import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync36, writeFileSync as writeFileSync12 } from "fs";
-import { join as join50, resolve as resolve15 } from "path";
+import { join as join51, resolve as resolve15 } from "path";
 
 // src/orchestrate-templates.ts
-import { join as join49 } from "path";
+import { join as join50 } from "path";
 var ONE_WRITER_FOOTER = `
 ## Return, don't write
 
@@ -36624,21 +36630,21 @@ var PHASE_SPECS = {
     title: "Find",
     schema: FINDINGS_SCHEMA,
     description: (n) => `Review the ${n} flagged feature PRD(s) of a reconstruction against the nine buildability checks (adversarial finder fan-out)`,
-    applyHint: (engine, out2) => `merge the findings into ${join49(out2, "findings.json")} ({ "findings": [...] }), then: node ${engine} --review --apply ${join49(out2, "findings.json")} --out ${out2} \u2014 then fan the surviving blockers out with --orchestrate --phase review-verify`
+    applyHint: (engine, out2) => `merge the findings into ${join50(out2, "findings.json")} ({ "findings": [...] }), then: node ${engine} --review --apply ${join50(out2, "findings.json")} --out ${out2} \u2014 then fan the surviving blockers out with --orchestrate --phase review-verify`
   },
   "review-verify": {
     role: "verifier",
     title: "Verify",
     schema: BLOCKER_VERDICT_SCHEMA,
     description: (n) => `Independently confirm or refute the ${n} open review blocker(s) of a reconstruction (adversarial verifier fan-out)`,
-    applyHint: (engine, out2) => `stamp each verdict/verifierNote onto its finding (match by id) in ${join49(out2, "findings.json")}, then re-run: node ${engine} --review --apply ${join49(out2, "findings.json")} --out ${out2} \u2014 a refuted blocker drops from the residual`
+    applyHint: (engine, out2) => `stamp each verdict/verifierNote onto its finding (match by id) in ${join50(out2, "findings.json")}, then re-run: node ${engine} --review --apply ${join50(out2, "findings.json")} --out ${out2} \u2014 a refuted blocker drops from the residual`
   },
   adjudicate: {
     role: "adjudicator",
     title: "Adjudicate",
     schema: ADJUDICATE_SCHEMA,
     description: (n) => `Adjudicate the ${n} requirement\u2194evidence pair(s) of a reconstruction's verification gate (fan-out, fail-closed fold)`,
-    applyHint: (engine, out2) => `fill the verdicts into ${join49(out2, "verdicts.json")}, then: node ${engine} --verify --apply ${join49(out2, "verdicts.json")} --out ${out2} && node ${engine} --check --semantic --out ${out2}`
+    applyHint: (engine, out2) => `fill the verdicts into ${join50(out2, "verdicts.json")}, then: node ${engine} --verify --apply ${join50(out2, "verdicts.json")} --out ${out2} && node ${engine} --check --semantic --out ${out2}`
   }
 };
 function phaseSpec(name2) {
@@ -36655,7 +36661,7 @@ function toBatches(groups, batchSize) {
 }
 function phaseWorkflowScript(ph, outAbs, engineAbs, batchSize) {
   const spec = phaseSpec(ph.name);
-  const scriptPath = join49(outAbs, "orchestration", `${ph.name}.workflow.mjs`);
+  const scriptPath = join50(outAbs, "orchestration", `${ph.name}.workflow.mjs`);
   const meta = { name: `reconstruct-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
   return [
     `export const meta = ${JSON.stringify(meta)}`,
@@ -36701,11 +36707,11 @@ function agentContracts(outAbs, engineAbs) {
 
 You draft ONE feature of a reconstruction at a time, to full PRD depth \u2014 the MAP half of the enrichment map-reduce (\`references/orchestration.md\`, Phase 1).
 
-Worklist: \`${join49(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join50(outAbs, "inventory.json")}\` (\`features[]\` \u2014 each entry carries \`slug\`, \`files\`, \`routes\`, \`interfaces\`, \`entities\`, \`writes\`). Handle ONLY the features whose \`slug\` is named in your prompt (\`ITEMS=<slug,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
-1. Read ONLY its slice of the tree: the feature's \`files\` plus the \`inventory.hints.*Candidates\` (routes/api/schema/realtime/auth/design-system) that fall inside those files, its scaffold \`features/<slug>/PRD.md\` (including the embedded \`## Source material\`), and the copied ground truth under \`${join49(outAbs, "data")}\`. File paths in the inventory are relative to the analyzed repo \u2014 prefer the embedded source and \`data/\` copies; open the original repo only when the tree references paths it did not embed.
+1. Read ONLY its slice of the tree: the feature's \`files\` plus the \`inventory.hints.*Candidates\` (routes/api/schema/realtime/auth/design-system) that fall inside those files, its scaffold \`features/<slug>/PRD.md\` (including the embedded \`## Source material\`), and the copied ground truth under \`${join50(outAbs, "data")}\`. File paths in the inventory are relative to the analyzed repo \u2014 prefer the embedded source and \`data/\` copies; open the original repo only when the tree references paths it did not embed.
 2. Draft the COMPLETE \`features/<slug>/PRD.md\` content \u2014 the full spine (context & goal, user stories, numbered functional requirements, interfaces & data, Given/When/Then acceptance criteria, edge cases & failure modes, definition of done), resolving every \`> \u{1F9E0}\` callout.
 3. PROPOSE \u2014 do not write \u2014 the shared-doc rows your feature touches:
    - interface ROW PROPOSALS: method \xB7 path \xB7 kind \xB7 auth \xB7 input \xB7 output \xB7 side-effects;
@@ -36721,7 +36727,7 @@ ${footer}`,
 
 You are a FINDER of the AI buildability review \u2014 one adversarial reviewer per flagged feature (\`references/orchestration.md\`, Phase 2 step B; rubric: \`references/ai-review-rubric.md\`).
 
-Worklist: \`${join49(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join50(outAbs, "REVIEW.todo.json")}\` (\`units[]\`; the flagged ones carry \`needsReview: true\`). Handle ONLY the features named in your prompt (\`ITEMS=<feature,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your features:
 
@@ -36735,7 +36741,7 @@ ${footer}`,
 
 You are an INDEPENDENT VERIFIER of the review loop \u2014 one fresh, adversarial agent per open blocker (\`references/orchestration.md\`, Phase 2 step C). A finding "counts" only when you confirm it.
 
-Worklist: \`${join49(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join50(outAbs, "REVIEW.json")}\` (\`failures[]\` \u2014 the open blockers, each \`{ id, feature, category, problem, fix }\`). Handle ONLY the blockers whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your blockers:
 
@@ -36749,7 +36755,7 @@ ${footer}`,
 
 You adjudicate the requirement\u2194source verification gate of a reconstruction \u2014 judging whether each PRD requirement TRACES to the original code (faithful inference) or was invented.
 
-Worklist: \`${join49(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
+Worklist: \`${join50(outAbs, "VERIFY.todo.json")}\` (\`pairs[]\`, each \`{ claimId, claim, feature, evidenceRef, digest }\`). Handle ONLY the pairs whose \`claimId\` is named in your prompt (\`ITEMS=<id,\u2026>\`). If an ITEMS id is no longer in the worklist, skip it and say so in your note.
 
 For EACH of your pairs:
 
@@ -36765,7 +36771,7 @@ ${footer}`
 function runbookMd(phases, outAbs, engineAbs) {
   const status = phases.map((p) => `| ${p.name} | \`${p.worklist}\` | ${p.ready ? `ready (${p.items} item(s))` : "not ready"} | \`${p.prerequisite}\` |`).join("\n");
   const engine = `node ${engineAbs}`;
-  const agents = join49(outAbs, "orchestration", "agents");
+  const agents = join50(outAbs, "orchestration", "agents");
   return `# reconstruct \u2014 sequential RUNBOOK (eco / no-subagent fallback)
 
 Out: \`${outAbs}\` \xB7 Engine: \`${engine}\`
@@ -36783,11 +36789,11 @@ ${status}
 
 ## The loop (play every role yourself, one unit at a time)
 
-1. **Analyze** (if not done): \`${engine} --repo <repo> --out ${outAbs}\` \u2192 \`${join49(outAbs, "inventory.json")}\` (greenfield: \`--scratch --plan <plan.json>\`).
-2. **Enrich \u2014 the map-reduce, played solo**: for EVERY \`inventory.json\` feature, apply \`${join49(agents, "drafter.md")}\` yourself (draft the PRD + the interface/entity row proposals), then play the reducer \u2014 merge every proposal into \`architecture/INTERFACES.md\` / \`architecture/DATA-MODEL.md\` and write the feature PRDs. Gate: \`${engine} --check --out ${outAbs}\`.
-3. **Review \u2014 find**: \`${engine} --review --out ${outAbs}\` writes \`${join49(outAbs, "REVIEW.todo.json")}\` (flagging only what changed). For EVERY flagged unit, apply \`${join49(agents, "finder.md")}\` yourself; save the findings as \`${join49(outAbs, "findings.json")}\` (\`{ "findings": [...] }\`), then reduce: \`${engine} --review --apply ${join49(outAbs, "findings.json")} --out ${outAbs}\`.
-4. **Review \u2014 verify**: for EVERY open blocker in \`${join49(outAbs, "REVIEW.json")}\` (\`failures[]\`), apply \`${join49(agents, "verifier.md")}\` yourself (confirm/refute + note, stamped onto the matching finding in \`findings.json\` by \`id\`), then re-reduce: \`${engine} --review --apply ${join49(outAbs, "findings.json")} --out ${outAbs}\`. Loop 2\u21924 until \`REVIEW.json.ok\` (or \`staleRounds >= 2\` / round > 5).
-5. **Adjudicate the requirement gate**: \`${engine} --verify --out ${outAbs}\` writes \`${join49(outAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join49(agents, "adjudicator.md")}\` yourself (verdict + confidence + note \u2192 \`${join49(outAbs, "verdicts.json")}\`), then fold: \`${engine} --verify --apply ${join49(outAbs, "verdicts.json")} --out ${outAbs}\`.
+1. **Analyze** (if not done): \`${engine} --repo <repo> --out ${outAbs}\` \u2192 \`${join50(outAbs, "inventory.json")}\` (greenfield: \`--scratch --plan <plan.json>\`).
+2. **Enrich \u2014 the map-reduce, played solo**: for EVERY \`inventory.json\` feature, apply \`${join50(agents, "drafter.md")}\` yourself (draft the PRD + the interface/entity row proposals), then play the reducer \u2014 merge every proposal into \`architecture/INTERFACES.md\` / \`architecture/DATA-MODEL.md\` and write the feature PRDs. Gate: \`${engine} --check --out ${outAbs}\`.
+3. **Review \u2014 find**: \`${engine} --review --out ${outAbs}\` writes \`${join50(outAbs, "REVIEW.todo.json")}\` (flagging only what changed). For EVERY flagged unit, apply \`${join50(agents, "finder.md")}\` yourself; save the findings as \`${join50(outAbs, "findings.json")}\` (\`{ "findings": [...] }\`), then reduce: \`${engine} --review --apply ${join50(outAbs, "findings.json")} --out ${outAbs}\`.
+4. **Review \u2014 verify**: for EVERY open blocker in \`${join50(outAbs, "REVIEW.json")}\` (\`failures[]\`), apply \`${join50(agents, "verifier.md")}\` yourself (confirm/refute + note, stamped onto the matching finding in \`findings.json\` by \`id\`), then re-reduce: \`${engine} --review --apply ${join50(outAbs, "findings.json")} --out ${outAbs}\`. Loop 2\u21924 until \`REVIEW.json.ok\` (or \`staleRounds >= 2\` / round > 5).
+5. **Adjudicate the requirement gate**: \`${engine} --verify --out ${outAbs}\` writes \`${join50(outAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join50(agents, "adjudicator.md")}\` yourself (verdict + confidence + note \u2192 \`${join50(outAbs, "verdicts.json")}\`), then fold: \`${engine} --verify --apply ${join50(outAbs, "verdicts.json")} --out ${outAbs}\`.
 6. **Gate**: \`${engine} --check --semantic --out ${outAbs}\` must exit 0 before presenting anything.
 
 Never fanned out (orchestrator-only, always serial): the greenfield interview, \`--brainstorm\`
@@ -36860,20 +36866,20 @@ function workspaceGroups(inv) {
 }
 function listPhases(outDir, engineAbs, batchOverride) {
   const out2 = resolve15(outDir);
-  const invPath = join50(out2, "inventory.json");
+  const invPath = join51(out2, "inventory.json");
   const inv = readJson2(invPath);
   const invReady = !!inv && Array.isArray(inv.features);
   const enrichGroups = invReady ? workspaceGroups(inv) : [];
   const enrichIds = enrichGroups.flat();
-  const todoPath = join50(out2, "REVIEW.todo.json");
+  const todoPath = join51(out2, "REVIEW.todo.json");
   const todo = readJson2(todoPath);
   const findReady = !!todo && Array.isArray(todo.units);
   const findIds = findReady ? todo.units.filter((u) => u.needsReview).map((u) => u.feature) : [];
-  const revPath = join50(out2, "REVIEW.json");
+  const revPath = join51(out2, "REVIEW.json");
   const rev = readJson2(revPath);
   const verifyReady = !!rev && (Array.isArray(rev.failures) || Array.isArray(rev.findings));
   const blockerIds = verifyReady ? recomputeReviewGate(rev) : [];
-  const verPath = join50(out2, "VERIFY.todo.json");
+  const verPath = join51(out2, "VERIFY.todo.json");
   const ver = readJson2(verPath);
   const adjReady = !!ver && Array.isArray(ver.pairs);
   const adjIds = adjReady ? ver.pairs.map((p) => p.claimId) : [];
@@ -36949,14 +36955,14 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
     }
     selected = [ph];
   }
-  const orchDir = join50(out2, "orchestration");
-  const agentsDir = join50(orchDir, "agents");
-  mkdirSync7(join50(orchDir, "out"), { recursive: true });
+  const orchDir = join51(out2, "orchestration");
+  const agentsDir = join51(orchDir, "agents");
+  mkdirSync7(join51(orchDir, "out"), { recursive: true });
   mkdirSync7(agentsDir, { recursive: true });
   const written = [];
   const notices = [];
   for (const [name2, content] of Object.entries(agentContracts(out2, engineAbs))) {
-    const p = join50(agentsDir, `${name2}.md`);
+    const p = join51(agentsDir, `${name2}.md`);
     writeFileSync12(p, content);
     written.push(p);
   }
@@ -36971,12 +36977,12 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
       }
       const batch = batchSizeFor(ph.name, ph.items, opts.batchSize);
       notices.push(batchNotice(ph.name, ph.items, batch, opts.batchSize));
-      const p = join50(orchDir, `${ph.name}.workflow.mjs`);
+      const p = join51(orchDir, `${ph.name}.workflow.mjs`);
       writeFileSync12(p, phaseWorkflowScript(ph, out2, engineAbs, batch));
       written.push(p);
     }
   }
-  const rb = join50(orchDir, "RUNBOOK.md");
+  const rb = join51(orchDir, "RUNBOOK.md");
   writeFileSync12(rb, runbookMd(phases, out2, engineAbs));
   written.push(rb);
   return { exitCode: 0, written, notices, errors: [], phases };
@@ -36987,11 +36993,11 @@ import { createInterface as createInterface2 } from "readline";
 
 // src/mcp/handlers.ts
 import { existsSync as existsSync24, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync20 } from "fs";
-import { isAbsolute as isAbsolute14, join as join52, relative as relative14, resolve as resolve17, sep as sep11 } from "path";
+import { isAbsolute as isAbsolute14, join as join53, relative as relative14, resolve as resolve17, sep as sep11 } from "path";
 
 // src/tree-lock.ts
 import { realpathSync as realpathSync8 } from "fs";
-import { basename as basename8, dirname as dirname10, join as join51, resolve as resolve16 } from "path";
+import { basename as basename8, dirname as dirname10, join as join52, resolve as resolve16 } from "path";
 var chains = /* @__PURE__ */ new Map();
 function withTreeLock(path, fn) {
   const dir = canonical(path);
@@ -37011,7 +37017,7 @@ function canonical(path) {
     return realpathSync8(path);
   } catch {
     try {
-      return join51(realpathSync8(dirname10(path)), basename8(path));
+      return join52(realpathSync8(dirname10(path)), basename8(path));
     } catch {
       return resolve16(path);
     }
@@ -37130,7 +37136,7 @@ function requiredOut(args2, defaults) {
   if (!out2) throw new ToolError("`out` is required: the reconstruction tree to operate on.");
   if (!isAbsolute14(out2)) throw new ToolError("`out` must be an absolute path.");
   const abs = resolve17(out2);
-  if (!existsSync24(join52(abs, "inventory.json"))) {
+  if (!existsSync24(join53(abs, "inventory.json"))) {
     throw new ToolError(`no reconstruction tree at ${abs} \u2014 scaffold one first with reconstruct_scaffold (it writes there).`, {
       kind: "run_first",
       hint: "Call reconstruct_scaffold for this repo (needs --allow-write), or pass the `out` of an existing tree."
@@ -37180,7 +37186,7 @@ async function callTool2(name2, args2, defaults = {}) {
   if (name2 === "reconstruct_view") return outcome2(handleView(args2, defaults));
   if (name2 === "reconstruct_scaffold") {
     const repo = requiredRepo(args2);
-    const out3 = str2(args2.out) ? resolve17(str2(args2.out)) : join52(repo, "reconstruction");
+    const out3 = str2(args2.out) ? resolve17(str2(args2.out)) : join53(repo, "reconstruction");
     return await withTreeLock(out3, async () => outcome2(await handleScaffold(args2, repo, out3)));
   }
   const out2 = requiredOut(args2, defaults);
@@ -37234,7 +37240,7 @@ function inRepoInventory(real, repo, out2) {
   if (!within2(real, root) || real === root) return false;
   const rel2 = relative14(root, real).split(sep11).join("/");
   try {
-    const inv = JSON.parse(readFileSync37(join52(out2, "inventory.json"), "utf8"));
+    const inv = JSON.parse(readFileSync37(join53(out2, "inventory.json"), "utf8"));
     const listed2 = (inv.files ?? []).find((f) => f.path === rel2);
     if (typeof listed2?.hash !== "string" || statSync20(real).size > MAX_READ_BYTES) return false;
     return sha256Hex(readFileSync37(real)).slice(0, 16) === listed2.hash;
@@ -37245,7 +37251,7 @@ function inRepoInventory(real, repo, out2) {
 function handleInventory(args2) {
   const repo = requiredRepo(args2);
   const detail = oneOf(args2.detail, ["summary", "full"], "detail", "summary");
-  const inv = analyze(baseOptions(repo, join52(repo, "reconstruction"), args2));
+  const inv = analyze(baseOptions(repo, join53(repo, "reconstruction"), args2));
   const inventory_id = rememberInventory(inv);
   if (detail === "full") {
     return { repo, inventory_id, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
@@ -37272,7 +37278,7 @@ function handleView(args2, defaults) {
   } else {
     const out2 = requiredOut(args2, defaults);
     try {
-      inv = JSON.parse(readFileSync37(join52(out2, "inventory.json"), "utf8"));
+      inv = JSON.parse(readFileSync37(join53(out2, "inventory.json"), "utf8"));
     } catch (e) {
       throw new ToolError(`unreadable inventory.json in ${out2}: ${e.message}`, { kind: "run_first", hint: "Re-scaffold the tree." });
     }
@@ -37309,7 +37315,7 @@ async function handleScaffold(args2, repo, out2) {
   return {
     repo,
     out: out2,
-    path: join52(out2, "SUMMARY.md"),
+    path: join53(out2, "SUMMARY.md"),
     features: inv.features?.length ?? 0,
     ...copyWarning ? { warning: copyWarning } : {},
     ...opaque.length ? {
@@ -37317,7 +37323,7 @@ async function handleScaffold(args2, repo, out2) {
         status: rea.status,
         compiledArtifacts: opaque.length,
         inspected: rea.artifacts.filter((a) => a.status === "inspected").length,
-        ...rea.status === "unavailable" ? {} : { index: join52(out2, "evidence/rea/INDEX.json") },
+        ...rea.status === "unavailable" ? {} : { index: join53(out2, "evidence/rea/INDEX.json") },
         ...rea.error ? { error: rea.error } : {},
         // Not installed: the agent proposes it — the user decides, this server installs nothing.
         ...rea.status === "unavailable" && reaMode !== "off" ? {
@@ -37366,7 +37372,7 @@ function handleBundle(out2, kind) {
   }
   writeOutput(result, opts);
   const file = kind === "specs" ? "SPECS.md" : kind === "features" ? "FEATURES.md" : "RECONSTRUCTION.md";
-  return { out: out2, path: join52(out2, file), bundle: kind };
+  return { out: out2, path: join53(out2, file), bundle: kind };
 }
 function handleUnknowns(args2, out2, allowWrite) {
   if (Array.isArray(args2.updates) && !allowWrite) {
@@ -37388,7 +37394,7 @@ function handleUnknowns(args2, out2, allowWrite) {
   foldUnknowns(out2, gate);
   return {
     out: out2,
-    path: join52(out2, UNKNOWNS_FILE),
+    path: join53(out2, UNKNOWNS_FILE),
     ok: gate.errors.length === 0,
     ...ledger,
     gate,
@@ -37399,7 +37405,7 @@ function handleRead(args2, out2) {
   const raw = str2(args2.path);
   if (!raw) throw new ToolError("`path` is required \u2014 relative to the tree, or an absolute path inside the tree or the repo.");
   const repo = str2(args2.repo);
-  const target = isAbsolute14(raw) ? raw : join52(out2, raw);
+  const target = isAbsolute14(raw) ? raw : join53(out2, raw);
   let real;
   try {
     real = realpathSync9(target);
@@ -37902,20 +37908,20 @@ var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
 import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync21 } from "fs";
-import { basename as basename9, dirname as dirname11, join as join53, resolve as resolve18, sep as sep12 } from "path";
+import { basename as basename9, dirname as dirname11, join as join54, resolve as resolve18, sep as sep12 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var SKILL_NAME = "reconstruct";
 var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
   const here = moduleDir ?? dirname11(fileURLToPath3(import.meta.url));
   const candidates = [resolve18(here, ".."), resolve18(here, "..", "skills", SKILL_NAME), resolve18(here, "..", "..", "skills", SKILL_NAME)];
-  return candidates.find((dir) => existsSync25(join53(dir, "SKILL.md")));
+  return candidates.find((dir) => existsSync25(join54(dir, "SKILL.md")));
 }
 function listResources(moduleDir) {
   const root = resolveSkillRoot(moduleDir);
   if (!root) return [];
   const out2 = [describe(root, "SKILL.md", `${SKILL_NAME}: the skill`)];
-  const refDir = join53(root, "references");
+  const refDir = join54(root, "references");
   if (!existsSync25(refDir)) return out2;
   for (const rel2 of walkMarkdown(refDir, "references")) {
     out2.push(describe(root, rel2, `${SKILL_NAME} reference: ${basename9(rel2, ".md")}`));
@@ -37925,8 +37931,8 @@ function listResources(moduleDir) {
 function walkMarkdown(dir, prefix) {
   const out2 = [];
   for (const entry2 of readdirSync9(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
-    const rel2 = join53(prefix, entry2.name);
-    if (entry2.isDirectory()) out2.push(...walkMarkdown(join53(dir, entry2.name), rel2));
+    const rel2 = join54(prefix, entry2.name);
+    if (entry2.isDirectory()) out2.push(...walkMarkdown(join54(dir, entry2.name), rel2));
     else if (entry2.name.endsWith(".md")) out2.push(rel2);
   }
   return out2;
@@ -37962,7 +37968,7 @@ function describe(root, rel2, fallbackTitle) {
     title: fallbackTitle,
     mimeType: "text/markdown"
   };
-  const summary = firstProse(join53(root, rel2));
+  const summary = firstProse(join54(root, rel2));
   if (summary) decl.description = summary;
   return decl;
 }
@@ -38823,11 +38829,11 @@ function parseArgs(argv) {
   const granularity = oneOf2("granularity", raw.granularity ?? "coarse", ["coarse", "fine"]);
   const rea = oneOf2("rea", raw.rea ?? "auto", ["auto", "on", "off"]);
   const out2 = resolve19(
-    raw.out ?? (standalone || check || verify || review || unknowns || brainstorm || orchestrate ? process.cwd() : scratch ? join54(process.cwd(), "reconstruction") : join54(repo, "reconstruction"))
+    raw.out ?? (standalone || check || verify || review || unknowns || brainstorm || orchestrate ? process.cwd() : scratch ? join55(process.cwd(), "reconstruction") : join55(repo, "reconstruction"))
   );
   const analyzesRepo = !standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && !mcp && !raw.compare && !installRea2;
   if (analyzesRepo && realOrResolved(out2) === realOrResolved(repo)) {
-    fail(`--out must not be the repository root (${repo}) \u2014 pick a subdirectory such as ${join54(repo, "reconstruction")}`);
+    fail(`--out must not be the repository root (${repo}) \u2014 pick a subdirectory such as ${join55(repo, "reconstruction")}`);
   }
   const positive2 = (key) => {
     if (raw[key] === void 0) return void 0;
@@ -39078,7 +39084,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
 `
       );
     } else {
-      process.stdout.write(`Follow ${join54(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+      process.stdout.write(`Follow ${join55(opts.out, "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
     }
     if (!opts.phase && workflows.length === 0 && !opts.eco) {
@@ -39134,7 +39140,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
       ...effOpts.specs ? [`  specs:    SPECS.md (whole spec, source stripped)`] : [],
       ...effOpts.merge ? [`  merged:   RECONSTRUCTION.md (whole tree in one file)`] : [],
       `  output:   ${effOpts.out}`,
-      `  next:     read ${join54(effOpts.out, "SUMMARY.md")} to orient, then ${join54(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+      `  next:     read ${join55(effOpts.out, "SUMMARY.md")} to orient, then ${join55(effOpts.out, effOpts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
     ];
     process.stderr.write(lines2.join("\n") + "\n");
     return;
@@ -39211,7 +39217,7 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  output:   ${opts.out}`,
     // Orient from SUMMARY.md, not inventory.json: same picture, a fraction of the
     // tokens (inventory.json carries one entry per analyzed file).
-    `  next:     read ${join54(opts.out, "SUMMARY.md")} to orient, then ${join54(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
+    `  next:     read ${join55(opts.out, "SUMMARY.md")} to orient, then ${join55(opts.out, opts.merge ? "RECONSTRUCTION.md" : "REBUILD.md")}`
   ];
   process.stderr.write(lines.join("\n") + "\n");
 }

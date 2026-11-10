@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { walk } from "./walk.js";
 import { detectStack, detectNodeVersion } from "./detect/stack.js";
 import {
@@ -15,7 +15,7 @@ import { extractDependencies, extractScripts, extractEnvVarSources, collectByCat
 import { buildEvidence } from "./evidence.js";
 import { detectRoutes } from "./adapters/registry.js";
 import { cmp } from "./adapters/util.js";
-import { withReadCache } from "./read-cache.js";
+import { cachedRead, withReadCache } from "./read-cache.js";
 import { detectI18n } from "./adapters/i18n.js";
 import { buildFeatures } from "./features.js";
 import { VERSION } from "./types.js";
@@ -87,7 +87,18 @@ const INFRA_SURFACE_CONFIGS = [
  * send the AI agent to the right hints/playbook step instead of leaving a silent
  * gap. The agent resolves these while writing INTERFACES.md / DATA-MODEL.md.
  */
-function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints, workspaces: Workspace[], files: FileInfo[]): string[] {
+/**
+ * `template.yaml` is also a common name for unrelated templates (GitHub issue
+ * forms, scaffolding): it is SAM/CloudFormation infra only when it says so.
+ */
+function isInfraSurfaceConfig(repo: string, path: string): boolean {
+  const name = path.split("/").pop() ?? "";
+  if (!INFRA_SURFACE_CONFIGS.includes(name)) return false;
+  if (name !== "template.yaml") return true;
+  return /AWSTemplateFormatVersion|AWS::Serverless/.test(cachedRead(join(repo, path)) ?? "");
+}
+
+function computeUnknowns(repo: string, stack: StackInfo, routes: RouteInfo[], hints: Hints, workspaces: Workspace[], files: FileInfo[]): string[] {
   const u: string[] = [];
   if (workspaces.length > 0) {
     u.push(
@@ -122,7 +133,7 @@ function computeUnknowns(stack: StackInfo, routes: RouteInfo[], hints: Hints, wo
   // Serverless/edge: the invocable surface lives in infra config, so even a
   // fully-resolved set of in-code routes is an under-report (crons, queue
   // consumers and event sources are invisible to route resolution).
-  const infra = [...new Set(files.map((f) => f.path.split("/").pop() ?? "").filter((n) => INFRA_SURFACE_CONFIGS.includes(n)))].sort();
+  const infra = [...new Set(files.filter((f) => isInfraSurfaceConfig(repo, f.path)).map((f) => f.path.split("/").pop() ?? ""))].sort();
   if (infra.length > 0) {
     u.push(
       `Serverless/edge infrastructure config was found (${infra.join(", ")}) — the invocable surface is declared THERE, not only in code: HTTP routes/patterns, cron triggers, queue consumers, event sources and their bindings. Enumerate it from the config first, then open each handler for its event/response contract (see \`references/stack-guides/serverless-edge.md\`).`,
@@ -220,7 +231,7 @@ function analyzeRepo(opts: Options): Inventory {
   }
   const node = detectNodeVersion(opts.repo, warnings);
   const features = buildFeatures(files, routes, i18n, opts.granularity, workspaces);
-  const unknowns = computeUnknowns(stack, routes, hints, workspaces, files);
+  const unknowns = computeUnknowns(opts.repo, stack, routes, hints, workspaces, files);
   const uniqueWarnings = [...new Set(warnings)].sort();
   const totalLines = files.reduce((n, f) => n + f.lines, 0);
   // Derive the styling-library signal from the final (merged) library set so a
