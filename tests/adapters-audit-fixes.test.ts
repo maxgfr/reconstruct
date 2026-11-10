@@ -6,6 +6,7 @@ import { djangoAdapter } from "../src/adapters/django.js";
 import { dotnetAdapter } from "../src/adapters/dotnet.js";
 import { detectI18n } from "../src/adapters/i18n.js";
 import { railsAdapter } from "../src/adapters/rails.js";
+import { nextjsAdapter } from "../src/adapters/nextjs.js";
 import { trpcAdapter } from "../src/adapters/trpc.js";
 import type { FileCategory, FileInfo, RouteInfo } from "../src/types.js";
 
@@ -137,5 +138,17 @@ describe("dotnet: attribute-routed actions in a controller without [Route]", () 
       ].join("\n"),
     });
     expect(sig(routes)).toEqual(["GET /api/health"]);
+  });
+});
+
+describe("nextjs: pages router index handling", () => {
+  it("collapses only index FILES, keeping a directory named index", () => {
+    const routes = routesOf(nextjsAdapter, {
+      "pages/index.tsx": "export default function H() {}",
+      "pages/blog/index.tsx": "export default function B() {}",
+      "pages/index/about.tsx": "export default function A() {}",
+      "pages/index/index.tsx": "export default function I() {}",
+    });
+    expect(routes.map((r) => r.route).sort()).toEqual(["/", "/blog", "/index", "/index/about"]);
   });
 });

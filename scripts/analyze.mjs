@@ -30134,7 +30134,7 @@ function detectPagesRoutes(files) {
     if (!rest || rest.length === 0) continue;
     const fileName = rest[rest.length - 1].replace(/\.(tsx|ts|jsx|js)$/, "");
     if (PAGES_SPECIAL.has(fileName)) continue;
-    const segs = [...rest.slice(0, -1), fileName].filter((s) => s !== "index");
+    const segs = [...rest.slice(0, -1), ...fileName === "index" ? [] : [fileName]];
     const route2 = "/" + segs.join("/");
     const normalized = route2 === "/" ? "/" : route2.replace(/\/$/, "");
     const isApi = rest[0] === "api";

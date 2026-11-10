@@ -129,7 +129,10 @@ function detectPagesRoutes(files: FileInfo[]): RouteInfo[] {
     const fileName = (rest[rest.length - 1] as string).replace(/\.(tsx|ts|jsx|js)$/, "");
     if (PAGES_SPECIAL.has(fileName)) continue;
 
-    const segs = [...rest.slice(0, -1), fileName].filter((s) => s !== "index");
+    // Only a FILE named index maps to its directory (`pages/blog/index.tsx` →
+    // `/blog`); a directory named `index` is an ordinary segment
+    // (`pages/index/about.tsx` → `/index/about`).
+    const segs = [...rest.slice(0, -1), ...(fileName === "index" ? [] : [fileName])];
     const route = "/" + segs.join("/");
     const normalized = route === "/" ? "/" : route.replace(/\/$/, "");
     const isApi = rest[0] === "api";
