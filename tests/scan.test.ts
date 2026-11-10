@@ -166,3 +166,36 @@ describe("extractEnvVars has no silent file cap", () => {
     expect(vars).toContain("VAR_2049");
   });
 });
+
+describe("unreadable and oversized files", () => {
+  it("does not classify an unreadable extension-less file as a compiled artifact", async () => {
+    const { chmodSync, mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { walk } = await import("../src/walk.js");
+    const { opaqueArtifacts } = await import("../src/analyze.js");
+    const repo = mkdtempSync(join(tmpdir(), "rc-unreadable-"));
+    writeFileSync(join(repo, "Dockerfile"), "FROM node:20\n");
+    chmodSync(join(repo, "Dockerfile"), 0o000);
+    try {
+      const { files } = walk(repo, { out: join(repo, "out") });
+      const docker = files.find((f) => f.path === "Dockerfile");
+      // Running as root can still read it: then it is plain text either way.
+      expect(docker?.binary).toBe(false);
+      expect(opaqueArtifacts(files)).not.toContain("Dockerfile");
+    } finally {
+      chmodSync(join(repo, "Dockerfile"), 0o644);
+    }
+  });
+
+  it("names env-var scan skips of files over 8 MB in a warning", async () => {
+    const { extractEnvVarSources } = await import("../src/adapters/generic.js");
+    const warnings: string[] = [];
+    extractEnvVarSources(
+      "/nonexistent",
+      [{ path: "public/bundle.js", ext: ".js", size: 9 * 1024 * 1024, lines: 1, category: "code", binary: false }],
+      warnings,
+    );
+    expect(warnings.join("\n")).toMatch(/env-var scan skipped 1 file\(s\) over 8 MB: public\/bundle\.js/);
+  });
+});

@@ -28301,7 +28301,7 @@ function isProbablyBinary(abs, ext) {
     }
     return false;
   } catch {
-    return true;
+    return BINARY_EXTS.has(ext);
   } finally {
     if (fd >= 0) {
       try {
@@ -28320,7 +28320,7 @@ function readFacts(abs, ext, size, prime) {
   try {
     buf = readFileSync24(abs);
   } catch {
-    return { binary: true, lines: 0 };
+    return { binary: BINARY_EXTS.has(ext), lines: 0 };
   }
   const binary2 = BINARY_EXTS.has(ext) || buf.subarray(0, SNIFF_BYTES).includes(0);
   const hash = createHash4("sha256").update(buf).digest("hex").slice(0, 16);
@@ -29133,7 +29133,8 @@ function extractScripts(repo, warnings) {
   const pkg = readJsonManifest(join33(repo, "package.json"), "package.json", warnings);
   return pkg ? asStringMap(pkg.scripts) : {};
 }
-function extractEnvVarSources(repo, files) {
+var ENV_SCAN_MAX_BYTES = 8 * 1024 * 1024;
+function extractEnvVarSources(repo, files, warnings) {
   const names = /* @__PURE__ */ new Map();
   const note = (name2, file, line2) => {
     if (!names.has(name2)) names.set(name2, { file, line: line2 });
@@ -29152,13 +29153,23 @@ function extractEnvVarSources(repo, files) {
     // Python: os.environ["X"], os.environ.get("X"), os.getenv("X").
     /os\.(?:environ(?:\.get)?|getenv)\s*[[(]\s*["']([A-Z][A-Z0-9_]*)["']/g
   ];
+  const oversize = [];
   for (const f of files) {
     if (f.binary || f.category !== "code" && f.category !== "config") continue;
+    if (f.size > ENV_SCAN_MAX_BYTES) {
+      oversize.push(f.path);
+      continue;
+    }
     const raw = read(repo, f.path);
     if (!raw) continue;
     for (const re of patterns) {
       for (const m of raw.matchAll(re)) note(m[1], f.path, lineAt(raw, m.index ?? 0));
     }
+  }
+  if (oversize.length) {
+    warnings?.push(
+      `env-var scan skipped ${oversize.length} file(s) over ${ENV_SCAN_MAX_BYTES / 1024 / 1024} MB: ${oversize.slice(0, 5).join(", ")}${oversize.length > 5 ? ", \u2026" : ""} \u2014 check them by hand for environment variables`
+    );
   }
   return Object.fromEntries([...names.entries()].sort(([a], [b]) => cmp(a, b)));
 }
@@ -32547,7 +32558,7 @@ function analyzeRepo(opts) {
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");
   const docs = collectByCategory(files, "doc");
-  const envSources = extractEnvVarSources(opts.repo, files);
+  const envSources = extractEnvVarSources(opts.repo, files, warnings);
   const envVars = Object.keys(envSources);
   const scripts = extractScripts(opts.repo, warnings);
   const hints = detectCandidates(opts.repo, files, stack);

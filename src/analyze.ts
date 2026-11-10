@@ -222,7 +222,7 @@ function analyzeRepo(opts: Options): Inventory {
   const schemas = collectByCategory(files, "schema");
   const configs = collectByCategory(files, "config");
   const docs = collectByCategory(files, "doc");
-  const envSources = extractEnvVarSources(opts.repo, files);
+  const envSources = extractEnvVarSources(opts.repo, files, warnings);
   const envVars = Object.keys(envSources);
   const scripts = extractScripts(opts.repo, warnings);
   const hints = detectCandidates(opts.repo, files, stack);

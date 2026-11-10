@@ -7,7 +7,9 @@ import { readFileSync } from "node:fs";
 //
 // Scoped to a single (synchronous) analysis, so nothing is ever stale across
 // runs, and capped: past the budget files are simply re-read, so a giant
-// monorepo costs time, never unbounded memory.
+// monorepo costs time rather than an ever-growing cache. A read itself loads
+// the whole file, so callers bound the size of what they read (the walk at
+// 8 MB, the adapters at MAX_SOURCE_BYTES, the env-var scan at 8 MB).
 
 const BUDGET_CHARS = 128 * 1024 * 1024;
 

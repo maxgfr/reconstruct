@@ -326,7 +326,10 @@ export function extractEnvVars(repo: string, files: FileInfo[]): string[] {
 }
 
 /** Every env var name with the first place it was seen (file + 1-based line). */
-export function extractEnvVarSources(repo: string, files: FileInfo[]): Record<string, { file: string; line: number }> {
+/** Past this size a file is not scanned for env vars (a vendored bundle, a data dump) — reported, never silent. */
+const ENV_SCAN_MAX_BYTES = 8 * 1024 * 1024;
+
+export function extractEnvVarSources(repo: string, files: FileInfo[], warnings?: string[]): Record<string, { file: string; line: number }> {
   const names = new Map<string, { file: string; line: number }>();
   const note = (name: string, file: string, line: number) => {
     if (!names.has(name)) names.set(name, { file, line });
@@ -343,21 +346,32 @@ export function extractEnvVarSources(repo: string, files: FileInfo[]): Record<st
   }
 
   // From source: process.env.X, import.meta.env.X, os.environ["X"].
-  // All code/config files are scanned — the file set is already bounded by the
-  // walk's ignore rules, so there is no silent truncation cap here.
+  // Every code/config file up to ENV_SCAN_MAX_BYTES is scanned; a larger one
+  // would be read whole into memory (the walk itself stops reading at 8 MB),
+  // so it is skipped and named in a warning instead.
   const patterns = [
     /process\.env\.([A-Z][A-Z0-9_]*)/g,
     /import\.meta\.env\.([A-Z][A-Z0-9_]*)/g,
     // Python: os.environ["X"], os.environ.get("X"), os.getenv("X").
     /os\.(?:environ(?:\.get)?|getenv)\s*[[(]\s*["']([A-Z][A-Z0-9_]*)["']/g,
   ];
+  const oversize: string[] = [];
   for (const f of files) {
     if (f.binary || (f.category !== "code" && f.category !== "config")) continue;
+    if (f.size > ENV_SCAN_MAX_BYTES) {
+      oversize.push(f.path);
+      continue;
+    }
     const raw = read(repo, f.path);
     if (!raw) continue;
     for (const re of patterns) {
       for (const m of raw.matchAll(re)) note(m[1] as string, f.path, lineAt(raw, m.index ?? 0));
     }
+  }
+  if (oversize.length) {
+    warnings?.push(
+      `env-var scan skipped ${oversize.length} file(s) over ${ENV_SCAN_MAX_BYTES / 1024 / 1024} MB: ${oversize.slice(0, 5).join(", ")}${oversize.length > 5 ? ", …" : ""} — check them by hand for environment variables`,
+    );
   }
 
   return Object.fromEntries([...names.entries()].sort(([a], [b]) => cmp(a, b)));

@@ -196,7 +196,7 @@ function isProbablyBinary(abs: string, ext: string): boolean {
     }
     return false;
   } catch {
-    return true;
+    return BINARY_EXTS.has(ext); // unreadable: only the extension can tell
   } finally {
     if (fd >= 0) {
       try {
@@ -230,7 +230,10 @@ function readFacts(abs: string, ext: string, size: number, prime: boolean): { bi
   try {
     buf = readFileSync(abs);
   } catch {
-    return { binary: true, lines: 0 };
+    // Unreadable (EACCES, a macOS `Icon\r`…) is not evidence of binary
+    // content: calling it binary made an extension-less file look like a
+    // compiled executable and sent it to rea.
+    return { binary: BINARY_EXTS.has(ext), lines: 0 };
   }
   // One read serves all three facts: the NUL sniff on the head, the hash, and
   // the line count straight off the bytes ("\n" is one byte in UTF-8 and never
