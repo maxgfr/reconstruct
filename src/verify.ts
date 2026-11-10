@@ -120,6 +120,13 @@ function featureEvidence(f: any): Ev[] {
 // evidence: the ordinal `claimId` is the stable public handle, the fingerprint is
 // what a verdict is actually BOUND to (see `ClaimEvidencePair.fingerprint`).
 export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {}): BuiltWorklist {
+  return capPairs(outDir, derivePairs(outDir), opts.maxVerify);
+}
+
+type ScoredPair = ClaimEvidencePair & { score: number };
+
+/** Every requirement↔evidence pair the current PRDs derive, with its match score (uncapped). */
+function derivePairs(outDir: string): ScoredPair[] {
   let invRaw: string;
   try {
     invRaw = readFileSync(join(outDir, "inventory.json"), "utf8");
@@ -132,7 +139,7 @@ export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {})
   } catch (e) {
     throw new Error(`inventory.json is not valid JSON: ${(e as Error).message}`);
   }
-  const pairs: (ClaimEvidencePair & { score: number })[] = [];
+  const pairs: ScoredPair[] = [];
   let n = 0;
   for (const f of inv.features ?? []) {
     const prdPath = join(outDir, "features", f.slug, "PRD.md");
@@ -165,8 +172,12 @@ export function buildWorklist(outDir: string, opts: { maxVerify?: number } = {})
       });
     }
   }
+  return pairs;
+}
 
-  const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
+/** The worklist `derivePairs` yields under a `maxVerify` cap (highest-scoring pairs first when capped). */
+function capPairs(outDir: string, pairs: ScoredPair[], maxVerify: number | undefined): BuiltWorklist {
+  const max = Math.max(1, Math.floor(maxVerify ?? VERIFY_MAX));
   const kept =
     pairs.length > max
       ? pairs
@@ -630,18 +641,15 @@ export function foldSemantic(outDir: string, check: CheckResult, opts: { allowUn
   // silently never looking at the remainder — the exact failure `coverage` was
   // added to make visible. The two ways a requirement ends up unadjudicated are
   // distinct problems with distinct fixes, so they get distinct messages.
-  let all: ClaimEvidencePair[] = [];
+  // Derived ONCE (every PRD read and tokenised once), then capped two ways.
+  let derived: ScoredPair[] = [];
   try {
-    all = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
+    derived = derivePairs(outDir);
   } catch {
-    all = [];
+    // no readable inventory — nothing to cover; every uncovered claim reads as never-offered
   }
-  const offeredIds = new Set<string>();
-  try {
-    for (const p of buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs) offeredIds.add(p.claimId);
-  } catch {
-    // no worklist to compare against — every uncovered claim reads as never-offered
-  }
+  const all: ClaimEvidencePair[] = capPairs(outDir, derived, Number.MAX_SAFE_INTEGER).worklist.pairs;
+  const offeredIds = new Set(capPairs(outDir, derived, capUsedFor(outDir)).worklist.pairs.map((p) => p.claimId));
   // CONTENT binding. Ids alone are not coverage: `claimId` is an ordinal, so an
   // edit that preserves the requirement count leaves `C4` named `C4` and the old
   // verdict silently re-certifies the NEW prose. Each adjudicated verdict must

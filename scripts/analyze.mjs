@@ -34430,6 +34430,9 @@ function featureEvidence(f) {
   return out2;
 }
 function buildWorklist(outDir, opts = {}) {
+  return capPairs(outDir, derivePairs(outDir), opts.maxVerify);
+}
+function derivePairs(outDir) {
   let invRaw;
   try {
     invRaw = readFileSync31(join44(outDir, "inventory.json"), "utf8");
@@ -34469,7 +34472,10 @@ function buildWorklist(outDir, opts = {}) {
       });
     }
   }
-  const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
+  return pairs;
+}
+function capPairs(outDir, pairs, maxVerify) {
+  const max = Math.max(1, Math.floor(maxVerify ?? VERIFY_MAX));
   const kept = pairs.length > max ? pairs.slice().sort((a, b) => b.score - a.score || (a.claimId < b.claimId ? -1 : a.claimId > b.claimId ? 1 : 0)).slice(0, max) : pairs;
   const worklist = {
     run: outDir,
@@ -34781,17 +34787,13 @@ function foldSemantic(outDir, check, opts = {}) {
     );
     return;
   }
-  let all = [];
+  let derived = [];
   try {
-    all = buildWorklist(outDir, { maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs;
-  } catch {
-    all = [];
-  }
-  const offeredIds = /* @__PURE__ */ new Set();
-  try {
-    for (const p2 of buildWorklist(outDir, { maxVerify: capUsedFor(outDir) }).worklist.pairs) offeredIds.add(p2.claimId);
+    derived = derivePairs(outDir);
   } catch {
   }
+  const all = capPairs(outDir, derived, Number.MAX_SAFE_INTEGER).worklist.pairs;
+  const offeredIds = new Set(capPairs(outDir, derived, capUsedFor(outDir)).worklist.pairs.map((p2) => p2.claimId));
   const currentById = new Map(all.map((p2) => [p2.claimId, p2]));
   const boundIds = /* @__PURE__ */ new Set();
   const staleIds = [];
