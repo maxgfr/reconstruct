@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.29.9](https://github.com/maxgfr/reconstruct/compare/v2.29.8...v2.29.9) (2026-11-10)
+
+
+### Performance Improvements
+
+* anchor multiline regexes on horizontal whitespace ([dcf31a6](https://github.com/maxgfr/reconstruct/commit/dcf31a68ba96dd0f17504c063e8fa5a5685c0dfe))
+* **detect:** share manifest reads and workspace discovery per analysis ([1e17107](https://github.com/maxgfr/reconstruct/commit/1e1710701c81e492e374bf43c0d2560e05741a77))
+* **django:** test a URLconf for REST markers once, not per route ([4b2d22b](https://github.com/maxgfr/reconstruct/commit/4b2d22b30550a69c922ea70d1371d4e19123d4b3))
+* **flask:** scan view blocks from the route instead of the rest of the file ([964ad2b](https://github.com/maxgfr/reconstruct/commit/964ad2b85ffd272f86ff5e35dd5a52e556b202fb))
+* **rea:** split rea's stdout into lines in linear time ([6ac9ee8](https://github.com/maxgfr/reconstruct/commit/6ac9ee8db36fae55b66439190507ac06b7458354))
+* **verify:** derive the requirement pairs once in --check --semantic ([8a5ed9d](https://github.com/maxgfr/reconstruct/commit/8a5ed9dca0cdfb70958073b199ad08f616f25305))
+* **walk:** read only the head of inventory.json to spot a prior output ([caaa804](https://github.com/maxgfr/reconstruct/commit/caaa80431399fa9e6ef50e44e9fcf3bfac5b79e0))
+
 ## [2.29.8](https://github.com/maxgfr/reconstruct/compare/v2.29.7...v2.29.8) (2026-11-10)
 
 
