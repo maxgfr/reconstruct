@@ -10,7 +10,18 @@ const ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(\w+(?:\.r
 // (a property read, not a call). Routers are then built as `router({ … })`.
 const FACTORY_ALIAS_RE = /(?:const|let|var)\s+(\w+)\s*=\s*\w+\.router\s*(?=[;,)\n]|$)/gm;
 const REQUIRE_RE = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-const IMPORT_RE = /import\s+\{([^}]*)\}\s+from\s+["'`](\.[^"'`]*)["'`]/g;
+const IMPORT_RE = /import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["'`](\.[^"'`]*)["'`]/g;
+// `import userRouter from "./user"` (optionally followed by `, { … }`).
+const DEFAULT_IMPORT_RE = /import\s+(\w+)\s*(?:,\s*\{[^}]*\}\s*)?from\s*["'`](\.[^"'`]*)["'`]/g;
+// `export default userRouter;` — the default export names a declared router.
+const DEFAULT_EXPORT_VAR_RE = /export\s+default\s+(\w+)\s*;?\s*$/m;
+// `export default createTRPCRouter({ … })` — an anonymous default router.
+const DEFAULT_EXPORT_CALL_RE = /export\s+default\s+(\w+(?:\.router)?)\s*\(/g;
+// A const that may hold a procedure: `const hello = publicProcedure.query(…)`.
+// The value must start as a member chain (`x.` / `t.procedure.`); its extent is
+// balance-scanned and must carry a procedure marker to count.
+const PROC_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?=[\w$]+\s*\.)/g;
+const ROUTER_VALUE_RE = /\b(?:router|mergeRouters|createTRPCRouter)\s*\(/;
 // A procedure chain ends in exactly one of these; a subscription wins, else a
 // mutation, else a query (checked in that order below).
 const METHOD_MARKERS: Array<[RegExp, string]> = [
@@ -192,6 +203,24 @@ function procedureMethod(value: string): string | null {
   return null;
 }
 
+/**
+ * End (exclusive) of the initializer expression starting at `from`: the first
+ * top-level `;` or `,`, a closer that leaves the expression, or a top-level
+ * newline not followed by a `.` chain continuation.
+ */
+function expressionEnd(src: string, from: number): number {
+  let depth = 0;
+  let end = src.length;
+  scanCode(src, from, src.length, (i, c) => {
+    if (OPENERS.has(c)) depth++;
+    else if (CLOSERS.has(c) && --depth < 0) end = i;
+    else if (depth === 0 && (c === ";" || c === ",")) end = i;
+    else if (depth === 0 && c === "\n" && !/^\s*\./.test(src.slice(i + 1, i + 200))) end = i;
+    return end !== src.length;
+  });
+  return end;
+}
+
 const INLINE_CALL_RE = /^(\w+(?:\.router)?)\s*\(/;
 
 /**
@@ -248,6 +277,10 @@ export const trpcAdapter: RouteAdapter = {
     const importsByFile = new Map<string, Map<string, { target: string; exported: string }>>();
     // Per file: bare names bound to the `t.router` factory there.
     const aliasesByFile = new Map<string, Set<string>>();
+    // Per file: the variable `export default <var>` names.
+    const defaultVarByFile = new Map<string, string>();
+    // Procedures declared as consts, keyed by `file::varName`.
+    const procedures = new Map<string, { file: string; line: number; method: string }>();
     for (const [path, src] of sources) {
       const imports = new Map<string, { target: string; exported: string }>();
       for (const re of [IMPORT_RE, REQUIRE_RE]) {
@@ -263,7 +296,21 @@ export const trpcAdapter: RouteAdapter = {
           }
         }
       }
+      for (const m of src.matchAll(DEFAULT_IMPORT_RE)) {
+        const target = resolveModule(path, m[2] as string, sources);
+        if (target) imports.set(m[1] as string, { target, exported: "default" });
+      }
       importsByFile.set(path, imports);
+      const defaultVar = DEFAULT_EXPORT_VAR_RE.exec(src)?.[1];
+      if (defaultVar) defaultVarByFile.set(path, defaultVar);
+      for (const m of src.matchAll(PROC_DECL_RE)) {
+        const from = (m.index ?? 0) + m[0].length;
+        const value = src.slice(from, expressionEnd(src, from));
+        // A router value (`t.router({ a: p.query() })`) holds markers too — never a procedure.
+        if (ROUTER_VALUE_RE.test(value)) continue;
+        const method = procedureMethod(value);
+        if (method) procedures.set(`${path}::${m[1]}`, { file: path, line: lineAt(src, m.index ?? 0), method });
+      }
       const aliases = new Set<string>();
       for (const m of src.matchAll(FACTORY_ALIAS_RE)) aliases.add(m[1] as string);
       if (aliases.size) aliasesByFile.set(path, aliases);
@@ -283,14 +330,31 @@ export const trpcAdapter: RouteAdapter = {
         if (body === null) continue; // not an object literal (mergeRouters, etc.)
         routers.set(`${path}::${varName}`, parseRouterBody(src, body.start, body.end, path, factories));
       }
+      for (const m of src.matchAll(DEFAULT_EXPORT_CALL_RE)) {
+        if (!isRouterFactory(m[1] as string, factories)) continue;
+        const body = extractObjectBody(src, (m.index ?? 0) + m[0].length);
+        if (body !== null) routers.set(`${path}::default`, parseRouterBody(src, body.start, body.end, path, factories));
+      }
     }
 
-    // Resolve a child reference `ref` used in `file` to a router id.
-    const resolveRef = (file: string, ref: string): string | null => {
-      if (routers.has(`${file}::${ref}`)) return `${file}::${ref}`; // same-file var
+    // The `file::name` id a reference `ref` used in `file` points at: a
+    // same-file var, else the export it was imported from (a default import
+    // resolves through `export default <var>` when the module has one).
+    const refIds = (file: string, ref: string): string[] => {
+      const ids = [`${file}::${ref}`];
       const imported = importsByFile.get(file)?.get(ref);
-      if (imported && routers.has(`${imported.target}::${imported.exported}`)) return `${imported.target}::${imported.exported}`;
-      return null;
+      if (imported) {
+        const name = imported.exported === "default" ? (defaultVarByFile.get(imported.target) ?? "default") : imported.exported;
+        ids.push(`${imported.target}::${name}`);
+      }
+      return ids;
+    };
+    // Resolve a child reference `ref` used in `file` to a router id.
+    const resolveRef = (file: string, ref: string): string | null => refIds(file, ref).find((id) => routers.has(id)) ?? null;
+    // Resolve it to a procedure const instead (`{ hello }`, `{ hi: hello }`).
+    const resolveProcedure = (file: string, ref: string) => {
+      const id = refIds(file, ref).find((k) => procedures.has(k));
+      return id === undefined ? undefined : procedures.get(id);
     };
 
     // Roots = routers never mounted as a child of another router.
@@ -310,7 +374,12 @@ export const trpcAdapter: RouteAdapter = {
       for (const ic of def.inlineChildren) emit(ic.def, at(ic.name), seen);
       for (const c of def.children) {
         const target = resolveRef(def.file, c.ref);
-        if (!target || seen.has(target)) continue; // unresolved or cyclic
+        if (!target) {
+          const proc = resolveProcedure(def.file, c.ref);
+          if (proc) routes.push({ route: at(c.name), file: proc.file, line: proc.line, kind: "api", method: proc.method });
+          continue;
+        }
+        if (seen.has(target)) continue; // cyclic
         emit(routers.get(target) as RouterDef, at(c.name), new Set([...seen, target]));
       }
     };

@@ -31309,7 +31309,12 @@ var goAdapter = {
 var ROUTER_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(\w+(?:\.router)?)\s*\(/g;
 var FACTORY_ALIAS_RE = /(?:const|let|var)\s+(\w+)\s*=\s*\w+\.router\s*(?=[;,)\n]|$)/gm;
 var REQUIRE_RE4 = /(?:const|let|var)\s+\{([^}]*)\}\s*=\s*require\(\s*["'`](\.[^"'`]*)["'`]\s*\)/g;
-var IMPORT_RE4 = /import\s+\{([^}]*)\}\s+from\s+["'`](\.[^"'`]*)["'`]/g;
+var IMPORT_RE4 = /import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["'`](\.[^"'`]*)["'`]/g;
+var DEFAULT_IMPORT_RE = /import\s+(\w+)\s*(?:,\s*\{[^}]*\}\s*)?from\s*["'`](\.[^"'`]*)["'`]/g;
+var DEFAULT_EXPORT_VAR_RE = /export\s+default\s+(\w+)\s*;?\s*$/m;
+var DEFAULT_EXPORT_CALL_RE = /export\s+default\s+(\w+(?:\.router)?)\s*\(/g;
+var PROC_DECL_RE = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?=[\w$]+\s*\.)/g;
+var ROUTER_VALUE_RE = /\b(?:router|mergeRouters|createTRPCRouter)\s*\(/;
 var METHOD_MARKERS = [
   [/\.subscription\s*\(/, "SUBSCRIPTION"],
   [/\.mutation\s*\(/, "MUTATION"],
@@ -31437,6 +31442,18 @@ function procedureMethod(value) {
   for (const [re, method] of METHOD_MARKERS) if (re.test(value)) return method;
   return null;
 }
+function expressionEnd(src, from) {
+  let depth = 0;
+  let end = src.length;
+  scanCode(src, from, src.length, (i2, c2) => {
+    if (OPENERS.has(c2)) depth++;
+    else if (CLOSERS.has(c2) && --depth < 0) end = i2;
+    else if (depth === 0 && (c2 === ";" || c2 === ",")) end = i2;
+    else if (depth === 0 && c2 === "\n" && !/^\s*\./.test(src.slice(i2 + 1, i2 + 200))) end = i2;
+    return end !== src.length;
+  });
+  return end;
+}
 var INLINE_CALL_RE = /^(\w+(?:\.router)?)\s*\(/;
 function isRouterFactory(callee, factories) {
   return callee === "createTRPCRouter" || callee.endsWith(".router") || factories.has(callee);
@@ -31469,6 +31486,8 @@ var trpcAdapter = {
     const routers = /* @__PURE__ */ new Map();
     const importsByFile = /* @__PURE__ */ new Map();
     const aliasesByFile = /* @__PURE__ */ new Map();
+    const defaultVarByFile = /* @__PURE__ */ new Map();
+    const procedures = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
       const imports = /* @__PURE__ */ new Map();
       for (const re of [IMPORT_RE4, REQUIRE_RE4]) {
@@ -31481,7 +31500,20 @@ var trpcAdapter = {
           }
         }
       }
+      for (const m of src.matchAll(DEFAULT_IMPORT_RE)) {
+        const target = resolveModule(path, m[2], sources);
+        if (target) imports.set(m[1], { target, exported: "default" });
+      }
       importsByFile.set(path, imports);
+      const defaultVar = DEFAULT_EXPORT_VAR_RE.exec(src)?.[1];
+      if (defaultVar) defaultVarByFile.set(path, defaultVar);
+      for (const m of src.matchAll(PROC_DECL_RE)) {
+        const from = (m.index ?? 0) + m[0].length;
+        const value = src.slice(from, expressionEnd(src, from));
+        if (ROUTER_VALUE_RE.test(value)) continue;
+        const method = procedureMethod(value);
+        if (method) procedures.set(`${path}::${m[1]}`, { file: path, line: lineAt(src, m.index ?? 0), method });
+      }
       const aliases = /* @__PURE__ */ new Set();
       for (const m of src.matchAll(FACTORY_ALIAS_RE)) aliases.add(m[1]);
       if (aliases.size) aliasesByFile.set(path, aliases);
@@ -31498,12 +31530,25 @@ var trpcAdapter = {
         if (body2 === null) continue;
         routers.set(`${path}::${varName}`, parseRouterBody(src, body2.start, body2.end, path, factories));
       }
+      for (const m of src.matchAll(DEFAULT_EXPORT_CALL_RE)) {
+        if (!isRouterFactory(m[1], factories)) continue;
+        const body2 = extractObjectBody(src, (m.index ?? 0) + m[0].length);
+        if (body2 !== null) routers.set(`${path}::default`, parseRouterBody(src, body2.start, body2.end, path, factories));
+      }
     }
-    const resolveRef = (file, ref2) => {
-      if (routers.has(`${file}::${ref2}`)) return `${file}::${ref2}`;
+    const refIds = (file, ref2) => {
+      const ids = [`${file}::${ref2}`];
       const imported = importsByFile.get(file)?.get(ref2);
-      if (imported && routers.has(`${imported.target}::${imported.exported}`)) return `${imported.target}::${imported.exported}`;
-      return null;
+      if (imported) {
+        const name2 = imported.exported === "default" ? defaultVarByFile.get(imported.target) ?? "default" : imported.exported;
+        ids.push(`${imported.target}::${name2}`);
+      }
+      return ids;
+    };
+    const resolveRef = (file, ref2) => refIds(file, ref2).find((id) => routers.has(id)) ?? null;
+    const resolveProcedure = (file, ref2) => {
+      const id = refIds(file, ref2).find((k) => procedures.has(k));
+      return id === void 0 ? void 0 : procedures.get(id);
     };
     const referenced = /* @__PURE__ */ new Set();
     for (const [id, def] of routers) {
@@ -31520,7 +31565,12 @@ var trpcAdapter = {
       for (const ic of def.inlineChildren) emit2(ic.def, at(ic.name), seen);
       for (const c2 of def.children) {
         const target = resolveRef(def.file, c2.ref);
-        if (!target || seen.has(target)) continue;
+        if (!target) {
+          const proc = resolveProcedure(def.file, c2.ref);
+          if (proc) routes.push({ route: at(c2.name), file: proc.file, line: proc.line, kind: "api", method: proc.method });
+          continue;
+        }
+        if (seen.has(target)) continue;
         emit2(routers.get(target), at(c2.name), /* @__PURE__ */ new Set([...seen, target]));
       }
     };

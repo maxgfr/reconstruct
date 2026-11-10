@@ -4,6 +4,7 @@ import { dirname, extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expressAdapter } from "../src/adapters/express.js";
 import { fastifyAdapter } from "../src/adapters/fastify.js";
+import { trpcAdapter } from "../src/adapters/trpc.js";
 import type { FileInfo, RouteInfo } from "../src/types.js";
 
 // Regression tests for route-extraction gaps in the JS-family and ASP.NET adapters.
@@ -88,5 +89,47 @@ describe("fastify: named-export plugins, nested register options, multi-line cha
       "src/server.ts": 'import Fastify from "fastify";\nconst app = Fastify();\napp\n  .get("/a", h)\n  .post("/b", h);\n',
     });
     expect(sig(routes)).toEqual(["GET /a", "POST /b"]);
+  });
+});
+
+describe("trpc: procedures declared as consts, default-imported child routers", () => {
+  it("resolves same-file procedure consts used as shorthand and renamed entries", () => {
+    const routes = routesOf(trpcAdapter, {
+      "server/root.ts":
+        "const hello = publicProcedure.query(() => 1);\nconst add = publicProcedure\n  .input(z.object({ a: z.number() }))\n  .mutation(({ input }) => input.a);\nexport const appRouter = t.router({ hello, hi: hello, add });\n",
+    });
+    expect(sig(routes)).toEqual(["MUTATION add", "QUERY hello", "QUERY hi"]);
+  });
+
+  it("resolves a procedure const imported from another file", () => {
+    const routes = routesOf(trpcAdapter, {
+      "server/procs.ts": "export const ping = publicProcedure.query(() => 'pong');\n",
+      "server/root.ts": 'import { ping as p } from "./procs";\nexport const appRouter = t.router({ ping: p });\n',
+    });
+    expect(sig(routes)).toEqual(["QUERY ping"]);
+  });
+
+  it("an entry naming a const that is not a procedure is not a route", () => {
+    const routes = routesOf(trpcAdapter, {
+      "server/root.ts":
+        "const config = loadConfig();\nconst data = fetchData();\nexport const appRouter = t.router({ config, data, ok: publicProcedure.query(() => 1) });\n",
+    });
+    expect(sig(routes)).toEqual(["QUERY ok"]);
+  });
+
+  it("mounts a default-imported child router (export default <var>) under its key", () => {
+    const routes = routesOf(trpcAdapter, {
+      "server/user.ts": "const userRouter = createTRPCRouter({ list: publicProcedure.query(() => []) });\nexport default userRouter;\n",
+      "server/root.ts": 'import userRouter from "./user";\nexport const appRouter = createTRPCRouter({ user: userRouter });\n',
+    });
+    expect(sig(routes)).toEqual(["QUERY user.list"]);
+  });
+
+  it("mounts a default-imported child router (export default createTRPCRouter({...})) under its key", () => {
+    const routes = routesOf(trpcAdapter, {
+      "server/user.ts": "export default createTRPCRouter({ list: publicProcedure.query(() => []) });\n",
+      "server/root.ts": 'import users from "./user";\nexport const appRouter = createTRPCRouter({ user: users });\n',
+    });
+    expect(sig(routes)).toEqual(["QUERY user.list"]);
   });
 });
