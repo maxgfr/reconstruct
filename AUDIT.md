@@ -1,16 +1,16 @@
-# Code audit — reconstruct (2026-11-10, from v2.29.7)
+# Code audit — reconstruct (2026-11-10, from v2.29.7; second pass from v2.29.9)
 
 ## Summary
 
-1. The codebase is in good shape overall. It is a TypeScript engine (`src/`) bundled into a committed, dependency-free `scripts/analyze.mjs`. It is strictly typed, uses no `any`-driven shortcuts in its core paths, and its CI is reproducible: bundle diff, Node 18 floor job, golden example and parity.
+1. The codebase is in good shape overall. It is a TypeScript engine (`src/`) bundled into a committed, dependency-free `scripts/analyze.mjs`. It is strictly typed, and its CI is reproducible: bundle diff, Node 18 floor job, golden example and parity.
 2. The baseline was fully green before any change: typecheck, Biome, 899 tests in 57 files, `check:build`, `verify:example`, parity and the demo. The full gate took 11.4 s.
 3. Most real defects sat in two places:
-   - **Regex-based adapters:** routes missed or given the wrong prefix in tRPC, Django, Rails and ASP.NET, plus go.mod and requirements.txt parsing.
-   - **Fail-closed edges of the gates:** malformed ledgers crashed instead of failing, review could not commit a zero-feature round, and the heading checks disagreed with each other.
-4. Several scans were **quadratic**: Python import aliases, Flask kind detection, Django REST detection, and rea's stdio framing. Pathological but realistic inputs took seconds to minutes; they are now linear.
-5. The main remaining risks are in the MCP server's write and read boundaries and in stale artifacts left between runs. These were not changed because they are behavior and policy decisions; see "Open questions".
+   - **Regex-based route and dependency adapters:** 20 framework fixes across tRPC, Express, Fastify, NestJS, Next.js, Django, FastAPI, Flask, Rails, Go, ASP.NET, i18n and dependency manifests.
+   - **Fail-closed edges of the gates:** malformed ledgers crashed instead of failing, `--semantic` could pass on orphaned verdicts, required documents were matched by suffix, and review could not commit a zero-feature round.
+4. Several scans were **quadratic** (Python imports, Flask, Django, rea's stdio framing) and are now linear. Re-runs now prune their own stale output and treat edited generated docs as enrichment.
+5. What remains open is either intended behavior, an upstream engine limitation, or a large refactor; see "Issues found, not fixed".
 
-All work is in 30 small commits on `main` (21 `fix`, 6 `perf`, 2 cleanups, plus this report). The suite grew from 899 to 959 tests. Every commit is signed and carries the rebuilt bundle.
+All work is in small commits on `main`: 51 `fix`, 8 `perf`, 4 refactor/chore/test commits, plus this report. The suite grew from 899 to 1 068 tests. Every commit is signed and carries the rebuilt bundle. The second pass changed no CI workflow, secret or release config.
 
 ## Bugs fixed
 
@@ -52,6 +52,31 @@ All work is in 30 small commits on `main` (21 `fix`, 6 `perf`, 2 cleanups, plus 
   - #10: `--verify` now extracts requirements under suffixed headings, so existing ledgers on such trees will show newly covered claims.
   - #14–21: the inventory finds more and more correct routes, dependencies and locales.
 
+### Second pass
+
+| Area / file | Problem | Fix | Test |
+|---|---|---|---|
+| `src/mcp/handlers.ts` | Any directory with an `inventory.json` counted as a tree, so `reconstruct_read` would serve an app's `.env`. | The tree must carry the `generatedWith: reconstruct@` stamp. | `tests/mcp-handlers.test.ts` |
+| `src/mcp/stdio.ts` | A JSON-RPC batch counted as one in-flight entry, so 20 calls ran at once despite the cap of 4. | Each element acquires a slot; the batch is still answered as one array. | `tests/mcp-stdio-batch-limit.test.ts` |
+| `src/cli.ts` | Modifier flags were silently ignored outside their mode. For example `--apply v.json` without `--verify` re-rendered the tree. | Fails with the mode it belongs to. ⚠️ user-facing | `tests/cli-args-validation.test.ts` |
+| `src/output.ts` | Re-runs left orphan `features/<old>/` and `source/<old>/` behind, and silently overwrote edited callout-free docs (`REBUILD.md`, overview, diagram). | `.reconstruct-generated.json` records what the engine wrote. A full render deletes only its own unchanged stale files (edited ones are kept and reported). An edited generated doc is an enrichment witness. ⚠️ user-facing | `tests/output-stale-prune.test.ts` |
+| `src/rea.ts` | A list of problems, all fixed (see the next row). | — | `tests/rea-engine.test.ts` |
+| | **Problems:** stale rea evidence stayed citable; a failed probe's payload was citable; a timeout was not cancelled on rea's side; `open_binary` timeouts left sessions open; there was no overall budget; a synchronous spawn failure escaped; a Windows `.cmd`/`.bat` on a path with a space failed (unquoted, case-sensitive); a child could keep the CLI alive. | **Fixes:** prune only what the previous INDEX named (agent exports untouched); `notifications/cancelled`; always close; a 20 min run budget; spawn inside `try`; `spawnTarget()` quoting; destroy the pipes and `unref`. | same |
+| `src/verify.ts` | `--semantic` passed when the verified requirements were rewritten into prose: the verdicts were orphaned and nothing counted as "uncovered". `1)` lists were never extracted. | Orphaned verdicts are a coverage failure; `1)` items are extracted. | `tests/verify.test.ts` |
+| `src/postprocess.ts` | Standalone bundles inlined `REVIEW.md`, `VERIFY.md`, `BRAINSTORM.md` and `orchestration/*`. | Excluded (`CONTEXT.md` and ADRs are kept). | `tests/postprocess.test.ts` |
+| `src/check.ts` | Three problems: required docs were matched by suffix (`features/x/REBUILD.md` satisfied the root); an inch mark `5"` paired with a later quote and hid a callout; a nameless inventory entry crashed the gate. | Exact paths; a `"` after a digit is not a quote; non-string names are skipped. | `tests/check.test.ts` |
+| `src/brainstorm.ts` | `{}` inventory crashed. | Guarded. | `tests/brainstorm.test.ts` |
+| `src/scratch.ts` | `not nullable` / `non-nullable` read as nullable, suppressing the owner-FK warning. | Fixed precedence. | `tests/consistency.test.ts` |
+| `src/prd/bundle.ts` | A `===` after a closing fence turned the fence into an H1. | Fence lines are never setext content. | `tests/bundle.test.ts` |
+| `src/analyze.ts` | Any `template.yaml` (for example a GitHub issue form) raised a "serverless infra" unknown. | Requires SAM/CloudFormation markers. | `tests/unknowns.test.ts` |
+| `src/walk.ts`, `adapters/generic.ts` | Unreadable files became "binary", so an extension-less one went to rea as an executable. The env-var scan read files of any size. | Only the extension decides binary-ness; the env scan skips files over 8 MB and names them in a warning. | `tests/scan.test.ts` |
+| `src/tree-lock.ts` | The lock key changed once the out dir existed (`/tmp` vs `/private/tmp`). | Realpath of the nearest existing ancestor. | `tests/tree-lock.test.ts` |
+| `src/features.ts` | A route whose URL and file matched no code group reached no feature PRD. | It gets its own group. | `tests/features.test.ts` |
+| `src/prd/templates.ts` | A schema-only repo drew an unconnected DATA node. The golden example still showed the pre-fix edges. | Edges follow the node; `assets/example-output/architecture/diagram.md` is corrected. | `tests/templates-rendering.test.ts` |
+| `src/cli.ts` | "excluded: N file(s)" did not mention that pruned directories are uncounted. | Wording and docs state what the count covers. | — |
+| **Adapters** (12 commits, written test-first in two parallel worktrees, then reviewed and rebased here) | **JS/.NET:** Express array mounts and `get (`; Fastify named-export plugins, nested options and multi-line chains; tRPC procedure consts and default imports; NestJS non-controller classes; ASP.NET chained `MapGroup` and `$@` strings; JSX `</` and postfix `++` in comment stripping. **Python/Ruby/Go:** Gorilla `Subrouter`/`Handle`, Gin `=` groups and helper hand-offs; net/http-only Go repos; `// indirect` deps; Rails `scope :sym`, `get(...)`, `match via:`, singularize; FastAPI/Flask multi-prefix mounts and `api_route` → GET; Python `\` continuation imports; Gemfile nested `end`; pyproject/Pipfile/split requirements; `rspec-rails` / `sentry-sdk[flask]` false positives; Next.js `pages/index/` directories. | — | `tests/adapters-js-gaps.test.ts`, `tests/adapters-py-rb-go-gaps.test.ts`, `tests/deps.test.ts`, `tests/adapters-audit-fixes.test.ts` |
+| tooling | Local worktrees under `.claude/worktrees/` broke `biome ci` and were collected by vitest. | Gitignored and excluded; biome honours `.gitignore`; `$schema` bumped to 2.6.2. | — |
+
 ## Optimizations
 
 Each one was measured with a micro-benchmark before and after (best of 2–5 runs, Node 24, Apple Silicon). Output is unchanged in every case and the existing tests pass. Linear-time regression tests with roughly 100× headroom are in `tests/perf-linear-scans.test.ts` and `tests/rea-line-splitter.test.ts`.
@@ -65,86 +90,49 @@ Each one was measured with a micro-benchmark before and after (best of 2–5 run
 | walk: read 4 KB of `inventory.json` to spot a prior output | 20 dirs × 20 MB `inventory.json` | 121 ms | 4 ms |
 | Manifests through the read cache; workspace discovery memoised per analysis | 300-workspace monorepo, full `analyze()` | 151 ms | 75 ms |
 | `--check --semantic`: derive requirement pairs once | 200 features × 21 requirements | 117 ms | 69 ms |
+| `--verify --apply`: derive requirement pairs once (was 3×) | 200 features × 21 requirements | 117 ms | 82 ms |
 
 ## Quality
 
 - `methodOf` (×4) and the open-paren helper (×2) are deduplicated into `src/adapters/util.ts`.
 - Removed `resetTreeLocks`, which was dead and unsafe by its own comment.
 - **Dependencies:** none are unused (`yaml` is used by `tests/skill-md.test.ts`). Only minor dev bumps are pending (biome 2.6.2→2.6.6, vitest 5.0.5→5.1.0, @types/node). Dependabot groups these weekly, so I left them alone.
-- **Note:** `biome.json`'s `$schema` still points at 2.4.16 while 2.6.x is installed. It is harmless today; bump it with the next Biome update.
+- `biome.json`'s `$schema` is bumped from 2.4.16 to the installed 2.6.2, and Biome now honours `.gitignore`.
 
 ## Issues found, not fixed
 
 ### Critical
-None found. Specifically:
-- No command injection with attacker-controlled strings.
-- No path traversal out of `--out`.
-- The HTTP MCP server binds 127.0.0.1 by default, checks Origin, and caps the body size.
+None.
 
 ### Important
-1. **MCP tools write without `--allow-write`** (`src/mcp/handlers.ts:59`). `reconstruct_specs`/`features`/`merge` write SPECS/FEATURES/RECONSTRUCTION.md. `reconstruct_review`/`verify` write their worklists and `.md` files. Only scaffold, brainstorm and unknowns updates are gated, while `tools.ts` marks the others `write: true`. *Recommendation:* gate them, or document them as "derived-artifact writes". This is a policy decision (see questions).
-2. **`reconstruct_read` trusts any directory containing an `inventory.json`** (`handlers.ts:105-117`). A prompt-injected client could read `.env` from an app that happens to ship a file named `inventory.json`. *Recommendation:* require the `generatedWith: "reconstruct@"` stamp, as the walk already does.
-3. **Stale artifacts survive re-runs:**
-   - `writeOutput` never prunes orphan `features/<old-slug>/` or `source/<old-slug>/`, which then feed `detectEnrichment` and the standalone bundles.
-   - Old `evidence/rea/*.json` stays citable after `--rea off`, after a failed inspection, or after the binary is deleted.
-
-   *Recommendation:* use a manifest of what each run wrote, then delete what the next run didn't write.
-4. **Standalone `--specs`/`--merge` include `REVIEW.md`, `VERIFY.md`, `BRAINSTORM.md` and `orchestration/*.md`** (`postprocess.ts`, `prd/bundle.ts`). This contradicts "matches the inline run". *Recommendation:* use an allow-list of spec docs.
-5. **The stdio MCP server blocks:**
-   - Handlers (`analyze`, `runVerify`, the bundlers) are synchronous, so one long call stalls `ping`/`tools/list`.
-   - A JSON-RPC batch counts as one in-flight entry, bypassing `MAX_IN_FLIGHT`.
-
-   *Recommendation:* count each batch element. Moving the heavy handlers to a worker is a bigger refactor.
-6. **Cancellation:** a `notifications/cancelled` that arrives after its response was sent poisons that id until FIFO eviction, and `1` and `"1"` collide (`mcp/server.ts:79-95`). *Recommendation:* track only in-flight ids, keyed by the JSON type as well as the value.
-7. **rea robustness** (`src/rea.ts`):
-   - No `notifications/cancelled` is sent on timeout and there is no overall deadline (worst case about 27 min per `.exe`).
-   - `close_binary` is skipped when `open_binary` times out.
-   - A synchronous `spawn` throw (`.bat`/`.CMD` on Windows) escapes "never fatal".
-   - On Windows, `shell: true` with unquoted paths breaks on `C:\Users\John Doe\…`.
-8. **Modifier flags are not validated without their primary flag.** For example `--apply x.json` without `--verify` runs a full analysis and re-renders; `--semantic` without `--check` is ignored.
-9. **Route-adapter coverage gaps:**
-   - Gorilla `PathPrefix().Subrouter()` is not handled.
-   - Gin groups lose their prefix when passed to another function or assigned with `=`.
-   - Fastify plugins exported by name are not resolved.
-   - Express array mounts `app.use(["/a","/b"], r)` are missed.
-   - Template-literal paths are emitted verbatim.
-   - Rails `scope :admin` (symbol) and `get("/x")` with parentheses are missed.
-   - FastAPI/Flask: a router included twice keeps only the last prefix.
-   - tRPC procedures defined as separate consts are dropped.
-   - `pyproject.toml`/`Pipfile` dependencies are not extracted.
-   - A Gemfile nested `end` resets the dev group.
-
-   Each needs a test-first fix like #14–21. *Recommendation:* tackle them in that order, which is roughly by ecosystem popularity.
+1. **The stdio MCP server blocks while one long call runs.** Handlers such as `analyze`, `runVerify` and the bundlers are synchronous, so a long call stalls `ping`/`tools/list`. The in-flight cap now holds for batches too, but true concurrency needs the heavy handlers in a worker thread. That is an architecture change, so I left it as a recommendation.
 
 ### Minor
-- `features.ts:351`: routes whose file is not code-categorized can reach no feature PRD; they still appear in INTERFACES.md.
-- **`tree-lock`:**
-  - The key differs before and after the out dir exists (`/tmp` vs `/private/tmp`), so two calls on a fresh path can race.
-  - `excludedCount` undercounts pruned directories.
-- `read-cache` claims bounded memory, but reads a file fully before the budget check. `extractEnvVarSources` has no per-file size cap.
-- Unreadable files (`chmod 000 Dockerfile`) are classified as binary and then as compiled artifacts sent to rea.
-- `analyze.ts:125`: any `template.yaml` (for example an issue template) adds a false "serverless" unknown.
-- Stack detection false positives:
-  - `rspec-rails` → Rails;
-  - `sentry-sdk[flask]` → Flask;
-  - `// indirect` Go deps;
-  - a net/http-only Go repo never activates the Go adapter.
-- Comment stripping: `</a>; // c` in TSX and C# `@$"…\"` are misread.
-- Low-impact edge cases:
-  - `scratch.ts:236`: `"not nullable"` matches `/nullable/`.
-  - `check.ts:141`: `features/x/REBUILD.md` satisfies the root `REBUILD.md` requirement.
-  - `bundle.ts:50`: a `===` line after a closing fence turns that fence into a setext heading.
-- `diagramDoc` draws the DATA node for schema-only repos but only links features to it when i18n exists. Ambiguous; left as is.
-- `localhost:*` origins are trusted by the HTTP MCP server, so any local dev server page can drive it (defense in depth; see questions).
+- **Template-literal route paths** (`` app.get(`/t/${id}`) ``) are emitted verbatim. There is no static value to resolve, and the verbatim text is the most faithful hint for the agent.
+- **Comment-stripping edges the narrow fix does not cover:**
+  - a spaced `n < /re/`;
+  - `{x}/>` (self-closing JSX after `}`);
+  - an apostrophe in JSX text (`<p>don't</p>`).
+
+  No rule handles these without regressing real regex literals; a tokenizer would.
+- **The exact `excludedCount`** would need the vendored CodeIndex walk to count the files of the directories it prunes. The fix is upstream (`maxgfr/codeindex`), not in this repo.
+- **Dev dependencies** have minor bumps available (biome 2.6.6, vitest 5.1.0, @types/node). Dependabot groups them weekly.
+
+### Checked and intended (no change)
+- **MCP tools that write without `--allow-write`** (`specs`/`features`/`merge`/`review`/`verify`). The help text defines `--allow-write` as creating a tree or overwriting prose; worklists and bundles inside `--out` are documented as derived files. The tools are annotated `write: true` so clients can still prompt.
+- **Late cancellation poisoning an id.** MCP forbids reusing a request id within a session, so a late `notifications/cancelled` cannot hit a later request from a compliant client. The existing test relies on this behavior.
+- **`localhost:*` origins trusted by the HTTP transport.** Any page served from localhost already runs with local-user trust. Non-browser clients send no Origin. Anything else needs `--allow-origin`.
+- **Any `.json` under `evidence/rea/` makes ids citable.** Agents export their own rea bundles there by design (`references/rea-companion.md`).
 
 ### Larger refactors (recommended, not done)
-- **One shared JS module-graph helper** (import/require/mount resolution) for express, hono, fastify and trpc. They copy `REQUIRE_RE`/`IMPORT_RE`/`LITERAL_RE`, `moduleSpecs` and the memoised `mountsOf` walk. Most of item 9's JS gaps would be fixed once there.
-- **MCP handlers off the event loop** (a worker thread per heavy tool) and a per-request in-flight count.
+- **One shared JS module-graph helper** (import/require/mount resolution) for express, hono, fastify and trpc. They still copy `REQUIRE_RE`/`IMPORT_RE`/`LITERAL_RE` and the memoised mount walk.
+- **MCP handlers off the event loop** (a worker per heavy tool).
 
-## Open questions (need your decision)
+## Decisions taken (please confirm)
 
-1. **`--allow-write` scope:** should `reconstruct_specs`/`features`/`merge`/`review`/`verify` require `--allow-write` over MCP? Today they write without it.
-2. **`--out` equal to the repo:** I made this a hard error. Would you rather auto-exclude the generated files and allow it?
-3. **Modifier flags without their primary flag** (`--apply`, `--semantic`, `--phase`, `--max-verify`…): error out (my recommendation) or warn?
-4. **`localhost:*` origins:** keep trusting any localhost port, or only the server's own port or an explicit `--allow-origin`?
-5. **Stale outputs:** may a re-run delete files that the previous run generated and this one did not (orphan PRDs, old rea evidence)? This is the clean fix for Important #3, but it deletes files in the user's tree.
+The first report listed these as open questions. You asked me to fix everything, so I applied my recommendation for each:
+
+1. **`--out` equal to the repo** stays a hard error.
+2. **Modifier flags without their mode** now fail, as listed above. Every documented invocation still parses.
+3. **Stale output** is deleted on re-run, but only files the engine itself generated, that this run no longer generates, and that are still byte-for-byte as generated. Edited ones are kept and reported. Agent files and agent-exported rea bundles are never touched.
+4. **MCP `--allow-write` scope** and **`localhost` origins** are unchanged (see "Checked and intended").
