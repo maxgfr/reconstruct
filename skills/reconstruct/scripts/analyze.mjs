@@ -28784,41 +28784,60 @@ function stripComments(src, ext) {
     }
     return n;
   };
-  let last = "";
   if (syntax === "python" || syntax === "ruby") {
-    let i3 = 0;
-    while (i3 < n) {
-      const c2 = src[i3];
-      if (syntax === "ruby" && c2 === "=" && (i3 === 0 || src[i3 - 1] === "\n") && src.startsWith("=begin", i3)) {
-        const end = src.indexOf("\n=end", i3);
+    let last = "";
+    let i2 = 0;
+    while (i2 < n) {
+      const c2 = src[i2];
+      if (syntax === "ruby" && c2 === "=" && (i2 === 0 || src[i2 - 1] === "\n") && src.startsWith("=begin", i2)) {
+        const end = src.indexOf("\n=end", i2);
         const stop2 = end === -1 ? n : eolFrom(end + 1);
-        blank2(i3, stop2);
-        i3 = stop2;
+        blank2(i2, stop2);
+        i2 = stop2;
       } else if (c2 === "#") {
-        const stop2 = eolFrom(i3);
-        blank2(i3, stop2);
-        i3 = stop2;
+        const stop2 = eolFrom(i2);
+        blank2(i2, stop2);
+        i2 = stop2;
       } else if (c2 === '"' || c2 === "'") {
-        if (syntax === "python" && src.startsWith(c2.repeat(3), i3)) {
-          const end = src.indexOf(c2.repeat(3), i3 + 3);
-          i3 = end === -1 ? n : end + 3;
+        if (syntax === "python" && src.startsWith(c2.repeat(3), i2)) {
+          const end = src.indexOf(c2.repeat(3), i2 + 3);
+          i2 = end === -1 ? n : end + 3;
         } else {
-          i3 = skipString(c2, i3, false);
+          i2 = skipString(c2, i2, false);
         }
         last = "a";
       } else if (syntax === "ruby" && c2 === "/" && RUBY_REGEX_PRECEDES.has(last)) {
-        i3 = skipString("/", i3, false);
+        i2 = skipString("/", i2, false);
         last = "a";
       } else {
-        const code = src.charCodeAt(i3);
+        const code = src.charCodeAt(i2);
         if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 125 ? "a" : c2;
-        i3++;
+        i2++;
       }
     }
     return assemble();
   }
-  const templates = [];
-  let depth = 0;
+  const jsFamily = syntax === "js" || syntax === "jsx";
+  const lowerExt = ext.toLowerCase();
+  const jsx = jsFamily && !/^\.[mc]?ts$/.test(lowerExt);
+  const tsx = lowerExt === ".tsx";
+  let jsxFrom = 0;
+  const jsxFail = (at) => {
+    if (at > jsxFrom) jsxFrom = at;
+    return -1;
+  };
+  const closers = /* @__PURE__ */ new Map();
+  let closerMisses = 0;
+  const hasClosingTag = (name2, from) => {
+    let at = closers.get(name2);
+    if (at === -1) return false;
+    if (at === void 0 || at < from) {
+      at = src.indexOf(`</${name2}`, from);
+      closers.set(name2, at);
+      if (at === -1 && ++closerMisses > JSX_MAX_CLOSER_MISSES) jsxFrom = n;
+    }
+    return at !== -1;
+  };
   const skipTemplate = (from) => {
     let j = from;
     while (j < n) {
@@ -28829,86 +28848,183 @@ function stripComments(src, ext) {
       }
       if (d === "`") return j + 1;
       if (d === "$" && src[j + 1] === "{") {
-        templates.push(depth);
-        return j + 2;
+        j = scanCode2(j + 2, true) + 1;
+        continue;
       }
       j++;
     }
     return n;
   };
-  let i2 = 0;
-  while (i2 < n) {
-    const c2 = src[i2];
-    const next = src[i2 + 1];
-    if (c2 === "/" && next === "/") {
-      const stop2 = eolFrom(i2);
-      blank2(i2, stop2);
-      i2 = stop2;
-      continue;
+  const jsxElement = (i2) => {
+    let j = i2 + 1;
+    let name2 = "";
+    if (src[j] !== ">") {
+      JSX_NAME_RE.lastIndex = j;
+      name2 = JSX_NAME_RE.exec(src)?.[0] ?? "";
+      if (!name2) return -1;
+      j += name2.length;
+      TSX_GENERIC_RE.lastIndex = j;
+      if (tsx && TSX_GENERIC_RE.test(src)) return jsxFail(j);
     }
-    if (c2 === "/" && next === "*") {
-      const end = src.indexOf("*/", i2 + 2);
-      const lineStart = src.lastIndexOf("\n", i2) + 1;
-      const jsxText = syntax === "jsx" && !/^[\s{]*$/.test(src.slice(lineStart, i2)) && (end === -1 || end > eolFrom(i2));
-      if (end === -1 || jsxText) {
-        i2 += 2;
+    for (; ; ) {
+      if (j >= n) return jsxFail(n);
+      const c2 = src[j];
+      const code = src.charCodeAt(j);
+      if (isSpaceCode(code) || isJsxNameCode(code) || c2 === "=") {
+        j++;
+      } else if (c2 === ">") {
+        j++;
+        break;
+      } else if (c2 === "/" && src[j + 1] === ">") {
+        return j + 2;
+      } else if (c2 === "/" && src[j + 1] === "/") {
+        const stop2 = eolFrom(j);
+        blank2(j, stop2);
+        j = stop2;
+      } else if (c2 === "/" && src[j + 1] === "*") {
+        const close = src.indexOf("*/", j + 2);
+        if (close === -1) return jsxFail(j);
+        blank2(j, close + 2);
+        j = close + 2;
+      } else if (c2 === '"' || c2 === "'") {
+        const close = src.indexOf(c2, j + 1);
+        if (close === -1) return jsxFail(n);
+        j = close + 1;
+      } else if (c2 === "{") {
+        const close = scanCode2(j + 1, true);
+        if (close >= n) return jsxFail(n);
+        j = close + 1;
+      } else {
+        return jsxFail(j);
+      }
+    }
+    if (!hasClosingTag(name2, j)) return jsxFail(j);
+    for (; ; ) {
+      while (j < n && src[j] !== "{" && src[j] !== "<") j++;
+      if (j >= n) return jsxFail(n);
+      if (src[j] === "{") {
+        const close = scanCode2(j + 1, true);
+        if (close >= n) return jsxFail(n);
+        j = close + 1;
+      } else if (src[j + 1] === "/") {
+        const close = src.indexOf(">", j + 2);
+        if (close === -1) return jsxFail(n);
+        if (src.slice(j + 2, close).trim() !== name2) return jsxFail(j);
+        return close + 1;
+      } else {
+        const close = jsxElement(j);
+        if (close === -1) return jsxFail(j);
+        j = close;
+      }
+    }
+  };
+  const scanCode2 = (from, nested) => {
+    let last = "";
+    let depth = 0;
+    let i2 = from;
+    while (i2 < n) {
+      const c2 = src[i2];
+      const next = src[i2 + 1];
+      if (c2 === "/" && next === "/") {
+        const stop2 = eolFrom(i2);
+        blank2(i2, stop2);
+        i2 = stop2;
         continue;
       }
-      blank2(i2, end + 2);
-      i2 = end + 2;
-      continue;
-    }
-    if (c2 === '"' || c2 === "'") {
-      if (syntax === "c" && c2 === '"' && (src[i2 - 1] === "@" || src[i2 - 1] === "$" && src[i2 - 2] === "@")) {
-        let j = i2 + 1;
-        while (j < n && !(src[j] === '"' && src[j + 1] !== '"')) j += src[j] === '"' ? 2 : 1;
-        i2 = j + 1;
-      } else {
-        i2 = skipString(c2, i2, false);
-      }
-      last = "a";
-      continue;
-    }
-    if (c2 === "`") {
-      i2 = syntax === "c" ? skipString("`", i2, true, false) : skipTemplate(i2 + 1);
-      last = "a";
-      continue;
-    }
-    if (syntax === "js" || syntax === "jsx") {
-      if (c2 === "/" && regexLiteralAllowedAt(src, i2, last)) {
-        let j = i2 + 1;
-        let inClass = false;
-        while (j < n && src[j] !== "\n") {
-          const d = src[j];
-          if (d === "\\") {
-            j += 2;
-            continue;
-          }
-          if (d === "[") inClass = true;
-          else if (d === "]") inClass = false;
-          else if (d === "/" && !inClass) break;
-          j++;
+      if (c2 === "/" && next === "*") {
+        const end = src.indexOf("*/", i2 + 2);
+        const lineStart = src.lastIndexOf("\n", i2) + 1;
+        const jsxText = syntax === "jsx" && !/^[\s{]*$/.test(src.slice(lineStart, i2)) && (end === -1 || end > eolFrom(i2));
+        if (end === -1 || jsxText) {
+          i2 += 2;
+          continue;
         }
-        i2 = j + 1;
+        blank2(i2, end + 2);
+        i2 = end + 2;
+        continue;
+      }
+      if (c2 === '"' || c2 === "'") {
+        if (syntax === "c" && c2 === '"' && (src[i2 - 1] === "@" || src[i2 - 1] === "$" && src[i2 - 2] === "@")) {
+          let j = i2 + 1;
+          while (j < n && !(src[j] === '"' && src[j + 1] !== '"')) j += src[j] === '"' ? 2 : 1;
+          i2 = j + 1;
+        } else {
+          i2 = skipString(c2, i2, false);
+        }
         last = "a";
         continue;
       }
-      if (c2 === "{") depth++;
-      else if (c2 === "}") {
-        if (templates.length && templates[templates.length - 1] === depth) {
-          templates.pop();
-          i2 = skipTemplate(i2 + 1);
+      if (c2 === "`") {
+        i2 = syntax === "c" ? skipString("`", i2, true, false) : skipTemplate(i2 + 1);
+        last = "a";
+        continue;
+      }
+      if (jsFamily) {
+        if (c2 === "/" && regexLiteralAllowedAt(src, i2, last)) {
+          let j = i2 + 1;
+          let inClass = false;
+          while (j < n && src[j] !== "\n") {
+            const d = src[j];
+            if (d === "\\") {
+              j += 2;
+              continue;
+            }
+            if (d === "[") inClass = true;
+            else if (d === "]") inClass = false;
+            else if (d === "/" && !inClass) break;
+            j++;
+          }
+          i2 = j + 1;
           last = "a";
           continue;
         }
-        depth--;
+        if (c2 === "<" && jsx && i2 >= jsxFrom && jsxAllowedAt(src, i2, last)) {
+          const mark = ranges.length;
+          const end = jsxElement(i2);
+          if (end !== -1) {
+            i2 = end;
+            last = "a";
+            continue;
+          }
+          ranges.length = mark;
+        }
+        if (c2 === "{") depth++;
+        else if (c2 === "}") {
+          if (nested && depth === 0) return i2;
+          depth--;
+        }
       }
+      const code = src.charCodeAt(i2);
+      if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 ? "a" : c2;
+      i2++;
     }
-    const code = src.charCodeAt(i2);
-    if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 ? "a" : c2;
-    i2++;
+    return n;
+  };
+  try {
+    scanCode2(0, false);
+  } catch (e) {
+    if (!(e instanceof RangeError)) throw e;
+    return src;
   }
   return assemble();
+}
+var JSX_NAME_RE = /[A-Za-z_$][\w$.:-]*/y;
+var TSX_GENERIC_RE = /\s+extends\s/y;
+var JSX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", ">"]);
+var JSX_MAX_CLOSER_MISSES = 64;
+function jsxAllowedAt(src, i2, last) {
+  const next = src[i2 + 1] ?? "";
+  if (next !== ">" && !/[A-Za-z_$]/.test(next)) return false;
+  return JSX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2).trimEnd());
+}
+function isJsxNameCode(code) {
+  return code >= 48 && code <= 58 || // 0-9 :
+  code >= 65 && code <= 90 || // A-Z
+  code >= 97 && code <= 122 || // a-z
+  code === 95 || // _
+  code === 36 || // $
+  code === 45 || // -
+  code === 46;
 }
 function isSpaceCode(code) {
   if (code < 128) return code === 32 || code >= 9 && code <= 13;

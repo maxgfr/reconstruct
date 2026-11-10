@@ -209,3 +209,92 @@ describe("stripComments: a `/` that cannot open a regex literal", () => {
     expect(stripComments(triple, ".ts")).toBe(triple);
   });
 });
+
+describe("stripComments: JSX elements are read as elements", () => {
+  const blanked = (code: string, comment: string) => `${code}${" ".repeat(comment.length)}\n`;
+  const JSX_EXTS = [".tsx", ".jsx", ".js"];
+
+  it("`/>` after an attribute expression closes the tag instead of opening a regex", () => {
+    for (const ext of JSX_EXTS) {
+      expect(stripComments("const a = <Foo bar={x}/>; // c\n", ext)).toBe(blanked("const a = <Foo bar={x}/>; ", "// c"));
+      expect(stripComments("const a = <Foo {...rest}/>; // 'c\n", ext)).toBe(blanked("const a = <Foo {...rest}/>; ", "// 'c"));
+    }
+  });
+
+  it("an apostrophe or a `//` in element text opens neither a string nor a comment", () => {
+    for (const ext of JSX_EXTS) {
+      expect(stripComments("const a = <p>don't</p>; // c\n", ext)).toBe(blanked("const a = <p>don't</p>; ", "// c"));
+      const link = 'const l = <a href="https://x.dev">see http://x.dev</a>;\n';
+      expect(stripComments(link, ext)).toBe(link);
+      const multi = "return (\n  <p>\n    it's /* not a comment\n  </p>\n); // c\n";
+      expect(stripComments(multi, ext)).toBe(multi.replace("// c", "    "));
+    }
+  });
+
+  it("comments in `{ … }` children, attribute values and tags are still blanked", () => {
+    const src = [
+      "const a = (",
+      "  <ul // trailing",
+      '    /* block */ className="x">',
+      "    {/* app.get('/old') */}",
+      "    {items.map((i) => <li key={i}>{i}'s {/* c */}</li>) /* d */}",
+      "  </ul>",
+      "); // e",
+      "",
+    ].join("\n");
+    const out = stripComments(src, ".tsx");
+    expect(out.length).toBe(src.length);
+    expect(out).not.toMatch(/trailing|block|app\.get|\/\* [cd] \*\/|\/\/ e/);
+    expect(out).toContain("{items.map((i) => <li key={i}>{i}'s {       }</li>)        }");
+    expect(out).toContain('className="x">');
+  });
+
+  it("fragments and nested elements close in order", () => {
+    const src = "const a = <><b>it's</b><i/></>; // c\n";
+    expect(stripComments(src, ".jsx")).toBe(blanked("const a = <><b>it's</b><i/></>; ", "// c"));
+  });
+
+  it("a `<` that opens no well-formed element is still an operator or a generic", () => {
+    // TypeScript modules have no JSX: `<T>` is a generic or an assertion.
+    expect(stripComments("const f = <T>(x: T) => x; // c\n", ".ts")).toBe(blanked("const f = <T>(x: T) => x; ", "// c"));
+    expect(stripComments("const v = <Foo>bar; // c\n", ".ts")).toBe(blanked("const v = <Foo>bar; ", "// c"));
+    // TSX generic arrow functions.
+    expect(stripComments("const f = <T,>(x: T) => x; // c\n", ".tsx")).toBe(blanked("const f = <T,>(x: T) => x; ", "// c"));
+    expect(stripComments("const f = <T extends object>(x: T) => x; // c\n</T>\n", ".tsx")).toBe(
+      `${blanked("const f = <T extends object>(x: T) => x; ", "// c")}</T>\n`,
+    );
+    expect(stripComments("type F = <T>(x: T) => T; // c\n", ".tsx")).toBe(blanked("type F = <T>(x: T) => T; ", "// c"));
+    // An unclosed or mismatched tag falls back to the plain scan.
+    expect(stripComments("x = <b; // c\n", ".js")).toBe(blanked("x = <b; ", "// c"));
+    expect(stripComments("x = <a>1</b>; // c\n", ".js")).toBe(blanked("x = <a>1</b>; ", "// c"));
+    // Comparisons are untouched.
+    expect(stripComments("if (a <b && c> d) {} // c\n", ".js")).toBe(blanked("if (a <b && c> d) {} ", "// c"));
+  });
+
+  it("a comment blanked inside a failed element attempt is blanked exactly once", () => {
+    // `<a b={…}>` never closes: the text is not JSX, so the plain scan decides.
+    const src = "x = <a b={1 /* c */}>;\ny = 2; // d\n";
+    expect(stripComments(src, ".js")).toBe(`x = <a b={1 ${" ".repeat("/* c */".length)}}>;\ny = 2;     \n`);
+  });
+
+  it("template literals with nested code and JSX keep their text", () => {
+    const src = "const s = `a ${b /* c */ ? `x // y ${<i>it's</i>}` : 1} // not a comment`; // d\n";
+    expect(stripComments(src, ".jsx")).toBe("const s = `a ${b         ? `x // y ${<i>it's</i>}` : 1} // not a comment`;     \n");
+  });
+
+  it("stays linear on text that only looks like JSX", () => {
+    const t = (fn: () => unknown): number => {
+      const start = performance.now();
+      fn();
+      return performance.now() - start;
+    };
+    // 40 000 distinct unclosed "tags": the stripper gives up on JSX early.
+    const generics = Array.from({ length: 40_000 }, (_, i) => `const f${i} = <T${i}>(x) => x; // c`).join("\n");
+    expect(t(() => stripComments(generics, ".tsx"))).toBeLessThan(2000);
+    // 20 000 well-formed siblings inside a parent that never closes.
+    const open = `x = <div>${"<p>a</p>".repeat(20_000)}`;
+    expect(t(() => stripComments(open, ".jsx"))).toBeLessThan(2000);
+    // 20 000 nested opens, none closed.
+    expect(t(() => stripComments(`x = ${"<a>{".repeat(20_000)}`, ".jsx"))).toBeLessThan(2000);
+  });
+});

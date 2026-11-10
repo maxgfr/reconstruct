@@ -184,11 +184,10 @@ export function stripComments(src: string, ext: string): string {
     return n;
   };
 
-  // The previous significant code char (`a` for an operand): decides whether a
-  // `/` opens a regex literal.
-  let last = "";
-
   if (syntax === "python" || syntax === "ruby") {
+    // The previous significant code char (`a` for an operand): decides whether
+    // a `/` opens a Ruby regex literal.
+    let last = "";
     let i = 0;
     while (i < n) {
       const c = src[i] as string;
@@ -226,10 +225,35 @@ export function stripComments(src: string, ext: string): string {
     return assemble();
   }
 
-  // JS template literals nest (`${ `inner` }`): each entry is the brace depth
-  // at which the enclosing template body resumes.
-  const templates: number[] = [];
-  let depth = 0;
+  const jsFamily = syntax === "js" || syntax === "jsx";
+  const lowerExt = ext.toLowerCase();
+  // JSX can appear in any JS-family file except a TypeScript module, where a
+  // leading `<T>` is a type assertion or a generic.
+  const jsx = jsFamily && !/^\.[mc]?ts$/.test(lowerExt);
+  const tsx = lowerExt === ".tsx";
+  // No JSX element is tried before this offset: a failed attempt moves it to
+  // where the parse broke, so the text in between is never parsed twice.
+  let jsxFrom = 0;
+  const jsxFail = (at: number): number => {
+    if (at > jsxFrom) jsxFrom = at;
+    return -1;
+  };
+  // Next `</Name` per tag name, searched forward only (-1: none remains).
+  const closers = new Map<string, number>();
+  let closerMisses = 0;
+  const hasClosingTag = (name: string, from: number): boolean => {
+    let at = closers.get(name);
+    if (at === -1) return false;
+    if (at === undefined || at < from) {
+      at = src.indexOf(`</${name}`, from);
+      closers.set(name, at);
+      // Many unclosed "tags" means this is not JSX (generics, a DSL): stop trying.
+      if (at === -1 && ++closerMisses > JSX_MAX_CLOSER_MISSES) jsxFrom = n;
+    }
+    return at !== -1;
+  };
+
+  // The body of a template literal, from just past its backtick; `${ … }` holds code.
   const skipTemplate = (from: number): number => {
     let j = from;
     while (j < n) {
@@ -240,94 +264,227 @@ export function stripComments(src: string, ext: string): string {
       }
       if (d === "`") return j + 1;
       if (d === "$" && src[j + 1] === "{") {
-        templates.push(depth);
-        return j + 2;
+        j = scanCode(j + 2, true) + 1;
+        continue;
       }
       j++;
     }
     return n;
   };
 
-  let i = 0;
-  while (i < n) {
-    const c = src[i] as string;
-    const next = src[i + 1];
-    if (c === "/" && next === "/") {
-      const stop = eolFrom(i);
-      blank(i, stop);
-      i = stop;
-      continue;
+  /**
+   * The JSX element (or fragment) opening at the `<` at `i`: the index just
+   * past its closing tag, or -1 when the text is not a well-formed element —
+   * the caller then reads the `<` as an operator, as before. Element text is
+   * skipped as text (an apostrophe or a `//` there opens nothing), `{ … }`
+   * children and attribute values are scanned as code, and `/>` closes a tag
+   * whatever precedes it.
+   */
+  const jsxElement = (i: number): number => {
+    let j = i + 1;
+    let name = "";
+    if (src[j] !== ">") {
+      JSX_NAME_RE.lastIndex = j;
+      name = JSX_NAME_RE.exec(src)?.[0] ?? "";
+      if (!name) return -1;
+      j += name.length;
+      // `<T extends U>(x: T) => …`: a generic arrow function, not an element.
+      TSX_GENERIC_RE.lastIndex = j;
+      if (tsx && TSX_GENERIC_RE.test(src)) return jsxFail(j);
     }
-    if (c === "/" && next === "*") {
-      const end = src.indexOf("*/", i + 2);
-      // Not a comment: an unterminated `/*` (a scanner misread, or a syntax
-      // error) and, in JSX, a `/*` in element text — anything but whitespace
-      // or `{` before it on its line, without a close on that same line.
-      // Blanking those would erase every route down to the next `*/`.
-      const lineStart = src.lastIndexOf("\n", i) + 1;
-      const jsxText = syntax === "jsx" && !/^[\s{]*$/.test(src.slice(lineStart, i)) && (end === -1 || end > eolFrom(i));
-      if (end === -1 || jsxText) {
-        i += 2;
+    // Attributes, up to the `>` that ends the opening tag (or a `/>`).
+    for (;;) {
+      if (j >= n) return jsxFail(n);
+      const c = src[j] as string;
+      const code = src.charCodeAt(j);
+      if (isSpaceCode(code) || isJsxNameCode(code) || c === "=") {
+        j++;
+      } else if (c === ">") {
+        j++;
+        break;
+      } else if (c === "/" && src[j + 1] === ">") {
+        return j + 2;
+      } else if (c === "/" && src[j + 1] === "/") {
+        const stop = eolFrom(j);
+        blank(j, stop);
+        j = stop;
+      } else if (c === "/" && src[j + 1] === "*") {
+        const close = src.indexOf("*/", j + 2);
+        if (close === -1) return jsxFail(j);
+        blank(j, close + 2);
+        j = close + 2;
+      } else if (c === '"' || c === "'") {
+        // A JSX string attribute: no escapes, and it may span lines.
+        const close = src.indexOf(c, j + 1);
+        if (close === -1) return jsxFail(n);
+        j = close + 1;
+      } else if (c === "{") {
+        const close = scanCode(j + 1, true);
+        if (close >= n) return jsxFail(n);
+        j = close + 1;
+      } else {
+        return jsxFail(j);
+      }
+    }
+    if (!hasClosingTag(name, j)) return jsxFail(j);
+    // Children, up to this element's closing tag.
+    for (;;) {
+      while (j < n && src[j] !== "{" && src[j] !== "<") j++;
+      if (j >= n) return jsxFail(n);
+      if (src[j] === "{") {
+        const close = scanCode(j + 1, true);
+        if (close >= n) return jsxFail(n);
+        j = close + 1;
+      } else if (src[j + 1] === "/") {
+        const close = src.indexOf(">", j + 2);
+        if (close === -1) return jsxFail(n);
+        if (src.slice(j + 2, close).trim() !== name) return jsxFail(j);
+        return close + 1;
+      } else {
+        const close = jsxElement(j);
+        if (close === -1) return jsxFail(j);
+        j = close;
+      }
+    }
+  };
+
+  /**
+   * Scan code from `from`, blanking its comments. With `nested` (the inside of
+   * a template `${ … }` or a JSX `{ … }`) it stops at the `}` that closes the
+   * expression and returns its index; otherwise it runs to the end.
+   */
+  const scanCode = (from: number, nested: boolean): number => {
+    // The previous significant code char (`a` for an operand): decides whether
+    // a `/` opens a regex literal and a `<` a JSX element.
+    let last = "";
+    let depth = 0;
+    let i = from;
+    while (i < n) {
+      const c = src[i] as string;
+      const next = src[i + 1];
+      if (c === "/" && next === "/") {
+        const stop = eolFrom(i);
+        blank(i, stop);
+        i = stop;
         continue;
       }
-      blank(i, end + 2);
-      i = end + 2;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      if (syntax === "c" && c === '"' && (src[i - 1] === "@" || (src[i - 1] === "$" && src[i - 2] === "@"))) {
-        // C# verbatim string (`@"…"`, interpolated `$@"…"` / `@$"…"`): "" is
-        // an escaped quote, no backslash escapes — `@$"C:\dir\"` ends at its `"`.
-        let j = i + 1;
-        while (j < n && !(src[j] === '"' && src[j + 1] !== '"')) j += src[j] === '"' ? 2 : 1;
-        i = j + 1;
-      } else {
-        i = skipString(c, i, false);
-      }
-      last = "a";
-      continue;
-    }
-    if (c === "`") {
-      // Go raw string (no escapes) vs JS template literal.
-      i = syntax === "c" ? skipString("`", i, true, false) : skipTemplate(i + 1);
-      last = "a";
-      continue;
-    }
-    if (syntax === "js" || syntax === "jsx") {
-      if (c === "/" && regexLiteralAllowedAt(src, i, last)) {
-        let j = i + 1;
-        let inClass = false;
-        while (j < n && src[j] !== "\n") {
-          const d = src[j];
-          if (d === "\\") {
-            j += 2;
-            continue;
-          }
-          if (d === "[") inClass = true;
-          else if (d === "]") inClass = false;
-          else if (d === "/" && !inClass) break;
-          j++;
+      if (c === "/" && next === "*") {
+        const end = src.indexOf("*/", i + 2);
+        // Not a comment: an unterminated `/*` (a scanner misread, or a syntax
+        // error) and, in JSX, a `/*` in element text — anything but whitespace
+        // or `{` before it on its line, without a close on that same line.
+        // Blanking those would erase every route down to the next `*/`.
+        const lineStart = src.lastIndexOf("\n", i) + 1;
+        const jsxText = syntax === "jsx" && !/^[\s{]*$/.test(src.slice(lineStart, i)) && (end === -1 || end > eolFrom(i));
+        if (end === -1 || jsxText) {
+          i += 2;
+          continue;
         }
-        i = j + 1;
+        blank(i, end + 2);
+        i = end + 2;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        if (syntax === "c" && c === '"' && (src[i - 1] === "@" || (src[i - 1] === "$" && src[i - 2] === "@"))) {
+          // C# verbatim string (`@"…"`, interpolated `$@"…"` / `@$"…"`): "" is
+          // an escaped quote, no backslash escapes — `@$"C:\dir\"` ends at its `"`.
+          let j = i + 1;
+          while (j < n && !(src[j] === '"' && src[j + 1] !== '"')) j += src[j] === '"' ? 2 : 1;
+          i = j + 1;
+        } else {
+          i = skipString(c, i, false);
+        }
         last = "a";
         continue;
       }
-      if (c === "{") depth++;
-      else if (c === "}") {
-        if (templates.length && templates[templates.length - 1] === depth) {
-          templates.pop();
-          i = skipTemplate(i + 1);
+      if (c === "`") {
+        // Go raw string (no escapes) vs JS template literal.
+        i = syntax === "c" ? skipString("`", i, true, false) : skipTemplate(i + 1);
+        last = "a";
+        continue;
+      }
+      if (jsFamily) {
+        if (c === "/" && regexLiteralAllowedAt(src, i, last)) {
+          let j = i + 1;
+          let inClass = false;
+          while (j < n && src[j] !== "\n") {
+            const d = src[j];
+            if (d === "\\") {
+              j += 2;
+              continue;
+            }
+            if (d === "[") inClass = true;
+            else if (d === "]") inClass = false;
+            else if (d === "/" && !inClass) break;
+            j++;
+          }
+          i = j + 1;
           last = "a";
           continue;
         }
-        depth--;
+        if (c === "<" && jsx && i >= jsxFrom && jsxAllowedAt(src, i, last)) {
+          // Comments blanked inside an attempt that fails are restored.
+          const mark = ranges.length;
+          const end = jsxElement(i);
+          if (end !== -1) {
+            i = end;
+            last = "a";
+            continue;
+          }
+          ranges.length = mark;
+        }
+        if (c === "{") depth++;
+        else if (c === "}") {
+          if (nested && depth === 0) return i;
+          depth--;
+        }
       }
+      const code = src.charCodeAt(i);
+      if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 /* . */ ? "a" : c;
+      i++;
     }
-    const code = src.charCodeAt(i);
-    if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 /* . */ ? "a" : c;
-    i++;
+    return n;
+  };
+
+  try {
+    scanCode(0, false);
+  } catch (e) {
+    // Nesting deep enough to exhaust the stack is generated code, not a route
+    // table: such a file is left as it is.
+    if (!(e instanceof RangeError)) throw e;
+    return src;
   }
   return assemble();
+}
+
+// A JSX tag or attribute name: `div`, `Foo.Bar`, `svg:rect`, `data-id`.
+const JSX_NAME_RE = /[A-Za-z_$][\w$.:-]*/y;
+// What follows the name in `<T extends U>(x: T) => …`.
+const TSX_GENERIC_RE = /\s+extends\s/y;
+// After one of these (or a keyword that takes an operand) a `<` can open a JSX
+// element: an operand may start there, so it cannot be a comparison.
+const JSX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", ">"]);
+// Tag names with no closing tag anywhere before the stripper gives up on JSX.
+const JSX_MAX_CLOSER_MISSES = 64;
+
+/** Whether the `<` at `i` may open a JSX element: operand position, then a tag name or `>`. */
+function jsxAllowedAt(src: string, i: number, last: string): boolean {
+  const next = src[i + 1] ?? "";
+  if (next !== ">" && !/[A-Za-z_$]/.test(next)) return false;
+  return JSX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd());
+}
+
+/** `[\w$.:-]`: a char of a JSX tag or attribute name. */
+function isJsxNameCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 58) || // 0-9 :
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 || // _
+    code === 36 || // $
+    code === 45 || // -
+    code === 46 // .
+  );
 }
 
 /** `/\s/` on one UTF-16 unit, without a regex for the ASCII range. */
