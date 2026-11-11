@@ -1,6 +1,6 @@
-declare const ENGINE_VERSION = "2.31.16";
+declare const ENGINE_VERSION = "2.31.18";
 declare const SCHEMA_VERSION = 5;
-declare const EXTRACTOR_VERSION = 18;
+declare const EXTRACTOR_VERSION = 19;
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
 type Tier = 0 | 1 | 2;
@@ -619,14 +619,14 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.31.16/grammars-2.31.16.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.31.18/grammars-2.31.18.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
 }
 declare function resolveGrammarsPullTarget(): GrammarsPullTarget;
-declare function fetchGrammarsTarball(url: string, expectedSha256?: string): Promise<Uint8Array>;
-declare function fetchExpectedSha256(url: string): Promise<string>;
+declare function fetchGrammarsTarball(url: string, expectedSha256?: string, timeoutMs?: number): Promise<Uint8Array>;
+declare function fetchExpectedSha256(url: string, timeoutMs?: number): Promise<string>;
 declare function extractTarInto(rawTar: Uint8Array, destDir: string): string[];
 declare function extractGrammarsTarball(bytes: Uint8Array, destDir: string): string[];
 interface GrammarsPullResult {
@@ -638,6 +638,7 @@ interface GrammarsPullResult {
 }
 declare function pullGrammars(cacheDir: string, opts?: {
     onNote?: (msg: string) => void;
+    target?: GrammarsPullTarget;
 }): Promise<GrammarsPullResult>;
 
 interface WarmGrammarsResult {
@@ -748,6 +749,7 @@ interface ResolveContext {
     warnings: string[];
     jsMemo?: Map<string, Resolution>;
     pyMemo?: Map<string, Resolution>;
+    cRootMemo?: Map<string, string | null>;
     dirFilesMemo?: Map<string, string[]>;
 }
 declare function buildResolveContext(scan: RepoScan): ResolveContext;

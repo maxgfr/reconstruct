@@ -215,14 +215,14 @@ var EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.31.16";
+    ENGINE_VERSION = "2.31.18";
     SCHEMA_VERSION = 5;
-    EXTRACTOR_VERSION = 18;
+    EXTRACTOR_VERSION = 19;
   }
 });
 function sh(cmd, args2, opts = {}) {
   const env = opts.env ?? process.env;
-  const res = spawnSync2(cmd, args2, {
+  const res = spawnSync2(cmd, cmd === "git" ? [...GIT_SAFE_CONFIG, ...args2] : args2, {
     cwd: opts.cwd,
     input: opts.input,
     encoding: "utf8",
@@ -264,6 +264,13 @@ function clipInline(s, max) {
   if ((cut.match(/`/g)?.length ?? 0) % 2 === 1) cut = cut.replace(/`[^`]*$/, "");
   if (cut.lastIndexOf("[") > cut.lastIndexOf("]")) cut = cut.slice(0, cut.lastIndexOf("["));
   return cut.replace(/\s+$/, "") + "\u2026";
+}
+function errMessage(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+function shellQuote(s) {
+  if (s !== "" && !/[^A-Za-z0-9_\-./=@:]/.test(s)) return s;
+  return "'" + s.replace(/'/g, `'\\''`) + "'";
 }
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -346,7 +353,11 @@ function stemOf(term) {
   return t;
 }
 var GIT_LOCALE;
+var GIT_SAFE_CONFIG;
 var whichCache;
+var MAX_TIMER_MS;
+var clampTimerMs;
+var dirOf;
 var STOPWORDS;
 var NON_ASCII;
 var NON_WORD;
@@ -362,7 +373,11 @@ var init_util = __esm({
   "src/util.ts"() {
     "use strict";
     GIT_LOCALE = { LC_ALL: "C", LANGUAGE: "" };
+    GIT_SAFE_CONFIG = ["-c", "core.fsmonitor=false"];
     whichCache = /* @__PURE__ */ new Map();
+    MAX_TIMER_MS = 2147483647;
+    clampTimerMs = (ms) => Math.min(ms, MAX_TIMER_MS);
+    dirOf = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
     STOPWORDS = /* @__PURE__ */ new Set([
       "the",
       "a",
@@ -473,12 +488,148 @@ var init_util = __esm({
     UNICODE_SPLIT = /[^\p{L}\p{N}]+/u;
   }
 });
-function patternToRegExpSource(pattern) {
+function wildcardSource(tokens2) {
   let re = "";
+  for (const t of tokens2) {
+    if (t.kind === "lit") re += escapeRegExp(t.ch);
+    else if (t.kind === "one") re += "[^/]";
+    else if (t.kind === "star") re += "[^/]*";
+    else if (t.kind === "any") re += ".*";
+    else if (t.kind === "prefix") re += "(?:.*/)?";
+    else if (t.kind === "segments") re += "(?:[^/]+/)*";
+    else re += t.source;
+  }
+  return re;
+}
+function wildcardRegExp(tokens2, opts = {}) {
+  return new RegExp(`^${wildcardSource(tokens2)}${opts.dirPrefix ? "($|/)" : "$"}`);
+}
+function wildcardLinear(tokens2, opts = {}) {
+  const kinds2 = [];
+  const codes = [];
+  const classes = [];
+  const push = (kind, code = 0, cls) => {
+    kinds2.push(kind);
+    codes.push(code);
+    classes.push(cls);
+  };
+  for (const t of tokens2) {
+    if (t.kind === "lit") push(LIT, t.ch.charCodeAt(0));
+    else if (t.kind === "one") push(ONE);
+    else if (t.kind === "star") push(STAR);
+    else if (t.kind === "any") push(ANY);
+    else if (t.kind === "prefix") {
+      push(PREFIX_START);
+      push(PREFIX_INSIDE);
+    } else if (t.kind === "segments") {
+      push(SEG_BOUNDARY);
+      push(SEG_INSIDE);
+    } else push(CLASS, 0, new RegExp(`^(?:${t.source})$`));
+  }
+  const accept = kinds2.length;
+  const dirPrefix = opts.dirPrefix === true;
+  const close = (active) => {
+    for (let s = 0; s < accept; s++) {
+      if (!active[s]) continue;
+      const kind = kinds2[s];
+      if (kind === STAR || kind === ANY) active[s + 1] = 1;
+      else if (kind === PREFIX_START || kind === SEG_BOUNDARY) active[s + 2] = 1;
+    }
+  };
+  return (subject) => {
+    let active = new Uint8Array(accept + 1);
+    let next = new Uint8Array(accept + 1);
+    active[0] = 1;
+    close(active);
+    for (let i2 = 0; i2 < subject.length; i2++) {
+      const c2 = subject.charCodeAt(i2);
+      const slash = c2 === 47;
+      if (dirPrefix && slash && active[accept]) return true;
+      next.fill(0);
+      let alive = false;
+      for (let s = 0; s < accept; s++) {
+        if (!active[s]) continue;
+        const kind = kinds2[s];
+        let to = -1;
+        if (kind === LIT) {
+          if (c2 === codes[s]) to = s + 1;
+        } else if (kind === ONE) {
+          if (!slash) to = s + 1;
+        } else if (kind === STAR) {
+          if (!slash) to = s;
+        } else if (kind === ANY) {
+          if (!isLineTerminator(c2)) to = s;
+        } else if (kind === PREFIX_START || kind === PREFIX_INSIDE) {
+          const inside = kind === PREFIX_START ? s + 1 : s;
+          if (!isLineTerminator(c2)) to = inside;
+          if (slash) {
+            next[inside + 1] = 1;
+            alive = true;
+          }
+        } else if (kind === SEG_BOUNDARY) {
+          if (!slash) to = s + 1;
+        } else if (kind === SEG_INSIDE) {
+          to = slash ? s - 1 : s;
+        } else if (classes[s].test(subject[i2])) {
+          to = s + 1;
+        }
+        if (to !== -1) {
+          next[to] = 1;
+          alive = true;
+        }
+      }
+      if (!alive) return false;
+      close(next);
+      const swap = active;
+      active = next;
+      next = swap;
+    }
+    return active[accept] === 1;
+  };
+}
+function wildcardMatcher(tokens2, opts = {}) {
+  let unbounded = 0;
+  for (const t of tokens2) if (UNBOUNDED.has(t.kind)) unbounded++;
+  if (unbounded > MAX_REGEX_WILDCARDS) return wildcardLinear(tokens2, opts);
+  const re = wildcardRegExp(tokens2, opts);
+  return (subject) => re.test(subject);
+}
+var MAX_REGEX_WILDCARDS;
+var UNBOUNDED;
+var LIT;
+var ONE;
+var STAR;
+var ANY;
+var PREFIX_START;
+var PREFIX_INSIDE;
+var SEG_BOUNDARY;
+var SEG_INSIDE;
+var CLASS;
+var isLineTerminator;
+var init_wildcard = __esm({
+  "src/wildcard.ts"() {
+    "use strict";
+    init_util();
+    MAX_REGEX_WILDCARDS = 2;
+    UNBOUNDED = /* @__PURE__ */ new Set(["star", "any", "prefix", "segments"]);
+    LIT = 0;
+    ONE = 1;
+    STAR = 2;
+    ANY = 3;
+    PREFIX_START = 4;
+    PREFIX_INSIDE = 5;
+    SEG_BOUNDARY = 6;
+    SEG_INSIDE = 7;
+    CLASS = 8;
+    isLineTerminator = (c2) => c2 === 10 || c2 === 13 || c2 === 8232 || c2 === 8233;
+  }
+});
+function patternTokens(pattern) {
+  const tokens2 = [];
   for (let i2 = 0; i2 < pattern.length; i2++) {
     const c2 = pattern[i2];
     if (c2 === "\\" && i2 + 1 < pattern.length) {
-      re += escapeRegExp(pattern[++i2]);
+      tokens2.push({ kind: "lit", ch: pattern[++i2] });
     } else if (c2 === "*") {
       if (pattern[i2 + 1] === "*") {
         const atStart = i2 === 0 || pattern[i2 - 1] === "/";
@@ -487,32 +638,32 @@ function patternToRegExpSource(pattern) {
         const next = pattern[j + 1];
         if (atStart && next === "/") {
           i2 = j + 1;
-          re += "(?:[^/]+/)*";
+          tokens2.push({ kind: "segments" });
         } else if (atStart && next === void 0) {
           i2 = j;
-          re += ".*";
+          tokens2.push({ kind: "any" });
         } else {
           i2 = j;
-          re += "[^/]*";
+          tokens2.push({ kind: "star" });
         }
       } else {
-        re += "[^/]*";
+        tokens2.push({ kind: "star" });
       }
     } else if (c2 === "?") {
-      re += "[^/]";
+      tokens2.push({ kind: "one" });
     } else if (c2 === "[") {
       const cls = bracketClass(pattern, i2);
       if (cls) {
-        re += cls.source;
+        tokens2.push({ kind: "class", source: cls.source });
         i2 = cls.end;
       } else {
-        re += "\\[";
+        tokens2.push({ kind: "lit", ch: "[" });
       }
     } else {
-      re += escapeRegExp(c2);
+      tokens2.push({ kind: "lit", ch: c2 });
     }
   }
-  return re;
+  return tokens2;
 }
 function bracketClass(pattern, start2) {
   let j = start2 + 1;
@@ -574,11 +725,12 @@ function parseGitignore(content, baseRel, source) {
     if (!line2) continue;
     const anchored = line2.includes("/");
     if (line2.startsWith("/")) line2 = line2.slice(1);
-    const body2 = patternToRegExpSource(line2);
+    const tokens2 = patternTokens(line2);
+    const body2 = wildcardSource(tokens2);
     const reSource = anchored ? `^${prefix}${body2}$` : `^${prefix}(?:[^/]+/)*${body2}$`;
     try {
       const re = new RegExp(reSource);
-      const rule2 = { re, negated, dirOnly, test: fastMatcher(line2, body2, anchored, baseRel ? baseRel + "/" : "", re) };
+      const rule2 = { re, negated, dirOnly, test: fastMatcher(line2, tokens2, anchored, baseRel ? baseRel + "/" : "") };
       if (source !== void 0) Object.assign(rule2, { source, line: n + 1, pattern: written });
       rules.push(rule2);
     } catch {
@@ -596,12 +748,13 @@ function literalHead(pattern) {
   }
   return { head, whole: true };
 }
-function fastMatcher(pattern, body2, anchored, prefix, re) {
+function fastMatcher(pattern, tokens2, anchored, prefix) {
   if (anchored) {
     const { head: head2, whole: whole2 } = literalHead(pattern);
     const full = prefix + head2;
     if (whole2) return (rel2) => rel2 === full;
-    return (rel2) => rel2.startsWith(full) && re.test(rel2);
+    const matchBody = wildcardMatcher(tokens2);
+    return (rel2) => rel2.startsWith(full) && matchBody(rel2.slice(prefix.length));
   }
   const { head, whole } = literalHead(pattern);
   if (whole) return (rel2, base) => base === head && rel2.startsWith(prefix);
@@ -609,8 +762,8 @@ function fastMatcher(pattern, body2, anchored, prefix, re) {
     const tail = literalHead(pattern.slice(1));
     if (tail.whole) return (rel2, base) => base.endsWith(tail.head) && rel2.startsWith(prefix);
   }
-  const baseRe = new RegExp(`^${body2}$`);
-  return (rel2, base) => rel2.startsWith(prefix) && baseRe.test(base);
+  const matchBase = wildcardMatcher(tokens2);
+  return (rel2, base) => rel2.startsWith(prefix) && matchBase(base);
 }
 function isIgnored(rules, rel2, isDir) {
   const rule2 = decidingRule(rules, rel2, isDir);
@@ -630,6 +783,7 @@ var init_ignore = __esm({
   "src/ignore.ts"() {
     "use strict";
     init_util();
+    init_wildcard();
     POSIX_CLASSES = {
       alnum: "A-Za-z0-9",
       alpha: "A-Za-z",
@@ -1201,6 +1355,7 @@ function resolveBaseRef(dir, base) {
 }
 function diffFiles(dir, spec) {
   const out2 = [];
+  if (!diffable(spec)) return out2;
   const ns = sh("git", [...gitArgs(dir), "diff", "--no-color", "--relative", "-z", "-M", "--name-status", ...rangeArgs(spec)]);
   if (ns.ok) {
     const toks = ns.stdout.split("\0");
@@ -1249,6 +1404,7 @@ function diffFiles(dir, spec) {
 }
 function diffHunks(dir, spec) {
   const map = /* @__PURE__ */ new Map();
+  if (!diffable(spec)) return map;
   const res = sh("git", [
     ...gitArgs(dir),
     "diff",
@@ -1343,7 +1499,7 @@ function readHistory(dir, since) {
   }
   const args2 = [...gitArgs(dir), "log", "--no-color", "--no-renames", ...window2.args, "--pretty=format:%x1e", "--name-only", "-z", "--stdin"];
   if (prefix) args2.push("--full-history", "--full-diff", "--", ".");
-  const res = spawnSync22("git", args2, {
+  const res = spawnSync22("git", [...GIT_SAFE_CONFIG, ...args2], {
     input: revs.join("\n") + "\n",
     maxBuffer: LOG_MAX_BYTES,
     timeout: 6e5,
@@ -1462,6 +1618,7 @@ var GIT_CONFIG;
 var gitArgs;
 var optionLike;
 var rangeArgs;
+var diffable;
 var NO_COMMITS_REF;
 var C_ESCAPES;
 var LOG_MAX_BYTES;
@@ -1494,7 +1651,8 @@ var init_git = __esm({
     ];
     gitArgs = (dir) => ["-C", dir, ...GIT_CONFIG];
     optionLike = (ref2) => ref2.startsWith("-");
-    rangeArgs = (spec) => spec.staged ? ["--cached"] : [spec.mergeBase];
+    rangeArgs = (spec) => spec.staged ? ["--cached"] : ["--end-of-options", spec.mergeBase];
+    diffable = (spec) => spec.staged === true || typeof spec.mergeBase === "string" && !optionLike(spec.mergeBase);
     NO_COMMITS_REF = "(no commits)";
     C_ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
     LOG_MAX_BYTES = 1024 * 1024 * 1024;
@@ -1826,10 +1984,10 @@ function blankComments(src) {
         kept = i2;
         continue;
       }
-      if (next === STAR) {
+      if (next === STAR2) {
         out2 += src.slice(kept, i2);
         let run2 = 0;
-        while (i2 < n && !(src.charCodeAt(i2) === STAR && src.charCodeAt(i2 + 1) === SLASH)) {
+        while (i2 < n && !(src.charCodeAt(i2) === STAR2 && src.charCodeAt(i2 + 1) === SLASH)) {
           if (src.charCodeAt(i2) === NEWLINE) {
             out2 += " ".repeat(run2) + "\n";
             run2 = 0;
@@ -1935,7 +2093,7 @@ var BraceSpans;
 var EXT_LANG;
 var REEXPORT_EXTS;
 var SLASH;
-var STAR;
+var STAR2;
 var NEWLINE;
 var DQUOTE;
 var SQUOTE;
@@ -2122,7 +2280,7 @@ var init_common = __esm({
     };
     REEXPORT_EXTS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
     SLASH = 47;
-    STAR = 42;
+    STAR2 = 42;
     NEWLINE = 10;
     DQUOTE = 34;
     SQUOTE = 39;
@@ -2266,11 +2424,11 @@ function maskJs(src) {
         i2 = stop2;
         continue;
       }
-      if (next === STAR2) {
+      if (next === STAR3) {
         const close = src.indexOf("*/", i2 + 2);
         const end = close === -1 ? n : close + 2;
         let from = i2;
-        if (src.charCodeAt(i2 + 2) === STAR2) {
+        if (src.charCodeAt(i2 + 2) === STAR3) {
           JSDOC_IMPORT.lastIndex = 0;
           const body2 = src.slice(i2, end);
           for (let m; m = JSDOC_IMPORT.exec(body2); ) {
@@ -2385,14 +2543,14 @@ function maskBraced(src, lex2) {
       i2 = stop2;
       continue;
     }
-    if (c2 === SLASH2 && src.charCodeAt(i2 + 1) === STAR2) {
+    if (c2 === SLASH2 && src.charCodeAt(i2 + 1) === STAR3) {
       let j = i2 + 2;
       let depth = 1;
       while (j < n) {
-        if (src.charCodeAt(j) === STAR2 && src.charCodeAt(j + 1) === SLASH2) {
+        if (src.charCodeAt(j) === STAR3 && src.charCodeAt(j + 1) === SLASH2) {
           j += 2;
           if (--depth === 0) break;
-        } else if (lex2.nested && src.charCodeAt(j) === SLASH2 && src.charCodeAt(j + 1) === STAR2) {
+        } else if (lex2.nested && src.charCodeAt(j) === SLASH2 && src.charCodeAt(j + 1) === STAR3) {
           j += 2;
           depth++;
         } else j++;
@@ -2652,7 +2810,7 @@ var HASH;
 var DOLLAR;
 var SQUOTE2;
 var DQUOTE2;
-var STAR2;
+var STAR3;
 var SLASH2;
 var LBRACKET;
 var BACKSLASH2;
@@ -2723,7 +2881,7 @@ var init_imports = __esm({
     DOLLAR = 36;
     SQUOTE2 = 39;
     DQUOTE2 = 34;
-    STAR2 = 42;
+    STAR3 = 42;
     SLASH2 = 47;
     LBRACKET = 91;
     BACKSLASH2 = 92;
@@ -3669,8 +3827,8 @@ var init_classify = __esm({
     ]);
   }
 });
-function globToRegExp(glob) {
-  let re = "";
+function globTokens(glob) {
+  const tokens2 = [];
   for (let i2 = 0; i2 < glob.length; i2++) {
     const c2 = glob[i2];
     if (c2 === "*") {
@@ -3678,29 +3836,29 @@ function globToRegExp(glob) {
         i2++;
         if (glob[i2 + 1] === "/") {
           i2++;
-          re += "(?:.*/)?";
+          tokens2.push({ kind: "prefix" });
         } else {
-          re += ".*";
+          tokens2.push({ kind: "any" });
         }
       } else {
-        re += "[^/]*";
+        tokens2.push({ kind: "star" });
       }
     } else if (c2 === "?") {
-      re += "[^/]";
+      tokens2.push({ kind: "one" });
     } else {
-      re += escapeRegExp(c2);
+      tokens2.push({ kind: "lit", ch: c2 });
     }
   }
-  return new RegExp(`^${re}$`);
+  return tokens2;
 }
 function compileGlobs(globs) {
   if (!globs || globs.length === 0) return null;
-  const res = globs.map(globToRegExp);
-  return (rel2) => res.some((r) => r.test(rel2));
+  const matchers = globs.map(globMatcher);
+  return (rel2) => matchers.some((m) => m(rel2));
 }
 function compileDirGlobs(globs) {
   if (!globs || globs.length === 0) return null;
-  const compiled = globs.map((g) => g.split("/").map((seg) => seg.includes("**") ? null : globToRegExp(seg)));
+  const compiled = globs.map((g) => g.split("/").map((seg) => seg.includes("**") ? null : globMatcher(seg)));
   return (dir) => {
     const parts2 = dir.split("/");
     return compiled.some((segs) => {
@@ -3708,16 +3866,16 @@ function compileDirGlobs(globs) {
         const seg = segs[i2];
         if (seg === void 0) return false;
         if (seg === null) return true;
-        if (!seg.test(parts2[i2])) return false;
+        if (!seg(parts2[i2])) return false;
       }
       return parts2.length < segs.length;
     });
   };
 }
 function compileDirExcludes(globs) {
-  const whole = (globs ?? []).filter((g) => g.endsWith("/**") && g.length > 3).map((g) => globToRegExp(g.slice(0, -3)));
+  const whole = (globs ?? []).filter((g) => g.endsWith("/**") && g.length > 3).map((g) => globMatcher(g.slice(0, -3)));
   if (whole.length === 0) return null;
-  return (dir) => whole.some((r) => r.test(dir));
+  return (dir) => whole.some((m) => m(dir));
 }
 function compileGlobFilter(globs) {
   if (!globs || globs.length === 0) return null;
@@ -3725,10 +3883,12 @@ function compileGlobFilter(globs) {
   const exclude2 = compileGlobs(globs.filter((g) => g.startsWith("!")).map((g) => g.slice(1)));
   return (rel2) => (!include2 || include2(rel2)) && !exclude2?.(rel2);
 }
+var globMatcher;
 var init_glob = __esm({
   "src/glob.ts"() {
     "use strict";
-    init_util();
+    init_wildcard();
+    globMatcher = (glob) => wildcardMatcher(globTokens(glob));
   }
 });
 function stripCode(content) {
@@ -8423,8 +8583,13 @@ function readReceiver(node) {
     const name3 = type ? readTypeName(type) : void 0;
     return name3 && /^[A-Za-z_]\w*$/.test(name3) ? name3 : void 0;
   }
-  const name2 = obj ? readName(obj) : void 0;
-  return name2 && /^[A-Za-z_]\w*$/.test(name2) ? name2 : void 0;
+  const name2 = obj ? readName(obj) ?? (obj.namedChildren.length === 0 && RUBY_VARIABLE.test(obj.type) ? obj.text : void 0) : void 0;
+  return receiverName(name2);
+}
+function receiverName(name2) {
+  if (!name2) return void 0;
+  const bare = name2.replace(/^(?:#|@{1,2})/, "");
+  return /^[A-Za-z_$][\w$]*$/.test(bare) ? bare : void 0;
 }
 function readTypeName(node) {
   if (!node) return void 0;
@@ -8446,6 +8611,7 @@ function readTypeName(node) {
 var IDENT_LEAF;
 var COMMENT_NODE;
 var UNNAMED_CHAIN;
+var RUBY_VARIABLE;
 var TYPE_LEAF;
 var init_node = __esm({
   "src/ast/node.ts"() {
@@ -8453,6 +8619,7 @@ var init_node = __esm({
     IDENT_LEAF = /(^|_)(identifier|name|constant|word)$/;
     COMMENT_NODE = /(^|_)comment$/;
     UNNAMED_CHAIN = /* @__PURE__ */ new Set(["reference_declarator", "parenthesized_declarator"]);
+    RUBY_VARIABLE = /^(?:instance|class|global)_variable$/;
     TYPE_LEAF = /identifier|constant|(^|_)name$/;
   }
 });
@@ -11689,24 +11856,28 @@ async function runExtractWorker(input, post) {
   }
   post({ ready, records });
 }
+function workerBootstrap(engineUrl) {
+  return `const { parentPort, workerData } = require("node:worker_threads");
+const base = workerData.input;
+const post = (o) => parentPort.postMessage(o);
+const fail = (e) => post({ error: String(e) });
+import(${JSON.stringify(engineUrl)}).then(({ runExtractWorker }) =>
+  runExtractWorker({ ...base, jobs: [] }, post).then(() => {
+    parentPort.on("message", (m) => {
+      if (m.done) { parentPort.close(); return; }
+      runExtractWorker({ ...base, jobs: m.jobs }, post).catch(fail);
+    });
+  })
+).catch(fail);
+`;
+}
 async function extractInParallel(jobs, grammarKeys, count2, opts = {}) {
   if (count2 < 2 || jobs.length === 0) return void 0;
   const engineUrl = opts.engineUrl ?? resolveEngineUrl();
   if (!engineUrl) return void 0;
   const wanted = grammarKeys.filter((k) => grammarReady(k)).sort();
   const workers = Math.min(count2, jobs.length);
-  const bootstrap = `import { runExtractWorker } from ${JSON.stringify(engineUrl)};
-import { parentPort, workerData } from "node:worker_threads";
-const base = workerData.input;
-const post = (o) => parentPort.postMessage(o);
-const fail = (e) => post({ error: String(e) });
-runExtractWorker({ ...base, jobs: [] }, post).then(() => {
-  parentPort.on("message", (m) => {
-    if (m.done) { parentPort.close(); return; }
-    runExtractWorker({ ...base, jobs: m.jobs }, post).catch(fail);
-  });
-}).catch(fail);
-`;
+  const bootstrap = workerBootstrap(engineUrl);
   const out2 = /* @__PURE__ */ new Map();
   let next = 0;
   const takeBatch = () => {
@@ -13017,7 +13188,23 @@ function resolveJvm(fromRel, spec, ctx) {
 }
 function resolveC(fromRel, spec, ctx) {
   const fromDir = fromRel.includes("/") ? posix2.dirname(fromRel) : "";
-  const hit = firstExisting(ctx, [posix2.join(fromDir, spec), ...ctx.cIncludeRoots.map((r) => posix2.join(r, spec))]);
+  let hit = firstExisting(ctx, [posix2.join(fromDir, spec)]);
+  if (!hit) {
+    const memo2 = ctx.cRootMemo ??= /* @__PURE__ */ new Map();
+    let viaRoot = memo2.get(spec);
+    if (viaRoot === void 0) {
+      viaRoot = null;
+      for (const root of ctx.cIncludeRoots) {
+        const found = firstExisting(ctx, [posix2.join(root, spec)]);
+        if (found) {
+          viaRoot = found;
+          break;
+        }
+      }
+      memo2.set(spec, viaRoot);
+    }
+    hit = viaRoot ?? void 0;
+  }
   if (hit) return { kind: "resolved", target: hit };
   if (SYSTEM_HEADERS.has(spec) || SYSTEM_HEADER_DIR.test(spec)) return { kind: "external" };
   return { kind: "dangling", reason: "missing-include" };
@@ -13281,7 +13468,7 @@ var init_resolve = __esm({
 function isTestFile(rel2) {
   return TEST_FILE.test(rel2.split("/").pop());
 }
-function dirOf(rel2) {
+function dirOf2(rel2) {
   return rel2.includes("/") ? posix3.dirname(rel2) : ROOT_PATH;
 }
 function tierForPath(path) {
@@ -13309,7 +13496,7 @@ function summaryOf(path, members) {
 function buildModules(scan2) {
   const byDir = /* @__PURE__ */ new Map();
   for (const f of scan2.files) {
-    const dir = dirOf(f.rel);
+    const dir = dirOf2(f.rel);
     let list = byDir.get(dir);
     if (!list) byDir.set(dir, list = []);
     list.push(f);
@@ -13617,7 +13804,6 @@ function goParamCount(signature, name2) {
   return void 0;
 }
 function goImplementations(scan2) {
-  const dirOf82 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
   const types = /* @__PURE__ */ new Map();
   const typesByName = /* @__PURE__ */ new Map();
   const methods = /* @__PURE__ */ new Map();
@@ -13625,7 +13811,7 @@ function goImplementations(scan2) {
   const assertions = [];
   const goFiles = scan2.files.filter((f) => f.lang === "go" && !f.rel.endsWith("_test.go"));
   for (const f of goFiles) {
-    const dir = dirOf82(f.rel);
+    const dir = dirOf(f.rel);
     for (const s of f.symbols) {
       if (s.kind === "type" && !s.parent) {
         const key = `${dir}${SEP}${s.name}`;
@@ -13650,7 +13836,7 @@ function goImplementations(scan2) {
   const embeds = [];
   for (const f of goFiles) {
     for (const r of f.relations ?? []) {
-      if (r.kind === "extends" && /^\w+$/.test(r.to)) embeds.push([`${dirOf82(f.rel)}${SEP}${r.from}`, `${dirOf82(f.rel)}${SEP}${r.to}`]);
+      if (r.kind === "extends" && /^\w+$/.test(r.to)) embeds.push([`${dirOf(f.rel)}${SEP}${r.from}`, `${dirOf(f.rel)}${SEP}${r.to}`]);
     }
   }
   embeds.sort((a, b) => byStr(a[0], b[0]) || byStr(a[1], b[1]));
@@ -13682,8 +13868,8 @@ function goImplementations(scan2) {
       if (/[~|]/.test(line2) && !line2.includes("(")) known = false;
       if (!/^[\w.]+$/.test(line2)) continue;
       const dot = line2.lastIndexOf(".");
-      const embedded = dot === -1 ? types.get(`${dirOf82(iface.file)}${SEP}${line2}`) : void 0;
-      const inner = embedded && isInterface(embedded) ? methodSet(`${dirOf82(embedded.file)}${SEP}${embedded.name}`, embedded, seen) : void 0;
+      const embedded = dot === -1 ? types.get(`${dirOf(iface.file)}${SEP}${line2}`) : void 0;
+      const inner = embedded && isInterface(embedded) ? methodSet(`${dirOf(embedded.file)}${SEP}${embedded.name}`, embedded, seen) : void 0;
       if (!inner) known = false;
       else for (const [m, n] of inner) own.set(m, n);
     }
@@ -13712,7 +13898,7 @@ function goImplementations(scan2) {
       if (tkey === ikey) continue;
       const type = types.get(tkey);
       if (!type || isInterface(type)) continue;
-      if (internal && dirOf82(type.file) !== dirOf82(iface.file)) continue;
+      if (internal && dirOf(type.file) !== dirOf(iface.file)) continue;
       const have2 = methods.get(tkey);
       const covers = names.every((m) => {
         if (!have2.has(m)) return false;
@@ -13733,7 +13919,7 @@ function goImplementations(scan2) {
     return all.length === 1 ? all[0] : void 0;
   };
   for (const a of assertions) {
-    const dir = dirOf82(a.sym.file);
+    const dir = dirOf(a.sym.file);
     const iface = lookup(a.iface, dir);
     const type = lookup(a.type, dir);
     if (iface && type && isInterface(iface) && !isInterface(type)) add(type, iface, false);
@@ -13793,6 +13979,7 @@ var init_relations = __esm({
     init_sort();
     init_symref();
     init_walk();
+    init_util();
     SEP = "\0";
     CONTRACT_KINDS = /* @__PURE__ */ new Set(["interface", "trait", "protocol"]);
     TYPE_KINDS2 = /* @__PURE__ */ new Set([
@@ -13972,8 +14159,7 @@ function buildSymbolGraph(scan2, importPairs) {
 }
 function overridePairs(scan2, relations) {
   const langOf = new Map(scan2.files.map((f) => [f.rel, f.lang]));
-  const dirOf82 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
-  const typeKey = (name2, file) => familyOf(langOf.get(file) ?? "") === "go" ? `go${SEP2}${dirOf82(file)}${SEP2}${name2}` : `${file}${SEP2}${name2}`;
+  const typeKey = (name2, file) => familyOf(langOf.get(file) ?? "") === "go" ? `go${SEP2}${dirOf(file)}${SEP2}${name2}` : `${file}${SEP2}${name2}`;
   const members = /* @__PURE__ */ new Map();
   for (const f of scan2.files) {
     for (const s of f.symbols) {
@@ -14132,6 +14318,7 @@ var init_symbolgraph = __esm({
     init_sort();
     init_paths();
     init_symref();
+    init_util();
     SEP2 = "\0";
     REFERENCE_KINDS = /* @__PURE__ */ new Set(["reexport", "reexport-all", "default"]);
     METHOD_KINDS = /* @__PURE__ */ new Set(["method", "function", "def", "getter", "setter", "operator"]);
@@ -14212,7 +14399,7 @@ function dependentsIndex(edges, opts = {}) {
     if (e.dangling || !DEPENDS_KINDS.has(e.kind)) continue;
     if (opts.skipInferred && e.confidence === "inferred") continue;
     push(dependents, e.to, e);
-    if (opts.goPackages && e.kind === "import" && e.to.endsWith(".go")) push(packageImports, dirOf2(e.to), e);
+    if (opts.goPackages && e.kind === "import" && e.to.endsWith(".go")) push(packageImports, dirOf(e.to), e);
   }
   return { dependents, packageImports, goPackages: opts.goPackages === true };
 }
@@ -14220,12 +14407,19 @@ function closureOver(index, seeds, depth = Infinity) {
   const { dependents, packageImports, goPackages } = index;
   const depthOf = /* @__PURE__ */ new Map();
   const seen = new Set(seeds);
+  const packagesTaken = /* @__PURE__ */ new Set();
   let frontier = [...seeds];
   for (let d = 1; d <= depth && frontier.length; d++) {
     const next = [];
     for (const node of frontier) {
       let incoming = dependents.get(node) ?? [];
-      if (goPackages && isGoSource(node)) incoming = incoming.concat(packageImports.get(dirOf2(node)) ?? []);
+      if (goPackages && isGoSource(node)) {
+        const dir = dirOf(node);
+        if (!packagesTaken.has(dir)) {
+          packagesTaken.add(dir);
+          incoming = incoming.concat(packageImports.get(dir) ?? []);
+        }
+      }
       for (const e of incoming.slice().sort((a, b) => byStr(a.from, b.from))) {
         if (seen.has(e.from)) continue;
         seen.add(e.from);
@@ -14312,7 +14506,7 @@ function dependencyPath(graph, from, to, opts = {}) {
   const goPackage = /* @__PURE__ */ new Map();
   for (const rel2 of [...files].sort(byStr)) {
     if (!isGoSource(rel2)) continue;
-    const dir = dirOf2(rel2);
+    const dir = dirOf(rel2);
     const members = goPackage.get(dir);
     if (members) members.push(rel2);
     else goPackage.set(dir, [rel2]);
@@ -14322,7 +14516,7 @@ function dependencyPath(graph, from, to, opts = {}) {
     for (const e of graph.fileEdges) {
       if (e.dangling || !DEPENDS_KINDS.has(e.kind)) continue;
       if (!withInferred && e.confidence === "inferred") continue;
-      const targets = e.kind === "import" && isGoSource(e.to) && goPackage.get(dirOf2(e.to)) || [e.to];
+      const targets = e.kind === "import" && isGoSource(e.to) && goPackage.get(dirOf(e.to)) || [e.to];
       const list = out2.get(e.from) ?? out2.set(e.from, []).get(e.from);
       for (const t of targets) list.push([t, e.kind]);
     }
@@ -14355,7 +14549,6 @@ function dependencyPath(graph, from, to, opts = {}) {
 var DEPENDS_KINDS;
 var FIELDS;
 var adjacencyMemo;
-var dirOf2;
 var isGoSource;
 var EDGE_KINDS;
 var DEP_PATH_DEFAULT_DEPTH;
@@ -14365,10 +14558,10 @@ var init_traverse = __esm({
     "use strict";
     init_sort();
     init_paths();
+    init_util();
     DEPENDS_KINDS = /* @__PURE__ */ new Set(["import", "use", "call", "extends", "implements"]);
     FIELDS = 6;
     adjacencyMemo = /* @__PURE__ */ new WeakMap();
-    dirOf2 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
     isGoSource = (rel2) => rel2.endsWith(".go") && !rel2.endsWith("_test.go");
     EDGE_KINDS = ["import", "call", "use", "extends", "implements", "doc-link", "mention", "contains"];
     DEP_PATH_DEFAULT_DEPTH = 8;
@@ -15583,7 +15776,7 @@ function declaredType(signature, name2) {
   if (!signature.includes(name2)) return void 0;
   let re = declaredRe.get(name2);
   if (!re) {
-    re = new RegExp(`(?:^|[(,\\s])${name2}\\s*(?::\\s*["']?|\\s+[*&]?)\\s*(?:([A-Za-z_]\\w*)\\.)?(?:[A-Za-z_]\\w*\\.)*([A-Za-z_]\\w*)`);
+    re = new RegExp(`(?:^|[(,\\s])${escapeRegExp(name2)}\\s*(?::\\s*["']?|\\s+[*&]?)\\s*(?:([A-Za-z_]\\w*)\\.)?(?:[A-Za-z_]\\w*\\.)*([A-Za-z_]\\w*)`);
     if (declaredRe.size < 4096) declaredRe.set(name2, re);
   }
   const m = re.exec(signature);
@@ -15638,7 +15831,7 @@ function createBindScope(scan2, pairs, ctxIn) {
       for (const f of scan2.files) {
         const fam = familyOf(f.lang);
         if (!PACKAGE_DIR.has(fam) || f.kind !== "code") continue;
-        const key = `${fam}\0${dirOf3(f.rel)}`;
+        const key = `${fam}\0${dirOf(f.rel)}`;
         let list = pkgFiles.get(key);
         if (!list) pkgFiles.set(key, list = []);
         list.push(f);
@@ -15652,10 +15845,10 @@ function createBindScope(scan2, pairs, ctxIn) {
     if (!PACKAGE_DIR.has(family)) return null;
     let mates = mateMemo.get(f.rel);
     if (mates !== void 0) return mates;
-    const own = dirOf3(f.rel);
+    const own = dirOf(f.rel);
     const imported = /* @__PURE__ */ new Set();
     if (family === "go") {
-      for (const t of targetsOf.get(f.rel) ?? []) if (t.endsWith(".go") && dirOf3(t) !== own) imported.add(dirOf3(t));
+      for (const t of targetsOf.get(f.rel) ?? []) if (t.endsWith(".go") && dirOf(t) !== own) imported.add(dirOf(t));
     }
     mateMemo.set(f.rel, mates = { own, test: isGoTest(f.rel), imported });
     return mates;
@@ -15667,14 +15860,14 @@ function createBindScope(scan2, pairs, ctxIn) {
       if (dir === m.own ? m.test || !isGoTest(d.file) : m.imported.has(dir) && !isGoTest(d.file)) seen.add(d.file), out2.push(d);
     };
     if (group.list.length <= m.imported.size + 1) {
-      for (const d of group.list) take(d, dirOf3(d.file));
+      for (const d of group.list) take(d, dirOf(d.file));
       return;
     }
     let idx = byDirMemo.get(group);
     if (!idx) {
       idx = /* @__PURE__ */ new Map();
       for (const d of group.list) {
-        const dir = dirOf3(d.file);
+        const dir = dirOf(d.file);
         const list = idx.get(dir);
         if (list) list.push(d);
         else idx.set(dir, [d]);
@@ -15769,7 +15962,7 @@ function createBindScope(scan2, pairs, ctxIn) {
       for (const ref2 of f.refs) {
         if (ref2.kind !== "import") continue;
         const t = resolved(ref2.spec);
-        const dir = t === null ? void 0 : dirOf3(t);
+        const dir = t === null ? void 0 : dirOf(t);
         const local = explicit.get(ref2.spec) ?? (dir !== void 0 ? goPackageName(dir) : void 0) ?? goExternalName(ref2.spec);
         addModule(local, dir !== void 0 ? packageOf("go", dir).filter((m) => !isGoTest(m.rel)).map((m) => m.rel) : null);
       }
@@ -15840,7 +16033,7 @@ function createCallBinder(scan2, pairs, opts = {}) {
   const firstIndexed = (dir, names) => names.map((n) => dir ? `${dir}/${n}` : n).find(indexed);
   const crateRoot = (rel2, base) => {
     if (base === "lib.rs" || base === "main.rs") return true;
-    const dir = dirOf3(rel2);
+    const dir = dirOf(rel2);
     const parent = dir.slice(dir.lastIndexOf("/") + 1);
     return parent === "examples" || parent === "tests" || parent === "benches" || parent === "bin" && /(^|\/)src\/bin$/.test(dir);
   };
@@ -15850,12 +16043,12 @@ function createCallBinder(scan2, pairs, opts = {}) {
     if (crateRoot(rel2, base)) {
       if (receiver === "crate") found = rel2;
     } else if (receiver === "crate") {
-      for (let dir = dirOf3(rel2); !found; dir = dirOf3(dir)) {
+      for (let dir = dirOf(rel2); !found; dir = dirOf(dir)) {
         found = firstIndexed(dir, ["lib.rs", "main.rs"]);
         if (!dir) break;
       }
     } else {
-      const parent = dirOf3(base === "mod.rs" ? dirOf3(rel2) : rel2.slice(0, -".rs".length));
+      const parent = dirOf(base === "mod.rs" ? dirOf(rel2) : rel2.slice(0, -".rs".length));
       found = firstIndexed(parent, ["mod.rs", "lib.rs", "main.rs"]) ?? (parent && indexed(`${parent}.rs`) ? `${parent}.rs` : void 0);
     }
     return found === void 0 ? void 0 : [found];
@@ -15900,7 +16093,7 @@ function createCallBinder(scan2, pairs, opts = {}) {
   const tailMemo = /* @__PURE__ */ new Map();
   const isTail2 = (rel2) => {
     let t = tailMemo.get(rel2);
-    if (t === void 0) tailMemo.set(rel2, t = isTestPath(rel2) || tierForPath(dirOf3(rel2) || "(root)") === 2);
+    if (t === void 0) tailMemo.set(rel2, t = isTestPath(rel2) || tierForPath(dirOf(rel2) || "(root)") === 2);
     return t;
   };
   const forFile = (f) => {
@@ -15995,7 +16188,7 @@ function createCallBinder(scan2, pairs, opts = {}) {
       if (priv && (hiddenReach === "package" || hiddenReach === "import")) {
         const seen = new Set(out2.map((d) => d.file));
         for (const d of hiddenReach === "package" ? scope.reached(priv, f, name2) : importedDefs(priv, scope.targets(f.rel))) {
-          if (hiddenReach === "package" && dirOf3(d.file) !== dirOf3(f.rel)) continue;
+          if (hiddenReach === "package" && dirOf(d.file) !== dirOf(f.rel)) continue;
           if (d.file !== f.rel && !seen.has(d.file)) seen.add(d.file), out2.push(d);
         }
       }
@@ -16160,7 +16353,6 @@ var SELF_NAMES;
 var FUNCTION_KINDS2;
 var MAX_HOPS;
 var NO_ALIASES;
-var dirOf3;
 var isGoTest;
 var declaredRe;
 var aliasMemo;
@@ -16175,6 +16367,7 @@ var init_bind = __esm({
     init_modules();
     init_tests_map();
     init_sort();
+    init_util();
     REFERENCE_KINDS3 = /* @__PURE__ */ new Set(["reexport", "reexport-all", "default"]);
     STRICT = /* @__PURE__ */ new Set(["js", "go"]);
     SHAPED = /* @__PURE__ */ new Set(["go", "python"]);
@@ -16188,7 +16381,6 @@ var init_bind = __esm({
     FUNCTION_KINDS2 = /* @__PURE__ */ new Set(["function", "method", "def", "constructor", "operator"]);
     MAX_HOPS = 3;
     NO_ALIASES = { modules: /* @__PURE__ */ new Map(), names: /* @__PURE__ */ new Map() };
-    dirOf3 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
     isGoTest = (rel2) => rel2.endsWith("_test.go");
     declaredRe = /* @__PURE__ */ new Map();
     aliasMemo = /* @__PURE__ */ new WeakMap();
@@ -16377,8 +16569,8 @@ function buildGraph(scan2, ctx, modules, moduleOf, meta) {
   if (unique.size) {
     let targetsOf;
     const goImportsPackage = (from, target) => {
-      const dir = dirOf4(target);
-      for (const t of (targetsOf ??= importTargets(importPairs)).get(from) ?? []) if (dirOf4(t) === dir) return true;
+      const dir = dirOf(target);
+      for (const t of (targetsOf ??= importTargets(importPairs)).get(from) ?? []) if (dirOf(t) === dir) return true;
       return false;
     };
     const langOf = new Map(scan2.files.map((f) => [f.rel, f.lang]));
@@ -16397,7 +16589,7 @@ function buildGraph(scan2, ctx, modules, moduleOf, meta) {
       for (const [target, count2] of perTarget) {
         const pair = `${f.rel}|${target}`;
         if (importPairs.has(pair) || callPairs.has(pair)) continue;
-        if (go2 && target.endsWith(".go") && dirOf4(target) !== dirOf4(f.rel) && !goImportsPackage(f.rel, target)) continue;
+        if (go2 && target.endsWith(".go") && dirOf(target) !== dirOf(f.rel) && !goImportsPackage(f.rel, target)) continue;
         collect(fileEdgeMap, { from: f.rel, to: target, kind: "use", weight: Math.min(count2, 5) });
       }
     }
@@ -16499,7 +16691,6 @@ function buildGraph(scan2, ctx, modules, moduleOf, meta) {
     moduleEdges
   };
 }
-var dirOf4;
 var REFERENCE_KINDS4;
 var SEP3;
 var keyOf;
@@ -16512,7 +16703,7 @@ var init_graph = __esm({
     init_relations();
     init_derived();
     init_sort();
-    dirOf4 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
+    init_util();
     REFERENCE_KINDS4 = /* @__PURE__ */ new Set(["reexport", "reexport-all", "default"]);
     SEP3 = "\0";
     keyOf = (from, to, kind) => `${from}${SEP3}${to}${SEP3}${kind}`;
@@ -17340,25 +17531,23 @@ function tomlStringArray(body2, key) {
 function tomlString(body2, key) {
   return body2?.match(new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*["']([^"']+)["']`, "m"))?.[1];
 }
-function wsGlobToRegExp(pat) {
-  let re = "";
+function wsGlobMatcher(pat) {
+  const tokens2 = [];
   for (let i2 = 0; i2 < pat.length; i2++) {
     const c2 = pat[i2];
     if (c2 === "*") {
       if (pat[i2 + 1] === "*") {
-        re += ".*";
+        tokens2.push({ kind: "any" });
         i2++;
         if (pat[i2 + 1] === "/") i2++;
       } else {
-        re += "[^/]*";
+        tokens2.push({ kind: "star" });
       }
-    } else if ("\\^$.|?+()[]{}".includes(c2)) {
-      re += "\\" + c2;
     } else {
-      re += c2;
+      tokens2.push({ kind: "lit", ch: c2 });
     }
   }
-  return new RegExp(`^${re}($|/)`);
+  return wildcardMatcher(tokens2, { dirPrefix: true });
 }
 function probeNodePkg(root, dir, kind, warnings) {
   const path = join16(root, dir, "package.json");
@@ -17513,10 +17702,12 @@ function expandGlobDirs(root, pat) {
         for (const s of desc) next.add(s);
       }
     } else if (seg.includes("*")) {
-      const re = new RegExp(`^${seg.split("*").map(escapeRegExp).join("[^/]*")}$`);
+      const matchSeg = wildcardMatcher(
+        [...seg].map((ch) => ch === "*" ? { kind: "star" } : { kind: "lit", ch })
+      );
       for (const d of dirs) {
         for (const sub of subdirsOf(root, d)) {
-          if (re.test(sub.split("/").pop())) next.add(sub);
+          if (matchSeg(sub.split("/").pop())) next.add(sub);
         }
       }
     } else {
@@ -17617,11 +17808,11 @@ function detectCargoMembers(root, found, warnings) {
   if (!body2) return;
   const members = tomlStringArray(body2, "members");
   if (!members.length) return;
-  const excludes = tomlStringArray(body2, "exclude").map(wsGlobToRegExp);
+  const excludes = tomlStringArray(body2, "exclude").map(wsGlobMatcher);
   const candidates = /* @__PURE__ */ new Map();
   for (const pat of members) expandPattern(root, pat, candidates, "cargo", warnings);
   for (const [dir, pkg] of candidates) {
-    if (excludes.some((re) => re.test(dir))) continue;
+    if (excludes.some((excluded) => excluded(dir))) continue;
     if (!found.has(dir)) found.set(dir, pkg);
   }
 }
@@ -17684,11 +17875,11 @@ function detectUvMembers(root, found, warnings) {
   if (!body2) return;
   const members = tomlStringArray(body2, "members");
   if (!members.length) return;
-  const excludes = tomlStringArray(body2, "exclude").map(wsGlobToRegExp);
+  const excludes = tomlStringArray(body2, "exclude").map(wsGlobMatcher);
   const candidates = /* @__PURE__ */ new Map();
   for (const pat of members) expandPattern(root, pat, candidates, "uv", warnings);
   for (const [dir, pkg] of candidates) {
-    if (excludes.some((re) => re.test(dir))) continue;
+    if (excludes.some((excluded) => excluded(dir))) continue;
     if (!found.has(dir)) found.set(dir, pkg);
   }
 }
@@ -17914,9 +18105,9 @@ function detectWorkspaces(root) {
   if (npmPatterns.length) {
     const candidates = /* @__PURE__ */ new Map();
     for (const { pattern, kind } of npmPatterns) expandPattern(root, pattern, candidates, kind, warnings);
-    const negRes = negations.map(wsGlobToRegExp);
+    const negRes = negations.map(wsGlobMatcher);
     for (const [dir, pkg] of candidates) {
-      if (negRes.some((re) => re.test(dir))) continue;
+      if (negRes.some((negated) => negated(dir))) continue;
       found.set(dir, pkg);
     }
   }
@@ -17934,13 +18125,22 @@ function detectWorkspaces(root) {
     const edges = edgesFor(root, pkg, byName, byDir, accessors, warnings);
     if (edges.length) pkg.dependsOn = edges.sort(byStr);
   }
-  const byDepth = [...packages].sort((a, b) => b.dir.length - a.dir.length);
+  const packageAt2 = new Map(packages.map((p) => [p.dir, p]));
+  const packageOf = (rel2) => {
+    for (let dir = rel2; ; ) {
+      const hit = packageAt2.get(dir);
+      if (hit) return hit;
+      const slash = dir.lastIndexOf("/");
+      if (slash === -1) return void 0;
+      dir = dir.slice(0, slash);
+    }
+  };
   return {
     packages,
     cycle: findCycle(packages),
     topoOrder: topoOrder(packages),
     warnings: [...new Set(warnings)].sort(byStr),
-    packageOf: (rel2) => byDepth.find((p) => rel2 === p.dir || rel2.startsWith(p.dir + "/"))
+    packageOf
   };
 }
 function ownPomVersion(pom) {
@@ -18030,6 +18230,7 @@ var init_workspaces = __esm({
     init_resolve();
     init_sort();
     init_util();
+    init_wildcard();
     WS_SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "dist", "build", "target", "coverage"]);
     MAX_RECURSE_DEPTH = 4;
     unquoteYaml = (s) => s.trim().replace(/^(["'])(.*)\1$/, "$2").trim();
@@ -18876,7 +19077,8 @@ function jsBackend(root, re, opts, keep, max, deadline) {
     gitignore: opts.gitignore,
     ignoreDirs: opts.ignoreDirs,
     maxFileBytes: opts.maxFileBytes,
-    trackedBuildDirs: false
+    trackedBuildDirs: false,
+    filter: scanPathFilter(root, { scope: opts.scope })
   });
   const files = walked.files.filter((f) => !keep || keep(f.rel)).map((f) => [f.rel, f.abs]).sort((a, b) => byStr(a[0], b[0]));
   const job = {
@@ -19029,7 +19231,7 @@ function loadEmbedModel(dir) {
   try {
     raw = JSON.parse(readFileSync11(path, "utf8"));
   } catch (e) {
-    throw new Error(`embed model: ${path} is not valid JSON (${e instanceof Error ? e.message : String(e)})`);
+    throw new Error(`embed model: ${path} is not valid JSON (${errMessage(e)})`);
   }
   return parseEmbedModel(raw, path);
 }
@@ -19039,7 +19241,7 @@ function tryLoadEmbedModel(dir, load = loadEmbedModel) {
     const model = load(dir);
     return model ? { model } : {};
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return { error: errMessage(e) };
   }
 }
 function resolveEmbedPullUrl() {
@@ -19047,8 +19249,8 @@ function resolveEmbedPullUrl() {
   if (env && env.trim()) return { url: env.trim() };
   return { url: DEFAULT_EMBED_URL, sha256: EMBED_ASSET_SHA256 };
 }
-async function fetchEmbedModel(url, expectedSha256) {
-  const res = await fetch(url);
+async function fetchEmbedModel(url, expectedSha256, timeoutMs = EMBED_DOWNLOAD_TIMEOUT_MS) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
   const body2 = await res.text();
   if (expectedSha256) {
@@ -19063,13 +19265,16 @@ var EMBED_VERSION;
 var DEFAULT_EMBED_DIRNAME;
 var DEFAULT_EMBED_URL;
 var EMBED_ASSET_SHA256;
+var EMBED_DOWNLOAD_TIMEOUT_MS;
 var init_model = __esm({
   "src/embed/model.ts"() {
     "use strict";
+    init_util();
     EMBED_VERSION = 3;
     DEFAULT_EMBED_DIRNAME = "models";
     DEFAULT_EMBED_URL = "https://github.com/maxgfr/codeindex/releases/download/embed-model-v1/model.json";
     EMBED_ASSET_SHA256 = "163ad053eab4e9a80d421ed4164f32292c83290f02fbbe6fe4b9b1cd6ea18d34";
+    EMBED_DOWNLOAD_TIMEOUT_MS = 6e5;
   }
 });
 function basicTokenize(text) {
@@ -19407,9 +19612,15 @@ function healthzUrl(base) {
   return stripTrailingSlash(base).replace(/\/embed$/, "") + "/healthz";
 }
 function resolveTimeout(opts) {
-  if (typeof opts.timeoutMs === "number") return opts.timeoutMs;
+  if (typeof opts.timeoutMs === "number") return clampTimerMs(opts.timeoutMs);
   const env = Number(process.env.CODEINDEX_EMBED_TIMEOUT_MS);
-  return Number.isFinite(env) && env > 0 ? env : 3e4;
+  return Number.isFinite(env) && env > 0 ? clampTimerMs(env) : 3e4;
+}
+function capText(text) {
+  if (text.length <= ENDPOINT_MAX_TEXT_CHARS) return text;
+  const last = text.charCodeAt(ENDPOINT_MAX_TEXT_CHARS - 1);
+  const end = last >= 55296 && last <= 56319 ? ENDPOINT_MAX_TEXT_CHARS - 1 : ENDPOINT_MAX_TEXT_CHARS;
+  return text.slice(0, end);
 }
 async function embedViaEndpoint(texts, opts = {}) {
   const base = resolveEmbedEndpoint(opts);
@@ -19421,7 +19632,7 @@ async function embedViaEndpoint(texts, opts = {}) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...opts.headers ?? {} },
-      body: JSON.stringify({ texts }),
+      body: JSON.stringify({ texts: texts.map(capText) }),
       signal: controller.signal
     });
     if (!res.ok) throw new Error(`embedding endpoint ${url} returned HTTP ${res.status}`);
@@ -19505,14 +19716,17 @@ async function buildEndpointIndex(scan2, opts = {}) {
   });
   return { embedVersion: EMBED_VERSION, modelId, dim, records };
 }
+var ENDPOINT_MAX_TEXT_CHARS;
 var CANARY;
 var init_endpoint = __esm({
   "src/embed/endpoint.ts"() {
     "use strict";
     init_hash();
+    init_util();
     init_encode();
     init_model();
     init_embed();
+    ENDPOINT_MAX_TEXT_CHARS = 8192;
     CANARY = "codeindex endpoint fingerprint: parse the request, retry on timeout";
   }
 });
@@ -19795,7 +20009,7 @@ function onboardBrief(scan2, graph, opts = {}) {
   try {
     writeMemory(scan2.root, memoryName, brief);
   } catch (e) {
-    return { brief, memoryError: `not saved as the ${memoryName} memory: ${e instanceof Error ? e.message : String(e)}` };
+    return { brief, memoryError: `not saved as the ${memoryName} memory: ${errMessage(e)}` };
   }
   return { brief, memory: memoryName };
 }
@@ -19810,6 +20024,7 @@ var init_onboard = __esm({
     init_git();
     init_memory();
     init_sort();
+    init_util();
     README_NAMES = ["README.md", "README.markdown", "README.rst", "README.txt", "README"];
     MIN_HOTSPOT_COMMITS = 10;
   }
@@ -19891,7 +20106,7 @@ function loadLspConfig(repo, trust = {}) {
   try {
     payload = JSON.parse(readFileSync13(path, "utf8"));
   } catch (e) {
-    throw new Error(`${path}: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`${path}: ${errMessage(e)}`);
   }
   return parseLspConfig(payload);
 }
@@ -19899,16 +20114,16 @@ function serverForLang(config, lang) {
   return config.servers.find((s) => s.languages.includes(lang));
 }
 function timeoutFor(server) {
-  return positiveEnv("CODEINDEX_LSP_TIMEOUT_MS") ?? server.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
+  return clampTimerMs(positiveEnv("CODEINDEX_LSP_TIMEOUT_MS") ?? server.timeoutMs ?? DEFAULT_TIMEOUT_MS2);
 }
 function startupTimeoutFor(server) {
-  return positiveEnv("CODEINDEX_LSP_STARTUP_TIMEOUT_MS") ?? server.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
+  return clampTimerMs(positiveEnv("CODEINDEX_LSP_STARTUP_TIMEOUT_MS") ?? server.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS);
 }
 function positiveEnv(name2) {
   const raw = process.env[name2];
   if (raw === void 0) return void 0;
   const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : void 0;
+  return Number.isFinite(value) && value > 0 ? clampTimerMs(value) : void 0;
 }
 var LSP_CONFIG_NAME;
 var LSP_CONFIG_DIR;
@@ -19918,6 +20133,7 @@ var DEFAULT_STARTUP_TIMEOUT_MS;
 var init_config2 = __esm({
   "src/lsp/config.ts"() {
     "use strict";
+    init_util();
     LSP_CONFIG_NAME = "lsp.json";
     LSP_CONFIG_DIR = ".codeindex";
     LSP_TRUST_HINT = "a repository's lsp.json names commands to run, so it is read only with --trust-lsp-config or CODEINDEX_TRUST_LSP_CONFIG=1";
@@ -20018,7 +20234,7 @@ async function annotateWithLsp(scan2, name2, statik, session, serverId, language
       lsp: {
         server: serverId,
         ok: false,
-        reason: e instanceof Error ? e.message : String(e),
+        reason: errMessage(e),
         refs: refs.sort(refOrder),
         agreement: agreementOf(refs, statik)
       }
@@ -20043,6 +20259,7 @@ var init_refs = __esm({
   "src/lsp/refs.ts"() {
     "use strict";
     init_sort();
+    init_util();
     IDENT_CHAR = /[\p{L}\p{N}_$]/u;
     DECLARATION_WORDS = /* @__PURE__ */ new Set([
       "abstract",
@@ -20214,6 +20431,7 @@ function relFromUri(root, uri) {
     return void 0;
   }
   if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
+  path = withoutDotSegments(path);
   const base = root.replace(/\\/g, "/").replace(/\/+$/, "");
   const windows = /^[A-Za-z]:/.test(base) || base.startsWith("//");
   const comparablePath = windows ? path.toLowerCase() : path;
@@ -20221,6 +20439,17 @@ function relFromUri(root, uri) {
   if (comparablePath === comparableBase) return "";
   if (!comparablePath.startsWith(`${comparableBase}/`)) return void 0;
   return path.slice(base.length + 1);
+}
+function withoutDotSegments(path) {
+  if (!/(?:^|\/)\.\.?(?:\/|$)/.test(path)) return path;
+  const lead = /^\/*/.exec(path)[0];
+  const kept = [];
+  for (const segment of path.slice(lead.length).split("/")) {
+    if (segment === ".") continue;
+    if (segment === "..") kept.pop();
+    else kept.push(segment);
+  }
+  return lead + kept.join("/");
 }
 function locationsToRefs(root, raw) {
   const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
@@ -20259,8 +20488,8 @@ function withServerError(message, transport) {
   return detail && !message.includes(detail) ? `${message}: ${detail}` : message;
 }
 async function openLspSession(transport, options) {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT;
-  const startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT;
+  const timeoutMs = clampTimerMs(options.timeoutMs ?? DEFAULT_TIMEOUT);
+  const startupTimeoutMs = clampTimerMs(options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT);
   const framer = createFramer();
   const pending = /* @__PURE__ */ new Map();
   const open = /* @__PURE__ */ new Set();
@@ -20275,8 +20504,26 @@ async function openLspSession(transport, options) {
     }
     pending.clear();
   };
+  const answerServerRequest = (message) => {
+    if (dead) return;
+    const reply = (body2) => {
+      transport.write(encodeMessage({ jsonrpc: "2.0", id: message.id, ...body2 }));
+    };
+    if (message.method === "workspace/configuration") {
+      const items = message.params?.items;
+      reply({ result: Array.isArray(items) ? items.map(() => null) : [] });
+    } else if (ACKNOWLEDGED_SERVER_REQUESTS.has(message.method)) {
+      reply({ result: null });
+    } else {
+      reply({ error: { code: -32601, message: `method not found: ${message.method}` } });
+    }
+  };
   transport.onData((chunk) => {
     for (const message of framer.push(chunk)) {
+      if (typeof message.method === "string") {
+        if (message.id !== void 0) answerServerRequest(message);
+        continue;
+      }
       if (typeof message.id !== "number") continue;
       const waiter = pending.get(message.id);
       if (!waiter) continue;
@@ -20398,10 +20645,12 @@ var LspTimeout;
 var LspIncomingCallsError;
 var DEFAULT_TIMEOUT;
 var DEFAULT_STARTUP_TIMEOUT;
+var ACKNOWLEDGED_SERVER_REQUESTS;
 var init_client = __esm({
   "src/lsp/client.ts"() {
     "use strict";
     init_protocol();
+    init_util();
     LspTimeout = class extends Error {
       constructor(method, ms) {
         super(`${method} exceeded ${ms}ms`);
@@ -20410,7 +20659,7 @@ var init_client = __esm({
     };
     LspIncomingCallsError = class extends Error {
       constructor(error, calls) {
-        super(error instanceof Error ? error.message : String(error), { cause: error });
+        super(errMessage(error), { cause: error });
         this.calls = calls;
         this.name = "LspIncomingCallsError";
       }
@@ -20418,6 +20667,12 @@ var init_client = __esm({
     };
     DEFAULT_TIMEOUT = 5e3;
     DEFAULT_STARTUP_TIMEOUT = 15e3;
+    ACKNOWLEDGED_SERVER_REQUESTS = /* @__PURE__ */ new Set([
+      "client/registerCapability",
+      "client/unregisterCapability",
+      "window/workDoneProgress/create",
+      "window/showMessageRequest"
+    ]);
   }
 });
 function callersAgreement(calls, statik) {
@@ -20448,7 +20703,7 @@ async function collectIncomingCalls(scan2, defs, session, languageId) {
     return { calls: uniqueIncomingCalls(calls) };
   } catch (error) {
     if (error instanceof LspIncomingCallsError) calls.push(...error.calls);
-    return { calls: uniqueIncomingCalls(calls), reason: error instanceof Error ? error.message : String(error) };
+    return { calls: uniqueIncomingCalls(calls), reason: errMessage(error) };
   }
 }
 var init_callers2 = __esm({
@@ -20458,6 +20713,7 @@ var init_callers2 = __esm({
     init_client();
     init_protocol();
     init_refs();
+    init_util();
   }
 });
 function spawnLspTransport(server, cwd) {
@@ -20570,7 +20826,7 @@ async function openServer(server, root) {
     return { ok: true, session, transport };
   } catch (e) {
     transport.close();
-    return { ok: false, reason: withServerError(e instanceof Error ? e.message : String(e), transport) };
+    return { ok: false, reason: withServerError(errMessage(e), transport) };
   }
 }
 function scanStamp(scan2) {
@@ -20624,7 +20880,7 @@ var init_pool2 = __esm({
       hooked = false;
       closed = false;
       constructor(options = {}) {
-        this.idleMs = options.idleMs ?? idleFromEnv() ?? DEFAULT_IDLE_MS;
+        this.idleMs = clampTimerMs(options.idleMs ?? idleFromEnv() ?? DEFAULT_IDLE_MS);
         this.open = options.open ?? openServer;
       }
       /** Live sessions, for tests and status. */
@@ -20774,7 +21030,7 @@ async function referencesWithLsp(scan2, repo, name2, statik, options = {}) {
   try {
     config = loadLspConfig(repo, options);
   } catch (e) {
-    return { ...statik, lsp: lspUnavailable("(config)", e instanceof Error ? e.message : String(e)) };
+    return { ...statik, lsp: lspUnavailable("(config)", errMessage(e)) };
   }
   if (!config) {
     const ignored = resolveLspConfigPath(repo, options).ignored;
@@ -20833,7 +21089,7 @@ async function callersWithLsp(scan2, repo, name2, statik, options = {}) {
   try {
     config = loadLspConfig(repo, options);
   } catch (error) {
-    return { ...statik, lsp: callersUnavailable("(config)", error instanceof Error ? error.message : String(error)) };
+    return { ...statik, lsp: callersUnavailable("(config)", errMessage(error)) };
   }
   if (!config) {
     const ignored = resolveLspConfigPath(repo, options).ignored;
@@ -20950,13 +21206,13 @@ function findOrphans(graph) {
   const connectedPackages = /* @__PURE__ */ new Set();
   for (const f of graph.files) {
     if (!PACKAGE_DIR_LANGS.has(f.lang)) continue;
-    if (f.degIn > 0 || f.degOut > 0 && !f.testFile) connectedPackages.add(`${f.lang}\0${dirOf6(f.rel)}`);
+    if (f.degIn > 0 || f.degOut > 0 && !f.testFile) connectedPackages.add(`${f.lang}\0${dirOf(f.rel)}`);
   }
   const out2 = [];
   for (const f of graph.files) {
     if (f.fileKind !== "code" || f.degIn !== 0 || f.degOut !== 0) continue;
     if (f.testFile || !importable.has(f.lang) || isEntrypointLike(f.rel)) continue;
-    if (PACKAGE_DIR_LANGS.has(f.lang) && connectedPackages.has(`${f.lang}\0${dirOf6(f.rel)}`)) continue;
+    if (PACKAGE_DIR_LANGS.has(f.lang) && connectedPackages.has(`${f.lang}\0${dirOf(f.rel)}`)) continue;
     out2.push(f.rel);
   }
   return out2;
@@ -20986,7 +21242,7 @@ function parseRulesText(text, source) {
   try {
     return parseRules(payload);
   } catch (e) {
-    throw new Error(`rules config ${source}: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`rules config ${source}: ${errMessage(e)}`);
   }
 }
 function parseRules(input) {
@@ -21207,13 +21463,13 @@ var LITERALS_KEYS;
 var GATED_TIERS;
 var ENTRYPOINT_STEMS;
 var PACKAGE_DIR_LANGS;
-var dirOf6;
 var init_rules = __esm({
   "src/rules.ts"() {
     "use strict";
     init_glob();
     init_literals2();
     init_sort();
+    init_util();
     EDGE_KIND_TABLE = {
       contains: true,
       "doc-link": true,
@@ -21254,11 +21510,10 @@ var init_rules = __esm({
       "manage"
     ]);
     PACKAGE_DIR_LANGS = /* @__PURE__ */ new Set(["go", "java", "kotlin", "scala"]);
-    dirOf6 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
   }
 });
 function isTail(rel2) {
-  return tierForPath(dirOf7(rel2) || "(root)") === 2 || /(^|\/)testdata\//.test(rel2);
+  return tierForPath(dirOf(rel2) || "(root)") === 2 || /(^|\/)testdata\//.test(rel2);
 }
 function isCallable(s) {
   if (CALLABLE_KINDS2.has(s.kind)) return true;
@@ -21497,7 +21752,7 @@ function libraryApi(scan2, ctx) {
   const mainDirs = /* @__PURE__ */ new Set();
   for (const f of scan2.files) {
     if (f.lang === "go" && !f.rel.endsWith("_test.go") && f.symbols.some((s) => s.name === "main" && !s.parent && s.kind === "function")) {
-      mainDirs.add(dirOf7(f.rel));
+      mainDirs.add(dirOf(f.rel));
     }
   }
   const libraryDirs = [];
@@ -21506,7 +21761,7 @@ function libraryApi(scan2, ctx) {
     if (base !== "build.gradle" && base !== "build.gradle.kts" && base !== "pom.xml") continue;
     const text = readText(join23(scan2.root, f.rel));
     const published = base === "pom.xml" ? /<distributionManagement>|maven-deploy-plugin|central-publishing-maven-plugin|nexus-staging-maven-plugin/.test(text) : /\bjava-library\b|\bmaven-publish\b|com\.vanniktech\.maven\.publish/.test(text);
-    if (published) libraryDirs.push(dirOf7(f.rel));
+    if (published) libraryDirs.push(dirOf(f.rel));
   }
   const under = (rel2, dir) => !dir || rel2.startsWith(dir + "/");
   for (const f of scan2.files) {
@@ -21515,7 +21770,7 @@ function libraryApi(scan2, ctx) {
       if (f.rel.endsWith("_test.go")) continue;
       const mod = ctx.goModules.find((g) => under(f.rel, g.dir));
       if (!mod) continue;
-      const dir = dirOf7(f.rel);
+      const dir = dirOf(f.rel);
       const inModule = mod.dir ? dir.slice(mod.dir.length + 1) : dir;
       if (mainDirs.has(dir) || /(^|\/)internal(\/|$)/.test(inModule)) continue;
       for (const s of f.symbols) if (s.exported) keys.push(`${s.name}${SEP4}${s.file}`);
@@ -21531,7 +21786,7 @@ function manifestEntries(scan2, ctx, byRel) {
   const isCode2 = (rel2) => byRel.get(rel2)?.kind === "code";
   for (const f of scan2.files) {
     const base = f.rel.slice(f.rel.lastIndexOf("/") + 1);
-    const dir = dirOf7(f.rel);
+    const dir = dirOf(f.rel);
     if (base === "package.json") {
       const pkg = tolerantJsonParse(readText(join23(scan2.root, f.rel)));
       if (!pkg || typeof pkg !== "object") continue;
@@ -21584,7 +21839,6 @@ var CONTAINER_KINDS2;
 var ENTRY_BASENAME;
 var IDENT_VISIBLE;
 var SEP4;
-var dirOf7;
 var JVM_LANGS;
 var init_deadcode = __esm({
   "src/deadcode.ts"() {
@@ -21599,6 +21853,7 @@ var init_deadcode = __esm({
     init_walk();
     init_sort();
     init_complexity();
+    init_util();
     REFERENCE_KINDS8 = /* @__PURE__ */ new Set(["reexport", "reexport-all", "default"]);
     CALLABLE_KINDS2 = /* @__PURE__ */ new Set(["function", "method", "def", "constructor", "operator", "class", "macro"]);
     FN_INITIALIZER = /^[\w$]+\s*(?::[^=]*)?=\s*(?:async\s+)?(?:function\b|\(|[\w$]+\s*=>)/;
@@ -21607,7 +21862,6 @@ var init_deadcode = __esm({
     ENTRY_BASENAME = /(^|\/)(index|main|cli|mod|lib|__main__)\.[a-z]+$/;
     IDENT_VISIBLE = /^[A-Za-z_]\w{4,}$/;
     SEP4 = "\0";
-    dirOf7 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
     JVM_LANGS = /* @__PURE__ */ new Set(["java", "kotlin", "scala"]);
   }
 });
@@ -22595,9 +22849,6 @@ function getArtifacts(repo, opts = {}, walked, prepared) {
   if (entry2) return entry2.arts ??= entry2.loadArtifacts?.() ?? buildArtifactsFromScan(scan2, opts);
   return buildArtifactsFromScan(scan2, opts);
 }
-async function warmGrammarsForRepo(repo) {
-  await warmGrammarsForWalk(walk(repo, {}));
-}
 async function warmGrammarsForWalk(walked) {
   await ensureGrammars(grammarKeysForExts(walked.files.map((f) => f.ext)));
 }
@@ -22612,7 +22863,6 @@ var init_session = __esm({
     init_scan();
     init_pool();
     init_preload();
-    init_walk();
     init_loader();
     init_model();
     init_embed();
@@ -22641,7 +22891,7 @@ function hintWatch(repo, warn) {
       sessionInvalidate(repo);
     });
   } catch (error) {
-    warn(`MCP watcher unavailable (${error instanceof Error ? error.message : String(error)}); using freshness scans`);
+    warn(`MCP watcher unavailable (${errMessage(error)}); using freshness scans`);
   }
   return {
     walk: async () => ({ walked: walk(repo, {}), reused: false }),
@@ -22656,6 +22906,7 @@ var init_watch = __esm({
     "use strict";
     init_walk();
     init_session();
+    init_util();
     MAX_WATCHED_DIRS = 8192;
     BARRIER_TIMEOUT_MS = 2e3;
     DirWatch = class {
@@ -22732,7 +22983,7 @@ var init_watch = __esm({
           return barrier;
         } catch (error) {
           if (dir) rmSync5(dir, { recursive: true, force: true });
-          this.disable(error instanceof Error ? error.message : String(error));
+          this.disable(errMessage(error));
           return null;
         }
       }
@@ -22777,7 +23028,7 @@ var init_watch = __esm({
         } catch (error) {
           const code = error.code;
           if (code === "ENOENT" || code === "ENOTDIR" || code === "EACCES") return;
-          this.disable(error instanceof Error ? error.message : String(error));
+          this.disable(errMessage(error));
         }
       }
       onEvent(rel2, event, filename) {
@@ -22882,9 +23133,6 @@ function artifactState(path, text, bytes) {
     return "absent";
   }
 }
-function shellArg(s) {
-  return /^[A-Za-z0-9_\-./=@:]+$/.test(s) ? s : "'" + s.replace(/'/g, "'\\''") + "'";
-}
 function capResponse(text, tool, repo, maxBytes, wholeRepo = true, onWire) {
   const textBytes = Buffer.byteLength(text, "utf8");
   const bytes = onWire ?? textBytes;
@@ -22892,7 +23140,7 @@ function capResponse(text, tool, repo, maxBytes, wholeRepo = true, onWire) {
   const artifactName = wholeRepo && Object.hasOwn(ARTIFACT_FOR, tool) ? ARTIFACT_FOR[tool] : void 0;
   const artifact = artifactName ? join27(repo, INDEX_DIR, artifactName) : void 0;
   const state = artifact ? artifactState(artifact, text, textBytes) : void 0;
-  const refresh = `codeindex index --repo ${shellArg(repo)} --out ${shellArg(join27(repo, INDEX_DIR))}`;
+  const refresh = `codeindex index --repo ${shellQuote(repo)} --out ${shellQuote(join27(repo, INDEX_DIR))}`;
   return JSON.stringify(
     {
       truncated: true,
@@ -22938,6 +23186,7 @@ var init_protocol2 = __esm({
   "src/mcp/protocol.ts"() {
     "use strict";
     init_preload();
+    init_util();
     PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
     LATEST_PROTOCOL = PROTOCOL_VERSIONS[PROTOCOL_VERSIONS.length - 1];
     ANNOTATIONS_SINCE = "2025-03-26";
@@ -23952,7 +24201,6 @@ __export(mcp_exports, {
   toolsFor: () => toolsFor,
   toolsInProfiles: () => toolsInProfiles,
   validateArgs: () => validateArgs,
-  warmGrammarsForRepo: () => warmGrammarsForRepo,
   warmGrammarsForWalk: () => warmGrammarsForWalk
 });
 function isRpcRequest(value) {
@@ -23984,9 +24232,6 @@ function wholeNum(v, key) {
 function positiveNum(v) {
   const n = num(v);
   return n !== void 0 && n > 0 ? n : void 0;
-}
-function errMessage(e) {
-  return e instanceof Error ? e.message : String(e);
 }
 function withCoverage(answer, coverage) {
   return coverage ? { ...answer, coverage } : answer;
@@ -24612,7 +24857,8 @@ async function runMcpServer(opts = {}) {
   async function callResult(name2, args2, version, progress) {
     try {
       const repo = repoRoot(args2, defaultRepo);
-      const raw = await callTool(name2, args2, repo, progress, walkRepo, { pool: lspPool, trustRepoConfig: opts.trustLspConfig });
+      const trustRepoConfig = opts.trustLspConfig === true && (defaultRepo === void 0 || repo === defaultRepo);
+      const raw = await callTool(name2, args2, repo, progress, walkRepo, { pool: lspPool, trustRepoConfig });
       const narrowed = str(args2.scope) !== void 0 || strArray(args2.include) !== void 0 || strArray(args2.exclude) !== void 0 || str(args2.name) !== void 0 || args2.concise === true;
       const maxBytes = opts.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
       const assemble = (text2) => {
@@ -24691,6 +24937,7 @@ var init_mcp = __esm({
     init_tools();
     init_protocol2();
     init_session();
+    init_util();
     init_tools();
     init_protocol2();
     init_session();
@@ -24775,10 +25022,6 @@ function lex(line2) {
 }
 function tokenize2(line2) {
   return lex(line2)?.map((t) => t.value);
-}
-function shellQuote(s) {
-  if (s !== "" && !/[^A-Za-z0-9_\-./=@:]/.test(s)) return s;
-  return "'" + s.replace(/'/g, `'\\''`) + "'";
 }
 function splitArgs(args2, takesValue) {
   const flags2 = [];
@@ -25257,6 +25500,9 @@ function hasUpperLiteral(p) {
   const literal22 = p.replace(/\\[pP]\{[^}]*\}|\\[pP][A-Za-z]|\\./g, "");
   return literal22 !== literal22.toLowerCase();
 }
+function hasBackReference(js) {
+  return /(?:^|[^\\])(?:\\\\)*\\[1-9]/.test(js);
+}
 function toPattern(p) {
   const parts2 = [];
   for (const raw of p.patterns) {
@@ -25265,6 +25511,7 @@ function toPattern(p) {
     if (js === void 0) return void 0;
     parts2.push(js);
   }
+  if (parts2.length > 1 && parts2.some(hasBackReference)) return void 0;
   let pattern = parts2.length === 1 ? parts2[0] : parts2.map((s) => `(?:${s})`).join("|");
   if (p.word) {
     const literals = p.patterns.every((s) => (p.fixed || !/[\\^$.*+?()[\]{}|]/.test(s)) && /^\w(?:.*\w)?$/.test(s));
@@ -25700,14 +25947,18 @@ function extractTags(ext, content) {
 init_loader();
 init_loader();
 init_types();
+init_util();
 var DEFAULT_GRAMMARS_URL = `https://github.com/maxgfr/codeindex/releases/download/v${ENGINE_VERSION}/grammars-${ENGINE_VERSION}.tar.gz`;
+var GRAMMARS_CHECKSUM_TIMEOUT_MS = 3e4;
+var GRAMMARS_DOWNLOAD_TIMEOUT_MS = 6e5;
+var MAX_INFLATED_BYTES = 512 * 1024 * 1024;
 function resolveGrammarsPullTarget() {
   const env = process.env.CODEINDEX_GRAMMARS_URL;
   if (env && env.trim()) return { url: env.trim() };
   return { url: DEFAULT_GRAMMARS_URL, sha256Url: `${DEFAULT_GRAMMARS_URL}.sha256` };
 }
-async function fetchGrammarsTarball(url, expectedSha256) {
-  const res = await fetch(url);
+async function fetchGrammarsTarball(url, expectedSha256, timeoutMs = GRAMMARS_DOWNLOAD_TIMEOUT_MS) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (expectedSha256) {
@@ -25721,8 +25972,8 @@ async function fetchGrammarsTarball(url, expectedSha256) {
 function asBuffer(u) {
   return Buffer.isBuffer(u) ? u : Buffer.from(u.buffer, u.byteOffset, u.byteLength);
 }
-async function fetchExpectedSha256(url) {
-  const res = await fetch(url);
+async function fetchExpectedSha256(url, timeoutMs = GRAMMARS_CHECKSUM_TIMEOUT_MS) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
   const text = await res.text();
   const hex = (text.trim().split(/\s+/)[0] ?? "").toLowerCase();
@@ -25788,7 +26039,7 @@ function extractTarInto(rawTar, destDir) {
 }
 function extractGrammarsTarball(bytes, destDir) {
   const b = asBuffer(bytes);
-  const raw = b.length >= 2 && b[0] === 31 && b[1] === 139 ? gunzipSync(b) : b;
+  const raw = b.length >= 2 && b[0] === 31 && b[1] === 139 ? gunzipSync(b, { maxOutputLength: MAX_INFLATED_BYTES }) : b;
   return extractTarInto(raw, destDir);
 }
 function installGrammarCacheAtomically(tempDir, cacheDir, markerPath, expectedSha256, rename = renameSync, cleanup = rmSync) {
@@ -25839,7 +26090,7 @@ function installGrammarCacheAtomically(tempDir, cacheDir, markerPath, expectedSh
     if (rollbackErrors.length > 0) {
       const rollbackError = rollbackErrors[0];
       throw new Error(
-        `${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)} (backup preserved at ${swapDir})`
+        `${errMessage(error)}; rollback failed: ${errMessage(rollbackError)} (backup preserved at ${swapDir})`
       );
     }
     throw error;
@@ -25852,14 +26103,19 @@ function installGrammarCacheAtomically(tempDir, cacheDir, markerPath, expectedSh
 async function pullGrammars(cacheDir, opts = {}) {
   const note = opts.onNote ?? (() => {
   });
-  const target = resolveGrammarsPullTarget();
+  const target = opts.target ?? resolveGrammarsPullTarget();
   let expected;
   if (target.sha256Url) {
     try {
       expected = await fetchExpectedSha256(target.sha256Url);
     } catch (e) {
-      note(`codeindex: could not fetch checksum (${e instanceof Error ? e.message : String(e)}) \u2014 proceeding unverified
-`);
+      return {
+        ok: false,
+        status: "failed",
+        cacheDir,
+        message: `codeindex: pull failed \u2014 could not fetch the checksum, and the archive is not installed unverified: ${errMessage(e)} (nothing written)
+`
+      };
     }
   }
   const runtime = join8(cacheDir, "web-tree-sitter.wasm");
@@ -25885,7 +26141,7 @@ async function pullGrammars(cacheDir, opts = {}) {
       ok: false,
       status: "failed",
       cacheDir,
-      message: `codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
+      message: `codeindex: pull failed \u2014 ${errMessage(e)} (nothing written)
 `
     };
   }
@@ -25910,7 +26166,7 @@ async function pullGrammars(cacheDir, opts = {}) {
       ok: false,
       status: "failed",
       cacheDir,
-      message: `codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
+      message: `codeindex: pull failed \u2014 ${errMessage(e)} (nothing written)
 `
     };
   }
@@ -25972,6 +26228,7 @@ init_bind();
 init_derived();
 init_relations();
 init_workspaces();
+init_util();
 var Bytes = class {
   buf;
   len = 0;
@@ -26254,10 +26511,9 @@ function findWord(line2, name2) {
   }
 }
 var endOf = (d) => d.sym.endLine ?? d.sym.line;
-var dirOf5 = (rel2) => rel2.includes("/") ? rel2.slice(0, rel2.lastIndexOf("/")) : "";
 function goPackageKey(f) {
   const pkg = f.symbols.find((s) => s.kind === "package")?.name ?? "";
-  return `${dirOf5(f.rel)}\0${pkg}`;
+  return `${dirOf(f.rel)}\0${pkg}`;
 }
 function renderScip(scan2, opts = {}) {
   const projectRoot = opts.projectRoot ?? pathToFileURL2(scan2.root).href;
@@ -26268,14 +26524,14 @@ function renderScip(scan2, opts = {}) {
     let hit = packageAt2.get(key);
     if (hit === void 0) {
       const c2 = manifestCoordinates(scan2.root, dir, manifest);
-      hit = c2 ? `${packageField(c2.manager)} ${packageField(c2.name)} ${packageField(c2.version)}` : dir ? packageOf(dirOf5(dir), manifest) : NO_PACKAGE;
+      hit = c2 ? `${packageField(c2.manager)} ${packageField(c2.name)} ${packageField(c2.version)}` : dir ? packageOf(dirOf(dir), manifest) : NO_PACKAGE;
       packageAt2.set(key, hit);
     }
     return hit;
   };
   const prefixOf2 = (f) => {
     const manifest = PACKAGE_MANIFEST.get(f.lang);
-    return `${SCHEME} ${manifest ? packageOf(dirOf5(f.rel), manifest) : NO_PACKAGE} ${fileNamespace(f.rel)}`;
+    return `${SCHEME} ${manifest ? packageOf(dirOf(f.rel), manifest) : NO_PACKAGE} ${fileNamespace(f.rel)}`;
   };
   const docs = scan2.files.filter((f) => f.kind === "code" && f.symbols.length > 0);
   const docDefs = /* @__PURE__ */ new Map();
@@ -26767,7 +27023,8 @@ Commands:
               skips the whole-tree walk when nothing changed since the last one
               (Linux; elsewhere it only invalidates eagerly);
               --trust-lsp-config lets a repo's .codeindex/lsp.json name the
-              servers \`lsp: true\` calls spawn
+              servers \`lsp: true\` calls spawn (with --repo: the pinned
+              repository's only, not one a call names)
   version     Print the engine version
 
 Flags (accepted before OR after the subcommand: '--repo X scan' and
@@ -27030,16 +27287,18 @@ function commandHelp(cmd) {
     return out3;
   };
   const at = lines.findIndex((l) => l.startsWith(`  ${cmd} `));
-  const spec = COMMAND_FLAGS[cmd];
+  const spec = Object.hasOwn(COMMAND_FLAGS, cmd) ? COMMAND_FLAGS[cmd] : void 0;
   const out2 = [`codeindex ${cmd}`, "", ...at === -1 ? [] : block(at)];
   const flagLines = (spec?.flags ?? []).flatMap((f) => {
     const i2 = lines.findIndex((l) => l.startsWith(`  ${f} `) || l === `  ${f}`);
     return i2 === -1 ? [] : block(i2);
   });
   if (flagLines.length) out2.push("", "Flags:", ...flagLines);
-  out2.push("", `Global flags: ${[...GLOBAL_FLAGS].join(", ")} (codeindex --help)`, "");
+  if (spec) out2.push("", `Global flags: ${[...GLOBAL_FLAGS].join(", ")} (codeindex --help)`);
+  out2.push("");
   return out2.join("\n");
 }
+var isHelpFlag = (arg) => arg === "--help" || arg === "-h";
 function parseFlags(args2) {
   const flags2 = { repo: process.cwd(), include: [], exclude: [], gitignore: true, ignoreDirs: [], noAst: false, fuzzy: true, semantic: false, positionals: [], given: [] };
   for (let i2 = 0; i2 < args2.length; i2++) {
@@ -27358,6 +27617,10 @@ async function runCli(rawArgv) {
   }
   if (cmd === "rewrite") {
     const line2 = rawArgv.slice(rawArgv.indexOf("rewrite") + 1);
+    if (line2.length === 1 && isHelpFlag(line2[0])) {
+      process.stdout.write(commandHelp("rewrite"));
+      return;
+    }
     if (line2.length !== 1) {
       process.stderr.write("codeindex: rewrite takes the command line as ONE argument: codeindex rewrite '<command line>'\n");
       process.exitCode = 1;
@@ -27373,11 +27636,15 @@ async function runCli(rawArgv) {
     return;
   }
   if (cmd === "mcp") {
+    if (rest.some(isHelpFlag)) {
+      process.stdout.write(commandHelp("mcp"));
+      return;
+    }
     const { runMcpServer: runMcpServer2 } = await Promise.resolve().then(() => (init_mcp(), mcp_exports));
     await runMcpServer2(parseMcpFlags(rest));
     return;
   }
-  if (!(cmd in COMMAND_FLAGS)) {
+  if (!Object.hasOwn(COMMAND_FLAGS, cmd)) {
     const hint = closest(cmd, Object.keys(COMMAND_FLAGS));
     process.stderr.write(`unknown command: ${cmd}${hint ? ` (did you mean ${hint}?)` : ""}
 
@@ -27386,7 +27653,7 @@ ${HELP}`);
     return;
   }
   const dashDash = rest.indexOf("--");
-  if ((dashDash === -1 ? rest : rest.slice(0, dashDash)).some((a) => a === "--help" || a === "-h")) {
+  if ((dashDash === -1 ? rest : rest.slice(0, dashDash)).some(isHelpFlag)) {
     process.stdout.write(commandHelp(cmd));
     return;
   }
@@ -27916,7 +28183,7 @@ ${HELP}`);
       try {
         body2 = await fetchEmbedModel(url, sha2563);
       } catch (e) {
-        process.stderr.write(`codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
+        process.stderr.write(`codeindex: pull failed \u2014 ${errMessage(e)} (nothing written)
 `);
         process.exitCode = 1;
         return;
@@ -27925,7 +28192,7 @@ ${HELP}`);
         parseEmbedModel(JSON.parse(body2), url);
       } catch (e) {
         process.stderr.write(
-          `codeindex: pull failed \u2014 response is not a valid model.json (${e instanceof Error ? e.message : String(e)}) (nothing written)
+          `codeindex: pull failed \u2014 response is not a valid model.json (${errMessage(e)}) (nothing written)
 `
         );
         process.exitCode = 1;
@@ -28657,13 +28924,13 @@ function isOperandEnd(code) {
   code === 93;
 }
 var JS_SRC_EXTS = [".js", ".ts", ".mts", ".cts", ".mjs", ".cjs"];
-function dirOf8(p) {
+function dirOf3(p) {
   const i2 = p.lastIndexOf("/");
   return i2 === -1 ? "" : p.slice(0, i2);
 }
 function resolveModule(fromFile, spec, sources, exts = JS_SRC_EXTS) {
   const segs = [];
-  for (const s of `${dirOf8(fromFile)}/${spec}`.split("/")) {
+  for (const s of `${dirOf3(fromFile)}/${spec}`.split("/")) {
     if (s === "" || s === ".") continue;
     if (s === "..") segs.pop();
     else segs.push(s);
@@ -28729,7 +28996,7 @@ function resolvePythonModule(fromFile, module2, sources) {
   let abs = module2;
   const dots = module2.match(/^\.+/)?.[0].length ?? 0;
   if (dots) {
-    const pkg = dirOf8(fromFile).split("/").filter(Boolean);
+    const pkg = dirOf3(fromFile).split("/").filter(Boolean);
     pkg.splice(pkg.length - (dots - 1));
     abs = [...pkg, ...module2.slice(dots).split(".").filter(Boolean)].join(".");
   }
@@ -31418,7 +31685,7 @@ function callArgs2(src, open) {
   return args2;
 }
 var blankLiterals = (src) => src.replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`[^`]*`/g, (lit) => lit.replace(/[^\n]/g, " "));
-var dirOf9 = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+var dirOf4 = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 var goAdapter = {
   id: "go",
   frameworks: ["Gin", "Echo", "chi", "Fiber", "Gorilla"],
@@ -31463,7 +31730,7 @@ var goAdapter = {
     }
     const bindings = /* @__PURE__ */ new Map();
     const byDir = /* @__PURE__ */ new Map();
-    for (const ctx of ctxs) byDir.set(dirOf9(ctx.path), [...byDir.get(dirOf9(ctx.path)) ?? [], ctx]);
+    for (const ctx of ctxs) byDir.set(dirOf4(ctx.path), [...byDir.get(dirOf4(ctx.path)) ?? [], ctx]);
     for (const ctx of ctxs) {
       for (const fn of ctx.scopes) {
         if (!fn.name) continue;
@@ -31476,7 +31743,7 @@ var goAdapter = {
         }
         const useRe = new RegExp(`(?<![\\w.])${name2}\\b`, "g");
         const uses = [];
-        for (const c2 of byDir.get(dirOf9(ctx.path)) ?? []) {
+        for (const c2 of byDir.get(dirOf4(ctx.path)) ?? []) {
           for (const m of c2.code.matchAll(useRe)) if (!(c2 === ctx && m.index === fn.nameAt)) uses.push({ ctx: c2, at: m.index ?? 0 });
         }
         if (uses.length !== 1) continue;
