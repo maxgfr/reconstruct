@@ -255,19 +255,24 @@ export function stripComments(src: string, ext: string): string {
   // Next `</Name` per tag name (not `</Names`), searched forward only (-1: none remains).
   const closers = new Map<string, number>();
   let closerMisses = 0;
+  // Characters the closing-tag searches have covered. Each name's search only
+  // moves forward, but many names whose closers lie far ahead (thousands of
+  // nested distinct tags) would cost names x size: past a budget of a few
+  // times the file, JSX is given up on. Real markup closes nearby.
+  let closerScan = 0;
   const hasClosingTag = (name: string, from: number): boolean => {
     let at = closers.get(name);
     if (at === -1) return false;
     if (at === undefined || at < from) {
-      // Thousands of distinct tag names is not markup: stop trying.
-      if (at === undefined && closers.size >= JSX_MAX_TAG_NAMES) {
-        giveUpJsx();
-        return false;
-      }
       const tag = `</${name}`;
       at = src.indexOf(tag, from);
       while (at !== -1 && isJsxNameCode(src.charCodeAt(at + tag.length))) at = src.indexOf(tag, at + 1);
       closers.set(name, at);
+      closerScan += (at === -1 ? n : at) - from;
+      if (closerScan > 8 * n + 65_536) {
+        giveUpJsx();
+        return false;
+      }
       // Many unclosed "tags" means this is not JSX (generics, a DSL): stop trying.
       if (at === -1 && ++closerMisses > JSX_MAX_CLOSER_MISSES) jsxFrom = n;
     }
@@ -513,9 +518,7 @@ const TSX_GENERIC_RE = /\s+extends\s/y;
 const JSX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", ">"]);
 // Tag names with no closing tag anywhere before the stripper gives up on JSX.
 const JSX_MAX_CLOSER_MISSES = 64;
-// Distinct tag names, and elements nested inside one another, past which a
-// file is not treated as markup any more.
-const JSX_MAX_TAG_NAMES = 512;
+// Elements nested inside one another past which a file is not treated as markup.
 const JSX_MAX_DEPTH = 128;
 
 /** Whether the `<` at `i` may open a JSX element: operand position, then a tag name or `>`. */

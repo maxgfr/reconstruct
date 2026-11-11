@@ -320,6 +320,14 @@ describe("stripComments: JSX elements are read as elements", () => {
     expect(t(() => stripComments(names, ".jsx"))).toBeLessThan(2000);
   });
 
+  it("keeps reading JSX in a file with hundreds of distinct components", () => {
+    const src = Array.from({ length: 700 }, (_, i) => `const c${i} = <Comp${i}>don't see http://x {/* c */}</Comp${i}>; // c`).join("\n");
+    const out = stripComments(src, ".jsx");
+    expect(out).not.toContain("// c");
+    expect(out).not.toContain("/* c */");
+    expect(out.match(/don't see http:\/\/x/g)?.length).toBe(700);
+  });
+
   it("stays linear on text that only looks like JSX", () => {
     const t = (fn: () => unknown): number => {
       const start = performance.now();
