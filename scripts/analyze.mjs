@@ -37551,7 +37551,12 @@ import { realpathSync as realpathSync8 } from "fs";
 import { basename as basename8, dirname as dirname10, join as join52, resolve as resolve16 } from "path";
 var chains = /* @__PURE__ */ new Map();
 function withTreeLock(path, fn) {
-  const dir = canonical(path);
+  return withLock(canonical(path), fn);
+}
+function withRepoLock(repo, fn) {
+  return withLock(`repo:${canonical(repo)}`, fn);
+}
+function withLock(dir, fn) {
   const prev = chains.get(dir) ?? Promise.resolve();
   const next = prev.then(fn, fn);
   const tail = next.then(noop, noop);
@@ -37749,7 +37754,7 @@ async function callTool2(name2, args2, defaults = {}, run2 = runInline) {
   if (name2 === "reconstruct_inventory") {
     const repo = requiredRepo(args2);
     const detail = oneOf(args2.detail, ["summary", "full"], "detail", "summary");
-    const inv = await run2({ name: name2, args: args2, repo, out: join53(repo, "reconstruction"), allowWrite });
+    const inv = await withRepoLock(repo, () => run2({ name: name2, args: args2, repo, out: join53(repo, "reconstruction"), allowWrite }));
     return outcome2(inventoryResult(repo, inv, detail));
   }
   if (name2 === "reconstruct_view") {
@@ -37760,7 +37765,7 @@ async function callTool2(name2, args2, defaults = {}, run2 = runInline) {
   if (name2 === "reconstruct_scaffold") {
     const repo = requiredRepo(args2);
     const out3 = str2(args2.out) ? resolve17(str2(args2.out)) : join53(repo, "reconstruction");
-    return await withTreeLock(out3, async () => outcome2(await run2({ name: name2, args: args2, repo, out: out3, allowWrite })));
+    return await withTreeLock(out3, () => withRepoLock(repo, async () => outcome2(await run2({ name: name2, args: args2, repo, out: out3, allowWrite }))));
   }
   const out2 = outPath(args2, defaults);
   return await withTreeLock(out2, async () => {

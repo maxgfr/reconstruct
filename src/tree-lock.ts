@@ -18,7 +18,20 @@ const chains = new Map<string, Promise<unknown>>();
 
 export function withTreeLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
   // Keyed by the resolved path: `/tmp/x` and a symlink to it are one tree.
-  const dir = canonical(path);
+  return withLock(canonical(path), fn);
+}
+
+/**
+ * Serialize the calls that read or write inside one REPOSITORY: an inventory
+ * walk must not see a scaffold half-way through writing an `out` that lives
+ * inside the repo. A scaffold takes it inside its tree lock; an inventory takes
+ * it alone, so the two orders can never wait on each other.
+ */
+export function withRepoLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
+  return withLock(`repo:${canonical(repo)}`, fn);
+}
+
+function withLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   const prev = chains.get(dir) ?? Promise.resolve();
   // Chain off `prev` however it settled: a failed predecessor must not poison
   // every later call for the same repo.

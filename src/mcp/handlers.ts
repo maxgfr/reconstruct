@@ -12,7 +12,7 @@ import { sha256Hex } from "../evidence.js";
 import { foldReview, runReview } from "../review.js";
 import { foldSemantic, runVerify } from "../verify.js";
 import { applyUnknownUpdates, foldUnknowns, readInventory, readUnknowns, seedUnknowns, UNKNOWNS_FILE } from "../unknowns.js";
-import { withTreeLock } from "../tree-lock.js";
+import { withRepoLock, withTreeLock } from "../tree-lock.js";
 import type { Inventory, Options, UnknownsLedger } from "../types.js";
 import { recallInventory, rememberInventory, summarizeInventory, VIEW_SECTIONS, viewSection } from "./view.js";
 
@@ -214,7 +214,8 @@ export async function callTool(name: string, args: Record<string, unknown>, defa
   if (name === "reconstruct_inventory") {
     const repo = requiredRepo(args);
     const detail = oneOf(args.detail, ["summary", "full"] as const, "detail", "summary");
-    const inv = (await run({ name, args, repo, out: join(repo, "reconstruction"), allowWrite })) as Inventory;
+    // Never while a scaffold of the same repo is writing (its `out` may be inside it).
+    const inv = (await withRepoLock(repo, () => run({ name, args, repo, out: join(repo, "reconstruction"), allowWrite }))) as Inventory;
     return outcome(inventoryResult(repo, inv, detail));
   }
   // Pages a remembered inventory, or a tree's inventory.json (under its lock).
@@ -227,7 +228,9 @@ export async function callTool(name: string, args: Record<string, unknown>, defa
   if (name === "reconstruct_scaffold") {
     const repo = requiredRepo(args);
     const out = str(args.out) ? resolve(str(args.out)!) : join(repo, "reconstruction");
-    return await withTreeLock(out, async () => outcome(await run({ name, args, repo, out, allowWrite })));
+    // The tree lock first, taken at once: a call pipelined behind this one on
+    // the same tree must queue after it.
+    return await withTreeLock(out, () => withRepoLock(repo, async () => outcome(await run({ name, args, repo, out, allowWrite }))));
   }
 
   const out = outPath(args, defaults);

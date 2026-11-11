@@ -180,7 +180,14 @@ describe("guardrails", () => {
   it("refuses to re-scaffold over a tree that holds enrichment", async () => {
     // The prose is the whole value of the tree and there is no undo, so the
     // refusal names the witnesses instead of asking the caller to guess.
-    await expect(callTool("reconstruct_scaffold", { repo: REPO, out: TREE }, { allowWrite: true })).rejects.toThrow(/ENRICHED/);
+    const base = mkdtempSync(join(tmpdir(), "rec-enriched-"));
+    temps.push(base);
+    const tree = join(base, "tree");
+    await callTool("reconstruct_scaffold", { repo: REPO, out: tree }, { allowWrite: true });
+    // Untouched, it is a scaffold: re-scaffolding it needs no confirmation.
+    await callTool("reconstruct_scaffold", { repo: REPO, out: tree }, { allowWrite: true });
+    writeFileSync(join(tree, "architecture", "INTERFACES.md"), "# Interface surface\n\n| GET | /health | liveness probe |\n");
+    await expect(callTool("reconstruct_scaffold", { repo: REPO, out: tree }, { allowWrite: true })).rejects.toThrow(/ENRICHED/);
   });
 
   it("names the missing STEP when there is no tree", async () => {

@@ -68,6 +68,30 @@ describe("calls queued behind a slow scaffold", () => {
     expect(JSON.parse((await read).text).content.length).toBeGreaterThan(50);
     expect(JSON.parse((await view).text).total).toBe(2);
   });
+
+  it("an inventory of the repo never walks a tree a scaffold is still writing inside it", async () => {
+    const repo = bigRepo(2);
+    const out = join(repo, "docs-out");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    // The scaffold writes half its tree, then stalls; the inventory is queued meanwhile.
+    const runner: ToolRunner = async (job) => {
+      if (job.name !== "reconstruct_scaffold") return runInline(job);
+      mkdirSync(out, { recursive: true });
+      writeFileSync(join(out, "half-written.md"), "# partial\n");
+      await gate;
+      return runInline(job);
+    };
+    const defaults = { allowWrite: true };
+    const scaffold = callTool("reconstruct_scaffold", { repo, out, rea: "off" }, defaults, runner);
+    const inventory = callTool("reconstruct_inventory", { repo, detail: "full" }, defaults, runner);
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await scaffold;
+    const files = (JSON.parse((await inventory).text).inventory as Inventory).files.map((f) => f.path);
+    // Finished, the tree carries the engine stamp and is pruned whole.
+    expect(files.some((p) => p.startsWith("docs-out/"))).toBe(false);
+  });
 });
 
 describe("the bundled stdio server", () => {
