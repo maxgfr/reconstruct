@@ -28605,9 +28605,11 @@ function walk2(repo, opts = {}) {
   const excludeRules = compileScopeGlobs(opts.exclude);
   const outAbs = opts.out ? resolve13(opts.out) : "";
   let linkSkips = 0;
+  let prunedDirs = 0;
   const result = walk(repo, {
-    onSkip: ({ reason }) => {
+    onSkip: ({ reason, directory }) => {
       if (["directory-symlink", "broken-symlink", "symlink-outside-root"].includes(reason)) linkSkips++;
+      else if (directory && reason !== "nested-repo") prunedDirs++;
     },
     ignoreDirs: [...DEFAULT_IGNORE_DIRS],
     includeBinary: true,
@@ -28627,7 +28629,7 @@ function walk2(repo, opts = {}) {
     return { path: rel2, ext, size, lines, category, binary: binary2, ...hash ? { hash } : {} };
   });
   files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-  return { files, excludedCount: result.excluded + linkSkips };
+  return { files, excludedCount: result.excluded + linkSkips, excludedDirCount: prunedDirs };
 }
 
 // src/detect/stack.ts
@@ -32939,7 +32941,7 @@ function analyze(opts) {
   return withReadCache(() => analyzeRepo(opts));
 }
 function analyzeRepo(opts) {
-  const { files, excludedCount } = walk2(opts.repo, {
+  const { files, excludedCount, excludedDirCount } = walk2(opts.repo, {
     include: opts.include,
     exclude: opts.exclude,
     out: opts.out
@@ -33003,6 +33005,7 @@ function analyzeRepo(opts) {
     ...workspaces.length ? { workspaces } : {},
     ...node ? { runtime: { node } } : {},
     excludedCount,
+    ...excludedDirCount ? { excludedDirCount } : {},
     evidence: buildEvidence(files, routes, envSources)
   };
 }
@@ -39637,9 +39640,9 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
     `  hints:    ${hintTotal} candidate(s) to verify (routes/API/schema/realtime/auth/design-system) \xB7 ${inv.hints.entryPoints.length} entry point(s)`,
     ...inv.workspaces ? [`  monorepo: ${inv.workspaces.length} workspace(s) \xB7 ${inv.workspaces.reduce((n, w) => n + (w.dependsOn?.length ?? 0), 0)} dependency edge(s)`] : [],
     // The vendored walk prunes ignored directories (node_modules, gitignored
-    // dirs, an --exclude'd folder) without entering them, so their files are
-    // not part of this count — say so rather than under-report silently.
-    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""} (ignored directories are pruned whole and not counted)`,
+    // dirs, an --exclude'd folder) without entering them: they are counted as
+    // directories, and their files are not part of the file count.
+    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""} \xB7 ${inv.excludedDirCount ?? 0} director${inv.excludedDirCount === 1 ? "y" : "ies"} pruned whole (their files are not counted)`,
     ...inv.warnings?.length ? [`  warnings: ${inv.warnings.length} analysis warning(s) \u2014 detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    \u26A0 ${w}`)] : [],
     ...copyWarning ? [`  mirror:   \u26A0 ${copyWarning}`] : [],
     ...pruneLine ? [`  stale:    ${pruneLine}`] : [],

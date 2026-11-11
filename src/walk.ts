@@ -273,6 +273,13 @@ export interface WalkResult {
   files: FileInfo[];
   /** Number of files skipped by ignore rules / include-exclude scoping. */
   excludedCount: number;
+  /**
+   * Directories pruned whole (ignored dir names, gitignored or excluded
+   * folders, prior reconstruct output). Their files are never visited, so they
+   * are not in `excludedCount`: walking `node_modules` to count it would cost
+   * what pruning saves.
+   */
+  excludedDirCount: number;
 }
 
 export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
@@ -280,9 +287,12 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
   const excludeRules = compileScopeGlobs(opts.exclude);
   const outAbs = opts.out ? resolve(opts.out) : "";
   let linkSkips = 0;
+  let prunedDirs = 0;
   const result = engineWalk(repo, {
-    onSkip: ({ reason }) => {
+    onSkip: ({ reason, directory }) => {
       if (["directory-symlink", "broken-symlink", "symlink-outside-root"].includes(reason)) linkSkips++;
+      // A nested repository is already one entry of the engine count.
+      else if (directory && reason !== "nested-repo") prunedDirs++;
     },
     ignoreDirs: [...DEFAULT_IGNORE_DIRS],
     includeBinary: true,
@@ -304,5 +314,5 @@ export function walk(repo: string, opts: WalkOptions = {}): WalkResult {
     return { path: rel, ext, size, lines, category, binary, ...(hash ? { hash } : {}) };
   });
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { files, excludedCount: result.excluded + linkSkips };
+  return { files, excludedCount: result.excluded + linkSkips, excludedDirCount: prunedDirs };
 }

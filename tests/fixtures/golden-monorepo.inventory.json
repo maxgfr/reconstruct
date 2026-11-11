@@ -665,6 +665,7 @@
     "node": ">=20"
   },
   "excludedCount": 2,
+  "excludedDirCount": 1,
   "evidence": [
     {
       "id": "ev_1c46c2abf57f9acb",

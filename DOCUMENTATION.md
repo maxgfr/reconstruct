@@ -143,7 +143,7 @@ field in `package.json`), so `npx reconstruct --help` works too.
 
 Both `--flag value` and `--flag=value` forms are accepted. After a successful run the CLI
 prints a short summary to stderr (file count, stack, feature/route/locale counts, candidate
-hints, monorepo workspaces, excluded-file count, unresolved `unknowns`, and the path to
+hints, monorepo workspaces, excluded-file and pruned-directory counts, unresolved `unknowns`, and the path to
 `REBUILD.md`).
 
 ---
@@ -258,7 +258,9 @@ that exists but does not parse, a workspace dependency cycle — omitted when em
 `workspaces` (monorepo packages — each entry
 carries its `kind` — npm/pnpm/lerna/nx/cargo/go —, its own `stack` and `dependencies`, the
 manifest-derived `dependsOn` edges, `routeCount`, `schemas`, and per-workspace `hints`),
-`runtime` (e.g. required Node version), `excludedCount`, and `evidence` — one content-addressed
+`runtime` (e.g. required Node version), `excludedCount` (files skipped one by one) and
+`excludedDirCount` (directories such as `node_modules` pruned whole, whose files are not
+counted; omitted when zero), and `evidence` — one content-addressed
 record per resolved route / env var (`ev_<hash>`, file, line, content hash, `confidence`,
 `authority`; see [`references/evidence-model.md`](./skills/reconstruct/references/evidence-model.md)).
 Each `files[]` entry carries a 16-hex content `hash`, and each route its declaration `line`. The artifacts and the per-feature copies
@@ -301,7 +303,7 @@ walk → detect → candidates → adapters → features → prd → output
 
 | Stage | File(s) | Responsibility |
 | --- | --- | --- |
-| **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore` + `--include`/`--exclude`, categorize each file, and report `excludedCount`. |
+| **walk** | [`src/walk.ts`](./src/walk.ts) | Traverse the repo, honor `.gitignore` + `--include`/`--exclude`, categorize each file, and report `excludedCount` / `excludedDirCount`. |
 | **detect** | [`src/detect/stack.ts`](./src/detect/stack.ts), [`src/detect/workspaces.ts`](./src/detect/workspaces.ts) | Rank languages; identify frameworks (JS/TS + Python/Ruby/PHP/JVM via manifests); **detect notable libraries**; find package managers; detect the required **Node version**; detect **monorepo workspaces** (npm/yarn/pnpm, lerna/nx fallbacks, Cargo, go.work), build the **workspace dependency graph**, and attribute stack/deps/routes/hints **per workspace**. |
 | **candidates** | [`src/detect/candidates.ts`](./src/detect/candidates.ts) | Framework-agnostic **hints**: candidate files for routes, API surface (tRPC/GraphQL/gRPC/OpenAPI), data model (ORM schemas/models), design-system sources (Tailwind/theme/token configs, global CSS), realtime/auth signals, and entry points — from path + bounded content heuristics. |
 | **adapters** | [`src/adapters/*`](./src/adapters) | Extract dependencies, env vars, framework routes, and i18n (see below). |

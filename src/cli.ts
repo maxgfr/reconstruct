@@ -973,9 +973,10 @@ async function main(): Promise<void> {
       ? [`  monorepo: ${inv.workspaces.length} workspace(s) · ${inv.workspaces.reduce((n, w) => n + (w.dependsOn?.length ?? 0), 0)} dependency edge(s)`]
       : []),
     // The vendored walk prunes ignored directories (node_modules, gitignored
-    // dirs, an --exclude'd folder) without entering them, so their files are
-    // not part of this count — say so rather than under-report silently.
-    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""} (ignored directories are pruned whole and not counted)`,
+    // dirs, an --exclude'd folder) without entering them: they are counted as
+    // directories, and their files are not part of the file count.
+    `  excluded: ${inv.excludedCount} file(s) skipped by ignore rules${opts.include.length || opts.exclude.length ? " + scoping globs" : ""}` +
+      ` · ${inv.excludedDirCount ?? 0} director${inv.excludedDirCount === 1 ? "y" : "ies"} pruned whole (their files are not counted)`,
     ...(inv.warnings?.length
       ? [`  warnings: ${inv.warnings.length} analysis warning(s) — detection degraded, verify these by hand:`, ...inv.warnings.map((w) => `    ⚠ ${w}`)]
       : []),

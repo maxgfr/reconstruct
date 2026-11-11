@@ -195,7 +195,7 @@ export function analyze(opts: Options): Inventory {
 }
 
 function analyzeRepo(opts: Options): Inventory {
-  const { files, excludedCount } = walk(opts.repo, {
+  const { files, excludedCount, excludedDirCount } = walk(opts.repo, {
     include: opts.include,
     exclude: opts.exclude,
     out: opts.out,
@@ -266,6 +266,7 @@ function analyzeRepo(opts: Options): Inventory {
     ...(workspaces.length ? { workspaces } : {}),
     ...(node ? { runtime: { node } } : {}),
     excludedCount,
+    ...(excludedDirCount ? { excludedDirCount } : {}),
     evidence: buildEvidence(files, routes, envSources),
   };
 }

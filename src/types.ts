@@ -577,6 +577,8 @@ export interface Inventory {
    * folders) are pruned without being entered, so their files are not counted.
    */
   excludedCount: number;
+  /** Directories pruned whole, whose files `excludedCount` leaves out. Omitted when none were. */
+  excludedDirCount?: number;
   /**
    * Content-addressed provenance for every statically resolved fact (routes,
    * env vars; plan rows on the scratch path). Verify verdicts and unknowns cite

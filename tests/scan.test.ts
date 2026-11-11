@@ -41,6 +41,26 @@ describe("walk transparency & scoping", () => {
     expect(excludedCount).toBeGreaterThanOrEqual(2);
   });
 
+  it("counts directories pruned whole separately from skipped files", () => {
+    const r = repo((w) => {
+      w(".gitignore", "generated/\n");
+      w("keep.ts", "export const x = 1;");
+      w("node_modules/a/index.js", "x");
+      w("node_modules/b/index.js", "x");
+      w("generated/out.ts", "x");
+      w("legacy/old.ts", "x");
+      w("src/app.ts", "x");
+    });
+    const plain = walk(r);
+    // node_modules and generated/ are pruned; the files inside are never visited.
+    expect(plain.excludedDirCount).toBe(2);
+    expect(plain.files.map((f) => f.path).sort()).toEqual([".gitignore", "keep.ts", "legacy/old.ts", "src/app.ts"]);
+    // An excluded folder is pruned too; an excluded file is a file skip.
+    const scoped = walk(r, { exclude: ["legacy/", "keep.ts"] });
+    expect(scoped.excludedDirCount).toBe(3);
+    expect(scoped.excludedCount).toBe(plain.excludedCount + 1);
+  });
+
   it("honors an include glob (keeps only matches)", () => {
     const r = repo((w) => {
       w("a.ts", "1");
