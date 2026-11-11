@@ -5,6 +5,7 @@ import {
   type ModuleBinding,
   argumentBinding,
   leadingLiteral,
+  pathValue,
   moduleBindings,
   literalValue,
   stringConstants,
@@ -212,7 +213,7 @@ export const fastifyAdapter: RouteAdapter = {
         const prefix = prefixFor(m[1] as string);
         if (prefix === null) continue;
         const call = callArgs(src, (m.index ?? 0) + m[0].length - 1);
-        const routePath = stringValue(call ? call.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        const routePath = pathValue(call ? call.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
         // `app.get("/live", { websocket: true }, h)` (@fastify/websocket) is a
         // WebSocket route, not an HTTP GET — check the options right after the path.
         if (routePath !== undefined)

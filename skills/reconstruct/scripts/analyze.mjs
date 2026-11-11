@@ -30956,14 +30956,18 @@ function argumentBinding(arg, bindings) {
   if (inline) return { spec: inline, exported: DEFAULT_EXPORT };
   return IDENT_RE.test(arg) ? bindings.get(arg) : void 0;
 }
-var LITERAL_RE = /^(["'`])((?:(?!\1)[^\n])*)\1$/;
-var TERM_RE = /\s*(?:(["'`])((?:(?!\1)[^\n])*)\1|([A-Za-z_$][\w$]*))\s*(\+|$)/y;
-var STRING_CONST_RE = /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=[ \t]*([^;\n]+?)[ \t]*(?:as[ \t]+const[ \t]*)?;?[ \t]*$/gm;
+var BODY = String.raw`(?:\\[\s\S]|(?!\1)[^\\])*`;
+var LITERAL_RE = new RegExp(String.raw`^(["'${"`"}])(${BODY})\1$`);
+var TERM_RE = new RegExp(String.raw`\s*(?:(["'${"`"}])(${BODY})\1|([A-Za-z_$][\w$]*))\s*(\+|$)`, "y");
+var LEADING_LITERAL_RE = new RegExp(String.raw`^\s*(["'${"`"}])(${BODY})\1`);
+var STRING_CONST_RE = /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=([^;\n]*)/gm;
+var AS_CONST_RE = /\s+as\s+const\s*$/;
 var INTERPOLATION_RE = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
 var NO_CONSTANTS = /* @__PURE__ */ new Map();
 function literalValue(quote, body2, consts) {
-  if (quote !== "`" || !consts?.size || !body2.includes("${")) return body2;
-  return body2.replace(INTERPOLATION_RE, (whole, name2) => consts.get(name2) ?? whole);
+  const text = body2.includes("\\") ? body2.replace(/\\(["'`\\])/g, "$1") : body2;
+  if (quote !== "`" || !consts?.size || !text.includes("${")) return text;
+  return text.replace(INTERPOLATION_RE, (whole, name2) => consts.get(name2) ?? whole);
 }
 function concatValue(expr, consts, strict) {
   let out2 = "";
@@ -30974,12 +30978,11 @@ function concatValue(expr, consts, strict) {
     if (!m || m[0] === "") return void 0;
     if (m[3] !== void 0) {
       const v = consts?.get(m[3]);
-      if (v === void 0) return void 0;
-      out2 += v;
+      if (v === void 0 && strict) return void 0;
+      out2 += v ?? `\${${m[3]}}`;
     } else {
       const v = literalValue(m[1], m[2], consts);
-      if (strict && m[1] === "`" && INTERPOLATION_RE.test(v)) return void 0;
-      INTERPOLATION_RE.lastIndex = 0;
+      if (strict && m[1] === "`" && v.includes("${")) return void 0;
       out2 += v;
     }
     at = TERM_RE.lastIndex;
@@ -30994,8 +30997,14 @@ function stringValue(expr, consts) {
   if (IDENT_RE.test(trimmed)) return consts?.get(trimmed);
   return trimmed.includes("+") ? concatValue(trimmed, consts, false) : void 0;
 }
+function pathValue(expr, consts) {
+  const v = stringValue(expr, consts);
+  if (v !== void 0 || expr === void 0) return v;
+  const m = expr.match(LEADING_LITERAL_RE);
+  return m ? literalValue(m[1], m[2], consts) : void 0;
+}
 function leadingLiteral(src, at) {
-  return src.slice(at, at + 2048).match(/^\s*(["'`])(?:(?!\1)[^\n])*\1/)?.[0].trim();
+  return src.slice(at, at + 2048).match(LEADING_LITERAL_RE)?.[0].trim();
 }
 function declaredConstants(src) {
   const out2 = /* @__PURE__ */ new Map();
@@ -31006,30 +31015,76 @@ function declaredConstants(src) {
       out2.delete(name2);
       twice.add(name2);
     } else {
-      out2.set(name2, m[2]);
+      out2.set(name2, m[2].trim().replace(AS_CONST_RE, ""));
     }
   }
   return out2;
 }
-var PARAM_LIST_RES = [
-  /\bfunction\b\s*\*?\s*[\w$]*\s*\(([^)]*)\)/g,
-  /\(([^()]*)\)\s*(?::\s*[^=;{}()]+)?=>/g,
-  /\bcatch\s*\(([^)]*)\)/g,
-  // A method: `name(params) {` at the start of a line, not a control statement.
-  /^[ \t]*(?:(?:async|static|get|set|public|private|protected|override)\s+)*(?!(?:if|for|while|switch|with|return|catch|function)\b)[A-Za-z_$][\w$]*\s*\(([^)]*)\)\s*(?::[^{;]*)?\{/gm
+var STRING_LITERALS_RE = /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`/g;
+var PARAMS_OPEN_RES = [
+  /\bfunction\b\s*(?:\*\s*)?[\w$]*\s*\(/g,
+  /\bcatch\s*\(/g,
+  /^[ \t]*(?:(?:async|static|get|set|public|private|protected|override)[ \t]+)*(?!(?:if|for|while|switch|with|return|catch|function)\b)[A-Za-z_$][\w$]*[ \t]*\((?=[^)\n]{0,512}\)[ \t]*(?::[^{;\n]{0,256})?\{)/gm
 ];
-var LOCAL_BINDING_RES = [/\b(?:let|var)\s+([A-Za-z_$][\w$]*)/g, /^[ \t]+const\s+([A-Za-z_$][\w$]*)/gm, /(?<![\w$.)\]])([A-Za-z_$][\w$]*)\s*=>/g];
-function shadowedNames(src) {
-  const out2 = /* @__PURE__ */ new Set();
-  for (const re of PARAM_LIST_RES) {
-    for (const m of src.matchAll(re)) {
-      for (const part of m[1].split(",")) {
-        const name2 = part.split(/[=:]/)[0]?.replace(/^[\s.{[]+/, "").match(/^[A-Za-z_$][\w$]*/)?.[0];
-        if (name2) out2.add(name2);
-      }
+var ARROW_CLOSE_RE = /\)\s*(?::[^=;{}()\n]{0,256})?=>/g;
+var LOCAL_BINDING_RES = [
+  /\b(?:let|var)\s+([A-Za-z_$][\w$]*)/g,
+  /^[ \t]+const\s+([A-Za-z_$][\w$]*)/gm,
+  /\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g,
+  /(?:^|[(,=?]|=>|\breturn|\basync)[ \t]*([A-Za-z_$][\w$]*)[ \t]*=>/gm
+];
+var DESTRUCTURE_RE = /\b(?:const|let|var)\s*([{[][^=;]{0,512}?[}\]])\s*=/g;
+function boundNames2(list, out2) {
+  const parts2 = [];
+  let depth = 0;
+  let from = 0;
+  for (let i2 = 0; i2 < list.length; i2++) {
+    const c2 = list[i2];
+    if (c2 === "(" || c2 === "[" || c2 === "{" || c2 === "<") depth++;
+    else if (c2 === ")" || c2 === "]" || c2 === "}" || c2 === ">" && list[i2 - 1] !== "=") depth--;
+    else if (c2 === "," && depth === 0) {
+      parts2.push(list.slice(from, i2));
+      from = i2 + 1;
     }
   }
+  parts2.push(list.slice(from));
+  for (const raw of parts2) {
+    const part = raw.trim().replace(/^\.\.\./, "");
+    if (part.startsWith("{") || part.startsWith("[")) {
+      const inner = part.slice(1, part.lastIndexOf(part[0] === "{" ? "}" : "]"));
+      for (const piece of inner.split(",")) {
+        const binding = (piece.includes(":") ? piece.slice(piece.indexOf(":") + 1) : piece).split("=")[0] ?? "";
+        const name3 = binding.trim().replace(/^\.\.\./, "").match(/^[A-Za-z_$][\w$]*/)?.[0];
+        if (name3) out2.add(name3);
+      }
+      continue;
+    }
+    const name2 = part.match(/^[A-Za-z_$][\w$]*/)?.[0];
+    if (name2) out2.add(name2);
+  }
+}
+function openParenBefore(src, close) {
+  let depth = 0;
+  for (let i2 = close; i2 >= 0 && close - i2 < 1024; i2--) {
+    if (src[i2] === ")") depth++;
+    else if (src[i2] === "(" && --depth === 0) return i2;
+  }
+  return -1;
+}
+function shadowedNames(source) {
+  const src = source.replace(STRING_LITERALS_RE, '""');
+  const out2 = /* @__PURE__ */ new Set();
+  const list = (open) => {
+    const call2 = callArgs(src.slice(open, open + 1024), 0);
+    if (call2) boundNames2(call2.args.join(","), out2);
+  };
+  for (const re of PARAMS_OPEN_RES) for (const m of src.matchAll(re)) list((m.index ?? 0) + m[0].length - 1);
+  for (const m of src.matchAll(ARROW_CLOSE_RE)) {
+    const open = openParenBefore(src, m.index ?? 0);
+    if (open !== -1) list(open);
+  }
   for (const re of LOCAL_BINDING_RES) for (const m of src.matchAll(re)) out2.add(m[1]);
+  for (const m of src.matchAll(DESTRUCTURE_RE)) boundNames2(m[1], out2);
   return out2;
 }
 var constantsBySources = /* @__PURE__ */ new WeakMap();
@@ -31188,7 +31243,7 @@ var expressAdapter = {
         if (!instances.has(obj)) continue;
         const verbAt = (m.index ?? 0) + obj.length + m[2].length;
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
-        const routePath = stringValue(call2 ? call2.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        const routePath = pathValue(call2 ? call2.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
         if (routePath !== void 0 && isRoutePath(routePath)) emit2(obj, routePath, m[3], verbAt);
         if (!call2) continue;
         for (const c2 of chainCalls(src, call2.end)) {
@@ -31344,7 +31399,7 @@ var fastifyAdapter = {
         const prefix = prefixFor(m[1]);
         if (prefix === null) continue;
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
-        const routePath = stringValue(call2 ? call2.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        const routePath = pathValue(call2 ? call2.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
         if (routePath !== void 0)
           routes.push({
             route: joinRoute(prefix, routePath),

@@ -6,6 +6,7 @@ import {
   addMount,
   argumentBinding,
   leadingLiteral,
+  pathValue,
   moduleBindings,
   mountPrefixes,
   stringConstants,
@@ -135,7 +136,7 @@ export const expressAdapter: RouteAdapter = {
         if (!instances.has(obj)) continue;
         const verbAt = (m.index ?? 0) + obj.length + (m[2] as string).length;
         const call = callArgs(src, (m.index ?? 0) + m[0].length - 1);
-        const routePath = stringValue(call ? call.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        const routePath = pathValue(call ? call.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
         if (routePath !== undefined && isRoutePath(routePath)) emit(obj, routePath, m[3] as string, verbAt);
         if (!call) continue;
         for (const c of chainCalls(src, call.end)) {

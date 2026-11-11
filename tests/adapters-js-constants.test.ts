@@ -196,3 +196,62 @@ describe("review findings on constant-backed paths", () => {
     expect(routes).toEqual(["GET /x"]);
   });
 });
+
+describe("second review pass on constant-backed paths", () => {
+  const app = (body: string[]) =>
+    ['const express = require("express");', "const app = express();", "const router = express.Router();", 'router.get("/x", h);', ...body, ""].join("\n");
+  const time = (fn: () => unknown): number => {
+    const t = performance.now();
+    fn();
+    return performance.now() - t;
+  };
+
+  it("stays linear on long blank runs in a declaration and on unclosed parameter lists", () => {
+    const blank = " ".repeat(20_000);
+    expect(
+      time(() => routesOf(expressAdapter, { "src/a.js": app([`const total = first${blank}+ second;`, `const BANNER = "left${blank}right";`]) })),
+    ).toBeLessThan(1000);
+    const parens = "a(\n".repeat(60_000) + "function(\n".repeat(10_000) + "catch(\n".repeat(10_000);
+    expect(time(() => routesOf(expressAdapter, { "src/a.js": app([parens]) }))).toBeLessThan(2000);
+  });
+
+  it("never takes a template with an unresolved interpolation for a constant, whatever the order", () => {
+    for (const decls of [
+      ["const A = `${x}/a`;", "const B = `/b${y}`;"],
+      ["const B = `/b${y}`;", "const A = `${x}/a`;"],
+    ]) {
+      expect(routesOf(expressAdapter, { "src/a.js": app([...decls, "app.use(B, router);", "app.get(`/c${A}`, h);"]) })).toEqual(["GET /c${A}", "GET /x"]);
+    }
+    expect(routesOf(expressAdapter, { "src/a.js": app(["const API = `${process.env.BASE}/api`;", "app.use(API, router);"]) })).toEqual(["GET /x"]);
+  });
+
+  it("sees destructured and loop bindings as shadows, and keeps constants used as types or in defaults", () => {
+    expect(
+      routesOf(expressAdapter, {
+        "src/a.js": app(['const prefix = "/api";', "function m(opts) {", "  const { prefix } = opts;", "  app.use(prefix, router);", "}"]),
+      }),
+    ).toEqual(["GET /x"]);
+    expect(routesOf(expressAdapter, { "src/a.js": app(['const P = "/p";', "for (const P of list) app.use(P, router);"]) })).toEqual(["GET /x"]);
+    const kept = [
+      'const API = "/api";',
+      "function other(x = join(y, API)) {}",
+      "const f = (cfg: Record<string, API>) => cfg;",
+      "const g = (): API => null;",
+      "const sql = `select(API) {`;",
+      "app.use(API, router);",
+    ];
+    expect(routesOf(expressAdapter, { "src/a.ts": app(kept) })).toEqual(["GET /api/x"]);
+  });
+
+  it("keeps the known part of a path built from a non-constant, an assertion or a call", () => {
+    const routes = routesOf(expressAdapter, {
+      "src/a.js": app([
+        "app.get('/api/' + version + '/users', h);",
+        "app.get('/cast' as string, h);",
+        "app.get('/lower'.toLowerCase(), h);",
+        "app.get('/it\\'s', h);",
+      ]),
+    });
+    expect(routes).toEqual(["GET /api/${version}/users", "GET /cast", "GET /it's", "GET /lower", "GET /x"]);
+  });
+});
