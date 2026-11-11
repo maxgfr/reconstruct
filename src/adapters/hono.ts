@@ -1,6 +1,6 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { IDENT_RE, type MountGraph, addMount, moduleBindings, mountPrefixes, stringValue } from "./js-modules.js";
+import { IDENT_RE, type MountGraph, addMount, moduleBindings, mountPrefixes, stringConstants, stringValue, type StringConstants } from "./js-modules.js";
 import { type ChainedCall, JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // `new Hono()` / `new Hono<{ Bindings: Env }>()` — generics tolerated.
@@ -43,7 +43,11 @@ export const honoAdapter: RouteAdapter = {
     const varsByFile = new Map<string, Map<string, HonoVar>>();
     const callsByFile = new Map<string, Array<{ recv: string; fresh: boolean; rel: string; call: ChainedCall }>>();
     const exportsByFile = new Map<string, Map<string, string>>(); // export name → var
+    // String constants per file: a path may be `${API}/users` or `API_PREFIX`.
+    const constsByFile = new Map<string, StringConstants>();
     for (const [path, src] of sources) {
+      const consts = stringConstants(path, src, sources, moduleBindings(src));
+      constsByFile.set(path, consts);
       const vars = new Map<string, HonoVar>();
       const calls: Array<{ recv: string; fresh: boolean; rel: string; call: ChainedCall }> = [];
       const exportsOf = new Map<string, string>();
@@ -69,7 +73,7 @@ export const honoAdapter: RouteAdapter = {
         for (const call of chain) {
           if (call.name !== "basePath") calls.push({ recv, fresh: h.name === null, rel, call });
           else {
-            const p = stringValue(call.args[0]);
+            const p = stringValue(call.args[0], consts);
             if (p !== undefined) rel = joinRoute(rel, p);
           }
         }
@@ -122,8 +126,9 @@ export const honoAdapter: RouteAdapter = {
     for (const [path, src] of sources) {
       const vars = varsByFile.get(path) ?? new Map<string, HonoVar>();
       const bindings = moduleBindings(src);
+      const consts = constsByFile.get(path);
       for (const { recv, fresh, rel, call } of callsByFile.get(path) ?? []) {
-        const p = stringValue(call.args[0]);
+        const p = stringValue(call.args[0], consts);
         const mounted = call.args[1];
         if (call.name !== "route" || p === undefined || !mounted || !IDENT_RE.test(mounted)) continue;
         let target: string | null = null;
@@ -145,13 +150,14 @@ export const honoAdapter: RouteAdapter = {
     const routes: RouteInfo[] = [];
     for (const [path, src] of sources) {
       const vars = varsByFile.get(path) ?? new Map<string, HonoVar>();
+      const consts = constsByFile.get(path);
       const seen = new Set<string>();
       for (const { recv, fresh, rel, call } of callsByFile.get(path) ?? []) {
         let verbs: string[];
         let routePath: string | undefined;
         if (VERB_RE.test(call.name)) {
           verbs = [call.name];
-          routePath = stringValue(call.args[0]);
+          routePath = stringValue(call.args[0], consts);
         } else if (call.name === "on") {
           // `app.on("PURGE" | ["GET", ...], "/path", handler)`.
           const m = call.args[0] ?? "";
@@ -159,7 +165,7 @@ export const honoAdapter: RouteAdapter = {
             .split(",")
             .map((s) => s.trim().match(/^["'`](\w+)["'`]$/)?.[1] ?? "")
             .filter(Boolean);
-          routePath = stringValue(call.args[1]);
+          routePath = stringValue(call.args[1], consts);
         } else continue;
         if (routePath === undefined) continue;
         const base = joinRoute(fresh ? "" : baseOf(vars, recv), rel);

@@ -1,6 +1,15 @@
 import type { FileInfo, RouteInfo } from "../types.js";
 import type { RouteAdapter } from "./types.js";
-import { DEFAULT_EXPORT, type ModuleBinding, argumentBinding, moduleBindings, stringValue } from "./js-modules.js";
+import {
+  DEFAULT_EXPORT,
+  type ModuleBinding,
+  argumentBinding,
+  moduleBindings,
+  literalValue,
+  stringConstants,
+  stringValue,
+  type StringConstants,
+} from "./js-modules.js";
 import { JS_SRC_EXTS as SRC_EXTS, callArgs, chainCalls, joinRoute, lineAt, methodOf, readSources, resolveModule } from "./util.js";
 
 // Optional TS annotation between a declared name and its `=`: `: FastifyInstance`.
@@ -12,10 +21,11 @@ const FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*r
 // `app.register(require("./x") | pluginVar, { prefix: "/p", ... })` — the
 // arguments are read with a balanced scan, so nested option objects are fine.
 const REGISTER_RE = /\b(\w+)\s*\.\s*register\s*\(/g;
-const PREFIX_RE = /\bprefix\s*:\s*["'`]([^"'`]*)["'`]/;
+// `prefix: "/p"`, `prefix: `${API}/p``, or `prefix: API_PREFIX`.
+const PREFIX_RE = /\bprefix\s*:\s*(?:(["'`])([^"'`]*)\1|([A-Za-z_$][\w$]*))/;
 const VERBS = "get|head|post|put|delete|options|patch|all";
 // `app.get("/x")`, also as `app\n  .get("/x")` (a multi-line chain).
-const ROUTE_RE = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS})\s*\(\s*["'\`]([^"'\`]*)["'\`]`, "g");
+const ROUTE_RE = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS})\s*\(\s*(["'\`])([^"'\`]*)\3`, "g");
 const VERB_RE = new RegExp(`^(?:${VERBS})$`);
 const WS_OPTS_RE = /^\{[^}]*\bwebsocket\s*:\s*true/;
 const isWsOpts = (opts: string | undefined): boolean => opts !== undefined && WS_OPTS_RE.test(opts);
@@ -23,7 +33,7 @@ const isWsOpts = (opts: string | undefined): boolean => opts !== undefined && WS
 // receiver + opening brace; method/url are picked out of a bounded slice
 // (handler bodies can nest braces, so a balanced capture is unreliable).
 const ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
-const URL_RE = /\burl\s*:\s*["'`]([^"'`]*)["'`]/;
+const URL_RE = /\burl\s*:\s*(["'`])([^"'`]*)\1/;
 const METHOD_RE = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 
 /**
@@ -73,6 +83,14 @@ function declaredPluginParam(src: string, name: string): { param: string; wrappe
   return null;
 }
 
+/** The `prefix` of a register options object, resolved through string constants; "" when absent or not static. */
+function registerPrefix(opts: string, consts: StringConstants | undefined): string {
+  const m = opts.match(PREFIX_RE);
+  if (!m) return "";
+  if (m[3] !== undefined) return consts?.get(m[3]) ?? "";
+  return literalValue(m[1] as string, m[2] as string, consts);
+}
+
 function localVars(src: string, re: RegExp): Set<string> {
   return new Set([...src.matchAll(re)].map((m) => m[1] as string));
 }
@@ -95,13 +113,17 @@ export const fastifyAdapter: RouteAdapter = {
     const pluginParamByFile = new Map<string, string>();
     const unencapsulated = new Set<string>(); // fp()-wrapped plugin files
     const modulesByFile = new Map<string, Map<string, ModuleBinding>>();
+    // String constants per file: a path may be `${API}/users` or `API_PREFIX`.
+    const constsByFile = new Map<string, StringConstants>();
     const registersByFile = new Map<string, Array<{ receiver: string; args: string[] }>>();
     for (const [path, src] of sources) {
       appVarsByFile.set(path, localVars(src, APP_RE));
       const plugin = pluginParam(src);
       if (plugin) pluginParamByFile.set(path, plugin.param);
       if (plugin?.wrapped) unencapsulated.add(path);
-      modulesByFile.set(path, moduleBindings(src));
+      const bindings = moduleBindings(src);
+      modulesByFile.set(path, bindings);
+      constsByFile.set(path, stringConstants(path, src, sources, bindings));
       const registers: Array<{ receiver: string; args: string[] }> = [];
       for (const m of src.matchAll(REGISTER_RE)) {
         const call = callArgs(src, (m.index ?? 0) + (m[0] as string).length - 1);
@@ -142,7 +164,7 @@ export const fastifyAdapter: RouteAdapter = {
         // An fp()-wrapped plugin runs in its parent's context: Fastify ignores
         // the register `prefix` for it, so it inherits the parent's mount.
         const opts = args[1]?.startsWith("{") ? args[1] : "";
-        const prefix = unencapsulated.has(target) ? "" : (opts.match(PREFIX_RE)?.[1] ?? "");
+        const prefix = unencapsulated.has(target) ? "" : registerPrefix(opts, constsByFile.get(path));
         const list = edges.get(path);
         if (list) list.push({ target, prefix });
         else edges.set(path, [{ target, prefix }]);
@@ -172,6 +194,7 @@ export const fastifyAdapter: RouteAdapter = {
     for (const [path, src] of sources) {
       const appVars = appVarsByFile.get(path) ?? new Set<string>();
       const param = pluginParamByFile.get(path);
+      const consts = constsByFile.get(path);
       const prefixFor = (obj: string): string | null => {
         if (appVars.has(obj)) return "";
         if (obj === param) return mountByFile.get(path) ?? "";
@@ -185,7 +208,7 @@ export const fastifyAdapter: RouteAdapter = {
         // `app.get("/live", { websocket: true }, h)` (@fastify/websocket) is a
         // WebSocket route, not an HTTP GET — check the options right after the path.
         routes.push({
-          route: joinRoute(prefix, m[3] as string),
+          route: joinRoute(prefix, literalValue(m[3] as string, m[4] as string, consts)),
           file: path,
           line: lineAt(src, m.index ?? 0),
           kind: "api",
@@ -194,7 +217,7 @@ export const fastifyAdapter: RouteAdapter = {
         // Shorthand routes return the instance: `app.get("/a", h).post("/b", h)`.
         if (!call) continue;
         for (const c of chainCalls(src, call.end)) {
-          const p = stringValue(c.args[0]);
+          const p = stringValue(c.args[0], consts);
           if (!VERB_RE.test(c.name) || p === undefined) continue;
           routes.push({
             route: joinRoute(prefix, p),
@@ -209,7 +232,8 @@ export const fastifyAdapter: RouteAdapter = {
         const prefix = prefixFor(m[1] as string);
         if (prefix === null) continue;
         const slice = src.slice(m.index ?? 0, (m.index ?? 0) + 400);
-        const url = slice.match(URL_RE)?.[1];
+        const urlM = slice.match(URL_RE);
+        const url = urlM ? literalValue(urlM[1] as string, urlM[2] as string, consts) : undefined;
         if (url === undefined) continue;
         const route = joinRoute(prefix, url);
         const line = lineAt(src, m.index ?? 0);
