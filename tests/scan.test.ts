@@ -200,8 +200,10 @@ describe("unreadable and oversized files", () => {
     try {
       const { files } = walk(repo, { out: join(repo, "out") });
       const docker = files.find((f) => f.path === "Dockerfile");
-      // Running as root can still read it: then it is plain text either way.
-      expect(docker?.binary).toBe(false);
+      // Since codeindex 2.31.19 the walk reports a file it cannot read as a skip
+      // ("unreadable") instead of listing it; running as root it is still read,
+      // and then it is plain text. Either way it is never a compiled artifact.
+      if (docker) expect(docker.binary).toBe(false);
       expect(opaqueArtifacts(files)).not.toContain("Dockerfile");
     } finally {
       chmodSync(join(repo, "Dockerfile"), 0o644);
