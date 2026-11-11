@@ -29,6 +29,11 @@ type ResultMessage = { id: number; ok: true; value: unknown } | { id: number; ok
 export function startToolWorker(): void {
   const port = parentPort;
   if (!port) throw new Error("startToolWorker() must run inside a worker thread");
+  // Nothing a worker prints may reach the protocol stream: its stdout goes to
+  // its stderr, which Node forwards to the server's stderr. (Doing this here
+  // rather than piping `worker.stdout` keeps an idle worker unref'd.)
+  process.stdout.write = ((chunk: unknown, ...rest: unknown[]) =>
+    (process.stderr.write as (...a: unknown[]) => boolean)(chunk, ...rest)) as typeof process.stdout.write;
   port.on("message", (msg: JobMessage) => {
     void (async () => {
       let reply: ResultMessage;
@@ -85,10 +90,8 @@ export function createToolPool(opts: { size: number; script?: string }): ToolPoo
   let closed = false;
 
   const spawn = (): Slot => {
-    // stdout: true keeps the worker's stdout off the protocol stream: a
-    // console.log in a worker lands on stderr, like one on the server thread.
-    const worker = new Worker(script, { workerData: { [TOOL_WORKER_FLAG]: true }, stdout: true });
-    worker.stdout.pipe(process.stderr);
+    // The worker sends its own stdout to stderr (startToolWorker).
+    const worker = new Worker(script, { workerData: { [TOOL_WORKER_FLAG]: true } });
     const slot: Slot = { worker };
     worker.on("message", (msg: ResultMessage) => {
       const busy = slot.busy;

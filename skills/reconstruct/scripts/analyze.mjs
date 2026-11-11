@@ -38020,6 +38020,7 @@ var TOOL_WORKER_FLAG = "reconstructToolWorker";
 function startToolWorker() {
   const port = parentPort;
   if (!port) throw new Error("startToolWorker() must run inside a worker thread");
+  process.stdout.write = ((chunk, ...rest) => process.stderr.write(chunk, ...rest));
   port.on("message", (msg) => {
     void (async () => {
       let reply;
@@ -38052,8 +38053,7 @@ function createToolPool(opts) {
   let nextId = 0;
   let closed = false;
   const spawn3 = () => {
-    const worker = new Worker3(script, { workerData: { [TOOL_WORKER_FLAG]: true }, stdout: true });
-    worker.stdout.pipe(process.stderr);
+    const worker = new Worker3(script, { workerData: { [TOOL_WORKER_FLAG]: true } });
     const slot = { worker };
     worker.on("message", (msg) => {
       const busy = slot.busy;
@@ -38823,9 +38823,24 @@ async function runStdioServer(opts = {}) {
     void p.finally(() => inFlight.delete(p));
     return p;
   };
-  const batches = /* @__PURE__ */ new Set();
-  const drainToLimit = async () => {
-    while (inFlight.size >= MAX_IN_FLIGHT) await Promise.race(inFlight);
+  let running = 0;
+  const waiting = [];
+  const acquire = () => {
+    if (running < MAX_IN_FLIGHT) {
+      running++;
+      return Promise.resolve();
+    }
+    return new Promise((r) => waiting.push(r));
+  };
+  const release = () => {
+    const next = waiting.shift();
+    if (next) next();
+    else running--;
+  };
+  const dispatch2 = (m, reply) => {
+    const isToolCall = m !== null && typeof m === "object" && m.method === "tools/call";
+    const run2 = isToolCall ? acquire().then(() => server.handle(m, reply).finally(release)) : server.handle(m, reply);
+    return track(run2.catch(reportInternal(send)));
   };
   const rl = createInterface2({ input, terminal: false });
   try {
@@ -38839,33 +38854,27 @@ async function runStdioServer(opts = {}) {
         send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
         continue;
       }
-      await drainToLimit();
       if (Array.isArray(parsed2) && parsed2.length === 0) {
         send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: empty batch" } });
         continue;
       }
       if (Array.isArray(parsed2)) {
         const out2 = [];
-        const parts2 = [];
-        for (const m of parsed2) {
-          await drainToLimit();
-          parts2.push(track(server.handle(m, (r) => void out2.push(r)).catch(reportInternal(send))));
-        }
-        const answered = Promise.all(parts2).then(() => {
-          if (out2.length) emit2(JSON.stringify(out2) + "\n");
-        });
-        batches.add(answered);
-        void answered.finally(() => batches.delete(answered));
+        const parts2 = parsed2.map((m) => dispatch2(m, (r) => void out2.push(r)));
+        track(
+          Promise.all(parts2).then(() => {
+            if (out2.length) emit2(JSON.stringify(out2) + "\n");
+          })
+        );
         continue;
       }
       if (parsed2 === null || typeof parsed2 !== "object") {
         send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: expected a JSON-RPC object" } });
         continue;
       }
-      track(server.handle(parsed2, send).catch(reportInternal(send)));
+      void dispatch2(parsed2, send);
     }
-    await Promise.all(inFlight);
-    await Promise.all(batches);
+    while (inFlight.size) await Promise.all(inFlight);
   } finally {
     rl.close();
     await pool?.close();

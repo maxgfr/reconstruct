@@ -21,8 +21,10 @@ import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOpti
 //    the tool calls run in worker threads (offload.ts): the handlers are
 //    synchronous, so not awaiting them is not enough on its own.
 
-// How many tool calls may be in flight at once. Above this, reconstruct's own
+// How many tool calls may run at once. Above this, reconstruct's own
 // per-source concurrency and the git subprocesses stop paying for themselves.
+// Only tool calls wait for a slot: `ping`, `tools/list` and the other
+// methods answer at once, and the read loop never stops for a busy server.
 const MAX_IN_FLIGHT = 4;
 
 export interface StdioOptions extends ServerOptions {
@@ -58,17 +60,33 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
     emit(JSON.stringify(msg) + "\n");
   };
 
+  // Every message still being handled, so stdin closing can wait for them.
   const inFlight = new Set<Promise<void>>();
   const track = (p: Promise<void>) => {
     inFlight.add(p);
     void p.finally(() => inFlight.delete(p));
     return p;
   };
-  // Batches whose array frame is still being assembled (not counted against
-  // the cap — their elements are).
-  const batches = new Set<Promise<void>>();
-  const drainToLimit = async () => {
-    while (inFlight.size >= MAX_IN_FLIGHT) await Promise.race(inFlight);
+  // Tool-call slots. A freed slot passes straight to the next waiting call,
+  // so the count never goes over the cap.
+  let running = 0;
+  const waiting: Array<() => void> = [];
+  const acquire = (): Promise<void> => {
+    if (running < MAX_IN_FLIGHT) {
+      running++;
+      return Promise.resolve();
+    }
+    return new Promise((r) => waiting.push(r));
+  };
+  const release = () => {
+    const next = waiting.shift();
+    if (next) next();
+    else running--;
+  };
+  const dispatch = (m: JsonRpcMessage, reply: (r: JsonRpcMessage) => void): Promise<void> => {
+    const isToolCall = m !== null && typeof m === "object" && m.method === "tools/call";
+    const run = isToolCall ? acquire().then(() => server.handle(m, reply).finally(release)) : server.handle(m, reply);
+    return track(run.catch(reportInternal(send)));
   };
 
   const rl = createInterface({ input, terminal: false });
@@ -85,8 +103,6 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
         continue;
       }
 
-      await drainToLimit();
-
       if (Array.isArray(parsed) && parsed.length === 0) {
         send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: empty batch" } });
         continue;
@@ -94,19 +110,15 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
       if (Array.isArray(parsed)) {
         // A batch answers as one array, so the client can match it to what it
         // sent. Notifications inside it contribute nothing, and a batch of only
-        // notifications produces no frame at all. Each element is its own
-        // in-flight entry: a batch of 20 calls must not run 20 at once.
+        // notifications produces no frame at all. Each tool call in it takes
+        // its own slot: a batch of 20 calls must not run 20 at once.
         const out: JsonRpcMessage[] = [];
-        const parts: Promise<void>[] = [];
-        for (const m of parsed) {
-          await drainToLimit();
-          parts.push(track(server.handle(m as JsonRpcMessage, (r) => void out.push(r)).catch(reportInternal(send))));
-        }
-        const answered = Promise.all(parts).then(() => {
-          if (out.length) emit(JSON.stringify(out) + "\n");
-        });
-        batches.add(answered);
-        void answered.finally(() => batches.delete(answered));
+        const parts = parsed.map((m) => dispatch(m as JsonRpcMessage, (r) => void out.push(r)));
+        track(
+          Promise.all(parts).then(() => {
+            if (out.length) emit(JSON.stringify(out) + "\n");
+          }),
+        );
         continue;
       }
 
@@ -117,14 +129,13 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
 
       // Deliberately not awaited: the loop goes back for the next frame while
       // this one works.
-      track(server.handle(parsed as JsonRpcMessage, send).catch(reportInternal(send)));
+      void dispatch(parsed as JsonRpcMessage, send);
     }
 
     // stdin closed. Let whatever is still running finish and answer — calling
     // process.exit() here would drop these frames, because stdout on a pipe is
     // asynchronous and exit() does not flush it.
-    await Promise.all(inFlight);
-    await Promise.all(batches);
+    while (inFlight.size) await Promise.all(inFlight);
   } finally {
     rl.close();
     await pool?.close();
