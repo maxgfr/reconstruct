@@ -58,17 +58,23 @@ export function argumentBinding(arg: string, bindings: Map<string, ModuleBinding
 // ---------------------------------------------------------------------------
 // String values
 
-/** A string literal expression: its quote and its raw body. */
-export const LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
-// A module-level `const NAME = "value"` (optionally exported, annotated
-// `: string`, or `as const`). Indented declarations are local to a function
-// and may be shadowed, so only column-0 ones count.
+/**
+ * A string literal expression: its quote and its raw body. The body may hold
+ * the other two quote characters (`"/it's"`, `` `/t/${cfg['x']}` ``).
+ */
+export const LITERAL_RE = /^(["'`])((?:(?!\1)[^\n])*)\1$/;
+// One term of a `+` concatenation, then the `+` or the end.
+const TERM_RE = /\s*(?:(["'`])((?:(?!\1)[^\n])*)\1|([A-Za-z_$][\w$]*))\s*(\+|$)/y;
+// A module-level `const NAME[: string] = <expression>[ as const];`. Indented
+// declarations are local to a block or function, so only column-0 ones count;
+// the expression is read by `concatValue`.
 const STRING_CONST_RE =
-  /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=[ \t]*(["'`])([^"'`\n]*)\2[ \t]*(?:as[ \t]+const[ \t]*)?;?[ \t]*$/gm;
+  /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=[ \t]*([^;\n]+?)[ \t]*(?:as[ \t]+const[ \t]*)?;?[ \t]*$/gm;
 const INTERPOLATION_RE = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
 
 /** String constants by name, as an adapter sees them from one file. */
 export type StringConstants = ReadonlyMap<string, string>;
+const NO_CONSTANTS: StringConstants = new Map();
 
 /**
  * The value of a quoted string body. A template literal has each `${NAME}`
@@ -82,20 +88,57 @@ export function literalValue(quote: string, body: string, consts?: StringConstan
 }
 
 /**
+ * The value of `"a" + NAME + `b`` — string literals and names of string
+ * constants joined by `+`. Undefined when a term is anything else or names no
+ * constant. With `strict`, a template left with an unresolved `${…}` fails too.
+ */
+function concatValue(expr: string, consts: StringConstants | undefined, strict: boolean): string | undefined {
+  let out = "";
+  let at = 0;
+  for (;;) {
+    TERM_RE.lastIndex = at;
+    const m = TERM_RE.exec(expr);
+    if (!m || m[0] === "") return undefined;
+    if (m[3] !== undefined) {
+      const v = consts?.get(m[3]);
+      if (v === undefined) return undefined;
+      out += v;
+    } else {
+      const v = literalValue(m[1] as string, m[2] as string, consts);
+      if (strict && m[1] === "`" && INTERPOLATION_RE.test(v)) return undefined;
+      INTERPOLATION_RE.lastIndex = 0;
+      out += v;
+    }
+    at = TERM_RE.lastIndex;
+    if (m[4] !== "+") return at >= expr.length ? out : undefined;
+  }
+}
+
+/**
  * The static string value of an argument expression: a string literal (see
- * `literalValue`), or a name bound to a string constant. Undefined otherwise.
+ * `literalValue`), a name bound to a string constant, or `+` concatenations of
+ * those. Undefined otherwise.
  */
 export function stringValue(expr: string | undefined, consts?: StringConstants): string | undefined {
   if (expr === undefined) return undefined;
   const m = expr.match(LITERAL_RE);
   if (m) return literalValue(m[1] as string, m[2] as string, consts);
-  return IDENT_RE.test(expr) ? consts?.get(expr) : undefined;
+  const trimmed = expr.trim();
+  if (IDENT_RE.test(trimmed)) return consts?.get(trimmed);
+  return trimmed.includes("+") ? concatValue(trimmed, consts, false) : undefined;
 }
 
-/** The module-level string constants one file declares, unresolved (a name declared twice is dropped). */
-function declaredConstants(src: string): Map<string, { quote: string; body: string }> {
-  const out = new Map<string, { quote: string; body: string }>();
-  if (!src.includes("const")) return out;
+/** A string literal right at `at` (whitespace allowed), as written — for a call whose arguments do not balance. */
+export function leadingLiteral(src: string, at: number): string | undefined {
+  return src
+    .slice(at, at + 2048)
+    .match(/^\s*(["'`])(?:(?!\1)[^\n])*\1/)?.[0]
+    .trim();
+}
+
+/** The module-level `const` declarations of one file, unevaluated (a name declared twice is dropped). */
+function declaredConstants(src: string): Map<string, string> {
+  const out = new Map<string, string>();
   const twice = new Set<string>();
   for (const m of src.matchAll(STRING_CONST_RE)) {
     const name = m[1] as string;
@@ -103,56 +146,107 @@ function declaredConstants(src: string): Map<string, { quote: string; body: stri
       out.delete(name);
       twice.add(name);
     } else {
-      out.set(name, { quote: m[2] as string, body: m[3] as string });
+      out.set(name, m[2] as string);
     }
   }
   return out;
 }
 
-// Per source set (one adapter pass reuses its Map): the constants visible in
-// each file, imports followed.
+const PARAM_LIST_RES = [
+  /\bfunction\b\s*\*?\s*[\w$]*\s*\(([^)]*)\)/g,
+  /\(([^()]*)\)\s*(?::\s*[^=;{}()]+)?=>/g,
+  /\bcatch\s*\(([^)]*)\)/g,
+  // A method: `name(params) {` at the start of a line, not a control statement.
+  /^[ \t]*(?:(?:async|static|get|set|public|private|protected|override)\s+)*(?!(?:if|for|while|switch|with|return|catch|function)\b)[A-Za-z_$][\w$]*\s*\(([^)]*)\)\s*(?::[^{;]*)?\{/gm,
+];
+const LOCAL_BINDING_RES = [/\b(?:let|var)\s+([A-Za-z_$][\w$]*)/g, /^[ \t]+const\s+([A-Za-z_$][\w$]*)/gm, /(?<![\w$.)\]])([A-Za-z_$][\w$]*)\s*=>/g];
+
+/**
+ * Names a file also binds as a parameter or a local variable. A module-level
+ * constant of the same name may be shadowed where it is used
+ * (`function mount(app, prefix) { app.use(prefix, r) }`), so it is not trusted.
+ */
+function shadowedNames(src: string): Set<string> {
+  const out = new Set<string>();
+  for (const re of PARAM_LIST_RES) {
+    for (const m of src.matchAll(re)) {
+      for (const part of (m[1] as string).split(",")) {
+        const name = part
+          .split(/[=:]/)[0]
+          ?.replace(/^[\s.{[]+/, "")
+          .match(/^[A-Za-z_$][\w$]*/)?.[0];
+        if (name) out.add(name);
+      }
+    }
+  }
+  for (const re of LOCAL_BINDING_RES) for (const m of src.matchAll(re)) out.add(m[1] as string);
+  return out;
+}
+
+// Per source set (one adapter pass reuses its Map): the constants visible in each file.
 const constantsBySources = new WeakMap<Map<string, string>, Map<string, Map<string, string>>>();
 
 /**
- * The string constants visible in `path`: those it imports by name from a
- * relative module (`import { API_PREFIX } from "./config"`), then the ones it
- * declares at module level, each composed from the constants before it
- * (`const V1 = \`${API_PREFIX}/v1\``). A template with an interpolation that has
- * no static value is not a constant. Re-exports are not followed.
+ * Every file's visible string constants, resolved together: what it imports
+ * by name from a relative module (`import { API_PREFIX } from "./config"`)
+ * and what it declares at module level, composed from those
+ * (`const V1 = \`${API_PREFIX}/v1\``, `const V2 = API_PREFIX + "/v2"`). Values
+ * are propagated to a fixpoint, so the walk order and import cycles do not
+ * change the result. A name the file also binds as a parameter or a local is
+ * left out. Re-exports are not followed.
  */
-export function stringConstants(path: string, src: string, sources: Map<string, string>, bindings?: Map<string, ModuleBinding>): StringConstants {
-  let cache = constantsBySources.get(sources);
-  if (!cache) {
-    cache = new Map();
-    constantsBySources.set(sources, cache);
-  }
-  const memo = cache;
-  const inProgress = new Set<string>();
-  const visible = (file: string, text: string, binds: Map<string, ModuleBinding> | undefined): Map<string, string> => {
-    const hit = memo.get(file);
-    if (hit) return hit;
-    // An import cycle: the file being resolved contributes nothing to itself.
-    if (inProgress.has(file)) return new Map();
-    inProgress.add(file);
-    const declared = declaredConstants(text);
-    const out = new Map<string, string>();
+function resolveConstants(sources: Map<string, string>): Map<string, Map<string, string>> {
+  const files: Array<{ file: string; decls: Map<string, string>; imports: Array<{ local: string; target: string; exported: string }> }> = [];
+  for (const [file, text] of sources) {
+    const decls = text.includes("const") ? declaredConstants(text) : new Map<string, string>();
+    const imports: Array<{ local: string; target: string; exported: string }> = [];
     if (text.includes("import") || text.includes("require")) {
-      for (const [local, { spec, exported }] of binds ?? moduleBindings(text)) {
-        if (exported === DEFAULT_EXPORT || declared.has(local)) continue;
+      for (const [local, { spec, exported }] of moduleBindings(text)) {
+        if (exported === DEFAULT_EXPORT || decls.has(local)) continue;
         const target = resolveModule(file, spec, sources);
-        const value = target ? visible(target, sources.get(target) as string, undefined).get(exported) : undefined;
-        if (value !== undefined) out.set(local, value);
+        if (target) imports.push({ local, target, exported });
       }
     }
-    for (const [name, { quote, body }] of declared) {
-      const value = literalValue(quote, body, out);
-      if (!(quote === "`" && value.includes("${"))) out.set(name, value);
+    if (!decls.size && !imports.length) continue;
+    const shadowed = shadowedNames(text);
+    for (const name of shadowed) decls.delete(name);
+    const kept = imports.filter((i) => !shadowed.has(i.local));
+    if (decls.size || kept.length) files.push({ file, decls, imports: kept });
+  }
+  const out = new Map<string, Map<string, string>>(files.map((f) => [f.file, new Map()]));
+  // Values only ever get added, so this ends; each round settles one more hop.
+  for (let round = 0; round < 32; round++) {
+    let changed = false;
+    for (const { file, decls, imports } of files) {
+      const vals = out.get(file) as Map<string, string>;
+      for (const { local, target, exported } of imports) {
+        if (vals.has(local)) continue;
+        const v = out.get(target)?.get(exported);
+        if (v === undefined) continue;
+        vals.set(local, v);
+        changed = true;
+      }
+      for (const [name, expr] of decls) {
+        if (vals.has(name)) continue;
+        const v = concatValue(expr, vals, true);
+        if (v === undefined) continue;
+        vals.set(name, v);
+        changed = true;
+      }
     }
-    inProgress.delete(file);
-    memo.set(file, out);
-    return out;
-  };
-  return visible(path, src, bindings);
+    if (!changed) break;
+  }
+  return out;
+}
+
+/** The string constants visible in `path` (see `resolveConstants`). */
+export function stringConstants(path: string, sources: Map<string, string>): StringConstants {
+  let all = constantsBySources.get(sources);
+  if (!all) {
+    all = resolveConstants(sources);
+    constantsBySources.set(sources, all);
+  }
+  return all.get(path) ?? NO_CONSTANTS;
 }
 
 // ---------------------------------------------------------------------------

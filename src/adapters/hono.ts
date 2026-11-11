@@ -46,7 +46,7 @@ export const honoAdapter: RouteAdapter = {
     // String constants per file: a path may be `${API}/users` or `API_PREFIX`.
     const constsByFile = new Map<string, StringConstants>();
     for (const [path, src] of sources) {
-      const consts = stringConstants(path, src, sources, moduleBindings(src));
+      const consts = stringConstants(path, sources);
       constsByFile.set(path, consts);
       const vars = new Map<string, HonoVar>();
       const calls: Array<{ recv: string; fresh: boolean; rel: string; call: ChainedCall }> = [];

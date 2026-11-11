@@ -30956,22 +30956,49 @@ function argumentBinding(arg, bindings) {
   if (inline) return { spec: inline, exported: DEFAULT_EXPORT };
   return IDENT_RE.test(arg) ? bindings.get(arg) : void 0;
 }
-var LITERAL_RE = /^(["'`])([^"'`]*)\1$/;
-var STRING_CONST_RE = /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=[ \t]*(["'`])([^"'`\n]*)\2[ \t]*(?:as[ \t]+const[ \t]*)?;?[ \t]*$/gm;
+var LITERAL_RE = /^(["'`])((?:(?!\1)[^\n])*)\1$/;
+var TERM_RE = /\s*(?:(["'`])((?:(?!\1)[^\n])*)\1|([A-Za-z_$][\w$]*))\s*(\+|$)/y;
+var STRING_CONST_RE = /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=[ \t]*([^;\n]+?)[ \t]*(?:as[ \t]+const[ \t]*)?;?[ \t]*$/gm;
 var INTERPOLATION_RE = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
+var NO_CONSTANTS = /* @__PURE__ */ new Map();
 function literalValue(quote, body2, consts) {
   if (quote !== "`" || !consts?.size || !body2.includes("${")) return body2;
   return body2.replace(INTERPOLATION_RE, (whole, name2) => consts.get(name2) ?? whole);
+}
+function concatValue(expr, consts, strict) {
+  let out2 = "";
+  let at = 0;
+  for (; ; ) {
+    TERM_RE.lastIndex = at;
+    const m = TERM_RE.exec(expr);
+    if (!m || m[0] === "") return void 0;
+    if (m[3] !== void 0) {
+      const v = consts?.get(m[3]);
+      if (v === void 0) return void 0;
+      out2 += v;
+    } else {
+      const v = literalValue(m[1], m[2], consts);
+      if (strict && m[1] === "`" && INTERPOLATION_RE.test(v)) return void 0;
+      INTERPOLATION_RE.lastIndex = 0;
+      out2 += v;
+    }
+    at = TERM_RE.lastIndex;
+    if (m[4] !== "+") return at >= expr.length ? out2 : void 0;
+  }
 }
 function stringValue(expr, consts) {
   if (expr === void 0) return void 0;
   const m = expr.match(LITERAL_RE);
   if (m) return literalValue(m[1], m[2], consts);
-  return IDENT_RE.test(expr) ? consts?.get(expr) : void 0;
+  const trimmed = expr.trim();
+  if (IDENT_RE.test(trimmed)) return consts?.get(trimmed);
+  return trimmed.includes("+") ? concatValue(trimmed, consts, false) : void 0;
+}
+function leadingLiteral(src, at) {
+  return src.slice(at, at + 2048).match(/^\s*(["'`])(?:(?!\1)[^\n])*\1/)?.[0].trim();
 }
 function declaredConstants(src) {
   const out2 = /* @__PURE__ */ new Map();
-  if (!src.includes("const")) return out2;
   const twice = /* @__PURE__ */ new Set();
   for (const m of src.matchAll(STRING_CONST_RE)) {
     const name2 = m[1];
@@ -30979,44 +31006,82 @@ function declaredConstants(src) {
       out2.delete(name2);
       twice.add(name2);
     } else {
-      out2.set(name2, { quote: m[2], body: m[3] });
+      out2.set(name2, m[2]);
     }
   }
   return out2;
 }
-var constantsBySources = /* @__PURE__ */ new WeakMap();
-function stringConstants(path, src, sources, bindings) {
-  let cache3 = constantsBySources.get(sources);
-  if (!cache3) {
-    cache3 = /* @__PURE__ */ new Map();
-    constantsBySources.set(sources, cache3);
-  }
-  const memo2 = cache3;
-  const inProgress = /* @__PURE__ */ new Set();
-  const visible = (file, text, binds) => {
-    const hit = memo2.get(file);
-    if (hit) return hit;
-    if (inProgress.has(file)) return /* @__PURE__ */ new Map();
-    inProgress.add(file);
-    const declared = declaredConstants(text);
-    const out2 = /* @__PURE__ */ new Map();
-    if (text.includes("import") || text.includes("require")) {
-      for (const [local, { spec, exported }] of binds ?? moduleBindings(text)) {
-        if (exported === DEFAULT_EXPORT || declared.has(local)) continue;
-        const target = resolveModule(file, spec, sources);
-        const value = target ? visible(target, sources.get(target), void 0).get(exported) : void 0;
-        if (value !== void 0) out2.set(local, value);
+var PARAM_LIST_RES = [
+  /\bfunction\b\s*\*?\s*[\w$]*\s*\(([^)]*)\)/g,
+  /\(([^()]*)\)\s*(?::\s*[^=;{}()]+)?=>/g,
+  /\bcatch\s*\(([^)]*)\)/g,
+  // A method: `name(params) {` at the start of a line, not a control statement.
+  /^[ \t]*(?:(?:async|static|get|set|public|private|protected|override)\s+)*(?!(?:if|for|while|switch|with|return|catch|function)\b)[A-Za-z_$][\w$]*\s*\(([^)]*)\)\s*(?::[^{;]*)?\{/gm
+];
+var LOCAL_BINDING_RES = [/\b(?:let|var)\s+([A-Za-z_$][\w$]*)/g, /^[ \t]+const\s+([A-Za-z_$][\w$]*)/gm, /(?<![\w$.)\]])([A-Za-z_$][\w$]*)\s*=>/g];
+function shadowedNames(src) {
+  const out2 = /* @__PURE__ */ new Set();
+  for (const re of PARAM_LIST_RES) {
+    for (const m of src.matchAll(re)) {
+      for (const part of m[1].split(",")) {
+        const name2 = part.split(/[=:]/)[0]?.replace(/^[\s.{[]+/, "").match(/^[A-Za-z_$][\w$]*/)?.[0];
+        if (name2) out2.add(name2);
       }
     }
-    for (const [name2, { quote, body: body2 }] of declared) {
-      const value = literalValue(quote, body2, out2);
-      if (!(quote === "`" && value.includes("${"))) out2.set(name2, value);
+  }
+  for (const re of LOCAL_BINDING_RES) for (const m of src.matchAll(re)) out2.add(m[1]);
+  return out2;
+}
+var constantsBySources = /* @__PURE__ */ new WeakMap();
+function resolveConstants(sources) {
+  const files = [];
+  for (const [file, text] of sources) {
+    const decls = text.includes("const") ? declaredConstants(text) : /* @__PURE__ */ new Map();
+    const imports = [];
+    if (text.includes("import") || text.includes("require")) {
+      for (const [local, { spec, exported }] of moduleBindings(text)) {
+        if (exported === DEFAULT_EXPORT || decls.has(local)) continue;
+        const target = resolveModule(file, spec, sources);
+        if (target) imports.push({ local, target, exported });
+      }
     }
-    inProgress.delete(file);
-    memo2.set(file, out2);
-    return out2;
-  };
-  return visible(path, src, bindings);
+    if (!decls.size && !imports.length) continue;
+    const shadowed = shadowedNames(text);
+    for (const name2 of shadowed) decls.delete(name2);
+    const kept = imports.filter((i2) => !shadowed.has(i2.local));
+    if (decls.size || kept.length) files.push({ file, decls, imports: kept });
+  }
+  const out2 = new Map(files.map((f) => [f.file, /* @__PURE__ */ new Map()]));
+  for (let round = 0; round < 32; round++) {
+    let changed = false;
+    for (const { file, decls, imports } of files) {
+      const vals = out2.get(file);
+      for (const { local, target, exported } of imports) {
+        if (vals.has(local)) continue;
+        const v = out2.get(target)?.get(exported);
+        if (v === void 0) continue;
+        vals.set(local, v);
+        changed = true;
+      }
+      for (const [name2, expr] of decls) {
+        if (vals.has(name2)) continue;
+        const v = concatValue(expr, vals, true);
+        if (v === void 0) continue;
+        vals.set(name2, v);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return out2;
+}
+function stringConstants(path, sources) {
+  let all = constantsBySources.get(sources);
+  if (!all) {
+    all = resolveConstants(sources);
+    constantsBySources.set(sources, all);
+  }
+  return all.get(path) ?? NO_CONSTANTS;
 }
 function addMount(graph, target, edge) {
   const list = graph.get(target);
@@ -31047,9 +31112,9 @@ var ROUTER_RE = new RegExp(
 );
 var USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 var VERBS = "get|post|put|delete|patch|options|head|all|ws";
-var ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(\s*(["'\`])([^"'\`]*)\4`, "g");
+var ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(`, "g");
 var VERB_RE = new RegExp(`^(?:${VERBS})$`);
-var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(\s*(["'`])([^"'`]*)\3\s*\)/g;
+var ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(/g;
 var LITERAL_ARRAY_RE = /^\[\s*(["'`])[^"'`]*\1\s*(?:,\s*(["'`])[^"'`]*\2\s*)*,?\s*\]$/;
 function localVars(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
@@ -31071,7 +31136,7 @@ var expressAdapter = {
     for (const [path, src] of sources) {
       const instances = instancesByFile.get(path) ?? /* @__PURE__ */ new Set();
       const bindings = moduleBindings(src);
-      const consts = stringConstants(path, src, sources, bindings);
+      const consts = stringConstants(path, sources);
       constsByFile.set(path, consts);
       for (const m of src.matchAll(USE_RE)) {
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
@@ -31122,9 +31187,9 @@ var expressAdapter = {
         const obj = m[1];
         if (!instances.has(obj)) continue;
         const verbAt = (m.index ?? 0) + obj.length + m[2].length;
-        const routePath = literalValue(m[4], m[5], consts);
-        if (isRoutePath(routePath)) emit2(obj, routePath, m[3], verbAt);
-        const call2 = callArgs(src, src.indexOf("(", verbAt + m[3].length));
+        const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        const routePath = stringValue(call2 ? call2.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        if (routePath !== void 0 && isRoutePath(routePath)) emit2(obj, routePath, m[3], verbAt);
         if (!call2) continue;
         for (const c2 of chainCalls(src, call2.end)) {
           const p = stringValue(c2.args[0], consts);
@@ -31133,10 +31198,12 @@ var expressAdapter = {
       }
       for (const m of src.matchAll(ROUTE_CHAIN_RE)) {
         const obj = m[1];
-        const routePath = literalValue(m[3], m[4], consts);
-        if (!instances.has(obj) || !isRoutePath(routePath)) continue;
+        if (!instances.has(obj)) continue;
+        const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        const routePath = call2?.args.length === 1 ? stringValue(call2.args[0], consts) : void 0;
+        if (!call2 || routePath === void 0 || !isRoutePath(routePath)) continue;
         const at = (m.index ?? 0) + obj.length + m[2].length;
-        const verbs = chainCalls(src, (m.index ?? 0) + m[0].length).filter((c2) => VERB_RE.test(c2.name));
+        const verbs = chainCalls(src, call2.end).filter((c2) => VERB_RE.test(c2.name));
         if (verbs.length) for (const v of verbs) emit2(obj, routePath, v.name, at);
         else emit2(obj, routePath, null, at);
       }
@@ -31150,14 +31217,13 @@ var TYPE3 = String.raw`(?::\s*[\w$.]+(?:<[^>]*>)?\s*)?`;
 var APP_RE2 = new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*${TYPE3}=\s*(?:require\(\s*["'\`]fastify["'\`]\s*\)|[Ff]astify)\s*\(`, "g");
 var FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*require\()\s*["'`]fastify-plugin["'`]/g;
 var REGISTER_RE2 = /\b(\w+)\s*\.\s*register\s*\(/g;
-var PREFIX_RE = /\bprefix\s*:\s*(?:(["'`])([^"'`]*)\1|([A-Za-z_$][\w$]*))/;
 var VERBS2 = "get|head|post|put|delete|options|patch|all";
-var ROUTE_RE2 = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS2})\s*\(\s*(["'\`])([^"'\`]*)\3`, "g");
+var ROUTE_RE2 = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS2})\s*\(`, "g");
 var VERB_RE2 = new RegExp(`^(?:${VERBS2})$`);
 var WS_OPTS_RE = /^\{[^}]*\bwebsocket\s*:\s*true/;
 var isWsOpts = (opts) => opts !== void 0 && WS_OPTS_RE.test(opts);
 var ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
-var URL_RE = /\burl\s*:\s*(["'`])([^"'`]*)\1/;
+var URL_RE = /\burl\s*:\s*(?:(["'`])((?:(?!\1)[^\n])*)\1|([A-Za-z_$][\w$]*)(?=\s*[,}\n]))/;
 var METHOD_RE2 = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 function pluginParam(src) {
   const { fp, fn } = pluginPatterns(src);
@@ -31186,10 +31252,12 @@ function declaredPluginParam(src, name2) {
   return null;
 }
 function registerPrefix(opts, consts) {
-  const m = opts.match(PREFIX_RE);
-  if (!m) return "";
-  if (m[3] !== void 0) return consts?.get(m[3]) ?? "";
-  return literalValue(m[1], m[2], consts);
+  for (const entry2 of callArgs(opts, 0)?.args ?? []) {
+    if (entry2 === "prefix") return consts?.get("prefix") ?? "";
+    const value = entry2.match(/^prefix\s*:\s*([\s\S]+)$/)?.[1];
+    if (value !== void 0) return stringValue(value, consts) ?? "";
+  }
+  return "";
 }
 function localVars2(src, re) {
   return new Set([...src.matchAll(re)].map((m) => m[1]));
@@ -31212,7 +31280,7 @@ var fastifyAdapter = {
       if (plugin?.wrapped) unencapsulated.add(path);
       const bindings = moduleBindings(src);
       modulesByFile.set(path, bindings);
-      constsByFile.set(path, stringConstants(path, src, sources, bindings));
+      constsByFile.set(path, stringConstants(path, sources));
       const registers = [];
       for (const m of src.matchAll(REGISTER_RE2)) {
         const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
@@ -31275,14 +31343,16 @@ var fastifyAdapter = {
       for (const m of src.matchAll(ROUTE_RE2)) {
         const prefix = prefixFor(m[1]);
         if (prefix === null) continue;
-        const call2 = callArgs(src, (m.index ?? 0) + m[0].indexOf("(", m[1].length));
-        routes.push({
-          route: joinRoute(prefix, literalValue(m[3], m[4], consts)),
-          file: path,
-          line: lineAt(src, m.index ?? 0),
-          kind: "api",
-          method: isWsOpts(call2?.args[1]) ? "WS" : methodOf(m[2])
-        });
+        const call2 = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        const routePath = stringValue(call2 ? call2.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        if (routePath !== void 0)
+          routes.push({
+            route: joinRoute(prefix, routePath),
+            file: path,
+            line: lineAt(src, m.index ?? 0),
+            kind: "api",
+            method: isWsOpts(call2?.args[1]) ? "WS" : methodOf(m[2])
+          });
         if (!call2) continue;
         for (const c2 of chainCalls(src, call2.end)) {
           const p = stringValue(c2.args[0], consts);
@@ -31301,7 +31371,7 @@ var fastifyAdapter = {
         if (prefix === null) continue;
         const slice = src.slice(m.index ?? 0, (m.index ?? 0) + 400);
         const urlM = slice.match(URL_RE);
-        const url = urlM ? literalValue(urlM[1], urlM[2], consts) : void 0;
+        const url = !urlM ? void 0 : urlM[3] !== void 0 ? consts?.get(urlM[3]) : literalValue(urlM[1], urlM[2], consts);
         if (url === void 0) continue;
         const route2 = joinRoute(prefix, url);
         const line2 = lineAt(src, m.index ?? 0);
@@ -31342,7 +31412,7 @@ var honoAdapter = {
     const exportsByFile = /* @__PURE__ */ new Map();
     const constsByFile = /* @__PURE__ */ new Map();
     for (const [path, src] of sources) {
-      const consts = stringConstants(path, src, sources, moduleBindings(src));
+      const consts = stringConstants(path, sources);
       constsByFile.set(path, consts);
       const vars = /* @__PURE__ */ new Map();
       const calls = [];

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { expressAdapter } from "../src/adapters/express.js";
 import { fastifyAdapter } from "../src/adapters/fastify.js";
 import { honoAdapter } from "../src/adapters/hono.js";
-import { literalValue, moduleBindings, stringConstants, stringValue } from "../src/adapters/js-modules.js";
+import { literalValue, stringConstants, stringValue } from "../src/adapters/js-modules.js";
 import type { FileInfo, RouteInfo } from "../src/types.js";
 
 // Route paths and mount prefixes built from module-level string constants:
@@ -39,7 +39,7 @@ describe("string constants", () => {
       "}",
       "",
     ].join("\n");
-    const consts = stringConstants("a.ts", src, new Map([["a.ts", src]]), moduleBindings(src));
+    const consts = stringConstants("a.ts", new Map([["a.ts", src]]));
     expect([...consts.entries()]).toEqual([
       ["API", "/api"],
       ["V1", "/api/v1"],
@@ -58,8 +58,7 @@ describe("string constants", () => {
       ["src/config.ts", 'export const API_PREFIX = "/api";\n'],
       ["src/app.ts", 'import { API_PREFIX as P } from "./config";\nimport def from "./config";\n'],
     ]);
-    const src = files.get("src/app.ts") as string;
-    const consts = stringConstants("src/app.ts", src, files, moduleBindings(src));
+    const consts = stringConstants("src/app.ts", files);
     expect(consts.get("P")).toBe("/api");
     expect(consts.has("def")).toBe(false);
   });
@@ -122,5 +121,78 @@ describe("hono: constant-backed paths", () => {
       ].join("\n"),
     });
     expect(routes).toEqual(["GET /v1/api/users/:id", "GET /v1/users"]);
+  });
+});
+
+describe("review findings on constant-backed paths", () => {
+  it("resolves constants across an import cycle whatever the walk order", () => {
+    const index =
+      'import { usersRouter } from "./users";\nimport express from "express";\nexport const API = "/api";\nconst app = express();\napp.use(usersRouter);\n';
+    const users =
+      'import express from "express";\nimport { API } from "./index";\nexport const usersRouter = express.Router();\nusersRouter.get(`${API}/users`, h);\n';
+    expect(routesOf(expressAdapter, { "src/index.ts": index, "src/users.ts": users })).toEqual(["GET /api/users"]);
+    expect(routesOf(expressAdapter, { "src/users.ts": users, "src/index.ts": index })).toEqual(["GET /api/users"]);
+  });
+
+  it("keeps a path that holds another quote character", () => {
+    const routes = routesOf(expressAdapter, {
+      "src/app.js": 'const express = require("express");\nconst app = express();\napp.get("/it\'s", h);\napp.get(`/t/${cfg[\'x\']}`, h);\n',
+    });
+    expect(routes).toEqual(["GET /it's", "GET /t/${cfg['x']}"]);
+    const fastify = routesOf(fastifyAdapter, {
+      "src/s.js": 'const Fastify = require("fastify");\nconst app = Fastify();\napp.route({ method: "GET", url: "/it\'s" });\n',
+    });
+    expect(fastify).toEqual(["GET /it's"]);
+  });
+
+  it("reads a fastify prefix from the top-level entry, through concatenation and shorthand", () => {
+    const routes = routesOf(fastifyAdapter, {
+      "src/s.js": [
+        'const Fastify = require("fastify");',
+        "const API = '/api';",
+        "const prefix = '/short';",
+        "const app = Fastify();",
+        'app.register(require("./a"), { prefix: API + "/v1" });',
+        'app.register(require("./b"), { swagger: { prefix: docs }, prefix: "/b" });',
+        'app.register(require("./c"), { prefix });',
+        "",
+      ].join("\n"),
+      "src/a.js": "module.exports = async function (app) { app.get('/a', h); };\n",
+      "src/b.js": "module.exports = async function (app) { app.get('/b', h); };\n",
+      "src/c.js": "module.exports = async function (app) { app.get('/c', h); };\n",
+    });
+    expect(routes).toEqual(["GET /api/v1/a", "GET /b/b", "GET /short/c"]);
+  });
+
+  it("resolves identifier paths in express and fastify too", () => {
+    expect(
+      routesOf(expressAdapter, {
+        "src/app.js":
+          'const express = require("express");\nconst USERS = "/users";\nconst app = express();\napp.get(USERS, h);\napp.post(USERS + "/:id", h);\n',
+      }),
+    ).toEqual(["GET /users", "POST /users/:id"]);
+    expect(
+      routesOf(fastifyAdapter, {
+        "src/s.js":
+          'const Fastify = require("fastify");\nconst USERS = "/users";\nconst app = Fastify();\napp.get(USERS, h);\napp.route({ method: "PUT", url: USERS });\n',
+      }),
+    ).toEqual(["GET /users", "PUT /users"]);
+  });
+
+  it("does not trust a constant that a parameter or a local shadows", () => {
+    const routes = routesOf(expressAdapter, {
+      "src/app.js": [
+        'const express = require("express");',
+        'const prefix = "/api";',
+        "const app = express();",
+        "const r = express.Router();",
+        'r.get("/x", h);',
+        "function mount(a, prefix) {",
+        "  a.use(prefix, r);",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(routes).toEqual(["GET /x"]);
   });
 });

@@ -5,7 +5,7 @@ import {
   type MountGraph,
   addMount,
   argumentBinding,
-  literalValue,
+  leadingLiteral,
   moduleBindings,
   mountPrefixes,
   stringConstants,
@@ -28,11 +28,12 @@ const USE_RE = /\b(\w+)\s*\.\s*use\s*\(/g;
 // `ws` is express-ws's verb — it declares a WebSocket route (method "WS").
 const VERBS = "get|post|put|delete|patch|options|head|all|ws";
 // `app.get ("/x")` — whitespace before the `(` is legal and seen in the wild.
-const ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(\s*(["'\`])([^"'\`]*)\4`, "g");
+// The path is the call's first argument: a literal, a string constant, or a `+` of those.
+const ROUTE_RE = new RegExp(String.raw`\b(\w+)(\s*\.\s*)(${VERBS})\s*\(`, "g");
 const VERB_RE = new RegExp(`^(?:${VERBS})$`);
 // `router.route("/x").get(h).post(h)` — match the path; the chained verbs are
 // read by walking the calls that follow (across lines, balanced parens).
-const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(\s*(["'`])([^"'`]*)\3\s*\)/g;
+const ROUTE_CHAIN_RE = /\b(\w+)(\s*\.\s*)route\s*\(/g;
 // `use(["/a", "/b"], r)`: an array of string literals mounts at every path.
 const LITERAL_ARRAY_RE = /^\[\s*(["'`])[^"'`]*\1\s*(?:,\s*(["'`])[^"'`]*\2\s*)*,?\s*\]$/;
 
@@ -74,7 +75,7 @@ export const expressAdapter: RouteAdapter = {
     for (const [path, src] of sources) {
       const instances = instancesByFile.get(path) ?? new Set<string>();
       const bindings = moduleBindings(src);
-      const consts = stringConstants(path, src, sources, bindings);
+      const consts = stringConstants(path, sources);
       constsByFile.set(path, consts);
       for (const m of src.matchAll(USE_RE)) {
         const call = callArgs(src, (m.index ?? 0) + (m[0] as string).length - 1);
@@ -133,10 +134,9 @@ export const expressAdapter: RouteAdapter = {
         const obj = m[1] as string;
         if (!instances.has(obj)) continue;
         const verbAt = (m.index ?? 0) + obj.length + (m[2] as string).length;
-        const routePath = literalValue(m[4] as string, m[5] as string, consts);
-        if (isRoutePath(routePath)) emit(obj, routePath, m[3] as string, verbAt);
-        // The `(` after the verb (whitespace may separate them).
-        const call = callArgs(src, src.indexOf("(", verbAt + (m[3] as string).length));
+        const call = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        const routePath = stringValue(call ? call.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
+        if (routePath !== undefined && isRoutePath(routePath)) emit(obj, routePath, m[3] as string, verbAt);
         if (!call) continue;
         for (const c of chainCalls(src, call.end)) {
           const p = stringValue(c.args[0], consts);
@@ -147,10 +147,12 @@ export const expressAdapter: RouteAdapter = {
       // method-agnostic route when the chain declares no verb).
       for (const m of src.matchAll(ROUTE_CHAIN_RE)) {
         const obj = m[1] as string;
-        const routePath = literalValue(m[3] as string, m[4] as string, consts);
-        if (!instances.has(obj) || !isRoutePath(routePath)) continue;
+        if (!instances.has(obj)) continue;
+        const call = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        const routePath = call?.args.length === 1 ? stringValue(call.args[0], consts) : undefined;
+        if (!call || routePath === undefined || !isRoutePath(routePath)) continue;
         const at = (m.index ?? 0) + obj.length + (m[2] as string).length;
-        const verbs = chainCalls(src, (m.index ?? 0) + (m[0] as string).length).filter((c) => VERB_RE.test(c.name));
+        const verbs = chainCalls(src, call.end).filter((c) => VERB_RE.test(c.name));
         if (verbs.length) for (const v of verbs) emit(obj, routePath, v.name, at);
         else emit(obj, routePath, null, at);
       }

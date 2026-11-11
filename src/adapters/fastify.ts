@@ -4,6 +4,7 @@ import {
   DEFAULT_EXPORT,
   type ModuleBinding,
   argumentBinding,
+  leadingLiteral,
   moduleBindings,
   literalValue,
   stringConstants,
@@ -22,10 +23,10 @@ const FP_IMPORT_RE = /(?:import\s+(\w+)\s+from|(?:const|let|var)\s+(\w+)\s*=\s*r
 // arguments are read with a balanced scan, so nested option objects are fine.
 const REGISTER_RE = /\b(\w+)\s*\.\s*register\s*\(/g;
 // `prefix: "/p"`, `prefix: `${API}/p``, or `prefix: API_PREFIX`.
-const PREFIX_RE = /\bprefix\s*:\s*(?:(["'`])([^"'`]*)\1|([A-Za-z_$][\w$]*))/;
 const VERBS = "get|head|post|put|delete|options|patch|all";
 // `app.get("/x")`, also as `app\n  .get("/x")` (a multi-line chain).
-const ROUTE_RE = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS})\s*\(\s*(["'\`])([^"'\`]*)\3`, "g");
+// The path is the call's first argument: a literal, a string constant, or a `+` of those.
+const ROUTE_RE = new RegExp(String.raw`\b(\w+)\s*\.\s*(${VERBS})\s*\(`, "g");
 const VERB_RE = new RegExp(`^(?:${VERBS})$`);
 const WS_OPTS_RE = /^\{[^}]*\bwebsocket\s*:\s*true/;
 const isWsOpts = (opts: string | undefined): boolean => opts !== undefined && WS_OPTS_RE.test(opts);
@@ -33,7 +34,7 @@ const isWsOpts = (opts: string | undefined): boolean => opts !== undefined && WS
 // receiver + opening brace; method/url are picked out of a bounded slice
 // (handler bodies can nest braces, so a balanced capture is unreliable).
 const ROUTE_OBJ_RE = /\b(\w+)\.route\(\s*\{/g;
-const URL_RE = /\burl\s*:\s*(["'`])([^"'`]*)\1/;
+const URL_RE = /\burl\s*:\s*(?:(["'`])((?:(?!\1)[^\n])*)\1|([A-Za-z_$][\w$]*)(?=\s*[,}\n]))/;
 const METHOD_RE = /\bmethod\s*:\s*(?:["'`](\w+)["'`]|\[([^\]]*)\])/;
 
 /**
@@ -83,12 +84,18 @@ function declaredPluginParam(src: string, name: string): { param: string; wrappe
   return null;
 }
 
-/** The `prefix` of a register options object, resolved through string constants; "" when absent or not static. */
+/**
+ * The `prefix` of a register options object — its top-level `prefix` entry
+ * only (`{ swagger: { prefix } }` is another plugin's), resolved through string
+ * constants, shorthand `{ prefix }` included; "" when absent or not static.
+ */
 function registerPrefix(opts: string, consts: StringConstants | undefined): string {
-  const m = opts.match(PREFIX_RE);
-  if (!m) return "";
-  if (m[3] !== undefined) return consts?.get(m[3]) ?? "";
-  return literalValue(m[1] as string, m[2] as string, consts);
+  for (const entry of callArgs(opts, 0)?.args ?? []) {
+    if (entry === "prefix") return consts?.get("prefix") ?? "";
+    const value = entry.match(/^prefix\s*:\s*([\s\S]+)$/)?.[1];
+    if (value !== undefined) return stringValue(value, consts) ?? "";
+  }
+  return "";
 }
 
 function localVars(src: string, re: RegExp): Set<string> {
@@ -123,7 +130,7 @@ export const fastifyAdapter: RouteAdapter = {
       if (plugin?.wrapped) unencapsulated.add(path);
       const bindings = moduleBindings(src);
       modulesByFile.set(path, bindings);
-      constsByFile.set(path, stringConstants(path, src, sources, bindings));
+      constsByFile.set(path, stringConstants(path, sources));
       const registers: Array<{ receiver: string; args: string[] }> = [];
       for (const m of src.matchAll(REGISTER_RE)) {
         const call = callArgs(src, (m.index ?? 0) + (m[0] as string).length - 1);
@@ -204,16 +211,18 @@ export const fastifyAdapter: RouteAdapter = {
       for (const m of src.matchAll(ROUTE_RE)) {
         const prefix = prefixFor(m[1] as string);
         if (prefix === null) continue;
-        const call = callArgs(src, (m.index ?? 0) + (m[0] as string).indexOf("(", (m[1] as string).length));
+        const call = callArgs(src, (m.index ?? 0) + m[0].length - 1);
+        const routePath = stringValue(call ? call.args[0] : leadingLiteral(src, (m.index ?? 0) + m[0].length), consts);
         // `app.get("/live", { websocket: true }, h)` (@fastify/websocket) is a
         // WebSocket route, not an HTTP GET — check the options right after the path.
-        routes.push({
-          route: joinRoute(prefix, literalValue(m[3] as string, m[4] as string, consts)),
-          file: path,
-          line: lineAt(src, m.index ?? 0),
-          kind: "api",
-          method: isWsOpts(call?.args[1]) ? "WS" : methodOf(m[2] as string),
-        });
+        if (routePath !== undefined)
+          routes.push({
+            route: joinRoute(prefix, routePath),
+            file: path,
+            line: lineAt(src, m.index ?? 0),
+            kind: "api",
+            method: isWsOpts(call?.args[1]) ? "WS" : methodOf(m[2] as string),
+          });
         // Shorthand routes return the instance: `app.get("/a", h).post("/b", h)`.
         if (!call) continue;
         for (const c of chainCalls(src, call.end)) {
@@ -233,7 +242,7 @@ export const fastifyAdapter: RouteAdapter = {
         if (prefix === null) continue;
         const slice = src.slice(m.index ?? 0, (m.index ?? 0) + 400);
         const urlM = slice.match(URL_RE);
-        const url = urlM ? literalValue(urlM[1] as string, urlM[2] as string, consts) : undefined;
+        const url = !urlM ? undefined : urlM[3] !== undefined ? consts?.get(urlM[3]) : literalValue(urlM[1] as string, urlM[2] as string, consts);
         if (url === undefined) continue;
         const route = joinRoute(prefix, url);
         const line = lineAt(src, m.index ?? 0);
