@@ -243,9 +243,15 @@ export function detectEnrichment(outDir: string): string[] {
     if (existsSync(join(outDir, ledger))) witnesses.push(`${ledger} — a semantic-gate ledger from a previous round`);
   }
 
+  const manifest = readGeneratedManifest(outDir);
   const resolved = (rel: string): void => {
     const body = readIfFile(join(outDir, rel));
-    if (body?.trim() && !body.includes(CALLOUT)) witnesses.push(`${rel} — every agent callout resolved`);
+    if (!body?.trim() || body.includes(CALLOUT)) return;
+    // Some documents are generated with nothing to resolve (DESIGN-SYSTEM.md
+    // for a repo with no UI): still exactly as the engine wrote them, they are
+    // a pristine scaffold, not enrichment.
+    if (manifest?.artifacts[toPosix(rel)] === sha256(body)) return;
+    witnesses.push(`${rel} — every agent callout resolved`);
   };
   for (const rel of CALLOUT_BEARING_DOCS) resolved(rel);
 
@@ -263,7 +269,6 @@ export function detectEnrichment(outDir: string): string[] {
   // Any generated document edited since the engine wrote it — including the
   // callout-free ones (00-overview/PRD.md, REBUILD.md, diagram.md) the check
   // above cannot see, and partially-enriched docs that still hold callouts.
-  const manifest = readGeneratedManifest(outDir);
   if (manifest) {
     const named = new Set(witnesses.map((w) => w.split(" — ")[0]));
     for (const [rel, hash] of Object.entries(manifest.artifacts).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {

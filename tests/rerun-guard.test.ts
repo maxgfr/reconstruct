@@ -101,6 +101,29 @@ describe("the guard's callout-bearing assumption holds against a real scaffold",
     }
   });
 
+  it("re-scaffolds a repo with no UI without --force, yet still guards an edit of its callout-free DESIGN-SYSTEM.md", () => {
+    const repo = tmp();
+    const dir = tmp();
+    try {
+      mkdirSync(join(repo, "src"), { recursive: true });
+      writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "be", dependencies: { express: "^4.0.0" } }));
+      writeFileSync(join(repo, "src", "app.js"), 'const express = require("express");\nconst app = express();\napp.get("/x", h);\n');
+      const first = spawnSync(NODE, [BUNDLE, "--repo", repo, "--out", dir], { encoding: "utf8" });
+      expect(first.status, first.stderr).toBe(0);
+      const design = join(dir, "architecture", "DESIGN-SYSTEM.md");
+      // Generated with nothing for an agent to resolve.
+      expect(readFileSync(design, "utf8")).not.toContain("🧠");
+      expect(detectEnrichment(dir)).toEqual([]);
+      const again = spawnSync(NODE, [BUNDLE, "--repo", repo, "--out", dir], { encoding: "utf8" });
+      expect(again.status, again.stderr).toBe(0);
+      writeFileSync(design, `${readFileSync(design, "utf8")}\nTokens: none, by design.\n`);
+      expect(detectEnrichment(dir).join("\n")).toMatch(/DESIGN-SYSTEM\.md/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("lets a pristine tree be re-scaffolded without --force", () => {
     const dir = tmp();
     try {

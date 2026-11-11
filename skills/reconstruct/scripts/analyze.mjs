@@ -34988,9 +34988,12 @@ function detectEnrichment(outDir) {
   for (const ledger of LEDGERS) {
     if (existsSync16(join43(outDir, ledger))) witnesses.push(`${ledger} \u2014 a semantic-gate ledger from a previous round`);
   }
+  const manifest = readGeneratedManifest(outDir);
   const resolved = (rel2) => {
     const body2 = readIfFile(join43(outDir, rel2));
-    if (body2?.trim() && !body2.includes(CALLOUT)) witnesses.push(`${rel2} \u2014 every agent callout resolved`);
+    if (!body2?.trim() || body2.includes(CALLOUT)) return;
+    if (manifest?.artifacts[toPosix(rel2)] === sha256(body2)) return;
+    witnesses.push(`${rel2} \u2014 every agent callout resolved`);
   };
   for (const rel2 of CALLOUT_BEARING_DOCS) resolved(rel2);
   let slugs = [];
@@ -34999,7 +35002,6 @@ function detectEnrichment(outDir) {
   } catch {
   }
   for (const slug2 of slugs) resolved(join43("features", slug2, "PRD.md"));
-  const manifest = readGeneratedManifest(outDir);
   if (manifest) {
     const named = new Set(witnesses.map((w) => w.split(" \u2014 ")[0]));
     for (const [rel2, hash] of Object.entries(manifest.artifacts).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
