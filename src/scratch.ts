@@ -138,9 +138,9 @@ function planDataModel(plan: ScratchPlan): Entity[] {
       ...(f.constraints ? { constraints: f.constraints } : {}),
       ...(f.enumRef ? { enumRef: f.enumRef } : {}),
     })),
-    ...(e.relations && e.relations.length ? { relations: e.relations } : {}),
-    ...(e.indexes && e.indexes.length ? { indexes: e.indexes } : {}),
-    ...(e.uniques && e.uniques.length ? { uniques: e.uniques } : {}),
+    ...(e.relations?.length ? { relations: e.relations } : {}),
+    ...(e.indexes?.length ? { indexes: e.indexes } : {}),
+    ...(e.uniques?.length ? { uniques: e.uniques } : {}),
   }));
 }
 
@@ -153,7 +153,7 @@ function planInterfaces(plan: ScratchPlan): InterfaceRow[] {
     ...(r.notes ? { notes: r.notes } : {}),
     ...(r.input ? { input: r.input } : {}),
     ...(r.output ? { output: r.output } : {}),
-    ...(r.sideEffects && r.sideEffects.length ? { sideEffects: r.sideEffects } : {}),
+    ...(r.sideEffects?.length ? { sideEffects: r.sideEffects } : {}),
   }));
 }
 
@@ -169,9 +169,9 @@ function planFeatures(features: ScratchFeature[]): Feature[] {
         kind,
         files: [],
         routes: [],
-        ...(f.interfaces && f.interfaces.length ? { interfaces: f.interfaces } : {}),
-        ...(f.entities && f.entities.length ? { entities: f.entities } : {}),
-        ...(f.writes && f.writes.length ? { writes: f.writes } : {}),
+        ...(f.interfaces?.length ? { interfaces: f.interfaces } : {}),
+        ...(f.entities?.length ? { entities: f.entities } : {}),
+        ...(f.writes?.length ? { writes: f.writes } : {}),
       },
       tier,
       // Preserve the plan's declared order within a tier — the author controls it.
@@ -240,9 +240,9 @@ export function planToInventory(plan: ScratchPlan, opts: Options): Inventory {
     },
     interfaces,
     dataModel: planDataModel(plan),
-    ...(plan.enums && plan.enums.length ? { enums: plan.enums } : {}),
-    ...(plan.services && plan.services.length ? { services: plan.services } : {}),
-    ...(plan.policies && plan.policies.length ? { policies: plan.policies } : {}),
+    ...(plan.enums?.length ? { enums: plan.enums } : {}),
+    ...(plan.services?.length ? { services: plan.services } : {}),
+    ...(plan.policies?.length ? { policies: plan.policies } : {}),
     ...(plan.designSystem ? { designSystem: plan.designSystem } : {}),
   };
 }
@@ -433,10 +433,10 @@ export function renderScratchDocs(plan: ScratchPlan): Artifact[] {
 
 function contextDoc(plan: ScratchPlan): string {
   const lines: string[] = [`# ${plan.project.name} — Context`, "", plan.project.summary, "", "## Language", ""];
-  if (plan.glossary && plan.glossary.length) {
+  if (plan.glossary?.length) {
     for (const g of plan.glossary) {
       lines.push(`**${g.term}**:`, g.definition);
-      if (g.avoid && g.avoid.length) lines.push(`_Avoid_: ${g.avoid.join(", ")}`);
+      if (g.avoid?.length) lines.push(`_Avoid_: ${g.avoid.join(", ")}`);
       lines.push("");
     }
   } else {

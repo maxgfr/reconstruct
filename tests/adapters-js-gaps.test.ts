@@ -278,7 +278,9 @@ describe("stripComments: JSX elements are read as elements", () => {
   });
 
   it("template literals with nested code and JSX keep their text", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: JS source text with template literals.
     const src = "const s = `a ${b /* c */ ? `x // y ${<i>it's</i>}` : 1} // not a comment`; // d\n";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the expected stripped source.
     expect(stripComments(src, ".jsx")).toBe("const s = `a ${b         ? `x // y ${<i>it's</i>}` : 1} // not a comment`;     \n");
   });
 

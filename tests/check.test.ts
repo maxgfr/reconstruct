@@ -59,7 +59,7 @@ describe("checkOutput — structure", () => {
   });
 
   it("errors when a required architecture document is missing", () => {
-    const dir = cleanTree();
+    const _dir = cleanTree();
     // overwrite DATA-MODEL with nothing by writing a tree without it
     const bare = mkdtempSync(join(tmpdir(), "check-bare-"));
     write(bare, "inventory.json", JSON.stringify(INVENTORY));

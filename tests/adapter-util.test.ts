@@ -17,6 +17,7 @@ describe("stripComments", () => {
   });
 
   it("keeps `//` inside strings, template literals and regex literals", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: JS source text with a template literal.
     const src = 'const u = "http://x";\nconst t = `//${a /* c */}//`;\nconst r = /\\/\\//g;\n';
     const out = stripComments(src, ".js");
     expect(out).toContain('"http://x"');

@@ -251,7 +251,7 @@ export function checkOutput(outDir: string, opts: { repo?: string } = {}): Check
 
   // 5. i18n locale coverage (warning): every declared locale should have a
   //    messages file under data/translations/ OR appear in the message catalog.
-  if (inv.i18n && inv.i18n.locales?.length) {
+  if (inv.i18n?.locales?.length) {
     const transDir = join(outDir, "data", "translations");
     const names = existsSync(transDir) ? fileNames(transDir) : [];
     const catalog =

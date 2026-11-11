@@ -125,7 +125,13 @@ export function buildEvidence(files: FileInfo[], routes: RouteInfo[], envSources
     );
   }
   const seen = new Set<string>();
-  return out.filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true))).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return out
+    .filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    })
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /** Evidence ids whose cited file changed since generation (hash mismatch) or vanished. */

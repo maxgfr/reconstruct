@@ -6,7 +6,7 @@ import { resolve as resolve19, join as join55 } from "path";
 import { createInterface as createInterface3 } from "readline";
 import { isMainThread, workerData } from "worker_threads";
 import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath5 } from "url";
-import { existsSync as existsSync26, readFileSync as readFileSync39, statSync as statSync23, realpathSync as realpathSync11 } from "fs";
+import { existsSync as existsSync25, readFileSync as readFileSync39, statSync as statSync23, realpathSync as realpathSync11 } from "fs";
 
 // src/behavior.ts
 import { spawnSync } from "child_process";
@@ -22,7 +22,7 @@ function readCases(path) {
   if (statSync(path).size > 1048576) throw new Error("Behavior cases file exceeds 1 MiB.");
   const text = readFileSync(path, "utf8");
   const doc = JSON.parse(text);
-  if (!doc || doc.schemaVersion !== 1 || !Array.isArray(doc.cases) || doc.cases.length === 0 || doc.cases.length > 100) {
+  if (doc?.schemaVersion !== 1 || !Array.isArray(doc.cases) || doc.cases.length === 0 || doc.cases.length > 100) {
     throw new Error("Behavior schemaVersion 1 requires 1\u2013100 explicit cases.");
   }
   const ids = /* @__PURE__ */ new Set();
@@ -30119,20 +30119,20 @@ var ROUTE_CONTENT_RE = new RegExp(
 var API_CONTENT_RE = /createTRPCRouter|initTRPC|publicProcedure|protectedProcedure|t\.router\(|\btype\s+Query\b|\btype\s+Mutation\b|buildSchema\(|new\s+GraphQLSchema|makeExecutableSchema|@Resolver\b|gql`|grpc\.|registerService/;
 var REALTIME_CONTENT_RE = new RegExp(
   [
-    String.raw`@WebSocketGateway|@SubscribeMessage`,
+    "@WebSocketGateway|@SubscribeMessage",
     // NestJS gateways
     String.raw`new\s+WebSocketServer|new\s+WebSocket\.Server`,
     // ws
     String.raw`socket\.io|\bio\.on\(\s*["']connection`,
     String.raw`\bwebsocket\s*:\s*true`,
     // fastify route option
-    String.raw`upgradeWebSocket`,
+    "upgradeWebSocket",
     // hono
     String.raw`@\w+\.websocket\b|websockets\.serve|WebsocketConsumer`,
     // FastAPI / websockets / Django Channels
-    String.raw`ActionCable|ApplicationCable`,
+    "ActionCable|ApplicationCable",
     // rails
-    String.raw`text/event-stream`
+    "text/event-stream"
     // SSE
   ].join("|")
 );
@@ -30151,7 +30151,7 @@ var AUTH_CONTENT_RE = new RegExp(
     // Django/Flask
     String.raw`\bbefore_request\b`,
     // flask middleware
-    String.raw`HTTPBearer|OAuth2PasswordBearer`,
+    "HTTPBearer|OAuth2PasswordBearer",
     // FastAPI security
     String.raw`before_action\s+:authenticate|authenticate_user!`,
     // rails
@@ -30414,7 +30414,11 @@ function buildEvidence(files, routes, envSources) {
     );
   }
   const seen = /* @__PURE__ */ new Set();
-  return out2.filter((e) => seen.has(e.id) ? false : (seen.add(e.id), true)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return out2.filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 function staleEvidence(evidence, currentHash) {
   const out2 = [];
@@ -33524,7 +33528,7 @@ function filledEntityTables(entities) {
 }
 function enumsBlock(enums) {
   const lines = ["## Enums & domain types", ""];
-  if (!enums || !enums.length) {
+  if (!enums?.length) {
     lines.push("_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._");
     return lines.join("\n");
   }
@@ -33588,7 +33592,7 @@ function messageCatalogBlock(i18n) {
   return lines.join("\n").trimEnd();
 }
 function operationContracts(rows) {
-  const detailed = rows.filter((r) => r.input || r.output || r.sideEffects && r.sideEffects.length);
+  const detailed = rows.filter((r) => r.input || r.output || r.sideEffects?.length);
   if (!detailed.length) return "";
   const lines = ["## Operation contracts", ""];
   for (const r of detailed) {
@@ -33910,7 +33914,7 @@ function dataModelDoc(inv, opts) {
   ].join("\n");
 }
 function tokenList(label, items) {
-  if (!items || !items.length) return [];
+  if (!items?.length) return [];
   return [`**${label}:**`, "", ...items.map((t) => `- \`${cell(t)}\``), ""];
 }
 function componentTable(components) {
@@ -34428,7 +34432,6 @@ function renderSourceMaterial(feature, opts) {
       return mirrorSection(feature, opts);
     case "embed":
       return { markdown: embedSection(feature, opts), copies: [] };
-    case "describe":
     default:
       return { markdown: describeSection(feature), copies: [] };
   }
@@ -34878,7 +34881,7 @@ function detectEnrichment(outDir) {
   }
   const resolved = (rel2) => {
     const body2 = readIfFile(join43(outDir, rel2));
-    if (body2 !== void 0 && body2.trim() && !body2.includes(CALLOUT)) witnesses.push(`${rel2} \u2014 every agent callout resolved`);
+    if (body2?.trim() && !body2.includes(CALLOUT)) witnesses.push(`${rel2} \u2014 every agent callout resolved`);
   };
   for (const rel2 of CALLOUT_BEARING_DOCS) resolved(rel2);
   let slugs = [];
@@ -35063,9 +35066,9 @@ function planDataModel(plan) {
       ...f.constraints ? { constraints: f.constraints } : {},
       ...f.enumRef ? { enumRef: f.enumRef } : {}
     })),
-    ...e.relations && e.relations.length ? { relations: e.relations } : {},
-    ...e.indexes && e.indexes.length ? { indexes: e.indexes } : {},
-    ...e.uniques && e.uniques.length ? { uniques: e.uniques } : {}
+    ...e.relations?.length ? { relations: e.relations } : {},
+    ...e.indexes?.length ? { indexes: e.indexes } : {},
+    ...e.uniques?.length ? { uniques: e.uniques } : {}
   }));
 }
 function planInterfaces(plan) {
@@ -35077,7 +35080,7 @@ function planInterfaces(plan) {
     ...r.notes ? { notes: r.notes } : {},
     ...r.input ? { input: r.input } : {},
     ...r.output ? { output: r.output } : {},
-    ...r.sideEffects && r.sideEffects.length ? { sideEffects: r.sideEffects } : {}
+    ...r.sideEffects?.length ? { sideEffects: r.sideEffects } : {}
   }));
 }
 function planFeatures(features) {
@@ -35092,9 +35095,9 @@ function planFeatures(features) {
         kind,
         files: [],
         routes: [],
-        ...f.interfaces && f.interfaces.length ? { interfaces: f.interfaces } : {},
-        ...f.entities && f.entities.length ? { entities: f.entities } : {},
-        ...f.writes && f.writes.length ? { writes: f.writes } : {}
+        ...f.interfaces?.length ? { interfaces: f.interfaces } : {},
+        ...f.entities?.length ? { entities: f.entities } : {},
+        ...f.writes?.length ? { writes: f.writes } : {}
       },
       tier,
       // Preserve the plan's declared order within a tier — the author controls it.
@@ -35152,9 +35155,9 @@ function planToInventory(plan, opts) {
     },
     interfaces,
     dataModel: planDataModel(plan),
-    ...plan.enums && plan.enums.length ? { enums: plan.enums } : {},
-    ...plan.services && plan.services.length ? { services: plan.services } : {},
-    ...plan.policies && plan.policies.length ? { policies: plan.policies } : {},
+    ...plan.enums?.length ? { enums: plan.enums } : {},
+    ...plan.services?.length ? { services: plan.services } : {},
+    ...plan.policies?.length ? { policies: plan.policies } : {},
     ...plan.designSystem ? { designSystem: plan.designSystem } : {}
   };
 }
@@ -35285,10 +35288,10 @@ function renderScratchDocs(plan) {
 }
 function contextDoc(plan) {
   const lines = [`# ${plan.project.name} \u2014 Context`, "", plan.project.summary, "", "## Language", ""];
-  if (plan.glossary && plan.glossary.length) {
+  if (plan.glossary?.length) {
     for (const g of plan.glossary) {
       lines.push(`**${g.term}**:`, g.definition);
-      if (g.avoid && g.avoid.length) lines.push(`_Avoid_: ${g.avoid.join(", ")}`);
+      if (g.avoid?.length) lines.push(`_Avoid_: ${g.avoid.join(", ")}`);
       lines.push("");
     }
   } else {
@@ -36251,7 +36254,7 @@ function checkOutput(outDir, opts = {}) {
       warnings.push("architecture/DESIGN-SYSTEM.md captures no tokens/components \u2014 fill the design-system contract for a faithful visual rebuild.");
     }
   }
-  if (inv.i18n && inv.i18n.locales?.length) {
+  if (inv.i18n?.locales?.length) {
     const transDir = join47(outDir, "data", "translations");
     const names2 = existsSync20(transDir) ? fileNames(transDir) : [];
     const catalog = (findDoc("architecture/ARCHITECTURE.md")?.content ?? "") + "\n" + dataModelDoc2 + "\n" + interfacesDoc2 + "\n" + docs.filter((d) => /international|i18n|messages|locale/i.test(d.rel)).map((d) => d.content).join("\n");
@@ -36912,7 +36915,7 @@ function runBrainstorm(outDir) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync23, mkdirSync as mkdirSync7, readFileSync as readFileSync36, writeFileSync as writeFileSync12 } from "fs";
+import { existsSync as existsSync22, mkdirSync as mkdirSync7, readFileSync as readFileSync36, writeFileSync as writeFileSync12 } from "fs";
 import { join as join51, resolve as resolve15 } from "path";
 
 // src/orchestrate-templates.ts
@@ -37361,7 +37364,7 @@ function listPhases(outDir, engineAbs, batchOverride) {
 }
 function orchestrateRun(outDir, engineAbs, opts = {}) {
   const out2 = resolve15(outDir);
-  if (!existsSync23(out2)) {
+  if (!existsSync22(out2)) {
     return { exitCode: 2, written: [], notices: [], errors: [`out dir not found: ${out2}`], phases: [] };
   }
   const phases = listPhases(out2, engineAbs, opts.batchSize);
@@ -37429,7 +37432,7 @@ import { fileURLToPath as fileURLToPath3 } from "url";
 import { parentPort, Worker as Worker3 } from "worker_threads";
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync24, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync20 } from "fs";
+import { existsSync as existsSync23, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync20 } from "fs";
 import { isAbsolute as isAbsolute14, join as join53, relative as relative14, resolve as resolve17, sep as sep11 } from "path";
 
 // src/tree-lock.ts
@@ -37567,7 +37570,7 @@ function requiredRepo(args2) {
   const repo = str2(args2.repo);
   if (!repo) throw new ToolError("`repo` is required: an absolute path to the repository to analyze.");
   const abs = resolve17(repo);
-  if (!existsSync24(abs)) throw new ToolError(`repo not found: ${abs}`);
+  if (!existsSync23(abs)) throw new ToolError(`repo not found: ${abs}`);
   if (!statSync20(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
   return abs;
 }
@@ -37578,7 +37581,7 @@ function outPath(args2, defaults) {
   return resolve17(out2);
 }
 function assertTree(abs) {
-  if (!existsSync24(join53(abs, "inventory.json"))) {
+  if (!existsSync23(join53(abs, "inventory.json"))) {
     throw new ToolError(`no reconstruction tree at ${abs} \u2014 scaffold one first with reconstruct_scaffold (it writes there).`, {
       kind: "run_first",
       hint: "Call reconstruct_scaffold for this repo (needs --allow-write), or pass the `out` of an existing tree."
@@ -38457,7 +38460,7 @@ function str3(v) {
 var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 
 // src/mcp/resources.ts
-import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync21 } from "fs";
+import { existsSync as existsSync24, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync21 } from "fs";
 import { basename as basename9, dirname as dirname11, join as join54, resolve as resolve18, sep as sep12 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 var SKILL_NAME = "reconstruct";
@@ -38465,14 +38468,14 @@ var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
   const here = moduleDir ?? dirname11(fileURLToPath4(import.meta.url));
   const candidates = [resolve18(here, ".."), resolve18(here, "..", "skills", SKILL_NAME), resolve18(here, "..", "..", "skills", SKILL_NAME)];
-  return candidates.find((dir) => existsSync25(join54(dir, "SKILL.md")));
+  return candidates.find((dir) => existsSync24(join54(dir, "SKILL.md")));
 }
 function listResources(moduleDir) {
   const root = resolveSkillRoot(moduleDir);
   if (!root) return [];
   const out2 = [describe(root, "SKILL.md", `${SKILL_NAME}: the skill`)];
   const refDir = join54(root, "references");
-  if (!existsSync25(refDir)) return out2;
+  if (!existsSync24(refDir)) return out2;
   for (const rel2 of walkMarkdown(refDir, "references")) {
     out2.push(describe(root, rel2, `${SKILL_NAME} reference: ${basename9(rel2, ".md")}`));
   }
@@ -39379,7 +39382,7 @@ function parseArgs(argv) {
   const plan = raw.plan ? resolve19(raw.plan) : "";
   const standalone = (merge || summary || features || specs) && !json && !scratch && raw.repo === void 0;
   const repo = resolve19(raw.repo ?? process.cwd());
-  if (!standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && (!existsSync26(repo) || !statSync23(repo).isDirectory())) {
+  if (!standalone && !scratch && !check && !verify && !review && !unknowns && !brainstorm && !orchestrate && (!existsSync25(repo) || !statSync23(repo).isDirectory())) {
     fail(`repo path is not a directory: ${repo}`);
   }
   const level = oneOf2("level", raw.level ?? "light", ["light", "complex"]);
@@ -39608,7 +39611,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
   if (opts.orchestrate) {
     const engineAbs = realpathSync11(fileURLToPath5(import.meta.url));
     if (opts.list) {
-      if (!existsSync26(opts.out)) {
+      if (!existsSync25(opts.out)) {
         process.stderr.write(`reconstruct --orchestrate: out dir not found: ${opts.out}
 `);
         process.exit(2);

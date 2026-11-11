@@ -92,14 +92,14 @@ const API_CONTENT_RE =
 // surfaced separately for the agent to enumerate channels/events from.
 const REALTIME_CONTENT_RE = new RegExp(
   [
-    String.raw`@WebSocketGateway|@SubscribeMessage`, // NestJS gateways
+    "@WebSocketGateway|@SubscribeMessage", // NestJS gateways
     String.raw`new\s+WebSocketServer|new\s+WebSocket\.Server`, // ws
     String.raw`socket\.io|\bio\.on\(\s*["']connection`,
     String.raw`\bwebsocket\s*:\s*true`, // fastify route option
-    String.raw`upgradeWebSocket`, // hono
+    "upgradeWebSocket", // hono
     String.raw`@\w+\.websocket\b|websockets\.serve|WebsocketConsumer`, // FastAPI / websockets / Django Channels
-    String.raw`ActionCable|ApplicationCable`, // rails
-    String.raw`text/event-stream`, // SSE
+    "ActionCable|ApplicationCable", // rails
+    "text/event-stream", // SSE
   ].join("|"),
 );
 
@@ -115,7 +115,7 @@ const AUTH_CONTENT_RE = new RegExp(
     String.raw`\bpreHandler\b`, // fastify hook (often auth)
     String.raw`@login_required|@permission_required|@permission_classes|permission_classes\s*=`, // Django/Flask
     String.raw`\bbefore_request\b`, // flask middleware
-    String.raw`HTTPBearer|OAuth2PasswordBearer`, // FastAPI security
+    "HTTPBearer|OAuth2PasswordBearer", // FastAPI security
     String.raw`before_action\s+:authenticate|authenticate_user!`, // rails
     String.raw`\[Authorize|@PreAuthorize|@Secured\b`, // ASP.NET / Spring
   ].join("|"),

@@ -53,7 +53,7 @@ function readCases(path: string): { cases: Case[]; fingerprint: string } {
   if (statSync(path).size > 1_048_576) throw new Error("Behavior cases file exceeds 1 MiB.");
   const text = readFileSync(path, "utf8");
   const doc = JSON.parse(text) as { schemaVersion?: unknown; cases?: unknown };
-  if (!doc || doc.schemaVersion !== 1 || !Array.isArray(doc.cases) || doc.cases.length === 0 || doc.cases.length > 100) {
+  if (doc?.schemaVersion !== 1 || !Array.isArray(doc.cases) || doc.cases.length === 0 || doc.cases.length > 100) {
     throw new Error("Behavior schemaVersion 1 requires 1–100 explicit cases.");
   }
   const ids = new Set<string>();

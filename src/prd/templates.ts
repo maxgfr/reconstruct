@@ -81,7 +81,7 @@ function filledEntityTables(entities: Entity[]): string {
 /** Render the named domain enums with their full member lists (buildability). */
 function enumsBlock(enums: EnumDef[] | undefined): string {
   const lines = ["## Enums & domain types", ""];
-  if (!enums || !enums.length) {
+  if (!enums?.length) {
     lines.push("_No standalone enums. Every enum-typed field above must still enumerate its full member set inline (e.g. `ADMIN \\| USER`)._");
     return lines.join("\n");
   }
@@ -153,7 +153,7 @@ function messageCatalogBlock(i18n: I18nInfo): string {
 
 /** Render per-operation contracts (input/output/side-effects) when pre-filled. */
 function operationContracts(rows: InterfaceRow[]): string {
-  const detailed = rows.filter((r) => r.input || r.output || (r.sideEffects && r.sideEffects.length));
+  const detailed = rows.filter((r) => r.input || r.output || r.sideEffects?.length);
   if (!detailed.length) return "";
   const lines = ["## Operation contracts", ""];
   for (const r of detailed) {
@@ -531,7 +531,7 @@ export function dataModelDoc(inv: Inventory, opts: Options): string {
 
 /** A `name: value` token bullet list under a bold label (scratch pre-fill). */
 function tokenList(label: string, items?: string[]): string[] {
-  if (!items || !items.length) return [];
+  if (!items?.length) return [];
   return [`**${label}:**`, "", ...items.map((t) => `- \`${cell(t)}\``), ""];
 }
 

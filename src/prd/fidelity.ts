@@ -108,7 +108,6 @@ export function renderSourceMaterial(feature: Feature, opts: Options): SourceSec
       return mirrorSection(feature, opts);
     case "embed":
       return { markdown: embedSection(feature, opts), copies: [] };
-    case "describe":
     default:
       return { markdown: describeSection(feature), copies: [] };
   }

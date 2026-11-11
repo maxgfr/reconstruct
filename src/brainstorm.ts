@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeArtifactsIfAbsent } from "./output.js";
 import type { Inventory } from "./types.js";

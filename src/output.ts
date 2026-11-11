@@ -245,7 +245,7 @@ export function detectEnrichment(outDir: string): string[] {
 
   const resolved = (rel: string): void => {
     const body = readIfFile(join(outDir, rel));
-    if (body !== undefined && body.trim() && !body.includes(CALLOUT)) witnesses.push(`${rel} — every agent callout resolved`);
+    if (body?.trim() && !body.includes(CALLOUT)) witnesses.push(`${rel} — every agent callout resolved`);
   };
   for (const rel of CALLOUT_BEARING_DOCS) resolved(rel);
 
