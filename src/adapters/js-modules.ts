@@ -76,7 +76,9 @@ const LEADING_LITERAL_RE = new RegExp(String.raw`^\s*(["'${"`"}])(${BODY})\1`);
 // `concatValue`; no part of this pattern can backtrack over a long run of
 // blanks (a blanked comment is one).
 const STRING_CONST_RE = /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=([^;\n]*)/gm;
-const AS_CONST_RE = /\s+as\s+const\s*$/;
+// `\b` first: a start inside a blank run fails at once instead of trying every
+// split of the run (a leading `\s+` made this quadratic). Applied to a trimmed value.
+const AS_CONST_RE = /\bas\s+const$/;
 const INTERPOLATION_RE = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
 
 /** String constants by name, as an adapter sees them from one file. */
@@ -166,7 +168,7 @@ function declaredConstants(src: string): Map<string, string> {
       out.delete(name);
       twice.add(name);
     } else {
-      out.set(name, (m[2] as string).trim().replace(AS_CONST_RE, ""));
+      out.set(name, (m[2] as string).trim().replace(AS_CONST_RE, "").trimEnd());
     }
   }
   return out;

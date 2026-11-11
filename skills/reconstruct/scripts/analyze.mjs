@@ -30962,7 +30962,7 @@ var LITERAL_RE = new RegExp(String.raw`^(["'${"`"}])(${BODY})\1$`);
 var TERM_RE = new RegExp(String.raw`\s*(?:(["'${"`"}])(${BODY})\1|([A-Za-z_$][\w$]*))\s*(\+|$)`, "y");
 var LEADING_LITERAL_RE = new RegExp(String.raw`^\s*(["'${"`"}])(${BODY})\1`);
 var STRING_CONST_RE = /^(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*string[ \t]*)?=([^;\n]*)/gm;
-var AS_CONST_RE = /\s+as\s+const\s*$/;
+var AS_CONST_RE = /\bas\s+const$/;
 var INTERPOLATION_RE = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
 var NO_CONSTANTS = /* @__PURE__ */ new Map();
 function literalValue(quote, body2, consts) {
@@ -31016,7 +31016,7 @@ function declaredConstants(src) {
       out2.delete(name2);
       twice.add(name2);
     } else {
-      out2.set(name2, m[2].trim().replace(AS_CONST_RE, ""));
+      out2.set(name2, m[2].trim().replace(AS_CONST_RE, "").trimEnd());
     }
   }
   return out2;
