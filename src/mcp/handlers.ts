@@ -103,11 +103,19 @@ function requiredRepo(args: Record<string, unknown>): string {
   return abs;
 }
 
-function requiredOut(args: Record<string, unknown>, defaults: HandlerDefaults): string {
+/** The tree a call names (`out`, else the server default), checked for shape only. */
+function outPath(args: Record<string, unknown>, defaults: HandlerDefaults): string {
   const out = str(args.out) ?? defaults.defaultOut;
   if (!out) throw new ToolError("`out` is required: the reconstruction tree to operate on.");
   if (!isAbsolute(out)) throw new ToolError("`out` must be an absolute path.");
-  const abs = resolve(out);
+  return resolve(out);
+}
+
+/**
+ * Fails unless `abs` holds a reconstruction tree. Call it under the tree's
+ * lock: a scaffold queued just before may still be writing the tree.
+ */
+function assertTree(abs: string): string {
   if (!existsSync(join(abs, "inventory.json"))) {
     throw new ToolError(`no reconstruction tree at ${abs} — scaffold one first with reconstruct_scaffold (it writes there).`, {
       kind: "run_first",
@@ -157,29 +165,79 @@ function baseOptions(repo: string, out: string, args: Record<string, unknown> = 
 // Dispatch
 // --------------------------------------------------------------------------
 
-export async function callTool(name: string, args: Record<string, unknown>, defaults: HandlerDefaults = {}): Promise<ToolOutcome> {
+/**
+ * One tool call, its paths already resolved: what a worker thread receives.
+ * Everything in it is plain data, so it crosses a thread boundary as is.
+ */
+export interface ToolJob {
+  name: string;
+  args: Record<string, unknown>;
+  /** The repository (`reconstruct_inventory`, `reconstruct_scaffold`). */
+  repo?: string;
+  /** The tree the call operates on. */
+  out: string;
+  allowWrite: boolean;
+}
+
+/**
+ * Runs a job and resolves to its result. `runInline` runs it on the calling
+ * thread; the MCP transports pass a worker pool (see offload.ts), so a long
+ * synchronous analysis never stalls `ping` or a fast call.
+ */
+export type ToolRunner = (job: ToolJob) => Promise<unknown>;
+
+export const runInline: ToolRunner = async (job) => runJob(job);
+
+/**
+ * The work of a tool call, and nothing else: no tree lock (the caller holds
+ * it) and no in-memory state (a worker thread has its own). For
+ * `reconstruct_inventory` it resolves to the raw inventory, which the caller
+ * remembers and shapes.
+ */
+export async function runJob(job: ToolJob): Promise<unknown> {
+  const { name, args, out } = job;
+  if (name === "reconstruct_inventory") return analyze(baseOptions(job.repo as string, out, args));
+  if (name === "reconstruct_scaffold") return await handleScaffold(args, job.repo as string, out);
+  return dispatch(name, args, out, job.allowWrite);
+}
+
+export async function callTool(name: string, args: Record<string, unknown>, defaults: HandlerDefaults = {}, run: ToolRunner = runInline): Promise<ToolOutcome> {
   if (WRITE_TOOL_NAMES.has(name) && !defaults.allowWrite) {
     throw new ToolError(`${name} writes a reconstruction tree to disk and is disabled — start the server with --allow-write to enable it.`, {
       kind: "grant_write",
       hint: "Ask the user to restart the server with --allow-write, or run the equivalent CLI command yourself.",
     });
   }
+  const allowWrite = defaults.allowWrite === true;
 
   // Reads a repo, writes nothing, needs no tree.
-  if (name === "reconstruct_inventory") return outcome(handleInventory(args));
-  // Pages a remembered inventory, or a tree's inventory.json.
-  if (name === "reconstruct_view") return outcome(handleView(args, defaults));
+  if (name === "reconstruct_inventory") {
+    const repo = requiredRepo(args);
+    const detail = oneOf(args.detail, ["summary", "full"] as const, "detail", "summary");
+    const inv = (await run({ name, args, repo, out: join(repo, "reconstruction"), allowWrite })) as Inventory;
+    return outcome(inventoryResult(repo, inv, detail));
+  }
+  // Pages a remembered inventory, or a tree's inventory.json (under its lock).
+  if (name === "reconstruct_view") {
+    if (str(args.inventory_id)) return outcome(handleView(args));
+    const out = outPath(args, defaults);
+    return await withTreeLock(out, async () => outcome(handleView(args, assertTree(out))));
+  }
 
   if (name === "reconstruct_scaffold") {
     const repo = requiredRepo(args);
     const out = str(args.out) ? resolve(str(args.out)!) : join(repo, "reconstruction");
-    return await withTreeLock(out, async () => outcome(await handleScaffold(args, repo, out)));
+    return await withTreeLock(out, async () => outcome(await run({ name, args, repo, out, allowWrite })));
   }
 
-  const out = requiredOut(args, defaults);
+  const out = outPath(args, defaults);
   // Serialized per tree: the bundlers read it while a scaffold could be
-  // rewriting it, and the worklists are read-merge-write.
-  return await withTreeLock(out, async () => outcome(dispatch(name, args, out, defaults.allowWrite === true)));
+  // rewriting it, and the worklists are read-merge-write. The tree is checked
+  // once the lock is held, so a call queued behind a scaffold sees its tree.
+  return await withTreeLock(out, async () => {
+    assertTree(out);
+    return outcome(await run({ name, args, out, allowWrite }));
+  });
 }
 
 function dispatch(name: string, args: Record<string, unknown>, out: string, allowWrite: boolean): unknown {
@@ -262,10 +320,8 @@ function inRepoInventory(real: string, repo: string | undefined, out: string): b
 // Handlers
 // --------------------------------------------------------------------------
 
-function handleInventory(args: Record<string, unknown>): unknown {
-  const repo = requiredRepo(args);
-  const detail = oneOf(args.detail, ["summary", "full"] as const, "detail", "summary");
-  const inv = analyze(baseOptions(repo, join(repo, "reconstruction"), args));
+/** What reconstruct_inventory answers: a summary and an id to page the rest by, or the whole inventory. */
+function inventoryResult(repo: string, inv: Inventory, detail: "summary" | "full"): unknown {
   const inventory_id = rememberInventory(inv);
   if (detail === "full") {
     return { repo, inventory_id, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
@@ -280,7 +336,7 @@ function handleInventory(args: Record<string, unknown>): unknown {
   };
 }
 
-function handleView(args: Record<string, unknown>, defaults: HandlerDefaults): unknown {
+function handleView(args: Record<string, unknown>, out?: string): unknown {
   const section = oneOf(args.section, VIEW_SECTIONS, "section", "files");
   const id = str(args.inventory_id);
   let inv: Inventory | undefined;
@@ -293,7 +349,7 @@ function handleView(args: Record<string, unknown>, defaults: HandlerDefaults): u
       });
     }
   } else {
-    const out = requiredOut(args, defaults);
+    if (!out) throw new ToolError("`out` is required when no `inventory_id` is given.");
     try {
       inv = JSON.parse(readFileSync(join(out, "inventory.json"), "utf8")) as Inventory;
     } catch (e) {

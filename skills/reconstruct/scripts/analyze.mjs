@@ -4,7 +4,8 @@
 import { spawnSync as spawnSync3 } from "child_process";
 import { resolve as resolve19, join as join55 } from "path";
 import { createInterface as createInterface3 } from "readline";
-import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath4 } from "url";
+import { isMainThread, workerData } from "worker_threads";
+import { pathToFileURL as pathToFileURL4, fileURLToPath as fileURLToPath5 } from "url";
 import { existsSync as existsSync26, readFileSync as readFileSync39, statSync as statSync23, realpathSync as realpathSync11 } from "fs";
 
 // src/behavior.ts
@@ -37423,6 +37424,10 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 // src/mcp/stdio.ts
 import { createInterface as createInterface2 } from "readline";
 
+// src/mcp/offload.ts
+import { fileURLToPath as fileURLToPath3 } from "url";
+import { parentPort, Worker as Worker3 } from "worker_threads";
+
 // src/mcp/handlers.ts
 import { existsSync as existsSync24, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync20 } from "fs";
 import { isAbsolute as isAbsolute14, join as join53, relative as relative14, resolve as resolve17, sep as sep11 } from "path";
@@ -37566,11 +37571,13 @@ function requiredRepo(args2) {
   if (!statSync20(abs).isDirectory()) throw new ToolError(`\`repo\` is not a directory: ${abs}`);
   return abs;
 }
-function requiredOut(args2, defaults) {
+function outPath(args2, defaults) {
   const out2 = str2(args2.out) ?? defaults.defaultOut;
   if (!out2) throw new ToolError("`out` is required: the reconstruction tree to operate on.");
   if (!isAbsolute14(out2)) throw new ToolError("`out` must be an absolute path.");
-  const abs = resolve17(out2);
+  return resolve17(out2);
+}
+function assertTree(abs) {
   if (!existsSync24(join53(abs, "inventory.json"))) {
     throw new ToolError(`no reconstruction tree at ${abs} \u2014 scaffold one first with reconstruct_scaffold (it writes there).`, {
       kind: "run_first",
@@ -37610,22 +37617,42 @@ function baseOptions(repo, out2, args2 = {}) {
     standalone: false
   };
 }
-async function callTool2(name2, args2, defaults = {}) {
+var runInline = async (job) => runJob(job);
+async function runJob(job) {
+  const { name: name2, args: args2, out: out2 } = job;
+  if (name2 === "reconstruct_inventory") return analyze(baseOptions(job.repo, out2, args2));
+  if (name2 === "reconstruct_scaffold") return await handleScaffold(args2, job.repo, out2);
+  return dispatch(name2, args2, out2, job.allowWrite);
+}
+async function callTool2(name2, args2, defaults = {}, run2 = runInline) {
   if (WRITE_TOOL_NAMES.has(name2) && !defaults.allowWrite) {
     throw new ToolError(`${name2} writes a reconstruction tree to disk and is disabled \u2014 start the server with --allow-write to enable it.`, {
       kind: "grant_write",
       hint: "Ask the user to restart the server with --allow-write, or run the equivalent CLI command yourself."
     });
   }
-  if (name2 === "reconstruct_inventory") return outcome2(handleInventory(args2));
-  if (name2 === "reconstruct_view") return outcome2(handleView(args2, defaults));
+  const allowWrite = defaults.allowWrite === true;
+  if (name2 === "reconstruct_inventory") {
+    const repo = requiredRepo(args2);
+    const detail = oneOf(args2.detail, ["summary", "full"], "detail", "summary");
+    const inv = await run2({ name: name2, args: args2, repo, out: join53(repo, "reconstruction"), allowWrite });
+    return outcome2(inventoryResult(repo, inv, detail));
+  }
+  if (name2 === "reconstruct_view") {
+    if (str2(args2.inventory_id)) return outcome2(handleView(args2));
+    const out3 = outPath(args2, defaults);
+    return await withTreeLock(out3, async () => outcome2(handleView(args2, assertTree(out3))));
+  }
   if (name2 === "reconstruct_scaffold") {
     const repo = requiredRepo(args2);
     const out3 = str2(args2.out) ? resolve17(str2(args2.out)) : join53(repo, "reconstruction");
-    return await withTreeLock(out3, async () => outcome2(await handleScaffold(args2, repo, out3)));
+    return await withTreeLock(out3, async () => outcome2(await run2({ name: name2, args: args2, repo, out: out3, allowWrite })));
   }
-  const out2 = requiredOut(args2, defaults);
-  return await withTreeLock(out2, async () => outcome2(dispatch(name2, args2, out2, defaults.allowWrite === true)));
+  const out2 = outPath(args2, defaults);
+  return await withTreeLock(out2, async () => {
+    assertTree(out2);
+    return outcome2(await run2({ name: name2, args: args2, out: out2, allowWrite }));
+  });
 }
 function dispatch(name2, args2, out2, allowWrite) {
   switch (name2) {
@@ -37683,10 +37710,7 @@ function inRepoInventory(real, repo, out2) {
     return false;
   }
 }
-function handleInventory(args2) {
-  const repo = requiredRepo(args2);
-  const detail = oneOf(args2.detail, ["summary", "full"], "detail", "summary");
-  const inv = analyze(baseOptions(repo, join53(repo, "reconstruction"), args2));
+function inventoryResult(repo, inv, detail) {
   const inventory_id = rememberInventory(inv);
   if (detail === "full") {
     return { repo, inventory_id, inventory: inv, next: "Nothing was written. Run reconstruct_scaffold to turn this into a tree you can enrich." };
@@ -37698,7 +37722,7 @@ function handleInventory(args2) {
     next: "Nothing was written. Page any section with reconstruct_view { inventory_id, section } (follow next_offset), or run reconstruct_scaffold to turn this into a tree you can enrich."
   };
 }
-function handleView(args2, defaults) {
+function handleView(args2, out2) {
   const section = oneOf(args2.section, VIEW_SECTIONS, "section", "files");
   const id = str2(args2.inventory_id);
   let inv;
@@ -37711,7 +37735,7 @@ function handleView(args2, defaults) {
       });
     }
   } else {
-    const out2 = requiredOut(args2, defaults);
+    if (!out2) throw new ToolError("`out` is required when no `inventory_id` is given.");
     try {
       inv = JSON.parse(readFileSync37(join53(out2, "inventory.json"), "utf8"));
     } catch (e) {
@@ -37876,6 +37900,97 @@ function handleRead(args2, out2) {
     total_lines: total,
     truncated: end < Math.min(total, requestedEnd),
     content: lines.slice(start2 - 1, end).join("\n")
+  };
+}
+
+// src/mcp/offload.ts
+var TOOL_WORKER_FLAG = "reconstructToolWorker";
+function startToolWorker() {
+  const port = parentPort;
+  if (!port) throw new Error("startToolWorker() must run inside a worker thread");
+  port.on("message", (msg) => {
+    void (async () => {
+      let reply;
+      try {
+        reply = { id: msg.id, ok: true, value: await runJob(msg.job) };
+      } catch (e) {
+        reply = {
+          id: msg.id,
+          ok: false,
+          error: { message: e instanceof Error ? e.message : String(e), ...e instanceof ToolError ? { recovery: e.recovery } : {} }
+        };
+      }
+      try {
+        port.postMessage(reply);
+      } catch (e) {
+        port.postMessage({ id: msg.id, ok: false, error: { message: `tool result could not be sent back: ${e.message}` } });
+      }
+    })();
+  });
+}
+function bundledEngineScript() {
+  const self = fileURLToPath3(import.meta.url);
+  return /\.[cm]?js$/.test(self) ? self : void 0;
+}
+function createToolPool(opts) {
+  const script = opts.script ?? bundledEngineScript();
+  if (!script) return void 0;
+  const slots = [];
+  const queue = [];
+  let nextId = 0;
+  let closed = false;
+  const spawn3 = () => {
+    const worker = new Worker3(script, { workerData: { [TOOL_WORKER_FLAG]: true }, stdout: true });
+    worker.stdout.pipe(process.stderr);
+    const slot = { worker };
+    worker.on("message", (msg) => {
+      const busy = slot.busy;
+      if (!busy || busy.id !== msg.id) return;
+      slot.busy = void 0;
+      worker.unref();
+      if (msg.ok) busy.resolve(msg.value);
+      else busy.reject(msg.error.recovery ? new ToolError(msg.error.message, msg.error.recovery) : new Error(msg.error.message));
+      pump();
+    });
+    const lost = (why) => {
+      const i2 = slots.indexOf(slot);
+      if (i2 !== -1) slots.splice(i2, 1);
+      const busy = slot.busy;
+      slot.busy = void 0;
+      busy?.reject(new Error(`tool worker ${why}`));
+      pump();
+    };
+    worker.on("error", (e) => lost(`crashed: ${e.message}`));
+    worker.on("exit", (code) => lost(`exited with code ${code}`));
+    worker.unref();
+    slots.push(slot);
+    return slot;
+  };
+  const pump = () => {
+    while (!closed && queue.length) {
+      const slot = slots.find((s) => !s.busy) ?? (slots.length < opts.size ? spawn3() : void 0);
+      if (!slot) return;
+      const { job, resolve: resolve20, reject } = queue.shift();
+      const id = nextId++;
+      slot.busy = { id, resolve: resolve20, reject };
+      slot.worker.ref();
+      slot.worker.postMessage({ id, job });
+    }
+  };
+  return {
+    run: (job) => new Promise((resolve20, reject) => {
+      if (closed) {
+        reject(new Error("tool pool is closed"));
+        return;
+      }
+      queue.push({ job, resolve: resolve20, reject });
+      pump();
+    }),
+    close: async () => {
+      closed = true;
+      for (const q of queue.splice(0)) q.reject(new Error("tool pool is closed"));
+      await Promise.all(slots.splice(0).map((s) => s.worker.terminate()));
+    }
   };
 }
 
@@ -38344,11 +38459,11 @@ var DECLARED = new Set([...TOOLS2, ...WRITE_TOOLS].map((t) => t.name));
 // src/mcp/resources.ts
 import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync38, realpathSync as realpathSync10, statSync as statSync21 } from "fs";
 import { basename as basename9, dirname as dirname11, join as join54, resolve as resolve18, sep as sep12 } from "path";
-import { fileURLToPath as fileURLToPath3 } from "url";
+import { fileURLToPath as fileURLToPath4 } from "url";
 var SKILL_NAME = "reconstruct";
 var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
-  const here = moduleDir ?? dirname11(fileURLToPath3(import.meta.url));
+  const here = moduleDir ?? dirname11(fileURLToPath4(import.meta.url));
   const candidates = [resolve18(here, ".."), resolve18(here, "..", "skills", SKILL_NAME), resolve18(here, "..", "..", "skills", SKILL_NAME)];
   return candidates.find((dir) => existsSync25(join54(dir, "SKILL.md")));
 }
@@ -38540,7 +38655,7 @@ function createServer(opts = {}) {
       return;
     }
     try {
-      const { text: raw, artifact } = await callTool2(name2, args2, { defaultOut: opts.defaultOut, allowWrite: opts.allowWrite });
+      const { text: raw, artifact } = await callTool2(name2, args2, { defaultOut: opts.defaultOut, allowWrite: opts.allowWrite }, opts.runner);
       const text = capResponse2(raw, name2, maxBytes, artifact);
       const capped = text !== raw;
       const structured = protocol >= RICH_TOOLS_SINCE2 ? structuredContentFor2(text, capped, decl.outputSchema !== void 0) : void 0;
@@ -38585,7 +38700,8 @@ async function runStdioServer(opts = {}) {
       process.stdout.write = original;
     };
   }
-  const server = createServer(opts);
+  const pool = opts.runner ? void 0 : createToolPool({ size: MAX_IN_FLIGHT });
+  const server = createServer({ ...opts, runner: opts.runner ?? pool?.run });
   const send = (msg) => {
     emit2(JSON.stringify(msg) + "\n");
   };
@@ -38640,6 +38756,7 @@ async function runStdioServer(opts = {}) {
     await Promise.all(batches);
   } finally {
     rl.close();
+    await pool?.close();
     restore?.();
   }
 }
@@ -38653,6 +38770,7 @@ function reportInternal(send) {
 import { createServer as createHttpServer } from "http";
 var MCP_PATH = "/mcp";
 var MAX_BODY_BYTES = 4 * 1024 * 1024;
+var TOOL_WORKERS = 4;
 var CORS_HEADERS = "content-type, accept, mcp-protocol-version, mcp-session-id, authorization, last-event-id";
 var LOOPBACK_BIND = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "localhost"]);
 function startHttpServer(opts = {}) {
@@ -38664,8 +38782,10 @@ function startHttpServer(opts = {}) {
       )
     );
   }
+  const pool = opts.runner ? void 0 : createToolPool({ size: TOOL_WORKERS });
+  const routed = { ...opts, runner: opts.runner ?? pool?.run };
   const server = createHttpServer((req, res) => {
-    void route(req, res, opts).catch((e) => {
+    void route(req, res, routed).catch((e) => {
       if (res.headersSent) {
         res.destroy();
         return;
@@ -38677,9 +38797,13 @@ function startHttpServer(opts = {}) {
   server.headersTimeout = 6e4;
   server.keepAliveTimeout = 12e4;
   return new Promise((resolve20, reject) => {
-    server.once("error", reject);
+    const failed2 = (e) => {
+      void pool?.close();
+      reject(e);
+    };
+    server.once("error", failed2);
     server.listen(opts.port ?? 0, bind, () => {
-      server.removeListener("error", reject);
+      server.removeListener("error", failed2);
       const addr2 = server.address();
       const port = typeof addr2 === "object" && addr2 ? addr2.port : opts.port ?? 0;
       const host = bind.includes(":") ? `[${bind}]` : bind;
@@ -38689,7 +38813,7 @@ function startHttpServer(opts = {}) {
         url: `http://${host}:${port}${MCP_PATH}`,
         close: () => new Promise((done) => {
           server.closeAllConnections?.();
-          server.close(() => done());
+          server.close(() => void (pool ? pool.close() : Promise.resolve()).then(done));
         })
       });
     });
@@ -39482,7 +39606,7 @@ ${result.cases.map((c2) => `${c2.id}: ${c2.status}${c2.reason ? ` \u2014 ${c2.re
     return;
   }
   if (opts.orchestrate) {
-    const engineAbs = realpathSync11(fileURLToPath4(import.meta.url));
+    const engineAbs = realpathSync11(fileURLToPath5(import.meta.url));
     if (opts.list) {
       if (!existsSync26(opts.out)) {
         process.stderr.write(`reconstruct --orchestrate: out dir not found: ${opts.out}
@@ -39662,14 +39786,16 @@ Then fold the returned fragments in yourself (single serial reducer) and run the
 function isInvokedDirectly() {
   const argv1 = process.argv[1];
   if (argv1 === void 0) return false;
-  const modulePath = fileURLToPath4(import.meta.url);
+  const modulePath = fileURLToPath5(import.meta.url);
   try {
     if (realpathSync11(argv1) === realpathSync11(modulePath)) return true;
   } catch {
   }
   return import.meta.url === pathToFileURL4(argv1).href;
 }
-if (isInvokedDirectly()) {
+if (!isMainThread && workerData?.[TOOL_WORKER_FLAG]) {
+  startToolWorker();
+} else if (isMainThread && isInvokedDirectly()) {
   main().catch((e) => {
     process.stderr.write(`reconstruct: ${e.message}
 `);

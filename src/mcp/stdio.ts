@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { createToolPool } from "./offload.js";
 import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOptions } from "./server.js";
 
 // The stdio transport: one JSON-RPC message per line, in on stdin, out on
@@ -16,7 +17,9 @@ import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOpti
 //
 // 2. A slow tool never blocks a fast one. `reconstruct_scaffold` on a large repo
 //    takes tens of seconds; serializing the read loop behind it would make `ping` and
-//    `tools/list` time out. JSON-RPC explicitly permits out-of-order responses.
+//    `tools/list` time out. JSON-RPC explicitly permits out-of-order responses, and
+//    the tool calls run in worker threads (offload.ts): the handlers are
+//    synchronous, so not awaiting them is not enough on its own.
 
 // How many tool calls may be in flight at once. Above this, reconstruct's own
 // per-source concurrency and the git subprocesses stop paying for themselves.
@@ -47,7 +50,10 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
     };
   }
 
-  const server = createServer(opts);
+  // One worker per in-flight slot. None from TypeScript sources (tests):
+  // calls then run on this thread.
+  const pool = opts.runner ? undefined : createToolPool({ size: MAX_IN_FLIGHT });
+  const server = createServer({ ...opts, runner: opts.runner ?? pool?.run });
   const send = (msg: JsonRpcMessage) => {
     emit(JSON.stringify(msg) + "\n");
   };
@@ -121,6 +127,7 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
     await Promise.all(batches);
   } finally {
     rl.close();
+    await pool?.close();
     restore?.();
   }
 }

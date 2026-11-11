@@ -1,5 +1,5 @@
 import { VERSION } from "../types.js";
-import { callTool, ToolError, type HandlerDefaults } from "./handlers.js";
+import { callTool, ToolError, type HandlerDefaults, type ToolRunner } from "./handlers.js";
 import { getPrompt, PROMPTS, PromptError } from "./prompts.js";
 import { listResources, readResource, ResourceError } from "./resources.js";
 import { toolsFor, UNTRUSTED_CONTENT_TOOLS, type ToolDecl } from "./tools.js";
@@ -35,6 +35,9 @@ export interface ServerOptions extends HandlerDefaults {
   // Where to look for the skill payload (SKILL.md + references/). Injectable
   // for tests; in production resources.ts finds it from its own module path.
   skillDir?: string;
+  // Where tool calls run. The transports pass a worker pool so a long call
+  // never blocks the read loop; without one, calls run on this thread.
+  runner?: ToolRunner;
 }
 
 export const ERR_INVALID_REQUEST = -32600;
@@ -191,7 +194,7 @@ export function createServer(opts: ServerOptions = {}): McpServer {
     }
 
     try {
-      const { text: raw, artifact } = await callTool(name, args, { defaultOut: opts.defaultOut, allowWrite: opts.allowWrite });
+      const { text: raw, artifact } = await callTool(name, args, { defaultOut: opts.defaultOut, allowWrite: opts.allowWrite }, opts.runner);
       const text = capResponse(raw, name, maxBytes, artifact);
       const capped = text !== raw;
       const structured = protocol >= RICH_TOOLS_SINCE ? structuredContentFor(text, capped, decl.outputSchema !== undefined) : undefined;

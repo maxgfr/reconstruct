@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
+import { isMainThread, workerData } from "node:worker_threads";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { compareBehavior } from "./behavior.js";
@@ -17,6 +18,7 @@ import { runBrainstorm } from "./brainstorm.js";
 import { applyUnknownUpdates, ensureUnknowns, foldUnknowns, formatUnknowns } from "./unknowns.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
 import { runStdioServer } from "./mcp/stdio.js";
+import { startToolWorker, TOOL_WORKER_FLAG } from "./mcp/offload.js";
 import { startHttpServer } from "./mcp/http.js";
 import { VERSION } from "./types.js";
 import type { Fidelity, Granularity, Level, Mode, Options, RenderResult } from "./types.js";
@@ -1014,7 +1016,11 @@ function isInvokedDirectly(): boolean {
   }
   return import.meta.url === pathToFileURL(argv1).href;
 }
-if (isInvokedDirectly()) {
+// The same script also serves as the MCP server's tool worker (mcp/offload.ts):
+// a worker thread inherits process.argv, so it must never start the CLI.
+if (!isMainThread && (workerData as Record<string, unknown> | null)?.[TOOL_WORKER_FLAG]) {
+  startToolWorker();
+} else if (isMainThread && isInvokedDirectly()) {
   main().catch((e) => {
     process.stderr.write(`reconstruct: ${(e as Error).message}\n`);
     process.exit(1);

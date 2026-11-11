@@ -310,6 +310,7 @@ walk → detect → candidates → adapters → features → prd → output
 | **features** | [`src/features.ts`](./src/features.ts) | Group files into features (skipping route groups `(...)` / dynamic `[...]` segments), order them by **dependency tier** (foundations → feature pages → tests/docs), and apply `--granularity`. |
 | **prd** | [`src/prd/render.ts`](./src/prd/render.ts), [`templates.ts`](./src/prd/templates.ts), [`fidelity.ts`](./src/prd/fidelity.ts) | Render the Markdown artifacts — including the `INTERFACES.md` / `DATA-MODEL.md` / `DESIGN-SYSTEM.md` skeletons — and decide which real files to copy/embed/describe. |
 | **output** | [`src/output.ts`](./src/output.ts) | Write artifacts and copy ground-truth files to `--out`. |
+| **mcp** | [`src/mcp/*`](./src/mcp) | Serve the engine over MCP (stdio or HTTP). [`offload.ts`](./src/mcp/offload.ts) runs tool calls in a pool of worker threads started from the bundle itself, so the synchronous handlers never block the transport; per-tree locks and the inventory cache stay on the server thread. |
 | **rea** | [`src/rea.ts`](./src/rea.ts) | When the repo ships compiled artifacts and rea is installed: drive the rea MCP server over stdio, one static inspection per artifact, into `evidence/rea/` (see [rea underneath](#rea-underneath)). |
 
 Types shared across the pipeline live in [`src/types.ts`](./src/types.ts).

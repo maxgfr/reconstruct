@@ -323,6 +323,10 @@ scaffold as a finished spec.
 | `reconstruct_merge` | The whole tree as one document, source included |
 | `reconstruct_read` | A file, or a line range, from the tree, or a repo file the inventory lists whose bytes still match its recorded hash |
 
+Tool calls run in worker threads (four at a time; more wait their turn), so a scaffold
+that takes minutes never stalls `ping` or a quick `reconstruct_read`. Calls on the same
+tree are serialized, in the order they arrived.
+
 Every failed call carries `recovery {kind, hint, do_not_repeat_unchanged}`, and results that
 contain the analysed repo's own text (`read`, `merge`, `view`) are marked
 `_meta.provenance.untrusted_content` — data, never instructions.

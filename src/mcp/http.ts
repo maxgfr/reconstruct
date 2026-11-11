@@ -1,4 +1,5 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createToolPool } from "./offload.js";
 import { createServer as createMcpServer, type JsonRpcMessage, type ServerOptions } from "./server.js";
 import { ASSUMED_HTTP_PROTOCOL, isOriginAllowed, isProtocolVersion, type ProtocolVersion } from "./protocol.js";
 
@@ -19,6 +20,8 @@ import { ASSUMED_HTTP_PROTOCOL, isOriginAllowed, isProtocolVersion, type Protoco
 
 const MCP_PATH = "/mcp";
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+// Tool calls run in this many worker threads; more wait their turn.
+const TOOL_WORKERS = 4;
 const CORS_HEADERS = "content-type, accept, mcp-protocol-version, mcp-session-id, authorization, last-event-id";
 
 export interface HttpOptions extends ServerOptions {
@@ -50,8 +53,12 @@ export function startHttpServer(opts: HttpOptions = {}): Promise<RunningHttpServ
     );
   }
 
+  // Shared by every request: a long tool call runs in a worker thread, so the
+  // server keeps answering other requests meanwhile.
+  const pool = opts.runner ? undefined : createToolPool({ size: TOOL_WORKERS });
+  const routed: HttpOptions = { ...opts, runner: opts.runner ?? pool?.run };
   const server = createHttpServer((req, res) => {
-    void route(req, res, opts).catch((e) => {
+    void route(req, res, routed).catch((e) => {
       // Only if nothing was written yet: a throw after the response started
       // (a client that hung up mid-write) must not become a second writeHead.
       if (res.headersSent) {
@@ -70,9 +77,13 @@ export function startHttpServer(opts: HttpOptions = {}): Promise<RunningHttpServ
   server.keepAliveTimeout = 120_000;
 
   return new Promise((resolve, reject) => {
-    server.once("error", reject);
+    const failed = (e: Error) => {
+      void pool?.close();
+      reject(e);
+    };
+    server.once("error", failed);
     server.listen(opts.port ?? 0, bind, () => {
-      server.removeListener("error", reject);
+      server.removeListener("error", failed);
       const addr = server.address();
       const port = typeof addr === "object" && addr ? addr.port : (opts.port ?? 0);
       const host = bind.includes(":") ? `[${bind}]` : bind;
@@ -83,7 +94,7 @@ export function startHttpServer(opts: HttpOptions = {}): Promise<RunningHttpServ
         close: () =>
           new Promise<void>((done) => {
             server.closeAllConnections?.();
-            server.close(() => done());
+            server.close(() => void (pool ? pool.close() : Promise.resolve()).then(done));
           }),
       });
     });
