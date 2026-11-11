@@ -1,6 +1,7 @@
-declare const ENGINE_VERSION = "2.31.18";
+declare const ENGINE_VERSION = "2.31.19";
 declare const SCHEMA_VERSION = 5;
-declare const EXTRACTOR_VERSION = 19;
+declare const EXTRACTOR_VERSION = 21;
+declare const UNNAMED_RECEIVER = "?";
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
 type Tier = 0 | 1 | 2;
@@ -79,6 +80,7 @@ interface FileRecord {
     truncated?: true;
     callsCapped?: true;
     astFallback?: true;
+    extractFailed?: true;
     generated?: "minified" | "bundle";
     relations?: RawRelation[];
     terms?: string[];
@@ -201,7 +203,6 @@ declare function readTextEx(abs: string): TextRead;
  * the overwhelmingly common case.
  */
 declare class OffsetMap {
-    private readonly text;
     private readonly ascii;
     /** charToByteTable[i] = byte offset of char index i. Length = text.length + 1. */
     private readonly table;
@@ -361,6 +362,36 @@ declare function scanSkips(root: string, opts?: ScanOptions): {
 declare function skipHistogram(skips: readonly ScanSkip[]): Record<string, number>;
 declare function whyPath(root: string, path: string, opts?: ScanOptions): PathVerdict;
 
+declare const CORE_GRAMMARS: Set<string>;
+declare const EXTENDED_GRAMMARS: Set<string>;
+declare const EXT_GRAMMAR: Record<string, string>;
+declare function grammarKeyForExt(ext: string): string | undefined;
+type GrammarsTierName = "adjacent" | "env" | "cache" | "none";
+interface GrammarsTier {
+    tier: GrammarsTierName;
+    dir?: string;
+    cacheDir: string;
+    dirs: string[];
+}
+declare function sharedGrammarsCacheDir(): string;
+declare function resolveGrammarsTier(opts?: {
+    moduleDir?: string;
+}): GrammarsTier;
+interface GrammarFile {
+    sha1: string;
+    size: number;
+    mtimeMs: number;
+    path?: string;
+    engine?: string;
+}
+declare function resolveGrammarsDir(opts?: {
+    moduleDir?: string;
+}): string | undefined;
+declare function ensureGrammars(keys: Iterable<string>): Promise<void>;
+declare function allGrammarKeys(): string[];
+declare function grammarKeysForExts(exts: Iterable<string>): string[];
+declare function grammarReady(key: string): boolean;
+
 type PersistedCacheEntry = {
     hash: string;
     record: FileRecord;
@@ -371,6 +402,7 @@ type PersistedCacheMap = Map<string, PersistedCacheEntry>;
 interface ExtractionProfile {
     grammars: string[];
     maxCallsPerFile?: number;
+    grammarFiles?: Record<string, GrammarFile>;
 }
 
 interface BuildIndexOptions extends ScanOptions {
@@ -504,7 +536,7 @@ declare function categorize(rel: string, ext: string): FileCategory;
 
 declare function extToLang(ext: string): string;
 
-declare function extractSymbols(rel: string, ext: string, content: string): CodeSymbol[];
+declare function extractSymbols(rel: string, ext: string, content: string, onFailure?: () => void): CodeSymbol[];
 declare function languageOf(ext: string): string;
 
 type GeneratedKind = NonNullable<FileRecord["generated"]>;
@@ -515,6 +547,7 @@ interface CodeInfo {
     truncated?: true;
     callsCapped?: true;
     astFallback?: true;
+    extractFailed?: true;
     generated?: GeneratedKind;
     refs: RawRef[];
     pkg?: string;
@@ -543,29 +576,6 @@ interface MarkdownInfo {
 declare function extractMarkdown(content: string): MarkdownInfo;
 
 declare function extractRst(rel: string, content: string): MarkdownInfo;
-
-declare const CORE_GRAMMARS: Set<string>;
-declare const EXTENDED_GRAMMARS: Set<string>;
-declare const EXT_GRAMMAR: Record<string, string>;
-declare function grammarKeyForExt(ext: string): string | undefined;
-type GrammarsTierName = "adjacent" | "env" | "cache" | "none";
-interface GrammarsTier {
-    tier: GrammarsTierName;
-    dir?: string;
-    cacheDir: string;
-    dirs: string[];
-}
-declare function sharedGrammarsCacheDir(): string;
-declare function resolveGrammarsTier(opts?: {
-    moduleDir?: string;
-}): GrammarsTier;
-declare function resolveGrammarsDir(opts?: {
-    moduleDir?: string;
-}): string | undefined;
-declare function ensureGrammars(keys: Iterable<string>): Promise<void>;
-declare function allGrammarKeys(): string[];
-declare function grammarKeysForExts(exts: Iterable<string>): string[];
-declare function grammarReady(key: string): boolean;
 
 interface AstResult {
     symbols: CodeSymbol[];
@@ -619,7 +629,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.31.18/grammars-2.31.18.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.31.19/grammars-2.31.19.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
@@ -750,6 +760,8 @@ interface ResolveContext {
     jsMemo?: Map<string, Resolution>;
     pyMemo?: Map<string, Resolution>;
     cRootMemo?: Map<string, string | null>;
+    rubyRootMemo?: Map<string, string | null>;
+    phpPsr4Memo?: Map<string, string | null>;
     dirFilesMemo?: Map<string, string[]>;
 }
 declare function buildResolveContext(scan: RepoScan): ResolveContext;
@@ -1003,6 +1015,7 @@ declare function insertBeforeSymbol(scan: RepoScan, namePath: string, body: stri
 
 declare function writeMemory(repo: string, name: string, content: string): string;
 declare function readMemory(repo: string, name: string): string | undefined;
+declare function memoryRefusal(repo: string, name: string): string | undefined;
 declare function deleteMemory(repo: string, name: string): boolean;
 declare function listMemories(repo: string): string[];
 
@@ -1245,7 +1258,7 @@ declare function searchIndex(scan: RepoScan, query: string, opts?: SearchOptions
  */
 declare function explainQuery(scan: RepoScan, query: string, opts?: SearchOptions): ExplainedSearch;
 
-declare const EMBED_VERSION = 3;
+declare const EMBED_VERSION = 4;
 interface StaticEmbedModel {
     modelId: string;
     dim: number;
@@ -1324,6 +1337,7 @@ interface EmbedEndpointOptions {
     headers?: Record<string, string>;
     batchSize?: number;
     concurrency?: number;
+    maxResponseBytes?: number;
 }
 declare function resolveEmbedEndpoint(opts?: EmbedEndpointOptions): string | undefined;
 declare function embedEndpointUrl(base: string): string;
@@ -2047,4 +2061,4 @@ declare function byKey<T>(keyOf: (x: T) => string): (a: T, b: T) => number;
 
 declare function runCli(rawArgv: string[]): Promise<void>;
 
-export { type ArchRule, BINARY_EXT, type BrokenImport, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeLiteral, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadCodeOptions, type DeadSymbol, type DeltaChange, type DeltaDiff, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type Encoding, type ExplainedSearch, type ExplainedSemanticSearch, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type GrepResult, type HierarchyRef, type Hotspot, type Hunk, IGNORE_DIRS, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, type IndexStaleness, type IndexStatus, type IndexStatusOptions, LOCKFILES, type LiteralDuplication, type LiteralFamily, type LiteralSite, type LiteralsOptions, type LiteralsReport, type LspAgreement, type LspBlock, type LspCallers, type LspCallersBlock, type LspCapabilities, type LspConfig, type LspConfigSource, type LspIncomingCall, type LspMessage, type LspQueryOptions, type LspRef, type LspReferences, type LspServerConfig, type LspServerStatus, type LspSession, type LspSessionOptions, LspSessionPool, type LspStatus, LspTimeout, type LspTransport, MARKDOWN_EXT, MAX_FRAME_BYTES, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, OffsetMap, type OnboardBrief, type OnboardOptions, type PathVerdict, type PathVerdictReason, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, type QueryExplanation, type QueryVerdict, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSkip, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticQueryExplanation, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TermDiagnostic, type TestMap, type TextRead, type Tier, type TypeHierarchyEntry, type UnusableIndex, type WalkEntry, type WalkOptions, type WalkResult, type WalkSkip, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, agreementOf, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, brokenImports, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, callersWithLsp, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, columnOfSymbol, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, createFramer, decidingRule, deleteMemory, deltaFor, deltaOfDiff, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, emptyDelta, enclosingSymbol, encode, encodeMessage, encodeQueryViaEndpoint, endpointModelId, ensureGrammars, escapeRegExp, explainQuery, explainSemantic, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractRst, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, fileUri, findDeadCode, findLiteralDuplications, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, grepRepoEx, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, indexStatus, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, loadLspConfig, locationsToRefs, lspStatus, lspUnavailable, neighborhood, neighborsOf, onboardBrief, openLspSession, pagerankOf, parseGitignore, parseLspConfig, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readDeltaDiff, readMemory, readPersistedIndex, readText, readTextEx, referencesWithLsp, relFromUri, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveLspConfigPath, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSkips, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, serverForLang, sh, sha1, sharedGrammarsCacheDir, shortHash, skipHistogram, slugify, spawnLspTransport, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, unitHash, untestedModules, untrackedFiles, walk, warmGrammars, whyPath, wordpiece, workerCount, writeMemory };
+export { type ArchRule, BINARY_EXT, type BrokenImport, type BuildIndexOptions, type BuiltinRule, CORE_GRAMMARS, type CallerEntry, type CallerIndex, type CallerIndexOptions, type CallerSite, type ChangeCoupling, type ChangedSymbol, type ClusteredMermaidOptions, type ClusteredMermaidResult, type CodeInfo, type CodeLiteral, type CodeSymbol, type CouplingOptions, DEFAULT_DELTA_DEPTH, DEFAULT_GRAMMARS_URL, DEFAULT_MAX_FILES, type DeadCodeOptions, type DeadSymbol, type DeltaChange, type DeltaDiff, type DeltaError, type DeltaModule, type DeltaOptions, type DeltaResult, type DiffFile, type DiffSpec, type Direction, EMBED_VERSION, ENGINE_VERSION, EXTENDED_GRAMMARS, EXTRACTOR_VERSION, EXT_GRAMMAR, type Edge, type EdgeKind, type EditResult, type EmbedEndpointOptions, type EmbedPullTarget, type EmbeddingIndex, type EmbeddingRecord, type EmbeddingUnit, type Encoding, type ExplainedSearch, type ExplainedSemanticSearch, type ExtractedRecord, type FileCategory, type FileKind, type FileNode, type FileRecord, type FindSymbolOptions, type ForbiddenEdgeRule, type GrammarsPullResult, type GrammarsPullTarget, type GrammarsTier, type GrammarsTierName, type Graph, type GrepOptions, type GrepResult, type HierarchyRef, type Hotspot, type Hunk, IGNORE_DIRS, INDEX_DIR, type IgnoreRule, type ImpactResult, type ImpactedFile, type IndexArtifacts, type IndexStaleness, type IndexStatus, type IndexStatusOptions, LOCKFILES, type LiteralDuplication, type LiteralFamily, type LiteralSite, type LiteralsOptions, type LiteralsReport, type LspAgreement, type LspBlock, type LspCallers, type LspCallersBlock, type LspCapabilities, type LspConfig, type LspConfigSource, type LspIncomingCall, type LspMessage, type LspQueryOptions, type LspRef, type LspReferences, type LspServerConfig, type LspServerStatus, type LspSession, type LspSessionOptions, LspSessionPool, type LspStatus, LspTimeout, type LspTransport, MARKDOWN_EXT, MAX_FRAME_BYTES, type MarkdownInfo, type McpServerOptions, type MermaidOptions, type ModuleInfo, type ModuleNode, type NeighborLink, type NeighborResult, type Neighborhood, OffsetMap, type OnboardBrief, type OnboardOptions, type PathVerdict, type PathVerdictReason, type PersistedCacheEntry, type PersistedCacheMap, type PersistedMeta, type QueryExplanation, type QueryVerdict, RISK_WEIGHTS, type RawCallerIndex, type RawCallerSite, type RawRef, type RawRelation, type RenderScipOptions, type RepoMapOptions, type RepoScan, type Resolution, type ResolveContext, type ResolvedRelation, type RiskHotspot, type RuleSeverity, type RuleViolation, SCHEMA_VERSION, type ScanOptions, type ScanSkip, type ScanSummary, type SearchHit, type SearchOptions, type SearchResult, type SemanticQueryExplanation, type SemanticSearchOptions, type SemanticSearchResult, type ShResult, type StaticEmbedModel, type SurpriseEdge, type SymbolComplexity, type SymbolEdge, type SymbolEdgeKind, type SymbolGraph, type SymbolIndex, type SymbolMatch, type SymbolNode, type SymbolReferences, type TagDefinition, type TagsQueryStatus, type TermDiagnostic, type TestMap, type TextRead, type Tier, type TypeHierarchyEntry, UNNAMED_RECEIVER, type UnusableIndex, type WalkEntry, type WalkOptions, type WalkResult, type WalkSkip, type WalkedFile, type WarmGrammarsOptions, type WarmGrammarsResult, type WorkspaceInfo, type WorkspaceKind, type WorkspacePackage, agreementOf, allGrammarKeys, applyCentrality, basicTokenize, betweennessOf, brokenImports, buildArtifactsFromScan, buildCallerIndex, buildCodeRecord, buildEmbeddingIndex, buildEndpointIndex, buildGraph, buildIndexArtifacts, buildModules, buildRawCallerIndex, buildResolveContext, buildSymbolGraph, buildSymbolIndex, buildTypeHierarchy, byKey, byStr, callersWithLsp, categorize, changeCoupling, changedSince, checkRules, classify, clip, clipInline, columnOfSymbol, communityOf, compileGlobs, complexityOfSource, computeDelta, computeImportPairs, computeSurprises, computeSymbolRefs, computeTestMap, createFramer, decidingRule, deleteMemory, deltaFor, deltaOfDiff, deserializeEmbeddings, detectCommunities, detectWorkspaces, diffFiles, diffHunks, embedEndpointUrl, embedViaEndpoint, embeddingUnits, emptyDelta, enclosingSymbol, encode, encodeMessage, encodeQueryViaEndpoint, endpointModelId, ensureGrammars, escapeRegExp, explainQuery, explainSemantic, extToLang, extractAst, extractCode, extractGrammarsTarball, extractInParallel, extractMarkdown, extractRst, extractSymbols, extractTags, extractTarInto, fetchExpectedSha256, fetchGrammarsTarball, fileUri, findDeadCode, findLiteralDuplications, findReferences, findSymbol, foldText, formatDeltaPanel, gitChurn, grammarKeyForExt, grammarKeysForExts, grammarReady, grepRepo, grepRepoEx, hasEmbedModel, have, headCommit, healthzUrl, hubThreshold, impactOf, implementationsOf, indexStatus, insertAfterSymbol, insertBeforeSymbol, intDot, isCode, isDoc, isGitWorktree, isIgnored, isSurprising, isTestFile, isTestPath, keptCodeFiles, keywords, languageOf, listMemories, loadEmbedModel, loadLspConfig, locationsToRefs, lspStatus, lspUnavailable, memoryRefusal, neighborhood, neighborsOf, onboardBrief, openLspSession, pagerankOf, parseGitignore, parseLspConfig, parseRules, preloadArtifacts, preloadSession, probeEndpoint, pullGrammars, quantize, rankHotspots, rankedKeywords, readDeltaDiff, readMemory, readPersistedIndex, readText, readTextEx, referencesWithLsp, relFromUri, renderGraphJson, renderMermaid, renderMermaidClustered, renderRepoMap, renderScip, renderSymbolsJson, replaceSymbolBody, resolveBaseRef, resolveCallEdges, resolveDocLink, resolveEmbedEndpoint, resolveEmbedModelDir, resolveEmbedPullUrl, resolveGrammarsDir, resolveGrammarsPullTarget, resolveGrammarsTier, resolveImport, resolveLspConfigPath, resolveRelationEdges, resolveRelations, resolveUniqueSymbol, reverseClosure, rewriteCommand, riskHotspots, roundHalfToEven, rrf, runCli, runExtractWorker, runMcpServer, scanRepo, scanRepoParallel, scanSkips, scanSummary, searchIndex, searchSemantic, serializeEmbeddings, serverForLang, sh, sha1, sharedGrammarsCacheDir, shortHash, skipHistogram, slugify, spawnLspTransport, subtokens, symbolComplexity, symbolId, symbolsInHunks, symbolsOverview, tagsQueryStatus, testsForModule, tierForPath, toCacheMap, tokenize, typeEntry, uniqueSymbolDefs, unitHash, untestedModules, untrackedFiles, walk, warmGrammars, whyPath, wordpiece, workerCount, writeMemory };
