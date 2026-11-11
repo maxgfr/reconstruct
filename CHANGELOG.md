@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.29.12](https://github.com/maxgfr/reconstruct/compare/v2.29.11...v2.29.12) (2026-11-11)
+
+
+### Bug Fixes
+
+* **adapters:** linear constant scans, stateless template check, finer shadowing, partial paths ([f660013](https://github.com/maxgfr/reconstruct/commit/f6600135af02a221575d19bf0101352b059ad34a))
+* **adapters:** order-independent constants, quote-safe paths, identifier routes ([81505ea](https://github.com/maxgfr/reconstruct/commit/81505eac2ec42d4e820afbb5e5d774d33612181c))
+* **adapters:** resolve route paths built from string constants ([612b268](https://github.com/maxgfr/reconstruct/commit/612b2687b2f060ae0195bb194dc0f1ae0a4c6077))
+* **mcp:** a tool call waiting on a tree lock no longer holds a stdio slot ([af1d271](https://github.com/maxgfr/reconstruct/commit/af1d271c84004d8dfb890c693934c41e9136efd4))
+* **mcp:** never let an inventory walk a tree a scaffold is still writing inside the repo ([0330357](https://github.com/maxgfr/reconstruct/commit/0330357d5a48d6a7f06126f2f84eb0bf439784a7))
+* **mcp:** only tool calls wait for a slot, and an idle worker pool lets the process exit ([278f8c8](https://github.com/maxgfr/reconstruct/commit/278f8c83963ba27fd53163a1cdbf1871086aa61d))
+* **mcp:** run tool calls in worker threads so a long call never blocks the server ([dc6f48a](https://github.com/maxgfr/reconstruct/commit/dc6f48a4f5aefa1cbd8835fa6db6b141124a478c))
+* **output:** do not read an untouched callout-free document as enrichment ([481b826](https://github.com/maxgfr/reconstruct/commit/481b8260498aaf65351615fb5fe4280b9a9de80c))
+* **util:** bound failed JSX attempts and match closing tags by whole name ([391735b](https://github.com/maxgfr/reconstruct/commit/391735bf216f1179b39e6da1c20c3e8232ce1212))
+* **util:** budget the closing-tag search instead of capping tag names ([6b0dd86](https://github.com/maxgfr/reconstruct/commit/6b0dd86ed3db8998085ab33e1a5770bc4821b1b7))
+* **util:** read JSX elements as elements when stripping comments ([6fc3b78](https://github.com/maxgfr/reconstruct/commit/6fc3b78862f63daf49daf8d0ed5beed2ac687e76))
+* **walk:** count the directories pruned whole next to the skipped files ([d1f551e](https://github.com/maxgfr/reconstruct/commit/d1f551ec06e173a3e6519dc7d44de85744ad40dc))
+
+
+### Performance Improvements
+
+* **adapters:** make the 'as const' strip linear on long blank runs ([13c7e7b](https://github.com/maxgfr/reconstruct/commit/13c7e7b700fa9066928a59a2bcb2833cec12fbda))
+
 ## [2.29.11](https://github.com/maxgfr/reconstruct/compare/v2.29.10...v2.29.11) (2026-11-11)
 
 
