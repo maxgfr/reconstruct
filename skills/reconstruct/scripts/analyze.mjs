@@ -28743,10 +28743,10 @@ var REGEX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", 
 var RUBY_REGEX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "{", "!", "&", "|", "~"]);
 var POSTFIX_BEFORE = /(?:^|[^+])\+\+\s*$|(?:^|[^-])--\s*$/;
 var REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
-function regexLiteralAllowedAt(src, i2, last) {
+function regexLiteralAllowedAt(src, i2, last, before = i2) {
   if (src[i2 - 1] === "<") return false;
-  if ((last === "+" || last === "-") && POSTFIX_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2))) return false;
-  return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2).trimEnd());
+  if ((last === "+" || last === "-") && POSTFIX_BEFORE.test(src.slice(Math.max(0, before - 12), before))) return false;
+  return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, before - 12), before).trimEnd());
 }
 function stripComments(src, ext) {
   const syntax = SYNTAX_BY_EXT[ext.toLowerCase()];
@@ -28829,13 +28829,26 @@ function stripComments(src, ext) {
     if (at > jsxFrom) jsxFrom = at;
     return -1;
   };
+  let attempts = 0;
+  let wasted = 0;
+  let abandoned = false;
+  const giveUpJsx = () => {
+    abandoned = true;
+    jsxFrom = n;
+  };
   const closers = /* @__PURE__ */ new Map();
   let closerMisses = 0;
   const hasClosingTag = (name2, from) => {
     let at = closers.get(name2);
     if (at === -1) return false;
     if (at === void 0 || at < from) {
-      at = src.indexOf(`</${name2}`, from);
+      if (at === void 0 && closers.size >= JSX_MAX_TAG_NAMES) {
+        giveUpJsx();
+        return false;
+      }
+      const tag = `</${name2}`;
+      at = src.indexOf(tag, from);
+      while (at !== -1 && isJsxNameCode(src.charCodeAt(at + tag.length))) at = src.indexOf(tag, at + 1);
       closers.set(name2, at);
       if (at === -1 && ++closerMisses > JSX_MAX_CLOSER_MISSES) jsxFrom = n;
     }
@@ -28859,6 +28872,21 @@ function stripComments(src, ext) {
     return n;
   };
   const jsxElement = (i2) => {
+    if (attempts >= JSX_MAX_DEPTH) return -1;
+    attempts++;
+    let end;
+    try {
+      end = parseElement(i2);
+    } finally {
+      attempts--;
+    }
+    if (end === -1) {
+      wasted += Math.max(jsxFrom, i2 + 1) - i2;
+      if (wasted > 2 * n + 4096) giveUpJsx();
+    }
+    return end;
+  };
+  const parseElement = (i2) => {
     let j = i2 + 1;
     let name2 = "";
     if (src[j] !== ">") {
@@ -28923,9 +28951,11 @@ function stripComments(src, ext) {
   };
   const scanCode2 = (from, nested) => {
     let last = "";
+    let lastEnd = from;
     let depth = 0;
     let i2 = from;
     while (i2 < n) {
+      if (abandoned && attempts > 0) return n;
       const c2 = src[i2];
       const next = src[i2 + 1];
       if (c2 === "/" && next === "/") {
@@ -28955,15 +28985,17 @@ function stripComments(src, ext) {
           i2 = skipString(c2, i2, false);
         }
         last = "a";
+        lastEnd = i2;
         continue;
       }
       if (c2 === "`") {
         i2 = syntax === "c" ? skipString("`", i2, true, false) : skipTemplate(i2 + 1);
         last = "a";
+        lastEnd = i2;
         continue;
       }
       if (jsFamily) {
-        if (c2 === "/" && regexLiteralAllowedAt(src, i2, last)) {
+        if (c2 === "/" && regexLiteralAllowedAt(src, i2, last, lastEnd)) {
           let j = i2 + 1;
           let inClass = false;
           while (j < n && src[j] !== "\n") {
@@ -28979,14 +29011,16 @@ function stripComments(src, ext) {
           }
           i2 = j + 1;
           last = "a";
+          lastEnd = i2;
           continue;
         }
-        if (c2 === "<" && jsx && i2 >= jsxFrom && jsxAllowedAt(src, i2, last)) {
+        if (c2 === "<" && jsx && i2 >= jsxFrom && jsxAllowedAt(src, i2, last, lastEnd)) {
           const mark = ranges.length;
           const end = jsxElement(i2);
           if (end !== -1) {
             i2 = end;
             last = "a";
+            lastEnd = i2;
             continue;
           }
           ranges.length = mark;
@@ -28998,7 +29032,10 @@ function stripComments(src, ext) {
         }
       }
       const code = src.charCodeAt(i2);
-      if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 ? "a" : c2;
+      if (!isSpaceCode(code)) {
+        last = isOperandEnd(code) || code === 46 ? "a" : c2;
+        lastEnd = i2 + 1;
+      }
       i2++;
     }
     return n;
@@ -29015,10 +29052,12 @@ var JSX_NAME_RE = /[A-Za-z_$][\w$.:-]*/y;
 var TSX_GENERIC_RE = /\s+extends\s/y;
 var JSX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", ">"]);
 var JSX_MAX_CLOSER_MISSES = 64;
-function jsxAllowedAt(src, i2, last) {
+var JSX_MAX_TAG_NAMES = 512;
+var JSX_MAX_DEPTH = 128;
+function jsxAllowedAt(src, i2, last, before) {
   const next = src[i2 + 1] ?? "";
   if (next !== ">" && !/[A-Za-z_$]/.test(next)) return false;
-  return JSX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i2 - 12), i2).trimEnd());
+  return JSX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, before - 12), before).trimEnd());
 }
 function isJsxNameCode(code) {
   return code >= 48 && code <= 58 || // 0-9 :

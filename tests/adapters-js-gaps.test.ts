@@ -284,6 +284,42 @@ describe("stripComments: JSX elements are read as elements", () => {
     expect(stripComments(src, ".jsx")).toBe("const s = `a ${b         ? `x // y ${<i>it's</i>}` : 1} // not a comment`;     \n");
   });
 
+  it("matches a closing tag by its whole name: `</Text>` does not close `<T>`", () => {
+    const src = "type Fn = <T>(x: T) => void;\nreturn <Text>don't // keep</Text>; // gone\n";
+    const out = stripComments(src, ".tsx");
+    expect(out).toContain("don't // keep</Text>;");
+    expect(out).not.toContain("// gone");
+  });
+
+  it("sees a keyword through a comment before a `<` or a `/`", () => {
+    const jsx = "return /* c */ <a> see http://x.y/z </a>; /* c2 */\n";
+    expect(stripComments(jsx, ".jsx")).toBe("return         <a> see http://x.y/z </a>;         \n");
+    const re = "return /* c */ /\\/\\//.test(s); // d\n";
+    expect(stripComments(re, ".js")).toBe("return         /\\/\\//.test(s);     \n");
+    // An operand after the keyword still divides.
+    expect(stripComments('return "x" / 2; // d\n', ".js")).toBe('return "x" / 2;     \n');
+  });
+
+  it("gives up on JSX within a bounded budget on nested elements that never close", () => {
+    const t = (fn: () => unknown): number => {
+      const start = performance.now();
+      fn();
+      return performance.now() - start;
+    };
+    const tail = "x = y + 1; // c\n".repeat(60_000);
+    const nested = `v = ${"<a>{".repeat(1500)}${tail}</a>`;
+    let out = "";
+    expect(t(() => (out = stripComments(nested, ".js")))).toBeLessThan(2000);
+    expect(out.length).toBe(nested.length);
+    expect(out).not.toContain("// c");
+    const attrs = `v = ${"<a x={".repeat(2000)}${"y; // c\n".repeat(60_000)}`;
+    expect(t(() => (out = stripComments(attrs, ".js")))).toBeLessThan(2000);
+    expect(out).not.toContain("// c");
+    // Thousands of distinct nested tag names.
+    const names = `v = ${Array.from({ length: 16_000 }, (_, i) => `<t${i}>`).join("")}${Array.from({ length: 16_000 }, (_, i) => `</t${15_999 - i}>`).join("")}`;
+    expect(t(() => stripComments(names, ".jsx"))).toBeLessThan(2000);
+  });
+
   it("stays linear on text that only looks like JSX", () => {
     const t = (fn: () => unknown): number => {
       const start = performance.now();

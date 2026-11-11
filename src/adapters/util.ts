@@ -122,16 +122,18 @@ const REGEX_KEYWORD_BEFORE = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|ne
 
 /**
  * Whether a JS `/` at `i` opens a regex literal rather than a division. `last`
- * is the previous significant code char (`a` for an operand, `""` at start).
+ * is the previous significant code char (`a` for an operand, `""` at start);
+ * `before` is the offset just past it, so a comment in between (`return /* c *\/ /x/`)
+ * does not hide a keyword.
  */
-export function regexLiteralAllowedAt(src: string, i: number, last: string): boolean {
+export function regexLiteralAllowedAt(src: string, i: number, last: string, before = i): boolean {
   // `</a>`: a JSX closing tag. A regex written flush against a `<` operator
   // (`a</re/`) is not code anyone writes, so `</` never opens one.
   if (src[i - 1] === "<") return false;
   // `i++ / 2`: a postfix `++`/`--` ends an operand (a prefix one cannot
   // apply to a regex). `a+++/re/` stays a regex: its last `+` is binary.
-  if ((last === "+" || last === "-") && POSTFIX_BEFORE.test(src.slice(Math.max(0, i - 12), i))) return false;
-  return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd());
+  if ((last === "+" || last === "-") && POSTFIX_BEFORE.test(src.slice(Math.max(0, before - 12), before))) return false;
+  return REGEX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, before - 12), before).trimEnd());
 }
 
 /**
@@ -238,14 +240,33 @@ export function stripComments(src: string, ext: string): string {
     if (at > jsxFrom) jsxFrom = at;
     return -1;
   };
-  // Next `</Name` per tag name, searched forward only (-1: none remains).
+  // Element attempts in progress, characters spent on attempts that failed,
+  // and whether JSX was given up on: past a budget of a few times the file
+  // size (deeply nested text that never closes), every attempt still open is
+  // abandoned and the rest of the file is scanned without JSX. That bounds the
+  // whole scan to a constant number of passes.
+  let attempts = 0;
+  let wasted = 0;
+  let abandoned = false;
+  const giveUpJsx = () => {
+    abandoned = true;
+    jsxFrom = n;
+  };
+  // Next `</Name` per tag name (not `</Names`), searched forward only (-1: none remains).
   const closers = new Map<string, number>();
   let closerMisses = 0;
   const hasClosingTag = (name: string, from: number): boolean => {
     let at = closers.get(name);
     if (at === -1) return false;
     if (at === undefined || at < from) {
-      at = src.indexOf(`</${name}`, from);
+      // Thousands of distinct tag names is not markup: stop trying.
+      if (at === undefined && closers.size >= JSX_MAX_TAG_NAMES) {
+        giveUpJsx();
+        return false;
+      }
+      const tag = `</${name}`;
+      at = src.indexOf(tag, from);
+      while (at !== -1 && isJsxNameCode(src.charCodeAt(at + tag.length))) at = src.indexOf(tag, at + 1);
       closers.set(name, at);
       // Many unclosed "tags" means this is not JSX (generics, a DSL): stop trying.
       if (at === -1 && ++closerMisses > JSX_MAX_CLOSER_MISSES) jsxFrom = n;
@@ -281,6 +302,21 @@ export function stripComments(src: string, ext: string): string {
    * whatever precedes it.
    */
   const jsxElement = (i: number): number => {
+    if (attempts >= JSX_MAX_DEPTH) return -1;
+    attempts++;
+    let end: number;
+    try {
+      end = parseElement(i);
+    } finally {
+      attempts--;
+    }
+    if (end === -1) {
+      wasted += Math.max(jsxFrom, i + 1) - i;
+      if (wasted > 2 * n + 4096) giveUpJsx();
+    }
+    return end;
+  };
+  const parseElement = (i: number): number => {
     let j = i + 1;
     let name = "";
     if (src[j] !== ">") {
@@ -357,9 +393,13 @@ export function stripComments(src: string, ext: string): string {
     // The previous significant code char (`a` for an operand): decides whether
     // a `/` opens a regex literal and a `<` a JSX element.
     let last = "";
+    // Just past `last`: where a keyword before a `/` or a `<` ends.
+    let lastEnd = from;
     let depth = 0;
     let i = from;
     while (i < n) {
+      // Inside an element attempt after JSX was given up on: unwind it.
+      if (abandoned && attempts > 0) return n;
       const c = src[i] as string;
       const next = src[i + 1];
       if (c === "/" && next === "/") {
@@ -395,16 +435,18 @@ export function stripComments(src: string, ext: string): string {
           i = skipString(c, i, false);
         }
         last = "a";
+        lastEnd = i;
         continue;
       }
       if (c === "`") {
         // Go raw string (no escapes) vs JS template literal.
         i = syntax === "c" ? skipString("`", i, true, false) : skipTemplate(i + 1);
         last = "a";
+        lastEnd = i;
         continue;
       }
       if (jsFamily) {
-        if (c === "/" && regexLiteralAllowedAt(src, i, last)) {
+        if (c === "/" && regexLiteralAllowedAt(src, i, last, lastEnd)) {
           let j = i + 1;
           let inClass = false;
           while (j < n && src[j] !== "\n") {
@@ -420,15 +462,17 @@ export function stripComments(src: string, ext: string): string {
           }
           i = j + 1;
           last = "a";
+          lastEnd = i;
           continue;
         }
-        if (c === "<" && jsx && i >= jsxFrom && jsxAllowedAt(src, i, last)) {
+        if (c === "<" && jsx && i >= jsxFrom && jsxAllowedAt(src, i, last, lastEnd)) {
           // Comments blanked inside an attempt that fails are restored.
           const mark = ranges.length;
           const end = jsxElement(i);
           if (end !== -1) {
             i = end;
             last = "a";
+            lastEnd = i;
             continue;
           }
           ranges.length = mark;
@@ -440,7 +484,10 @@ export function stripComments(src: string, ext: string): string {
         }
       }
       const code = src.charCodeAt(i);
-      if (!isSpaceCode(code)) last = isOperandEnd(code) || code === 46 /* . */ ? "a" : c;
+      if (!isSpaceCode(code)) {
+        last = isOperandEnd(code) || code === 46 /* . */ ? "a" : c;
+        lastEnd = i + 1;
+      }
       i++;
     }
     return n;
@@ -466,12 +513,16 @@ const TSX_GENERIC_RE = /\s+extends\s/y;
 const JSX_PRECEDES = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", ">"]);
 // Tag names with no closing tag anywhere before the stripper gives up on JSX.
 const JSX_MAX_CLOSER_MISSES = 64;
+// Distinct tag names, and elements nested inside one another, past which a
+// file is not treated as markup any more.
+const JSX_MAX_TAG_NAMES = 512;
+const JSX_MAX_DEPTH = 128;
 
 /** Whether the `<` at `i` may open a JSX element: operand position, then a tag name or `>`. */
-function jsxAllowedAt(src: string, i: number, last: string): boolean {
+function jsxAllowedAt(src: string, i: number, last: string, before: number): boolean {
   const next = src[i + 1] ?? "";
   if (next !== ">" && !/[A-Za-z_$]/.test(next)) return false;
-  return JSX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, i - 12), i).trimEnd());
+  return JSX_PRECEDES.has(last) || REGEX_KEYWORD_BEFORE.test(src.slice(Math.max(0, before - 12), before).trimEnd());
 }
 
 /** `[\w$.:-]`: a char of a JSX tag or attribute name. */
