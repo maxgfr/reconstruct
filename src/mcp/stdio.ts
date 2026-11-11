@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { runInline, type ToolRunner } from "./handlers.js";
 import { createToolPool } from "./offload.js";
 import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOptions } from "./server.js";
 
@@ -23,8 +24,9 @@ import { createServer, ERR_INVALID_REQUEST, type JsonRpcMessage, type ServerOpti
 
 // How many tool calls may run at once. Above this, reconstruct's own
 // per-source concurrency and the git subprocesses stop paying for themselves.
-// Only tool calls wait for a slot: `ping`, `tools/list` and the other
-// methods answer at once, and the read loop never stops for a busy server.
+// The slot is taken by the work itself (the runner), not by the message: a
+// call still waiting on its tree's lock holds none, `ping`, `tools/list`
+// and the other methods answer at once, and the read loop never stops.
 const MAX_IN_FLIGHT = 4;
 
 export interface StdioOptions extends ServerOptions {
@@ -55,20 +57,13 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
   // One worker per in-flight slot. None from TypeScript sources (tests):
   // calls then run on this thread.
   const pool = opts.runner ? undefined : createToolPool({ size: MAX_IN_FLIGHT });
-  const server = createServer({ ...opts, runner: opts.runner ?? pool?.run });
+  const runJob = opts.runner ?? pool?.run ?? runInline;
   const send = (msg: JsonRpcMessage) => {
     emit(JSON.stringify(msg) + "\n");
   };
 
-  // Every message still being handled, so stdin closing can wait for them.
-  const inFlight = new Set<Promise<void>>();
-  const track = (p: Promise<void>) => {
-    inFlight.add(p);
-    void p.finally(() => inFlight.delete(p));
-    return p;
-  };
-  // Tool-call slots. A freed slot passes straight to the next waiting call,
-  // so the count never goes over the cap.
+  // Tool-call slots. A freed slot passes straight to the next waiting job,
+  // so the count never goes over the cap and jobs start in arrival order.
   let running = 0;
   const waiting: Array<() => void> = [];
   const acquire = (): Promise<void> => {
@@ -83,10 +78,21 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
     if (next) next();
     else running--;
   };
+  const runner: ToolRunner = (job) =>
+    acquire().then(() =>
+      Promise.resolve()
+        .then(() => runJob(job))
+        .finally(release),
+    );
+  const server = createServer({ ...opts, runner });
+
+  // Every message still being handled, so stdin closing can wait for them.
+  const inFlight = new Set<Promise<void>>();
   const dispatch = (m: JsonRpcMessage, reply: (r: JsonRpcMessage) => void): Promise<void> => {
-    const isToolCall = m !== null && typeof m === "object" && m.method === "tools/call";
-    const run = isToolCall ? acquire().then(() => server.handle(m, reply).finally(release)) : server.handle(m, reply);
-    return track(run.catch(reportInternal(send)));
+    const p = server.handle(m, reply).catch(reportInternal(send));
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p));
+    return p;
   };
 
   const rl = createInterface({ input, terminal: false });
@@ -114,11 +120,11 @@ export async function runStdioServer(opts: StdioOptions = {}): Promise<void> {
         // its own slot: a batch of 20 calls must not run 20 at once.
         const out: JsonRpcMessage[] = [];
         const parts = parsed.map((m) => dispatch(m as JsonRpcMessage, (r) => void out.push(r)));
-        track(
-          Promise.all(parts).then(() => {
-            if (out.length) emit(JSON.stringify(out) + "\n");
-          }),
-        );
+        const answered = Promise.all(parts).then(() => {
+          if (out.length) emit(JSON.stringify(out) + "\n");
+        });
+        inFlight.add(answered);
+        void answered.finally(() => inFlight.delete(answered));
         continue;
       }
 

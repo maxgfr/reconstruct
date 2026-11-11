@@ -28838,18 +28838,20 @@ function stripComments(src, ext) {
   };
   const closers = /* @__PURE__ */ new Map();
   let closerMisses = 0;
+  let closerScan = 0;
   const hasClosingTag = (name2, from) => {
     let at = closers.get(name2);
     if (at === -1) return false;
     if (at === void 0 || at < from) {
-      if (at === void 0 && closers.size >= JSX_MAX_TAG_NAMES) {
-        giveUpJsx();
-        return false;
-      }
       const tag = `</${name2}`;
       at = src.indexOf(tag, from);
       while (at !== -1 && isJsxNameCode(src.charCodeAt(at + tag.length))) at = src.indexOf(tag, at + 1);
       closers.set(name2, at);
+      closerScan += (at === -1 ? n : at) - from;
+      if (closerScan > 8 * n + 65536) {
+        giveUpJsx();
+        return false;
+      }
       if (at === -1 && ++closerMisses > JSX_MAX_CLOSER_MISSES) jsxFrom = n;
     }
     return at !== -1;
@@ -29052,7 +29054,6 @@ var JSX_NAME_RE = /[A-Za-z_$][\w$.:-]*/y;
 var TSX_GENERIC_RE = /\s+extends\s/y;
 var JSX_PRECEDES = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", ">"]);
 var JSX_MAX_CLOSER_MISSES = 64;
-var JSX_MAX_TAG_NAMES = 512;
 var JSX_MAX_DEPTH = 128;
 function jsxAllowedAt(src, i2, last, before) {
   const next = src[i2 + 1] ?? "";
@@ -37593,10 +37594,6 @@ function orchestrateRun(outDir, engineAbs, opts = {}) {
 // src/mcp/stdio.ts
 import { createInterface as createInterface2 } from "readline";
 
-// src/mcp/offload.ts
-import { fileURLToPath as fileURLToPath3 } from "url";
-import { parentPort, Worker as Worker3 } from "worker_threads";
-
 // src/mcp/handlers.ts
 import { existsSync as existsSync23, readFileSync as readFileSync37, realpathSync as realpathSync9, statSync as statSync20 } from "fs";
 import { isAbsolute as isAbsolute14, join as join53, relative as relative14, resolve as resolve17, sep as sep11 } from "path";
@@ -38078,6 +38075,8 @@ function handleRead(args2, out2) {
 }
 
 // src/mcp/offload.ts
+import { fileURLToPath as fileURLToPath3 } from "url";
+import { parentPort, Worker as Worker3 } from "worker_threads";
 var TOOL_WORKER_FLAG = "reconstructToolWorker";
 function startToolWorker() {
   const port = parentPort;
@@ -38875,15 +38874,9 @@ async function runStdioServer(opts = {}) {
     };
   }
   const pool = opts.runner ? void 0 : createToolPool({ size: MAX_IN_FLIGHT });
-  const server = createServer({ ...opts, runner: opts.runner ?? pool?.run });
+  const runJob2 = opts.runner ?? pool?.run ?? runInline;
   const send = (msg) => {
     emit2(JSON.stringify(msg) + "\n");
-  };
-  const inFlight = /* @__PURE__ */ new Set();
-  const track = (p) => {
-    inFlight.add(p);
-    void p.finally(() => inFlight.delete(p));
-    return p;
   };
   let running = 0;
   const waiting = [];
@@ -38899,10 +38892,16 @@ async function runStdioServer(opts = {}) {
     if (next) next();
     else running--;
   };
+  const runner = (job) => acquire().then(
+    () => Promise.resolve().then(() => runJob2(job)).finally(release)
+  );
+  const server = createServer({ ...opts, runner });
+  const inFlight = /* @__PURE__ */ new Set();
   const dispatch2 = (m, reply) => {
-    const isToolCall = m !== null && typeof m === "object" && m.method === "tools/call";
-    const run2 = isToolCall ? acquire().then(() => server.handle(m, reply).finally(release)) : server.handle(m, reply);
-    return track(run2.catch(reportInternal(send)));
+    const p = server.handle(m, reply).catch(reportInternal(send));
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p));
+    return p;
   };
   const rl = createInterface2({ input, terminal: false });
   try {
@@ -38923,11 +38922,11 @@ async function runStdioServer(opts = {}) {
       if (Array.isArray(parsed2)) {
         const out2 = [];
         const parts2 = parsed2.map((m) => dispatch2(m, (r) => void out2.push(r)));
-        track(
-          Promise.all(parts2).then(() => {
-            if (out2.length) emit2(JSON.stringify(out2) + "\n");
-          })
-        );
+        const answered = Promise.all(parts2).then(() => {
+          if (out2.length) emit2(JSON.stringify(out2) + "\n");
+        });
+        inFlight.add(answered);
+        void answered.finally(() => inFlight.delete(answered));
         continue;
       }
       if (parsed2 === null || typeof parsed2 !== "object") {
