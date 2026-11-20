@@ -216,7 +216,7 @@ var UNNAMED_RECEIVER;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.31.24";
+    ENGINE_VERSION = "2.31.25";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 22;
     UNNAMED_RECEIVER = "?";
