@@ -19,7 +19,7 @@ var ENGINE_VERSION, SCHEMA_VERSION, EXTRACTOR_VERSION, UNNAMED_RECEIVER;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.32.0";
+    ENGINE_VERSION = "2.32.1";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 24;
     UNNAMED_RECEIVER = "?";
