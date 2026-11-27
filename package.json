@@ -54,15 +54,15 @@
     "url": "https://github.com/maxgfr/reconstruct"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.6",
+    "@biomejs/biome": "^2.6.8",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
     "@types/node": "^26.6.6",
-    "semantic-release": "^25.0.9",
+    "semantic-release": "^26.0.1",
     "tsup": "^9.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0",
+    "vitest": "^5.1.1",
     "yaml": "^2.9.1",
     "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/3af2df9ea5b825854ac23396e9446c45bdcfe93b"
   },
