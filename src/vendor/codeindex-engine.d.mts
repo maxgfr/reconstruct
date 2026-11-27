@@ -1,6 +1,6 @@
-declare const ENGINE_VERSION = "2.31.25";
+declare const ENGINE_VERSION = "2.32.0";
 declare const SCHEMA_VERSION = 5;
-declare const EXTRACTOR_VERSION = 22;
+declare const EXTRACTOR_VERSION = 24;
 declare const UNNAMED_RECEIVER = "?";
 type FileKind = "code" | "doc" | "config" | "asset" | "other";
 type EdgeKind = "contains" | "doc-link" | "import" | "call" | "extends" | "implements" | "use" | "mention";
@@ -224,7 +224,7 @@ declare const BINARY_EXT: Set<string>;
 /** An observed exclusion. Directory contents are not enumerated. */
 interface WalkSkip {
     rel: string;
-    reason: "binary-ext" | "lockfile" | "over-max-bytes" | "gitignored" | "minified" | "symlink-outside-root" | "broken-symlink" | "directory-symlink" | "file-symlink" | "ignore-dir" | "nested-repo" | "filter" | "unreadable";
+    reason: "binary-ext" | "lockfile" | "over-max-bytes" | "gitignored" | "minified" | "symlink-outside-root" | "broken-symlink" | "directory-symlink" | "file-symlink" | "ignore-dir" | "nested-repo" | "installed-skill" | "filter" | "unreadable";
     directory: boolean;
     size?: number;
     /** For "gitignored": the rule that decided it — its file, 1-based line, and pattern as written. */
@@ -629,7 +629,7 @@ declare function tagsQueryStatus(key: string): TagsQueryStatus;
  */
 declare function extractTags(ext: string, content: string): TagDefinition[];
 
-declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.31.25/grammars-2.31.25.tar.gz";
+declare const DEFAULT_GRAMMARS_URL = "https://github.com/maxgfr/codeindex/releases/download/v2.32.0/grammars-2.32.0.tar.gz";
 interface GrammarsPullTarget {
     url: string;
     sha256Url?: string;
